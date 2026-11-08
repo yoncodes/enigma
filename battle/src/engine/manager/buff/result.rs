@@ -91,7 +91,6 @@ pub struct BuffRemoveResult {
     pub delete_reason: Option<BuffDeleteReason>,
     pub depleted: bool,
     pub fixed_max_hp_delta: i32,
-    pub target_max_hp: i32,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -118,6 +117,13 @@ pub struct BuffReplaceResult {
 
 impl BuffReplaceResult {
     pub fn events(&self) -> Vec<BattleEvent> {
+        self.events_with_pre_add_refreshes(0)
+    }
+
+    pub(super) fn events_with_pre_add_refreshes(
+        &self,
+        pre_add_refreshes: usize,
+    ) -> Vec<BattleEvent> {
         fn push_added(events: &mut Vec<BattleEvent>, applied: &BuffApplyResult) {
             let buff = &applied.buff;
             events.push(BattleEvent::BuffAdded(BuffChangeEvent {
@@ -145,6 +151,52 @@ impl BuffReplaceResult {
             }
         }
 
+        fn push_refreshes(events: &mut Vec<BattleEvent>, refreshed: &[BuffUpdateResult]) {
+            events.extend(refreshed.iter().filter_map(|refresh| {
+                let before_amount = super::count_or_layer(&refresh.before);
+                let after_amount = super::count_or_layer(&refresh.after);
+                (before_amount != after_amount).then_some(BattleEvent::BuffChanged(
+                    BuffChangeEvent {
+                        source_uid: refresh.source_uid,
+                        target_uid: refresh.target_uid,
+                        buff_uid: refresh.after.uid.unwrap_or_default(),
+                        buff_id: refresh.after.buff_id.unwrap_or_default(),
+                        before_amount,
+                        after_amount,
+                        act_id: refresh
+                            .after
+                            .act_info
+                            .first()
+                            .and_then(|info| info.act_id)
+                            .unwrap_or_default(),
+                        act_value: refresh
+                            .after
+                            .act_info
+                            .first()
+                            .and_then(|info| info.param.first())
+                            .copied()
+                            .unwrap_or_default(),
+                        duration_expired: false,
+                    },
+                ))
+            }));
+            events.extend(refreshed.iter().filter_map(|refresh| {
+                let before_ex_info = refresh.before.ex_info.unwrap_or_default();
+                let after_ex_info = refresh.after.ex_info.unwrap_or_default();
+                (before_ex_info != after_ex_info).then_some(BattleEvent::BuffStateChanged(
+                    BuffStateChangeEvent {
+                        source_uid: refresh.source_uid,
+                        target_uid: refresh.target_uid,
+                        buff_uid: refresh.after.uid.unwrap_or_default(),
+                        buff_id: refresh.after.buff_id.unwrap_or_default(),
+                        before_ex_info,
+                        after_ex_info,
+                    },
+                ))
+            }));
+        }
+
+        let split = pre_add_refreshes.min(self.refreshed.len());
         let mut events = self
             .removed
             .iter()
@@ -178,49 +230,11 @@ impl BuffReplaceResult {
                 })
             })
             .collect::<Vec<_>>();
+        push_refreshes(&mut events, &self.refreshed[..split]);
         if let Some(added) = &self.added {
             push_added(&mut events, added);
         }
-        events.extend(self.refreshed.iter().filter_map(|refresh| {
-            let before_amount = super::count_or_layer(&refresh.before);
-            let after_amount = super::count_or_layer(&refresh.after);
-            (before_amount != after_amount).then_some(BattleEvent::BuffChanged(BuffChangeEvent {
-                source_uid: refresh.source_uid,
-                target_uid: refresh.target_uid,
-                buff_uid: refresh.after.uid.unwrap_or_default(),
-                buff_id: refresh.after.buff_id.unwrap_or_default(),
-                before_amount,
-                after_amount,
-                act_id: refresh
-                    .after
-                    .act_info
-                    .first()
-                    .and_then(|info| info.act_id)
-                    .unwrap_or_default(),
-                act_value: refresh
-                    .after
-                    .act_info
-                    .first()
-                    .and_then(|info| info.param.first())
-                    .copied()
-                    .unwrap_or_default(),
-                duration_expired: false,
-            }))
-        }));
-        events.extend(self.refreshed.iter().filter_map(|refresh| {
-            let before_ex_info = refresh.before.ex_info.unwrap_or_default();
-            let after_ex_info = refresh.after.ex_info.unwrap_or_default();
-            (before_ex_info != after_ex_info).then_some(BattleEvent::BuffStateChanged(
-                BuffStateChangeEvent {
-                    source_uid: refresh.source_uid,
-                    target_uid: refresh.target_uid,
-                    buff_uid: refresh.after.uid.unwrap_or_default(),
-                    buff_id: refresh.after.buff_id.unwrap_or_default(),
-                    before_ex_info,
-                    after_ex_info,
-                },
-            ))
-        }));
+        push_refreshes(&mut events, &self.refreshed[split..]);
         if let Some(rejected) = &self.rejected {
             events.push(BattleEvent::BuffRejected(BuffRejectedEvent {
                 source_uid: rejected.buff.from_uid.unwrap_or_default(),

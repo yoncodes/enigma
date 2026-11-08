@@ -24,6 +24,7 @@ pub struct DungeonSettlement {
     pub open_infos: Vec<sonettobuf::OpenInfo>,
     pub end_dungeon: EndDungeonPush,
     pub compose_push: Option<sonettobuf::TowerComposeFightSettlePush>,
+    pub tasks: Vec<logic::task::UserTask>,
 }
 
 pub struct BattlelessSettlement {
@@ -34,6 +35,7 @@ pub struct BattlelessSettlement {
 pub struct RefundSettlement {
     pub rewards: AppliedRewards,
     pub compose_push: Option<sonettobuf::TowerComposeFightSettlePush>,
+    pub tasks: Vec<logic::task::UserTask>,
 }
 
 pub async fn finish_fight_instance(
@@ -65,7 +67,7 @@ pub async fn settle_active(
     .await?;
     settlement.kill_count =
         i32::try_from(active.runtime.defeated_defender_count()).unwrap_or(i32::MAX);
-    logic::activity::settle_act128_score_in_transaction(
+    settlement.tasks = logic::activity::settle_act128_score_in_transaction(
         &mut tx,
         player_id,
         active.episode_id,
@@ -191,6 +193,7 @@ async fn settle_completion_in_transaction(
             total_round: Some(total_round),
         },
         compose_push: None,
+        tasks: Vec::new(),
     })
 }
 
@@ -273,17 +276,20 @@ async fn settle_refund_rewards(
         Some(active) => tower_compose::settle_in_transaction(&mut tx, player_id, active).await?,
         None => None,
     };
-    if let Some((episode_id, battle_id, score)) = activity128_score {
+    let tasks = if let Some((episode_id, battle_id, score)) = activity128_score {
         logic::activity::settle_act128_score_in_transaction(
             &mut tx, player_id, episode_id, battle_id, score,
         )
-        .await?;
-    }
+        .await?
+    } else {
+        Vec::new()
+    };
     battle_db::finish_fight_instance_in_transaction(&mut tx, player_id, fight_id).await?;
     tx.commit().await?;
     Ok(RefundSettlement {
         rewards,
         compose_push,
+        tasks,
     })
 }
 

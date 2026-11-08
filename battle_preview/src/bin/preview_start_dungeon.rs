@@ -160,13 +160,14 @@ fn generate_reply(
         .unwrap_or_default();
     let (ex_attributes, sp_attributes) = preview_attributes(&fight, path)?;
     let loadout = loadout_diffs(&fight, path)?;
-    let determinism = opening_determinism(db, &fight, &captured_round);
+    let determinism = opening_determinism(db, &fight, &captured_round).map_err(io::Error::other)?;
     let mut runtime = ReplayBattle::new_with_attributes(
         battle::catalog::BattleCatalog::new(db),
         fight,
         ex_attributes,
         sp_attributes,
-    );
+    )
+    .map_err(io::Error::other)?;
     runtime.extend_battle_rule_skills(tower_rule_skills);
     runtime
         .start_round_with_determinism(determinism)

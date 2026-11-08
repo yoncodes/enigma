@@ -219,7 +219,9 @@ fn project_frame(
         | FrameOwner::SetupEntity { .. }
         | FrameOwner::StageWave { .. }
         | FrameOwner::EventRule
+        | FrameOwner::InitialSovereignBoost
         | FrameOwner::RoundPhase(_)
+        | FrameOwner::SynchronizationCardState { .. }
         | FrameOwner::Command => Ok(StepPacket::effect(effects)),
     }
 }
@@ -297,7 +299,9 @@ fn normalize_framed_step(effect: ActEffect) -> FightStep {
 }
 
 #[cfg(test)]
-fn project_change_for_test(change: &BattleChange) -> Result<Vec<ActEffect>, ProjectionError> {
+pub(crate) fn project_change_for_test(
+    change: &BattleChange,
+) -> Result<Vec<ActEffect>, ProjectionError> {
     project_change_with_reduce_hp(change, true)
 }
 
@@ -407,6 +411,7 @@ fn project_change(
         BattleChange::FightProgressValue(change) => {
             vec![EffectPacket::fight_progress_changed(*change)]
         }
+        BattleChange::FightTask(change) => vec![EffectPacket::fight_task_update(change)],
         BattleChange::BuffActTrigger(trigger) => {
             vec![EffectPacket::buff_act_trigger(*trigger)]
         }
@@ -613,6 +618,11 @@ fn project_change(
         {
             vec![EffectPacket::ex_point(*change)]
         }
+        BattleChange::ExPoint(ExPointChanges::Transfer { loss, gain, .. }) => [loss, gain]
+            .into_iter()
+            .filter(|change| change.applied_delta != 0)
+            .map(|change| EffectPacket::ex_point(*change))
+            .collect(),
         BattleChange::ExPoint(ExPointChanges::Resisted {
             target_uid,
             resistance_id,
@@ -856,7 +866,17 @@ fn project_change(
         BattleChange::Conduit(
             crate::engine::manager::conduit::ConduitChange::DeviceRestarted { source_uid, team },
         ) => vec![EffectPacket::conduit_device_restarted(*source_uid, *team)],
-        BattleChange::Card(changes) if changes.kind == CardChangeKind::Setup => Vec::new(),
+        BattleChange::Card(changes)
+            if matches!(
+                changes.kind,
+                CardChangeKind::Setup
+                    | CardChangeKind::AiSkillPrepared
+                    | CardChangeKind::ActionPhaseCompleted
+                    | CardChangeKind::PostActionRefillStarted
+            ) =>
+        {
+            Vec::new()
+        }
         BattleChange::Card(changes) if changes.kind == CardChangeKind::AiQueueRefreshed => {
             Vec::new()
         }
@@ -903,7 +923,35 @@ fn project_change(
                 })
                 .collect()
         }
+        BattleChange::Card(changes) if changes.kind == CardChangeKind::InitialSovereignBoost => {
+            let boost = changes
+                .sovereign_boost
+                .as_ref()
+                .ok_or(ProjectionError::Card(changes.kind))?;
+            super::card::sovereign::initial_boost(boost)
+        }
         BattleChange::Card(changes) if changes.kind == CardChangeKind::Moved => Vec::new(),
+        BattleChange::Card(changes) if changes.kind == CardChangeKind::SovereignUnlocked => {
+            let change = changes
+                .operation
+                .clone()
+                .ok_or(ProjectionError::Card(changes.kind))?;
+            vec![CardPacket::from_change(change)]
+        }
+        BattleChange::Card(changes) if changes.kind == CardChangeKind::HedoneUnlocked => {
+            let change = changes
+                .operation
+                .clone()
+                .ok_or(ProjectionError::Card(changes.kind))?;
+            vec![CardPacket::from_change(change)]
+        }
+        BattleChange::Card(changes) if changes.kind == CardChangeKind::SovereignCharged => {
+            let change = changes
+                .operation
+                .clone()
+                .ok_or(ProjectionError::Card(changes.kind))?;
+            vec![CardPacket::from_change(change)]
+        }
         BattleChange::Card(changes) if changes.kind == CardChangeKind::Dissolved => changes
             .operation
             .clone()
@@ -923,18 +971,18 @@ fn project_change(
                 .collect()
         }
         BattleChange::Card(changes) if changes.kind == CardChangeKind::Played => Vec::new(),
-        BattleChange::Card(changes) if changes.kind == CardChangeKind::StatePublished => {
+        BattleChange::CardStateSnapshot(snapshot) => {
             let mut effects = match redeal_layout {
                 RedealWireLayout::Version6 => Vec::new(),
                 RedealWireLayout::Version7 => {
-                    vec![CardPacket::redeal_hand_sync(changes.after.clone())]
+                    vec![CardPacket::redeal_hand_sync(snapshot.hand.clone())]
                 }
             };
             effects.push(CardPacket::from_change(
-                changes
-                    .operation
-                    .clone()
-                    .expect("published card state retains its deck count"),
+                crate::engine::manager::card::CardChange::DeckCount {
+                    deck_num: snapshot.deck_num,
+                    team_type: snapshot.team_type,
+                },
             ));
             effects
         }
@@ -977,7 +1025,7 @@ fn project_change(
                 })
                 .collect()
         }
-        BattleChange::Card(changes) if changes.kind == CardChangeKind::AroundRanksChanged => {
+        BattleChange::Card(changes) if changes.kind == CardChangeKind::QueuedRanksChanged => {
             changes
                 .rank_results
                 .iter()
@@ -1029,7 +1077,9 @@ fn project_change(
             vec![CardPacket::allocate_card_energy(changes.after.clone(), 1)]
         }
         BattleChange::Card(changes) if changes.kind == CardChangeKind::EnergyChanged => {
-            vec![CardPacket::allocate_card_energy(changes.after.clone(), 1)]
+            CardPacket::change_card_energy(&changes.before, &changes.after, 1)
+                .into_iter()
+                .collect()
         }
         BattleChange::Card(changes) if changes.kind == CardChangeKind::EnergyCleared => {
             vec![CardPacket::clear_card_energy(changes.after.clone(), 1)]
@@ -1061,13 +1111,18 @@ fn project_change(
                         &changes.consumed_indices,
                     )
                 }
+                Some(crate::engine::manager::card::CardConsumptionKind::Hedone) => {
+                    vec![EffectPacket::hedone_card_remove(&changes.consumed_indices)]
+                }
                 _ => vec![EffectPacket::card_remove(&changes.consumed_indices)],
             }
         }
         BattleChange::Card(changes)
             if matches!(
                 changes.kind,
-                CardChangeKind::GeneratedAdded | CardChangeKind::OwnedGeneratedAdded
+                CardChangeKind::GeneratedAdded
+                    | CardChangeKind::OwnedGeneratedAdded
+                    | CardChangeKind::SovereignInserted
             ) =>
         {
             changes
@@ -1076,6 +1131,24 @@ fn project_change(
                 .map(CardPacket::from_change)
                 .into_iter()
                 .collect()
+        }
+        BattleChange::Card(changes) if changes.kind == CardChangeKind::HedoneAdded => {
+            let operation = changes
+                .operation
+                .clone()
+                .expect("Hedone card commits retain their exact operation");
+            let crate::engine::manager::card::CardChange::HedoneAdd {
+                card,
+                index,
+                team_type,
+            } = operation.clone()
+            else {
+                panic!("Hedone card commits use HedoneAdd operations")
+            };
+            vec![
+                CardPacket::from_change(operation),
+                CardPacket::update_data(index, card, team_type),
+            ]
         }
         BattleChange::Card(changes) if changes.kind == CardChangeKind::UniversalAdded => changes
             .after
@@ -1247,7 +1320,7 @@ fn project_change(
                     .before
                     .map(|state| {
                         EffectPacket::magic_circle_delete(
-                            state.create_uid,
+                            state.owner_uid,
                             state.definition.field_id,
                         )
                     })
@@ -1439,13 +1512,13 @@ fn magic_circle_snapshot(
     let state = change.after?;
     Some(
         crate::engine::mechanic::magic_circle::MagicCircleApplyResult {
-            target_uid: state.create_uid,
+            target_uid: state.owner_uid,
             circle_id: state.definition.field_id,
             info: MagicCircleInfo {
                 magic_circle_id: Some(state.definition.field_id),
                 round: Some(state.definition.duration),
                 create_uid: Some(state.create_uid),
-                electric_level: Some(state.level),
+                electric_level: (state.level > 0).then_some(state.level),
                 electric_progress: Some(state.progress),
                 max_electric_progress: Some(state.next_upgrade_progress),
             },

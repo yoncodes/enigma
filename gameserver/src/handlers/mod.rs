@@ -22,6 +22,7 @@ pub mod inventory;
 pub mod investigate;
 pub mod mail;
 pub mod manufacture;
+pub mod milestone;
 pub mod misc;
 pub mod odyssey;
 pub mod party;

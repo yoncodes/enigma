@@ -1,6 +1,98 @@
 use super::*;
 
 #[test]
+fn conduit_dead_source_does_not_complete_activation() {
+    init_config();
+    let entity = |uid, model_id| FightEntityInfo {
+        uid: Some(uid),
+        model_id: Some(model_id),
+        current_hp: Some(100),
+        ..Default::default()
+    };
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![entity(10, 3149), entity(11, 3001)],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![entity(-1, 1001)],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    managers.hp.lose(10, 100, 0);
+    managers
+        .conduit
+        .execute(
+            crate::engine::manager::conduit::ConduitCommand::ChangePower(
+                crate::engine::manager::conduit::ConduitPowerChange {
+                    origin: CommandOrigin {
+                        domain: RuleDomain::Behavior,
+                        key: DefinitionKey::new(60291, "AddDevicePower"),
+                    },
+                    source_uid: 10,
+                    team: 1,
+                    power_id: 1,
+                    delta: 3,
+                    kind: crate::engine::manager::conduit::ConduitPowerChangeKind::Standard,
+                },
+            ),
+        )
+        .unwrap();
+    let mut catalog = SkillEffectCatalog::from_fight(config::configs::get(), &fight);
+    let mut determinism = RoundDeterminism::default();
+    let result = run_conduit_phase(
+        managers.catalog(),
+        &fight,
+        &mut managers,
+        &pool,
+        &mut catalog,
+        &mut determinism,
+        TargetContext::default(),
+        &[sonettobuf::FightDeviceOper {
+            uid: Some(10),
+            index: Some(1),
+        }],
+    )
+    .unwrap();
+
+    assert_eq!(managers.conduit.power(1, 1), 3);
+    assert_eq!(managers.conduit.consumed(1, 1), 0);
+    assert_eq!(managers.conduit.uses(10), 0);
+    assert!(
+        !result
+            .events
+            .iter()
+            .any(|event| matches!(event, BattleEvent::ConduitActivated(_)))
+    );
+    for skill_id in [31490111, 31490121] {
+        let result = crate::engine::runtime::drain::run_conduit_action(
+            &mut managers,
+            &pool,
+            &catalog,
+            &mut determinism,
+            TargetContext::default(),
+            10,
+            1,
+            1,
+            1,
+            skill_id,
+            None,
+            None,
+        )
+        .unwrap();
+        assert!(!result.outcomes.iter().any(|outcome| matches!(
+            outcome,
+            RuleOutcome::Conduit(crate::engine::manager::conduit::ConduitChange::SkillBegan { .. })
+        )));
+    }
+    assert_eq!(managers.conduit.power(1, 1), 3);
+    assert_eq!(managers.conduit.uses(10), 0);
+}
+
+#[test]
 fn conduit_attack_does_not_begin_without_a_living_enemy() {
     init_config();
     let entity = |uid, model_id| FightEntityInfo {

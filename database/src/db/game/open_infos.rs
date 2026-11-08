@@ -67,6 +67,18 @@ pub async fn reconcile_progression_in_transaction(
     .await?
     .into_iter()
     .collect::<HashSet<_>>();
+    let game_data = config::configs::get();
+    let completed_episode_conditions = completed_episodes
+        .iter()
+        .copied()
+        .chain(completed_episodes.iter().filter_map(|episode_id| {
+            game_data
+                .episode
+                .get(*episode_id)
+                .map(|episode| episode.chain_episode)
+                .filter(|chain_episode| *chain_episode > 0)
+        }))
+        .collect::<HashSet<_>>();
     let finished_elements = sqlx::query_scalar::<_, i32>(
         "SELECT element_id FROM user_dungeon_elements WHERE user_id = ? AND is_finished = 1",
     )
@@ -92,12 +104,12 @@ pub async fn reconcile_progression_in_transaction(
     .collect::<HashMap<_, _>>();
     let mut changed = Vec::new();
 
-    for open in config::configs::get().open.iter().filter(|open| {
+    for open in game_data.open.iter().filter(|open| {
         open.is_online == 0 || (open.bind_activity_id == 0 && open.daily_open_time.is_empty())
     }) {
         let is_open = open.is_online != 0
             && player_level >= open.player_lv
-            && (open.episode_id == 0 || completed_episodes.contains(&open.episode_id))
+            && (open.episode_id == 0 || completed_episode_conditions.contains(&open.episode_id))
             && (open.element_id == 0 || finished_elements.contains(&open.element_id))
             && (open.room_level == 0 || room_level >= open.room_level);
         if current.get(&open.id) == Some(&is_open) {

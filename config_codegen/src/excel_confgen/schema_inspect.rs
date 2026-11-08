@@ -16,10 +16,11 @@ pub fn detect_id_field(fields: &HashMap<String, HashSet<String>>) -> Option<Stri
 pub fn detect_group_field(fields: &HashMap<String, HashSet<String>>) -> Option<String> {
     fields
         .keys()
-        .find(|k| {
+        .filter(|k| {
             let l = k.to_lowercase();
             l.contains("group") && l.contains("id")
         })
+        .min()
         .cloned()
 }
 

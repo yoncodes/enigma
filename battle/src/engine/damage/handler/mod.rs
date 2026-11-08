@@ -135,6 +135,7 @@ impl BehaviorHandler for Handler {
                     target_uid,
                     context.pool,
                     context.managers,
+                    &context.modifiers.attack_attributes,
                     is_crit,
                     behavior,
                 )
@@ -154,6 +155,7 @@ impl BehaviorHandler for Handler {
                     context.source_uid,
                     context.target_uid,
                     context.managers,
+                    &context.modifiers.attack_attributes,
                     behavior,
                 )
                 .map(|amount| heal(amount, HpHealKind::Normal));
@@ -163,6 +165,7 @@ impl BehaviorHandler for Handler {
                     context.source_uid,
                     context.target_uid,
                     context.managers,
+                    &context.modifiers.attack_attributes,
                     behavior,
                 )
                 .map(|amount| heal(amount, HpHealKind::Normal));
@@ -569,7 +572,7 @@ impl BehaviorHandler for Handler {
                         target_buffs: &context.managers.buff,
                         hp: &context.managers.hp,
                         fields: Some((&context.managers.field, context.managers.catalog())),
-                        emitter: None,
+                        emitter: Some(&context.managers.emitter),
                         team_inspiration: 0,
                     },
                     &source,

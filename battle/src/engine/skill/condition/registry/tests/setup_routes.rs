@@ -1,6 +1,41 @@
 use super::*;
 
 #[test]
+fn player_level_gate_keeps_its_configured_enter_fight_lane() {
+    assert_eq!(
+        parse(793002, "Level", &["1".into(), "20".into()]),
+        Some(ParsedConditionKind::PlayerLevel {
+            compare: crate::engine::skill::condition::parse::ConditionCompare::GreaterThan,
+            threshold: 20,
+        })
+    );
+    assert_eq!(
+        parse(793002, "Level", &["2".into(), "41".into()]),
+        Some(ParsedConditionKind::PlayerLevel {
+            compare: crate::engine::skill::condition::parse::ConditionCompare::LessThan,
+            threshold: 41,
+        })
+    );
+    assert_eq!(
+        find_key(793002, "Level").map(|definition| definition.role),
+        Some(ConditionRole::Setup {
+            stage: SetupStage::EnterFight,
+            priority: 0,
+        })
+    );
+    for invalid in [
+        vec![],
+        vec!["1".into()],
+        vec!["0".into(), "20".into()],
+        vec!["3".into(), "20".into()],
+        vec!["1".into(), "0".into()],
+        vec!["1".into(), "20".into(), "30".into()],
+    ] {
+        assert_eq!(parse(793002, "Level", &invalid), None);
+    }
+}
+
+#[test]
 fn hero_round_interval_keeps_its_exact_round_transition_lane() {
     assert_eq!(
         parse(45102, "HeroRoundInterval", &["4".into(), "1".into()]),
@@ -75,6 +110,74 @@ fn round_start_interval_keeps_its_exact_lane() {
         })
     );
     assert!(parse(45100, "Other", &["1".into(), "5".into()]).is_none());
+}
+
+#[test]
+fn summoned_count_keeps_its_round_start_condition_lane() {
+    assert_eq!(
+        parse(
+            525102,
+            "SummonedNumEqual",
+            &["15001".into(), "4".into(), "2".into()],
+        ),
+        Some(ParsedConditionKind::SummonedCount {
+            summoned_id: 15001,
+            required_level: 4,
+            compare: ConditionCompare::Equal,
+            count: 2,
+        })
+    );
+    assert_eq!(
+        parse(525102, "SummonedNumEqual", &["15001".into(), "4".into()],),
+        None
+    );
+    for args in [
+        ["-1".into(), "4".into(), "1".into()],
+        ["15001".into(), "3".into(), "1".into()],
+        ["15001".into(), "4".into(), "3".into()],
+    ] {
+        assert_eq!(parse(525102, "SummonedNumEqual", &args), None);
+    }
+    let definition = find_key(525102, "SummonedNumEqual").unwrap();
+    assert_eq!(
+        definition.role,
+        ConditionRole::Setup {
+            stage: SetupStage::RoundStartCondition,
+            priority: 102,
+        }
+    );
+    assert_eq!(definition.dependencies, &[EventKind::SummonChanged]);
+}
+
+#[test]
+fn teammate_count_keeps_its_late_round_start_lane() {
+    for count in 0..=3 {
+        assert_eq!(
+            parse(73104, "TeammateAliveNum", &[count.to_string()]),
+            Some(ParsedConditionKind::EntityCount {
+                scope: super::super::super::parse::EntityCountScope::AliveOtherTeammates,
+                compare: ConditionCompare::Equal,
+                count,
+            })
+        );
+    }
+    for args in [
+        vec![],
+        vec!["-1".into()],
+        vec!["4".into()],
+        vec!["3".into(), "junk".into()],
+    ] {
+        assert_eq!(parse(73104, "TeammateAliveNum", &args), None);
+    }
+    let definition = find_key(73104, "TeammateAliveNum").unwrap();
+    assert_eq!(
+        definition.role,
+        ConditionRole::Setup {
+            stage: SetupStage::RoundStartLate,
+            priority: 0,
+        }
+    );
+    assert_eq!(definition.dependencies, &[EventKind::EntityDied]);
 }
 
 #[test]
@@ -178,6 +281,10 @@ fn round_after_uses_an_inclusive_round_start_threshold() {
     assert_eq!(
         find_key(101, "None").map(|definition| definition.opening_owner_eligibility),
         Some(OpeningOwnerEligibility::PlayerSide)
+    );
+    assert_eq!(
+        find_key(19100, "HasBuffId").map(|definition| definition.opening_owner_eligibility),
+        Some(OpeningOwnerEligibility::SelfBuffMaintenance)
     );
     assert_eq!(
         opening_owner_eligibility(101, "None"),
@@ -445,7 +552,7 @@ fn use_device_skill_uses_its_exact_activation_subscription() {
 }
 
 #[test]
-fn conduit_counter_uses_its_exact_predicate_route() {
+fn conduit_counter_uses_its_exact_routes() {
     assert_eq!(
         parse(
             786203,
@@ -482,7 +589,15 @@ fn conduit_counter_uses_its_exact_predicate_route() {
     let definition = find_key(786203, "PerDeviceCounter").unwrap();
     assert_eq!(definition.role, ConditionRole::Predicate);
     assert_eq!(definition.dependencies, &[EventKind::ConduitActivated]);
-    assert!(find_key(786303, "PerDeviceCounter").is_none());
+    let definition = find_key(786303, "PerDeviceCounter").unwrap();
+    assert_eq!(
+        definition.role,
+        ConditionRole::Trigger {
+            event: EventKind::RoundEnd,
+            phase: None,
+        }
+    );
+    assert!(definition.dependencies.is_empty());
     assert!(find_key(786203, "PerDeviceCurrCost").is_none());
 }
 
@@ -521,6 +636,42 @@ fn conduit_meter_and_group_conditions_keep_their_setup_stages() {
 fn actor_post_hit_filter_runs_after_the_source_skill() {
     let definition = find_key(34210, "UseSkillEffectTag").unwrap();
 
+    assert_eq!(
+        definition.role,
+        ConditionRole::Trigger {
+            event: EventKind::SkillAction,
+            phase: Some(SkillPhase::HitPassives),
+        }
+    );
+    assert_eq!(definition.publication, PublicationPhase::BeforePublish);
+    assert_eq!(
+        definition.reaction_timing.resolve(Default::default()),
+        ReactionTiming::AfterSkill
+    );
+    assert_eq!(
+        definition.reaction_frame_target,
+        ReactionFrameTarget::CausingFrame
+    );
+}
+
+#[test]
+fn incantation_rank_keeps_the_actor_post_hit_lane() {
+    for rank in [2, 3] {
+        assert_eq!(
+            parse(6210, "UseSkillStar", &[rank.to_string()]),
+            Some(ParsedConditionKind::UseSkillRank(vec![rank]))
+        );
+    }
+    for args in [
+        vec![],
+        vec!["1".into()],
+        vec!["4".into()],
+        vec!["2,3".into()],
+        vec!["2".into(), "3".into()],
+    ] {
+        assert_eq!(parse(6210, "UseSkillStar", &args), None);
+    }
+    let definition = find_key(6210, "UseSkillStar").unwrap();
     assert_eq!(
         definition.role,
         ConditionRole::Trigger {
@@ -626,6 +777,43 @@ fn round_start_team_buff_layers_keep_their_exact_payload_order() {
                 stage: SetupStage::RoundStartCondition,
                 priority,
             })
+        );
+    }
+}
+
+#[test]
+fn late_round_start_team_buff_ceiling_keeps_its_exact_lane() {
+    assert_eq!(
+        parse(
+            514104,
+            "SelfTeamHasBuffTypeLayerLessThan",
+            &["180".into(), "900005101".into()]
+        ),
+        Some(ParsedConditionKind::BuffTypeCount {
+            type_ids: vec![900005101],
+            compare: crate::engine::skill::condition::parse::ConditionCompare::LessThanOrEqual,
+            threshold: 180,
+        })
+    );
+    assert_eq!(
+        find_key(514104, "SelfTeamHasBuffTypeLayerLessThan").map(|definition| definition.role),
+        Some(ConditionRole::Setup {
+            stage: SetupStage::RoundStartLate,
+            priority: 0,
+        })
+    );
+    for invalid in [
+        vec![],
+        vec!["0".into()],
+        vec!["x".into(), "900005101".into()],
+        vec!["-1".into(), "900005101".into()],
+        vec!["0".into(), "0".into()],
+        vec!["0".into(), "2190002,6200524".into()],
+        vec!["0".into(), "2190002".into(), "1".into()],
+    ] {
+        assert_eq!(
+            parse(514104, "SelfTeamHasBuffTypeLayerLessThan", &invalid),
+            None
         );
     }
 }
@@ -801,6 +989,14 @@ fn force_field_condition_keeps_its_exact_psychube_route() {
         parse(701210, "HasMasterHalo", &[]),
         Some(ParsedConditionKind::MasterHalo)
     );
+    assert_eq!(
+        parse(701212, "HasMasterHalo", &[]),
+        Some(ParsedConditionKind::MasterHalo)
+    );
+    assert_eq!(parse(701212, "HasMasterHalo", &["1".into()]), None);
+    let definition = find_key(701212, "HasMasterHalo").unwrap();
+    assert_eq!(definition.role, ConditionRole::Predicate);
+    assert_eq!(definition.dependencies, &[EventKind::BuffChanged]);
     assert!(find_key(701211, "HasMasterHalo").is_none());
 }
 

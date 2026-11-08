@@ -50,34 +50,22 @@ pub fn run_skill(
         subscriber: None,
         caster_frame: None,
     }]);
+    let mut result = drain_queue(managers, pool, catalog, determinism, context, &mut queue)?;
     if publishes_card_state {
-        queue.push_back(QueuedOp {
-            op: RuleOp::Command(crate::engine::skill::rule::output::BattleCommand::Card(
-                crate::engine::manager::card::CardCommand::PublishState(
-                    crate::engine::manager::card::CardPublishState {
-                        origin: crate::engine::skill::rule::CommandOrigin {
-                            domain: crate::engine::skill::rule::RuleDomain::Lifecycle,
-                            key: crate::engine::skill::rule::DefinitionKey::new(
-                                0,
-                                "SynchronizationCardState",
-                            ),
-                        },
-                        team_type: pool.team_type(source_uid).unwrap_or_default(),
-                    },
+        let team_type = pool
+            .team_type(source_uid)
+            .ok_or(DrainError::MissingCardStateTeam(source_uid))?;
+        result.frames.push(SemanticFrame {
+            owner: FrameOwner::SynchronizationCardState { source_uid },
+            trigger: FrameTrigger::Active,
+            items: vec![crate::engine::runtime::record::FrameItem::Change(Box::new(
+                crate::engine::runtime::change::BattleChange::CardStateSnapshot(
+                    managers.card.state_snapshot(team_type),
                 ),
-            )),
-            trigger: SkillOpTrigger::Active,
-            skill_execution: None,
-            frame_path: None,
-            parent_path: None,
-            frame_group: None,
-            independent_parent_group: None,
-            frame_owner: None,
-            subscriber: None,
-            caster_frame: None,
+            ))],
         });
     }
-    drain_queue(managers, pool, catalog, determinism, context, &mut queue)
+    Ok(result)
 }
 
 pub fn run_action(
@@ -101,6 +89,22 @@ pub fn run_action(
     )
 }
 
+fn append_fight_task_update(result: &mut DrainResult, managers: &mut BattleManagers) {
+    let Some(change) = managers.fight_task.take_pending(1) else {
+        return;
+    };
+    let path = push_root(
+        &mut result.frames,
+        FrameOwner::Command,
+        FrameTrigger::Active,
+    );
+    push_change(
+        &mut result.frames,
+        &path,
+        crate::engine::runtime::change::BattleChange::FightTask(change),
+    );
+}
+
 #[allow(clippy::too_many_arguments)]
 pub fn run_action_with_cost(
     managers: &mut BattleManagers,
@@ -112,52 +116,55 @@ pub fn run_action_with_cost(
     action_cost: Option<crate::engine::manager::ex_point::ExPointCommand>,
     invocation: crate::engine::skill::action::SkillInvocation,
 ) -> Result<DrainResult, DrainError> {
-    run_action_with_cost_and_cleanup_owner(
+    run_action_with_cleanup_owner(
         managers,
         pool,
         catalog,
         determinism,
         context,
         prelude,
-        action_cost,
+        action_cost.map(|cost| crate::engine::skill::action::ActionPayment {
+            cost,
+            composition: Vec::new(),
+        }),
         invocation,
         DefenderCardCleanupOwner::DeathAction,
     )
 }
 
 #[allow(clippy::too_many_arguments)]
-pub fn run_round_action_with_cost(
+pub fn run_round_action(
     managers: &mut BattleManagers,
     pool: &TargetPool,
     catalog: &SkillEffectCatalog,
     determinism: &mut RoundDeterminism,
     context: TargetContext,
     prelude: impl IntoIterator<Item = RuleOp>,
-    action_cost: Option<crate::engine::manager::ex_point::ExPointCommand>,
+    payment: Option<crate::engine::skill::action::ActionPayment>,
     invocation: crate::engine::skill::action::SkillInvocation,
 ) -> Result<DrainResult, DrainError> {
-    run_action_with_cost_and_cleanup_owner(
+    run_action_with_cleanup_owner(
         managers,
         pool,
         catalog,
         determinism,
         context,
         prelude,
-        action_cost,
+        payment,
         invocation,
         DefenderCardCleanupOwner::ScheduledRoundPhase,
     )
 }
 
 #[allow(clippy::too_many_arguments)]
-fn run_action_with_cost_and_cleanup_owner(
+fn run_action_with_cleanup_owner(
     managers: &mut BattleManagers,
     pool: &TargetPool,
     catalog: &SkillEffectCatalog,
     determinism: &mut RoundDeterminism,
     context: TargetContext,
     prelude: impl IntoIterator<Item = RuleOp>,
-    action_cost: Option<crate::engine::manager::ex_point::ExPointCommand>,
+    payment: Option<crate::engine::skill::action::ActionPayment>,
     invocation: crate::engine::skill::action::SkillInvocation,
     cleanup_owner: DefenderCardCleanupOwner,
 ) -> Result<DrainResult, DrainError> {
@@ -179,7 +186,7 @@ fn run_action_with_cost_and_cleanup_owner(
             source_uid: invocation.plan.source_uid,
             skill_id: invocation.plan.skill_id,
             card_index: invocation.card_index,
-            target_uid: invocation_frame_target(invocation.target, &SkillOpTrigger::Active),
+            target_uid: invocation_frame_target(&invocation, &SkillOpTrigger::Active),
         },
         FrameTrigger::Active,
     );
@@ -201,7 +208,7 @@ fn run_action_with_cost_and_cleanup_owner(
     queue.push_back(QueuedOp {
         op: RuleOp::Skill(invocation),
         trigger: SkillOpTrigger::Active,
-        skill_execution: Some(SkillExecution::with_action_cost(context, action_cost)),
+        skill_execution: Some(SkillExecution::with_payment(context, payment)),
         frame_path: Some(root.clone()),
         parent_path: None,
         frame_group: None,
@@ -210,7 +217,7 @@ fn run_action_with_cost_and_cleanup_owner(
         subscriber: None,
         caster_frame: None,
     });
-    drain_queue_with_frames_and_cleanup_owner(
+    let mut result = drain_queue_with_frames_and_cleanup_owner(
         managers,
         pool,
         catalog,
@@ -219,7 +226,9 @@ fn run_action_with_cost_and_cleanup_owner(
         &mut queue,
         frames,
         cleanup_owner,
-    )
+    )?;
+    append_fight_task_update(&mut result, managers);
+    Ok(result)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -237,6 +246,21 @@ pub fn run_conduit_action(
     frame_target_uid: Option<i64>,
     cost_modifier: Option<(i32, RuleOp)>,
 ) -> Result<DrainResult, DrainError> {
+    if managers.terminal_outcome().is_some() {
+        return Ok(DrainResult::default());
+    }
+    if managers.hp.current(source_uid) <= 0 {
+        return run_conduit_stop(
+            managers,
+            pool,
+            catalog,
+            determinism,
+            context,
+            source_uid,
+            device_index,
+            skill_position,
+        );
+    }
     let personal_resource_cost = if catalog.is_big_skill(skill_id)
         && crate::engine::manager::ex_point::ExPointKind::from_wire(
             managers.ex_point.kind(source_uid),
@@ -465,6 +489,7 @@ pub fn run_conduit_action(
     result.outcomes.append(&mut completed.outcomes);
     result.events.append(&mut completed.events);
     result.frames = completed.frames;
+    append_fight_task_update(&mut result, managers);
     Ok(result)
 }
 

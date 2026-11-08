@@ -223,6 +223,7 @@ fn be_attacked_reaction_commits_before_same_hit_threshold() {
         TargetContext::default(),
         BattleEvent::SkillAction(crate::engine::skill::action::SkillActionEvent {
             source_uid: 10,
+            card_index: 0,
             skill_id: 1163855063,
             target_uid: -1,
             target_uids: vec![-1],
@@ -363,7 +364,7 @@ fn twins_conduit_activation_consumes_chirp_signal_through_the_captured_passive()
 }
 
 #[test]
-fn allied_conduit_activation_adds_configured_cost_to_passive_buff_layers() {
+fn allied_conduit_activation_keeps_each_behavior_frame_owner() {
     crate::test_support::init_config();
     let fight = Fight {
         attacker: Some(FightTeam {
@@ -389,6 +390,17 @@ fn allied_conduit_activation_adds_configured_cost_to_passive_buff_layers() {
                     current_hp: Some(100),
                     ..Default::default()
                 },
+                FightEntityInfo {
+                    uid: Some(12),
+                    model_id: Some(3156),
+                    team_type: Some(1),
+                    current_hp: Some(100),
+                    ex_point_type: Some(4),
+                    ex_point: Some(0),
+                    ex_point_max: Some(100),
+                    passive_skill: vec![31560172],
+                    ..Default::default()
+                },
             ],
             ..Default::default()
         }),
@@ -397,13 +409,7 @@ fn allied_conduit_activation_adds_configured_cost_to_passive_buff_layers() {
     let pool = TargetPool::from_fight(&fight);
     let mut managers = BattleManagers::seeded(&fight);
     let catalog = SkillEffectCatalog::from_fight(config::configs::get(), &fight);
-
-    run_event(
-        &mut managers,
-        &pool,
-        &catalog,
-        &mut RoundDeterminism::default(),
-        TargetContext::default(),
+    let event =
         BattleEvent::ConduitActivated(crate::engine::event::payload::ConduitActivatedEvent {
             source_uid: 11,
             team: 1,
@@ -411,11 +417,62 @@ fn allied_conduit_activation_adds_configured_cost_to_passive_buff_layers() {
             power_id: 1,
             activation_cost: 3,
             spent: 2,
-        }),
+        });
+    let dispatched = dispatcher::dispatch_owner_event(
+        &pool,
+        &managers,
+        &catalog,
+        &mut RoundDeterminism::default(),
+        &event,
+        &[10, 12],
+    )
+    .unwrap();
+    let queued = queued_reactions(
+        &pool,
+        &catalog,
+        dispatched,
+        &event,
+        Some(&[0]),
+        Some(&[0]),
+        None,
+        None,
+        None,
+        None,
+    )
+    .unwrap();
+    let reaction = |skill_id| {
+        queued
+            .iter()
+            .find(|queued| {
+                queued
+                    .subscriber
+                    .as_ref()
+                    .is_some_and(|subscriber| subscriber.skill_id == Some(skill_id))
+            })
+            .unwrap()
+    };
+    assert_eq!(
+        reaction(31560172).frame_path.as_deref(),
+        Some([0].as_slice())
+    );
+    assert!(reaction(31440141).frame_path.is_none());
+    assert_eq!(
+        reaction(31440141).parent_path.as_deref(),
+        Some([0].as_slice())
+    );
+
+    run_event(
+        &mut managers,
+        &pool,
+        &catalog,
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+        event,
     )
     .unwrap();
 
     assert_eq!(managers.buff.buff_id_amount(10, 31440112), 13);
+    assert_eq!(managers.ex_point.get(12), 3);
 }
 
 #[test]
@@ -506,6 +563,7 @@ fn contract_psychube_buffs_the_owner_then_the_selected_bound_ally() {
         TargetContext::default(),
         BattleEvent::SkillAction(crate::engine::skill::action::SkillActionEvent {
             source_uid: 10,
+            card_index: 0,
             skill_id: 31000451,
             target_uid: -1,
             target_uids: vec![-1],

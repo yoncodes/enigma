@@ -7,6 +7,28 @@ pub(super) enum SetupFrameContainer {
     OpeningRoundPhase,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum SetupSkillFilter {
+    All,
+    ParentOnly,
+    ExcludeParent,
+}
+
+impl SetupSkillFilter {
+    fn includes(self, behavior: &crate::engine::skill::effect::ParsedBehavior) -> bool {
+        let setup_parent =
+            crate::engine::skill::behavior::registry::find(behavior).is_some_and(|definition| {
+                definition.output_owner
+                    == crate::engine::skill::behavior::registry::OutputOwner::SetupParent
+            });
+        match self {
+            Self::All => true,
+            Self::ParentOnly => setup_parent,
+            Self::ExcludeParent => !setup_parent,
+        }
+    }
+}
+
 impl SetupFrameContainer {
     pub(super) fn owns_entity_scope(
         self,
@@ -48,6 +70,8 @@ pub fn run_setup_stage(
         None,
         &[],
         false,
+        SetupSkillFilter::All,
+        true,
         SetupFrameContainer::Standalone,
         DefenderCardCleanupOwner::DeathAction,
     )
@@ -75,6 +99,8 @@ pub fn run_setup_stage_for_owners(
         Some(owner_uids),
         &[],
         false,
+        SetupSkillFilter::All,
+        true,
         SetupFrameContainer::Standalone,
         DefenderCardCleanupOwner::DeathAction,
     )
@@ -101,6 +127,8 @@ pub fn run_opening_setup_stage_for_owners(
         priority,
         Some(player_owner_uids),
         &[],
+        true,
+        SetupSkillFilter::All,
         true,
         SetupFrameContainer::Standalone,
         DefenderCardCleanupOwner::DeathAction,
@@ -133,6 +161,8 @@ pub(super) fn run_skill_then_buff_act_setup_stage_filtered(
     owner_uids: Option<&[i64]>,
     excluded_owner_uids: &[i64],
     include_both_sides_opening: bool,
+    skill_filter: SetupSkillFilter,
+    include_buff_acts: bool,
     frame_container: SetupFrameContainer,
     cleanup_owner: DefenderCardCleanupOwner,
 ) -> Result<DrainResult, DrainError> {
@@ -148,23 +178,26 @@ pub(super) fn run_skill_then_buff_act_setup_stage_filtered(
         owner_uids,
         excluded_owner_uids,
         include_both_sides_opening,
+        skill_filter,
         frame_container,
         cleanup_owner,
         &mut state,
     )?;
-    append_buff_act_setup_stage(
-        managers,
-        pool,
-        catalog,
-        determinism,
-        context,
-        stage,
-        priority,
-        owner_uids,
-        excluded_owner_uids,
-        cleanup_owner,
-        &mut state,
-    )?;
+    if include_buff_acts {
+        append_buff_act_setup_stage(
+            managers,
+            pool,
+            catalog,
+            determinism,
+            context,
+            stage,
+            priority,
+            owner_uids,
+            excluded_owner_uids,
+            cleanup_owner,
+            &mut state,
+        )?;
+    }
     Ok(state.result)
 }
 
@@ -195,6 +228,7 @@ pub(super) fn run_skill_setup_stage_filtered(
         owner_uids,
         excluded_owner_uids,
         include_both_sides_opening,
+        SetupSkillFilter::All,
         frame_container,
         cleanup_owner,
         &mut state,
@@ -243,6 +277,7 @@ fn append_skill_setup_stage(
     owner_uids: Option<&[i64]>,
     excluded_owner_uids: &[i64],
     include_both_sides_opening: bool,
+    skill_filter: SetupSkillFilter,
     frame_container: SetupFrameContainer,
     cleanup_owner: DefenderCardCleanupOwner,
     state: &mut SetupStageState,
@@ -252,21 +287,23 @@ fn append_skill_setup_stage(
     let current_pool = pool.runtime_view(managers);
     let subscribers =
         dispatcher::dispatch_compiled_setup(&current_pool, managers, catalog, stage, priority)?;
-    let subscribers = subscribers
-            .into_iter()
-            .filter(|(subscriber, _)| {
-                !excluded_owner_uids.contains(&subscriber.owner_uid)
-                    && (owner_uids.is_none_or(|uids| uids.contains(&subscriber.owner_uid))
-                        || (include_both_sides_opening
-                            && crate::engine::skill::condition::registry::opening_owner_eligibility(
-                                subscriber.key.opcode,
-                                subscriber.key.type_name,
-                            )
-                            .is_some_and(|eligibility| {
-                                eligibility
-                                    == crate::engine::skill::condition::registry::OpeningOwnerEligibility::BothSides
-                            })))
-            });
+    let subscribers = subscribers.into_iter().filter(|(subscriber, _)| {
+        let slot = catalog
+            .get(subscriber.skill_id)
+            .and_then(|effect| effect.slots.get(subscriber.slot_index));
+        let included = slot.is_some_and(|slot| skill_filter.includes(&slot.behavior));
+        !excluded_owner_uids.contains(&subscriber.owner_uid)
+            && included
+            && (owner_uids.is_none_or(|uids| uids.contains(&subscriber.owner_uid))
+                || (include_both_sides_opening
+                    && crate::engine::skill::condition::registry::opening_owner_eligibility(
+                        subscriber.key.opcode,
+                        subscriber.key.type_name,
+                    )
+                    .is_some_and(|eligibility| {
+                        slot.is_some_and(|slot| eligibility.includes_defender(slot))
+                    })))
+    });
     let subscribers = subscribers.collect::<Vec<_>>();
     let mut frames = std::mem::take(&mut state.result.frames);
     let side_paths = &mut state.side_paths;
@@ -458,6 +495,20 @@ fn append_buff_act_setup_stage(
             match definition.setup_frame(stage, priority).0 {
                 crate::engine::skill::buff_act::registry::SetupFrameScope::RootMechanicFrame => {
                     push_root(&mut frames, FrameOwner::SetupMechanic, trigger.clone())
+                }
+                crate::engine::skill::buff_act::registry::SetupFrameScope::SideSubscriberFrame => {
+                    push_child(
+                        &mut frames,
+                        &side_path,
+                        FrameOwner::BuffAct {
+                            owner_uid: feature.owner_uid,
+                            source_uid: feature.source_uid,
+                            buff_uid: feature.buff_uid,
+                            buff_id: feature.buff_id,
+                            key: subscriber.key,
+                        },
+                        trigger.clone(),
+                    )
                 }
                 crate::engine::skill::buff_act::registry::SetupFrameScope::MechanicFrame => {
                     push_child(

@@ -168,7 +168,7 @@ fn outgoing_restraint_modifier_only_applies_to_the_weaker_afflatus() {
 }
 
 #[test]
-fn passive_attr_fix_uses_held_moxie_for_the_current_attack() {
+fn passive_attr_fix_uses_action_start_moxie_after_payment() {
     let mut effects = SkillEffectCatalog::default();
     let mut slot = SkillEffectSlot::new(
         ParsedBehavior::new(10004, "AttrFix", vec![211, 24]),
@@ -188,7 +188,7 @@ fn passive_attr_fix_uses_held_moxie_for_the_current_attack() {
         attacker: Some(FightTeam {
             entitys: vec![FightEntityInfo {
                 uid: Some(10),
-                ex_point: Some(3),
+                ex_point: Some(0),
                 ..Default::default()
             }],
             ..Default::default()
@@ -215,7 +215,10 @@ fn passive_attr_fix_uses_held_moxie_for_the_current_attack() {
                 }),
                 ..Default::default()
             }),
-            context: TargetContext::default(),
+            context: TargetContext {
+                action_start_ex_point: Some(3),
+                ..Default::default()
+            },
         },
         &mut RoundDeterminism::default(),
     );
@@ -374,6 +377,72 @@ fn source_modifier_with_target_999_uses_the_current_hit_target() {
     );
 
     assert_eq!(modifiers.attack_attributes, vec![(AttrId::DmgBonus, 60)]);
+}
+
+#[test]
+fn source_modifier_with_target_999_reaches_a_widened_hit_target() {
+    crate::test_support::init_config();
+    let effects = SkillEffectCatalog::from_roots(config::configs::get(), [31473162], []);
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                current_hp: Some(100),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![
+                FightEntityInfo {
+                    uid: Some(-1),
+                    current_hp: Some(200),
+                    ..Default::default()
+                },
+                FightEntityInfo {
+                    uid: Some(-2),
+                    current_hp: Some(100),
+                    buffs: vec![BuffInfo {
+                        uid: Some(1),
+                        buff_id: Some(31470002),
+                        from_uid: Some(10),
+                        duration: Some(3),
+                        ..Default::default()
+                    }],
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let managers = BattleManagers::seeded(&fight);
+    let pool = TargetPool::from_fight(&fight);
+    let mut modifiers = crate::engine::skill::action::SkillModifiers::default();
+
+    emit_active_target_attack_attributes(
+        &mut modifiers,
+        10,
+        31473162,
+        31473162,
+        RateRuntime {
+            effects: &effects,
+            managers: &managers,
+            pool: &pool,
+            context: TargetContext {
+                hit_source_uid: 10,
+                hit_target_uid: -2,
+                runtime_target_uid: -2,
+                ..Default::default()
+            },
+        },
+        &mut RoundDeterminism::default(),
+    );
+
+    assert_eq!(
+        modifiers.attack_attributes,
+        vec![(AttrId::CriticalRate, 200), (AttrId::CriticalDmg, 400)]
+    );
 }
 
 #[test]

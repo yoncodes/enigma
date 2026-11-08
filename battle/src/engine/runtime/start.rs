@@ -217,6 +217,16 @@ impl BattleRuntime {
                 .execute_card(CardCommand::PreserveRefillFloor)
                 .map_err(|error| format!("{error:?}"))?;
         }
+        if preserve_refill_floor
+            || self
+                .managers
+                .catalog()
+                .is_mechanic_tutorial(self.fight.episode_id.unwrap_or_default())
+        {
+            self.managers
+                .execute_card(CardCommand::PreserveDeckCount)
+                .map_err(|error| format!("{error:?}"))?;
+        }
         visible_cards.extend_from_slice(self.managers.card.team_cards());
         self.round_state.act_point = crate::engine::round::state::next_action_points(
             &self.fight,
@@ -263,17 +273,22 @@ impl BattleRuntime {
             .chain(self.managers.card.team_cards())
             .cloned()
             .collect::<Vec<_>>();
-        let deal_cards = self
-            .round
-            .as_ref()
-            .map(|round| round.team_a_cards1.as_slice())
-            .unwrap_or(&cards)
-            .iter()
-            .map(|card| CardInfo {
-                energy: Some(0),
-                ..card.clone()
-            })
-            .collect();
+        let mut deal_cards = if let Some(opening_deal) = self.managers.card.opening_deal() {
+            opening_deal
+                .iter()
+                .chain(self.managers.card.team_cards())
+                .cloned()
+                .collect()
+        } else {
+            self.round
+                .as_ref()
+                .map(|round| round.team_a_cards1.clone())
+                .unwrap_or_else(|| cards.clone())
+        };
+        for card in &mut deal_cards {
+            card.energy = Some(0);
+            card.extra_infos.clear();
+        }
         CardInfoPush {
             card_group: cards,
             act_point: Some(self.round_state.act_point),

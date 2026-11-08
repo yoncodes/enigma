@@ -1,14 +1,24 @@
 use std::collections::{HashMap, HashSet};
 
+mod action_phase;
 pub mod ai;
 pub mod change;
 mod command;
+mod conduit_energy;
 pub mod deck;
 pub mod draw;
 pub mod enchant;
 pub mod energy;
+mod hedone_card;
 pub mod op;
+mod opening;
+mod permissions;
+pub(crate) use permissions::consumes_action_point;
 pub mod pool;
+pub(crate) mod prepared;
+mod sovereign;
+pub(crate) use sovereign::ChargeTarget;
+pub use sovereign::SovereignEnhancement;
 pub mod start;
 pub mod temp;
 pub mod types;
@@ -16,21 +26,23 @@ pub mod types;
 pub use change::CardChange;
 pub use command::{
     CARD_ENERGY_CLEAR_ORIGIN, CARD_PLAY_ORIGIN, CardActionQueue, CardAddCrystal, CardAddGenerated,
-    CardAddPrecast, CardAddTemporary, CardAddUniversal, CardChangeKind, CardChangeToTemporary,
-    CardChanges, CardCommand, CardCommandError, CardConsumeForEffect, CardConsumptionKind,
-    CardDeckRankUpRange, CardDraw, CardEnchantHand, CardEnergyAllocation, CardEnergyChange,
-    CardHandLimitChange, CardInvalidateAiOwner, CardInvalidatePlayed, CardInvalidatedAi,
-    CardMarkTemporary, CardOpeningDraw, CardOwnerRemoval, CardPersistTemporary, CardPlay,
-    CardPublishState, CardQueueUse, CardRankChange, CardRankFailure, CardRankResult,
-    CardRecordCastChannel, CardRedealKeepRanks, CardRefillOne, CardRefreshAiQueue, CardRemoveOwner,
-    CardReplaceOwnerSkills, CardSetAiQueue, CardSetTeamCards, CardSetUltimateAvailability,
-    CardSetup, CardUseUniversal, HandCardRankUp, QueuedCardRankChange, QueuedCardRankUp,
-    QueuedUseCard, TemporaryCardKind,
+    CardAddHedone, CardAddPrecast, CardAddTemporary, CardAddUniversal, CardChangeKind,
+    CardChangeToTemporary, CardChanges, CardCommand, CardCommandError, CardConsumeForEffect,
+    CardConsumptionKind, CardDeckRankUpRange, CardDraw, CardEnchantHand, CardEnergyAllocation,
+    CardEnergyChange, CardHandLimitChange, CardInitialSovereignBoost, CardInsertSovereign,
+    CardInvalidateAiOwner, CardInvalidatePlayed, CardInvalidatedAi, CardMarkTemporary,
+    CardOpeningDraw, CardOwnerRemoval, CardPersistTemporary, CardPlay, CardQueueUse,
+    CardRankChange, CardRankFailure, CardRankResult, CardRecordCastChannel, CardRedealKeepRanks,
+    CardRefillOne, CardRefillStage, CardRefreshAiQueue, CardRemoveOwner, CardReplaceOwnerSkills,
+    CardSetAiQueue, CardSetTeamCards, CardSetUltimateAvailability, CardSetup, CardUnlockHedone,
+    CardUseUniversal, HandCardRankUp, QueuedCardRankChange, QueuedCardRankUp, QueuedUseCard,
+    SovereignBoostChange, TemporaryCardKind,
 };
 pub use deck::CardDeck;
 use deck::CardInstanceId;
 pub use enchant::EnchantedType;
 pub use op::CardOpType;
+pub use prepared::{CardPrepareAiSkill, PreparedAiSkill};
 pub use start::{hand_size, start_decks_from_fight};
 pub use temp::{precast_card, selected_precast_card, temp_card};
 pub use types::{CardPlayChoice, PlayedCard, UniversalCardSkill};
@@ -50,9 +62,13 @@ pub struct CardManager {
     deck_num: i32,
     deck_capacity: i32,
     ai_queue: Vec<CardInfo>,
+    prepared_ai_skills: Vec<PreparedAiSkill>,
     cleaned_owners: HashSet<i64>,
     played: Vec<PlayedCard>,
+    committed_hand: Vec<CardInfo>,
     refilled: Vec<CardInfo>,
+    action_phase: action_phase::ActionPhaseCards,
+    opening_deal: opening::OpeningDeal,
     rank_up: HashMap<(i64, i32), i32>,
     queued_use_cards: Vec<QueuedUseCard>,
     cast_channels: HashMap<i64, CastChannelState>,
@@ -62,12 +78,20 @@ pub struct CardManager {
     persisting_temporary: Vec<CardInstanceId>,
     hand_limit_bonus: i32,
     refill_floor: usize,
+    preserve_deck_count: bool,
 }
 
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct CardRefill {
     pub drawn: Vec<CardInfo>,
     pub composed_owners: Vec<i64>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct CardStateSnapshot {
+    pub hand: Vec<CardInfo>,
+    pub deck_num: i32,
+    pub team_type: i32,
 }
 
 struct DeckRankUpStep {
@@ -78,7 +102,21 @@ struct DeckRankUpStep {
     rank_delta: i32,
 }
 
+#[derive(Clone, Copy)]
+enum PlaySource {
+    Hand(usize),
+    Team(usize),
+}
+
 impl CardManager {
+    pub fn state_snapshot(&self, team_type: i32) -> CardStateSnapshot {
+        CardStateSnapshot {
+            hand: self.hand().to_vec(),
+            deck_num: self.deck_num(),
+            team_type,
+        }
+    }
+
     pub(crate) fn set_catalog(&mut self, catalog: crate::catalog::BattleCatalog) {
         self.deck = std::mem::take(&mut self.deck).with_catalog(catalog);
     }
@@ -111,9 +149,13 @@ impl CardManager {
             deck_num: 0,
             deck_capacity: 0,
             ai_queue: Vec::new(),
+            prepared_ai_skills: Vec::new(),
             cleaned_owners: HashSet::new(),
             played: Vec::new(),
+            committed_hand: Vec::new(),
             refilled: Vec::new(),
+            action_phase: action_phase::ActionPhaseCards::default(),
+            opening_deal: opening::OpeningDeal::default(),
             rank_up: HashMap::new(),
             queued_use_cards: Vec::new(),
             cast_channels: HashMap::new(),
@@ -123,6 +165,7 @@ impl CardManager {
             persisting_temporary: Vec::new(),
             hand_limit_bonus: 0,
             refill_floor: 0,
+            preserve_deck_count: false,
         }
     }
 
@@ -133,9 +176,13 @@ impl CardManager {
             deck_num: 0,
             deck_capacity: 0,
             ai_queue: Vec::new(),
+            prepared_ai_skills: Vec::new(),
             cleaned_owners: HashSet::new(),
             played: Vec::new(),
+            committed_hand: Vec::new(),
             refilled: Vec::new(),
+            action_phase: action_phase::ActionPhaseCards::default(),
+            opening_deal: opening::OpeningDeal::default(),
             rank_up: HashMap::new(),
             queued_use_cards: Vec::new(),
             cast_channels: HashMap::new(),
@@ -145,6 +192,7 @@ impl CardManager {
             persisting_temporary: Vec::new(),
             hand_limit_bonus: 0,
             refill_floor: 0,
+            preserve_deck_count: false,
         }
     }
 
@@ -190,11 +238,15 @@ impl CardManager {
     }
 
     pub fn refill_consumes_deck(&self) -> bool {
-        self.refill_floor == 0
+        !self.preserve_deck_count
     }
 
     pub(crate) fn preserve_refill_floor(&mut self) {
         self.refill_floor = self.normal_hand_len();
+    }
+
+    pub(crate) fn preserve_deck_count(&mut self) {
+        self.preserve_deck_count = true;
     }
 
     pub(crate) fn add_hand_limit_bonus(&mut self, delta: i32) {
@@ -223,11 +275,16 @@ impl CardManager {
         &self.ai_queue
     }
 
+    pub(crate) fn prepared_ai_skills(&self) -> &[PreparedAiSkill] {
+        &self.prepared_ai_skills
+    }
+
     fn set_ai_queue(&mut self, cards: Vec<CardInfo>) {
         for owner_uid in cards.iter().filter_map(|card| card.uid) {
             self.cleaned_owners.remove(&owner_uid);
         }
         self.ai_queue = cards;
+        self.prepared_ai_skills.clear();
     }
 
     fn refresh_ai_queue(&mut self, cards: Vec<CardInfo>) -> Vec<i64> {
@@ -244,6 +301,8 @@ impl CardManager {
     }
 
     fn invalidate_ai_owner(&mut self, owner_uid: i64) -> Vec<(i32, CardInfo)> {
+        self.prepared_ai_skills
+            .retain(|prepared| prepared.owner_uid != owner_uid);
         let mut card_index = 0;
         let mut invalidated = Vec::new();
         self.ai_queue.retain(|card| {
@@ -271,6 +330,8 @@ impl CardManager {
     }
 
     fn remove_ai_owner_cards(&mut self, owner_uid: i64) -> Option<Vec<i64>> {
+        self.prepared_ai_skills
+            .retain(|prepared| prepared.owner_uid != owner_uid);
         if !self.cleaned_owners.insert(owner_uid) {
             return None;
         }
@@ -321,10 +382,14 @@ impl CardManager {
             self.deck = std::mem::take(&mut self.deck).with_catalog(catalog);
         }
         self.team_cards.clear();
+        self.prepared_ai_skills.clear();
         self.deck_num = deck_num;
         self.deck_capacity = deck_num;
         self.played.clear();
+        self.committed_hand.clear();
         self.refilled.clear();
+        self.clear_action_phase();
+        self.clear_opening_deal();
         self.queued_use_cards.clear();
         self.cast_channels.clear();
         self.played_history.clear();
@@ -332,6 +397,7 @@ impl CardManager {
         self.pending_temporary.clear();
         self.persisting_temporary.clear();
         self.refill_floor = 0;
+        self.preserve_deck_count = false;
     }
 
     pub fn seed(&mut self, fight: &sonettobuf::Fight) {
@@ -342,7 +408,10 @@ impl CardManager {
 
     pub(super) fn begin_round(&mut self) {
         self.played.clear();
+        self.committed_hand.clear();
         self.refilled.clear();
+        self.clear_action_phase();
+        self.clear_opening_deal();
         self.queued_use_cards.clear();
         for card_id in std::mem::take(&mut self.pending_temporary) {
             if !self.expiring_temporary.contains(&card_id) {
@@ -429,6 +498,10 @@ impl CardManager {
         &self.played
     }
 
+    pub(crate) fn committed_hand(&self) -> &[CardInfo] {
+        &self.committed_hand
+    }
+
     pub fn total_played_rank(&self) -> i32 {
         self.played
             .iter()
@@ -508,6 +581,21 @@ impl CardManager {
         &self.refilled
     }
 
+    pub(crate) fn record_action_point_use(&mut self, card_index: i32, used: bool) {
+        if let Some(played) = self
+            .played
+            .iter_mut()
+            .find(|played| played.card_index == card_index)
+        {
+            played.uses_action_point = used;
+        }
+    }
+
+    pub(crate) fn record_phase_refill(&mut self, stage: CardRefillStage, card: CardInfo) {
+        self.action_phase.record_refill(stage, &card);
+        self.record_refill(card);
+    }
+
     pub(crate) fn record_refill(&mut self, card: CardInfo) {
         self.refilled.push(card);
     }
@@ -533,6 +621,29 @@ impl CardManager {
         played.rewritten |= rewritten && played.skill_id != skill_id;
         played.skill_id = skill_id;
         Some(skill_id)
+    }
+
+    pub(crate) fn available_played_rank_ups(&self, card_index: i32, limit: i32) -> i32 {
+        let Some(played) = self
+            .played
+            .iter()
+            .find(|played| played.card_index == card_index)
+        else {
+            return 0;
+        };
+        let mut skill_id = played.skill_id;
+        let mut levels = 0;
+        while levels < limit {
+            let Some(next) = self.rank_up.get(&(played.caster_uid, skill_id)).copied() else {
+                break;
+            };
+            if self.skill_rank(next) <= self.skill_rank(skill_id) {
+                break;
+            }
+            skill_id = next;
+            levels += 1;
+        }
+        levels
     }
 
     pub(crate) fn change_played_rank(
@@ -866,6 +977,13 @@ impl CardManager {
     }
 
     pub fn move_card(&mut self, from_index: usize, to_index: usize) -> bool {
+        if self
+            .hand()
+            .get(from_index)
+            .is_none_or(|card| !permissions::permits(card, permissions::NOT_MOVE))
+        {
+            return false;
+        }
         self.deck.move_card(from_index, to_index)
     }
 
@@ -1110,6 +1228,46 @@ impl CardManager {
         self.deck.dissolve(index, replacement)
     }
 
+    fn resolve_play_source(
+        &self,
+        index: usize,
+        choice: Option<&CardPlayChoice>,
+    ) -> Option<PlaySource> {
+        if let Some(choice) = choice {
+            if self
+                .hand()
+                .get(index)
+                .is_some_and(|card| deck::same_card(card, &choice.source))
+            {
+                return Some(PlaySource::Hand(index));
+            }
+            if let Some(index) = self
+                .team_cards
+                .iter()
+                .rposition(|card| deck::same_card(card, &choice.source))
+            {
+                return Some(PlaySource::Team(index));
+            }
+            if let Some(index) = self.deck.matching_index(&choice.source) {
+                return Some(PlaySource::Hand(index));
+            }
+        }
+        if index < self.hand().len() {
+            return Some(PlaySource::Hand(index));
+        }
+        index
+            .checked_sub(self.hand().len())
+            .filter(|index| *index < self.team_cards.len())
+            .map(PlaySource::Team)
+    }
+
+    fn play_source_card(&self, source: PlaySource) -> &CardInfo {
+        match source {
+            PlaySource::Hand(index) => &self.hand()[index],
+            PlaySource::Team(index) => &self.team_cards[index],
+        }
+    }
+
     fn take_for_play(
         &mut self,
         card_index: usize,
@@ -1124,35 +1282,31 @@ impl CardManager {
             })
         });
         let has_choice = choice.is_some();
-        let choice_matches_index = choice.as_ref().is_some_and(|choice| {
-            self.deck.hand().get(card_index).is_some_and(|card| {
-                card.uid == choice.source.uid
-                    && card.skill_id == choice.source.skill_id
-                    && card.temp_card == choice.source.temp_card
-            })
-        });
-        let source = if choice_matches_index {
-            self.deck.take_for_play(card_index)
-        } else if let Some(index) = choice.as_ref().and_then(|choice| {
-            self.team_cards.iter().rposition(|candidate| {
-                candidate.uid == choice.source.uid
-                    && candidate.skill_id == choice.source.skill_id
-                    && candidate.temp_card == choice.source.temp_card
-            })
-        }) {
-            Some(self.team_cards.remove(index))
-        } else {
-            choice
-                .as_ref()
-                .and_then(|choice| self.deck.take_matching(&choice.source))
-                .or_else(|| self.deck.take_for_play(card_index))
-                .or_else(|| {
-                    card_index
-                        .checked_sub(self.deck.hand().len())
-                        .filter(|index| *index < self.team_cards.len())
-                        .map(|index| self.team_cards.remove(index))
+        let source = self.resolve_play_source(card_index, choice.as_ref())?;
+        if !self.can_use_card(self.play_source_card(source)) {
+            return None;
+        }
+        if self.played.is_empty() {
+            self.committed_hand = self.hand().to_vec();
+        }
+        let hand_index = match source {
+            PlaySource::Hand(index) => self
+                .committed_hand
+                .iter()
+                .enumerate()
+                .filter(|(index, _)| {
+                    self.played
+                        .iter()
+                        .all(|played| played.hand_index != Some(*index))
                 })
-        }?;
+                .nth(index)
+                .map(|(index, _)| index),
+            PlaySource::Team(_) => None,
+        };
+        let source = match source {
+            PlaySource::Hand(index) => self.deck.take_for_play(index)?,
+            PlaySource::Team(index) => self.team_cards.remove(index),
+        };
         let resolved_skill_id = choice.as_ref().and_then(|choice| choice.played.skill_id);
         let caster_uid = choice
             .as_ref()
@@ -1175,7 +1329,9 @@ impl CardManager {
             card: source,
             caster_uid,
             card_index: action_index,
+            hand_index,
             skill_id,
+            uses_action_point: false,
             rank_change_pending: false,
             rewritten: false,
             target_uid,

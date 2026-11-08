@@ -102,6 +102,7 @@ pub struct EntityManager {
     identity_order: Vec<i64>,
     replacements: HashMap<i64, FightEntityInfo>,
     passive_sources: HashMap<i64, HashMap<i32, PassiveSourceKind>>,
+    battle_rule_passives: HashMap<i32, Vec<i32>>,
     ultimate_kinds: HashMap<i64, ExtraSkillKind>,
     next_special_uid: i64,
 }
@@ -113,31 +114,38 @@ impl EntityManager {
             fight,
             catalog.defender_reservation_count(fight),
         );
-        let mut rule_sources = Vec::new();
+        let mut battle_rule_passives = HashMap::<i32, Vec<i32>>::new();
         for rule in catalog.battle_rules(fight).into_iter().filter(|rule| {
             rule.rule_type != crate::engine::fight::rules::AdditionRuleType::FightSkill
         }) {
-            for (&uid, entity) in &manager.identities {
-                let owns_side = match rule.side {
-                    crate::engine::fight::rules::BattleRuleSide::Attacker => {
-                        manager.teams.get(&uid) == Some(&1)
-                    }
-                    crate::engine::fight::rules::BattleRuleSide::Defender => {
-                        manager.teams.get(&uid) == Some(&2)
-                    }
-                    crate::engine::fight::rules::BattleRuleSide::Both => true,
-                };
-                if owns_side && entity.passive_skill.contains(&rule.skill_id) {
-                    rule_sources.push((uid, rule.skill_id));
-                }
+            let teams = match rule.side {
+                crate::engine::fight::rules::BattleRuleSide::Attacker => &[1][..],
+                crate::engine::fight::rules::BattleRuleSide::Defender => &[2][..],
+                crate::engine::fight::rules::BattleRuleSide::Both => &[1, 2][..],
+            };
+            for team in teams {
+                battle_rule_passives
+                    .entry(*team)
+                    .or_default()
+                    .push(rule.skill_id);
             }
         }
-        for (uid, skill_id) in rule_sources {
-            manager
-                .passive_sources
-                .entry(uid)
-                .or_default()
-                .insert(skill_id, PassiveSourceKind::BattleRule);
+        manager.battle_rule_passives = battle_rule_passives;
+        for (&uid, entity) in &manager.identities {
+            let team = manager.teams.get(&uid).copied().unwrap_or_default();
+            for skill_id in manager
+                .battle_rule_passives
+                .get(&team)
+                .into_iter()
+                .flatten()
+                .filter(|skill_id| entity.passive_skill.contains(skill_id))
+            {
+                manager
+                    .passive_sources
+                    .entry(uid)
+                    .or_default()
+                    .insert(*skill_id, PassiveSourceKind::BattleRule);
+            }
         }
         manager
     }
@@ -235,6 +243,7 @@ impl EntityManager {
             order,
             replacements: HashMap::new(),
             passive_sources,
+            battle_rule_passives: HashMap::new(),
             ultimate_kinds: HashMap::new(),
             next_special_uid: -(largest_existing_index.max(reserved_index) as i64 + 1),
         }
@@ -564,11 +573,25 @@ impl EntityManager {
             self.roster_lanes.insert(uid, RosterLane::Inactive);
         }
         self.reserve_order.insert(team_type, Vec::new());
-        for entity in mains {
-            self.register_in_lane(catalog, entity, RosterLane::Main);
-        }
-        for entity in reserves {
-            self.register_in_lane(catalog, entity, RosterLane::Reserve);
+        let battle_rules = self
+            .battle_rule_passives
+            .get(&team_type)
+            .cloned()
+            .unwrap_or_default();
+        for (entity, lane) in mains
+            .iter()
+            .map(|entity| (entity, RosterLane::Main))
+            .chain(reserves.iter().map(|entity| (entity, RosterLane::Reserve)))
+        {
+            let mut entity = entity.clone();
+            if team_type == 2 {
+                entity
+                    .passive_skill
+                    .splice(0..0, battle_rules.iter().copied());
+            } else {
+                entity.passive_skill.extend(battle_rules.iter().copied());
+            }
+            self.register_in_lane(catalog, &entity, lane);
         }
     }
 
@@ -642,9 +665,19 @@ impl EntityManager {
 
     fn refresh_passive_sources(&mut self, game_data: &config::GameDB, entity: &FightEntityInfo) {
         let Some(uid) = entity.uid else { return };
+        let battle_rules = entity
+            .team_type
+            .and_then(|team| self.battle_rule_passives.get(&team))
+            .cloned()
+            .unwrap_or_default();
         let sources = self.passive_sources.entry(uid).or_default();
         sources.retain(|skill_id, _| entity.passive_skill.contains(skill_id));
         sources.extend(psychube_passive_sources(game_data, entity));
+        for skill_id in battle_rules {
+            if entity.passive_skill.contains(&skill_id) {
+                sources.insert(skill_id, PassiveSourceKind::BattleRule);
+            }
+        }
     }
 
     pub(crate) fn passive_overrides(&self) -> impl Iterator<Item = (i64, &[i32])> {

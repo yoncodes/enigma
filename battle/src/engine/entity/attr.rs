@@ -37,6 +37,8 @@ pub enum AttrId {
     IncantationSkillUltMightMultiplier = 223,
     IncantationMightMultiplier = 224,
     ConduitMight = 231,
+    UltimateIncantationMightMultiplier = 232,
+    StrongerAfflatusDmgMultiplier = 233,
     PoisonDmgBonus = 301,
     PoisonDmgTakenReduction = 302,
     DazeResistance = 401,
@@ -100,6 +102,8 @@ impl AttrId {
             223 => Self::IncantationSkillUltMightMultiplier,
             224 => Self::IncantationMightMultiplier,
             231 => Self::ConduitMight,
+            232 => Self::UltimateIncantationMightMultiplier,
+            233 => Self::StrongerAfflatusDmgMultiplier,
             301 => Self::PoisonDmgBonus,
             302 => Self::PoisonDmgTakenReduction,
             401 => Self::DazeResistance,
@@ -144,6 +148,10 @@ mod tests {
         assert_eq!(AttrId::from_raw(102), Some(AttrId::Attack));
         assert_eq!(AttrId::from_raw(211), Some(AttrId::UltimateMight));
         assert_eq!(AttrId::from_raw(231), Some(AttrId::ConduitMight));
+        assert_eq!(
+            AttrId::from_raw(233),
+            Some(AttrId::StrongerAfflatusDmgMultiplier)
+        );
         assert_eq!(AttrId::from_raw(608), Some(AttrId::MentalDefPercent));
         assert_eq!(AttrId::from_raw(999), None);
     }

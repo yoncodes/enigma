@@ -51,6 +51,17 @@ pub async fn sync_event(
     user_id: i64,
     event: TaskEvent,
 ) -> Result<Vec<Achievement>> {
+    let mut tx = pool.begin().await?;
+    let updated = sync_event_in_transaction(&mut tx, user_id, event).await?;
+    tx.commit().await?;
+    Ok(updated)
+}
+
+pub async fn sync_event_in_transaction(
+    tx: &mut Transaction<'_, Sqlite>,
+    user_id: i64,
+    event: TaskEvent,
+) -> Result<Vec<Achievement>> {
     let now = ServerTime::now_sec_i32();
     let mut updated = Vec::new();
 
@@ -109,7 +120,7 @@ pub async fn sync_event(
         .bind(task.max_progress)
         .bind(now)
         .bind(now)
-        .fetch_optional(pool)
+        .fetch_optional(&mut **tx)
         .await?
         {
             updated.push(achievement);

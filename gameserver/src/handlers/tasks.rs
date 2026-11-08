@@ -56,6 +56,7 @@ pub async fn on_finish_task(
     send_bp_task_red_dot_update(ctx, &finished_tasks).await?;
     notify_task_finish_events(ctx, player_id, &finished_task_ids).await?;
     send_task_update(ctx, claim.task_info, claim.activity_info).await?;
+    send_act220_task_red_dot_update(ctx, &finished_tasks).await?;
     send_act233_bp_score_updates(ctx, &act233_bp_scores).await?;
 
     ctx.send_reply(CmdId::FinishTaskCmd, claim.reply, 0, req.up_tag)
@@ -96,6 +97,7 @@ pub async fn on_finish_all_task(
     send_bp_task_red_dot_update(ctx, &finished_tasks).await?;
     notify_task_finish_events(ctx, player_id, &finished_task_ids).await?;
     send_task_update(ctx, claim.task_info, claim.activity_info).await?;
+    send_act220_task_red_dot_update(ctx, &finished_tasks).await?;
     send_act233_bp_score_updates(ctx, &act233_bp_scores).await?;
 
     ctx.send_reply(CmdId::FinishAllTaskCmd, claim.reply, 0, req.up_tag)
@@ -268,4 +270,29 @@ async fn send_bp_task_red_dot_update(
         .battle_pass_groups(ctx.state.db)
         .await?;
     push::send_red_dot_groups(ctx, red_dot_groups).await
+}
+
+async fn send_act220_task_red_dot_update(
+    ctx: &mut ConnectionContext,
+    tasks: &[sonettobuf::Task],
+) -> Result<(), AppError> {
+    let activity_ids = tasks
+        .iter()
+        .filter(|task| task.r#type == Some(TaskType::Activity220.id()))
+        .filter_map(|task| {
+            config::configs::get()
+                .activity220_task
+                .get(task.id)
+                .map(|row| row.activity_id)
+        })
+        .collect::<std::collections::BTreeSet<_>>();
+    for activity_id in activity_ids {
+        let group = ctx
+            .player()?
+            .red_dot
+            .act220_group(ctx.state.db, activity_id)
+            .await?;
+        push::send_red_dot_groups(ctx, vec![group]).await?;
+    }
+    Ok(())
 }

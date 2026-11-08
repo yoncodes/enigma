@@ -451,7 +451,6 @@ fn buff_update_and_delete_preserve_manager_snapshot_without_scalar_buff_id() {
         delete_reason: None,
         depleted: false,
         fixed_max_hp_delta: 0,
-        target_max_hp: 0,
     })];
 
     assert_eq!(update[0].effect_type, Some(EffectType::Buffupdate as i32));
@@ -473,7 +472,6 @@ fn buff_update_and_delete_preserve_manager_snapshot_without_scalar_buff_id() {
         delete_reason: None,
         depleted: true,
         fixed_max_hp_delta: 0,
-        target_max_hp: 0,
     });
     assert_eq!(depleted.buff.unwrap().duration, Some(1));
 
@@ -486,7 +484,6 @@ fn buff_update_and_delete_preserve_manager_snapshot_without_scalar_buff_id() {
         delete_reason: None,
         depleted: false,
         fixed_max_hp_delta: 0,
-        target_max_hp: 0,
     });
     assert_eq!(
         inactive.effect_type,

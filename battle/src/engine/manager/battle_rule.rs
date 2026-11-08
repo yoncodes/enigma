@@ -75,7 +75,7 @@ impl BattleRuleManager {
     }
 
     pub fn promotes_reserves_immediately(&self, team_type: i32) -> bool {
-        self.immediate_reserve_promotion_teams.contains(&team_type)
+        team_type == 1 || self.immediate_reserve_promotion_teams.contains(&team_type)
     }
 
     pub fn add_max_round(
@@ -154,5 +154,17 @@ mod tests {
             cap: 30,
         });
         assert_eq!(manager.max_round(), Some(30));
+    }
+
+    #[test]
+    fn player_reserves_are_immediate_and_monsters_require_the_rule() {
+        let mut manager = BattleRuleManager::default();
+
+        assert!(manager.promotes_reserves_immediately(1));
+        assert!(!manager.promotes_reserves_immediately(2));
+
+        manager
+            .enable_immediate_reserve_promotion(ImmediateReservePromotionCommand { team_type: 2 });
+        assert!(manager.promotes_reserves_immediately(2));
     }
 }

@@ -13,7 +13,7 @@ use crate::engine::{
         },
         card::{CARD_PLAY_ORIGIN, CardChangeKind, CardCommand, CardReplaceOwnerSkills, CardSetup},
         eureka::{EUREKA_RESOURCE_ID, EurekaChange, EurekaCommand},
-        ex_point::{ExPointChange, ExPointCommand},
+        ex_point::{ExPointChange, ExPointCommand, LowestExPointChange},
     },
     mechanic::shell::ShellCommand,
     runtime::change::BattleChange,

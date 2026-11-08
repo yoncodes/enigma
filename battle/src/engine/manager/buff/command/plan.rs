@@ -482,19 +482,16 @@ impl BuffManager {
                             && active.buff.uid == Some(update.buff_uid)
                     })
                     .ok_or(BuffCommandError::InvalidDurationChange)?;
-                let duration = active
-                    .buff
-                    .duration
-                    .unwrap_or_default()
-                    .max(update.minimum_duration);
-                (
-                    update.origin,
-                    BuffPlanAction::ChangeDuration(vec![DurationChangePlan {
+                let current_duration = active.buff.duration.unwrap_or_default();
+                let plans = (current_duration < update.minimum_duration)
+                    .then_some(DurationChangePlan {
                         target_uid: update.target_uid,
                         buff_uid: update.buff_uid,
-                        duration,
-                    }]),
-                )
+                        duration: update.minimum_duration,
+                    })
+                    .into_iter()
+                    .collect();
+                (update.origin, BuffPlanAction::ChangeDuration(plans))
             }
             BuffCommand::RefreshDurationBySelector(update) => {
                 let selector_valid = match update.selector {
@@ -977,6 +974,7 @@ impl BuffManager {
                     layer_specified: true,
                 },
                 policy.lifetime.duration,
+                action == GrantAction::ReplaceExisting,
             )
         } else {
             Vec::new()
@@ -995,7 +993,11 @@ impl BuffManager {
         let fanout = fanout_specs
             .into_iter()
             .zip(fanout_uids)
-            .map(|(spec, uid)| PlannedFanout { spec, uid })
+            .map(|((spec, replacement_uid), uid)| PlannedFanout {
+                spec,
+                uid,
+                replacement_uid,
+            })
             .collect::<Vec<_>>();
         let refresh_uids = match action {
             GrantAction::RefreshCount if definition.reserves_normal_uid_on_count_refresh() => {
@@ -1026,6 +1028,40 @@ impl BuffManager {
         let layer_refresh = (action == GrantAction::RefreshLayer)
             .then(|| self.plan_layer_refresh(route, &definition, &policy, args))
             .flatten();
+        let stack_trim = if definition.trims_timed_stack_cap()
+            && matches!(action, GrantAction::Add | GrantAction::RefreshLayer)
+        {
+            let incoming = definition.raw_layer(args.layer, args.layer_specified, args.count);
+            let mut overflow =
+                self.grant_overflow(route.source_uid, route.target_uid, route.buff_id, incoming);
+            self.buffs
+                .iter()
+                .filter(|active| {
+                    active.effective
+                        && active.owner_uid == route.target_uid
+                        && active.buff.buff_id == Some(route.buff_id)
+                        && !(action == GrantAction::RefreshLayer && policy.matches(active, route))
+                })
+                .filter_map(|active| {
+                    if overflow <= 0 {
+                        return None;
+                    }
+                    let amount = overflow.min(super::count_or_layer_from(
+                        &active.buff,
+                        active.definition.as_ref(),
+                    ));
+                    overflow -= amount;
+                    Some(Self::resolve_active_consume_action(
+                        active,
+                        amount,
+                        DepletedBuff::Remove,
+                        ConsumeField::Configured,
+                    ))
+                })
+                .collect()
+        } else {
+            Vec::new()
+        };
         let partially_capped_layer_refresh = layer_refresh.is_some_and(|refresh| {
             self.partially_caps_layer_refresh(route, &definition, &policy, args, refresh)
         });
@@ -1177,8 +1213,14 @@ impl BuffManager {
             );
             post_add_uids.extend(child_uids);
         }
-        let dot_snapshots =
-            Self::plan_grant_snapshots(&definition, route.source_uid, inputs.source_attack, args);
+        let dot_snapshots = Self::plan_grant_snapshots(
+            &definition,
+            route.source_uid,
+            inputs.source_attack,
+            inputs.source_max_hp,
+            args,
+            matches!(action, GrantAction::Add | GrantAction::ReplaceExisting),
+        );
         let grant_values = self.plan_grant_values(&definition, route.source_uid);
         let initial_act_info =
             definition.initial_planned_act_info(inputs.source_attack, &grant_values);
@@ -1236,6 +1278,7 @@ impl BuffManager {
             excluded_uids,
             replacement_uids,
             capacity_eviction_uids,
+            stack_trim,
             pre_add_uids,
             uid,
             refresh_uids,
@@ -1250,6 +1293,7 @@ impl BuffManager {
             initial_act_info_markers: None,
             dot_snapshots,
             grant_values,
+            attr_snapshots: Vec::new(),
             immunity_action: immunity.map(|(_, owner_uid, action)| (owner_uid, action)),
             transition_progress,
             transition: None,

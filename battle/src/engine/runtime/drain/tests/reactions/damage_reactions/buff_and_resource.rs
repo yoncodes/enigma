@@ -231,6 +231,7 @@ fn assist_boss_attack_passive_resolves_from_the_derived_skill_cast_event() {
     let catalog = SkillEffectCatalog::from_fight(config::configs::get(), &fight);
     let event = BattleEvent::SkillAction(crate::engine::skill::action::SkillActionEvent {
         source_uid: -1,
+        card_index: 0,
         skill_id: 370_001_002,
         target_uid: -2,
         target_uids: vec![-2, -3],

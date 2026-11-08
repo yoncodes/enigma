@@ -40,6 +40,15 @@ pub(super) fn supports_per_consume_ex_point_direct_use_skill(behavior: &ParsedBe
     )
 }
 
+pub(super) fn supports_direct_use_skill_two(behavior: &ParsedBehavior) -> bool {
+    matches!(
+        behavior.args.as_slice(),
+        [skill_id, 0, 0, extra_kind]
+            if *skill_id > 0
+                && skill_kind_from_is_extra(*extra_kind) == Some(ExtraSkillKind::Reinforced)
+    ) && behavior.raw_args.len() <= 4
+}
+
 pub(super) fn supports_random_skill(behavior: &ParsedBehavior) -> bool {
     matches!(
         behavior.raw_args.as_slice(),
@@ -54,6 +63,17 @@ pub(super) fn supports_drive(behavior: &ParsedBehavior) -> bool {
 pub(super) fn supports_consume_buff_use_skill(behavior: &ParsedBehavior) -> bool {
     matches!(behavior.args.as_slice(), [buff_id, amount, skill_id, _]
         if *buff_id > 0 && *amount > 0 && *skill_id > 0)
+}
+
+pub(super) fn supports_consume_buff_use_skill2(behavior: &ParsedBehavior) -> bool {
+    matches!(behavior.args.as_slice(), [buff_id, amount, group, star]
+    if *buff_id > 0
+        && *amount > 0
+        && match group {
+            1 | 2 => (1..=3).contains(star),
+            3 => *star == 0,
+            _ => false,
+        })
 }
 
 pub(super) fn supports_consume_buff_use_skill3(behavior: &ParsedBehavior) -> bool {
@@ -72,6 +92,11 @@ pub(super) fn supports_remove_buff_use_skill(behavior: &ParsedBehavior) -> bool 
 
 pub(super) fn supports_direct_no_action_skill(behavior: &ParsedBehavior) -> bool {
     matches!(behavior.args.as_slice(), [skill_id] | [skill_id, _] if *skill_id > 0)
+}
+
+pub(super) fn supports_nested_skill(behavior: &ParsedBehavior) -> bool {
+    (behavior.raw_args.is_empty() || behavior.raw_args.len() == 1)
+        && matches!(behavior.args.as_slice(), [skill_id] if *skill_id > 0)
 }
 
 pub(super) fn supports_direct_skill_card(behavior: &ParsedBehavior) -> bool {
@@ -133,6 +158,42 @@ impl BehaviorHandler for Handler {
                         amount: *amount,
                         depleted: DepletedBuff::Remove,
                     }))),
+                ])
+            }
+            BehaviorKind::ConsumeBuffUseSkill2 => {
+                let [buff_id, amount, group, star] = behavior.args.as_slice() else {
+                    return None;
+                };
+                if context
+                    .managers
+                    .buff
+                    .buff_id_amount(context.source_uid, *buff_id)
+                    < *amount
+                {
+                    return Some(Vec::new());
+                }
+                let Some(skill_id) = loadout_skill(context.pool, context.source_uid, *group, *star)
+                else {
+                    return Some(Vec::new());
+                };
+                let origin = super::command_origin(behavior)?;
+                let mut invocation: crate::engine::skill::action::SkillInvocation =
+                    crate::engine::skill::action::SkillRequest {
+                        source_uid: context.source_uid,
+                        skill_id,
+                    }
+                    .into();
+                invocation.target =
+                    crate::engine::skill::action::SkillTarget::Explicit(context.target_uid);
+                Some(vec![
+                    RuleOp::Command(BattleCommand::Buff(BuffCommand::Consume(BuffConsume {
+                        origin,
+                        target_uid: context.source_uid,
+                        selector: BuffSelector::ExactId(*buff_id),
+                        amount: *amount,
+                        depleted: DepletedBuff::Remove,
+                    }))),
+                    RuleOp::Skill(invocation),
                 ])
             }
             BehaviorKind::ConsumeBuffUseSkill3 => {
@@ -430,6 +491,20 @@ impl BehaviorHandler for Handler {
             }
             BehaviorKind::DirectUseSkillNoAct => direct_no_action_skill(context, behavior),
             BehaviorKind::DirectUseSkillNoAct2 => direct_no_action_skill(context, behavior),
+            BehaviorKind::DirectUseSkillNotExtra => {
+                let mut invocation: crate::engine::skill::action::SkillInvocation =
+                    crate::engine::skill::action::SkillRequest {
+                        source_uid: context.source_uid,
+                        skill_id: behavior.arg(0)?,
+                    }
+                    .into();
+                invocation.target =
+                    crate::engine::skill::action::SkillTarget::Explicit(context.target_uid);
+                invocation.mode = crate::engine::skill::action::SkillExecutionMode::Direct;
+                invocation.frame_target = Some(context.target_uid);
+                invocation.target_observed_extra_action = Some(false);
+                Some(vec![RuleOp::Skill(invocation)])
+            }
             BehaviorKind::DirectUseBigSkill => direct_big_skill_rule_ops(context, behavior),
             BehaviorKind::DirectUseGroupAndStarSkill => {
                 let [group, star, ..] = behavior.args.as_slice() else {
@@ -561,7 +636,7 @@ impl BehaviorHandler for Handler {
                         }
                         .into();
                     invocation.extra_skill_kind = Some(ExtraSkillKind::ExtraAction);
-                    invocation.mode = crate::engine::skill::action::SkillExecutionMode::Active;
+                    invocation.mode = crate::engine::skill::action::SkillExecutionMode::NestedExtra;
                     ops.push(RuleOp::Skill(invocation));
                 }
                 Some(ops)
@@ -624,7 +699,10 @@ fn direct_big_skill_rule_ops(
         }
         .into();
     invocation.mode = crate::engine::skill::action::SkillExecutionMode::DirectBig;
-    invocation.additional_moxie = consumed;
+    invocation.additional_moxie = consumed.saturating_sub(refund);
+    invocation.moxie_spent = consumed;
+    invocation.trigger =
+        crate::engine::skill::action::SkillTrigger::Explicit(context.active_skill_id);
     ops.push(RuleOp::Skill(invocation));
     if refund > 0 {
         ops.push(ex_point(refund));
@@ -657,8 +735,7 @@ fn references(behavior: &ParsedBehavior) -> RuleReferences {
         | BehaviorKind::DirectUseSkillCard
         | BehaviorKind::DirectUseSkillNoAct
         | BehaviorKind::DirectUseSkillNoAct2
-        | BehaviorKind::DirectUseSkillNotExtra
-        | BehaviorKind::UseExtraSkill => behavior.arg(0).into_iter().collect(),
+        | BehaviorKind::DirectUseSkillNotExtra => behavior.arg(0).into_iter().collect(),
         BehaviorKind::RandomUseSkill => behavior
             .raw_args
             .first()
@@ -672,6 +749,7 @@ fn references(behavior: &ParsedBehavior) -> RuleReferences {
     };
     let buffs = match behavior.spec.kind {
         BehaviorKind::ConsumeBuffUseSkill
+        | BehaviorKind::ConsumeBuffUseSkill2
         | BehaviorKind::ConsumeBuffUseSkill3
         | BehaviorKind::ConsumeTargetBuffUseSkill => behavior.arg(0).into_iter().collect(),
         BehaviorKind::RemoveBuffUseSkill => behavior.arg(0).into_iter().collect(),
@@ -782,7 +860,6 @@ pub fn direct_skill_id_for_power_event(behavior: &ParsedBehavior) -> Option<i32>
         BehaviorKind::DirectUseSkill
             | BehaviorKind::DirectUseSkillNoAct
             | BehaviorKind::DirectUseSkillNotExtra
-            | BehaviorKind::UseExtraSkill
     )
     .then(|| behavior.arg(0))
     .flatten()
@@ -900,6 +977,17 @@ fn skill_from_group_and_star(
     let skills = match group {
         1 => Skill::get_skill_groups_with_destiny(source.model_id, 0, None).0,
         2 => Skill::get_skill_groups_with_destiny(source.model_id, 0, None).1,
+        3 => return (source.ex_skill > 0).then_some(source.ex_skill),
+        _ => return None,
+    };
+    skills.get(star.saturating_sub(1) as usize).copied()
+}
+
+fn loadout_skill(pool: &TargetPool, source_uid: i64, group: i32, star: i32) -> Option<i32> {
+    let source = pool.entity(source_uid)?;
+    let skills = match group {
+        1 => &source.skill_group1,
+        2 => &source.skill_group2,
         3 => return (source.ex_skill > 0).then_some(source.ex_skill),
         _ => return None,
     };

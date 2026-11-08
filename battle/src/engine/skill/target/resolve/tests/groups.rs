@@ -1,14 +1,6 @@
 use super::*;
 
 #[test]
-fn captured_target_comparison_preserves_order_and_cardinality() {
-    assert!(captured_targets_match(&[10, 11, 12], &[10, 11, 12]));
-    assert!(!captured_targets_match(&[10, 11, 12], &[12, 10, 11]));
-    assert!(!captured_targets_match(&[10, 11, 12], &[12, 10]));
-    assert!(!captured_targets_match(&[10, 10, 11], &[10, 11, 12]));
-}
-
-#[test]
 fn other_allies_anchor_their_shared_skill_frame_to_the_caster() {
     assert_eq!(frame_anchor_for_rule(102, 10), Some(10));
     assert_eq!(frame_anchor_for_rule(103, 10), None);
@@ -125,7 +117,7 @@ fn resolves_relative_ally_and_enemy_groups_from_fight() {
             &pool,
             &mut determinism,
         ),
-        vec![10, 11, 12]
+        vec![10, 11, -10, -11]
     );
 }
 

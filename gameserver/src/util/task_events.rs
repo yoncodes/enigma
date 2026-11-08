@@ -36,6 +36,7 @@ pub async fn notify_tasks(
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 enum TaskPushFamily {
     ActBp(i32),
+    Activity220(i32),
     VersionActivity,
     BattlePass,
     Other,
@@ -46,6 +47,7 @@ fn task_push_groups(tasks: Vec<UserTask>) -> Vec<(TaskPushFamily, Vec<UserTask>)
     for task in tasks {
         let family = match TaskType::from_id(task.type_id) {
             Some(TaskType::ActBp) => TaskPushFamily::ActBp(task.activity_id),
+            Some(TaskType::Activity220) => TaskPushFamily::Activity220(task.activity_id),
             Some(TaskType::VersionActivity) => TaskPushFamily::VersionActivity,
             Some(TaskType::BattlePass) => TaskPushFamily::BattlePass,
             _ => TaskPushFamily::Other,
@@ -68,6 +70,12 @@ fn notify_task_family_red_dots<'a>(
                     .act233_groups(ctx.state.db, activity_id)
                     .await?
             }
+            TaskPushFamily::Activity220(activity_id) => vec![
+                ctx.player()?
+                    .red_dot
+                    .act220_group(ctx.state.db, activity_id)
+                    .await?,
+            ],
             TaskPushFamily::VersionActivity => {
                 let red_dot = ctx
                     .player()?
@@ -134,6 +142,11 @@ pub async fn notify(
 ) -> Result<(), AppError> {
     let db = ctx.state.db;
     let updated_tasks = ctx.player_mut()?.tasks.sync_event(db, event).await?;
+    let act186_pushes = ctx
+        .player_mut()?
+        .activity
+        .sync_act186_tasks(db, event)
+        .await?;
     let updated_achievements = ctx
         .player_mut()?
         .collection
@@ -141,6 +154,9 @@ pub async fn notify(
         .await?;
 
     notify_tasks(ctx, updated_tasks).await?;
+    for push in act186_pushes {
+        ctx.notify(CmdId::Act186TaskPushCmd, push).await?;
+    }
 
     if !updated_achievements.is_empty() {
         ctx.notify(

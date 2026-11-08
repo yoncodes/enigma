@@ -4,9 +4,12 @@ use database::{
     db::game::{hero_group_snapshots, hero_groups},
     models::game::{hero_group_snapshots::HeroGroupSnapshotInfo, hero_groups as model},
 };
-use sonettobuf::{FightGroup, GetHeroGroupSnapshotListReply, SetHeroGroupSnapshotReply};
-use sqlx::SqlitePool;
-use std::collections::HashMap;
+use sonettobuf::{
+    FightGroup, GetHeroGroupSnapshotListReply, HeroGroupSnapshotFightGroupNo,
+    HeroGroupSnapshotGroupInfoNo, SetHeroGroupSnapshotBatchReply, SetHeroGroupSnapshotReply,
+};
+use sqlx::{Sqlite, SqlitePool, Transaction};
+use std::collections::{HashMap, HashSet};
 
 impl HeroManager {
     pub async fn group_snapshot_list(
@@ -88,9 +91,96 @@ pub(super) fn overlay_snapshot_catalog(
 }
 
 impl HeroManager {
+    pub async fn set_group_snapshot_batch(
+        &self,
+        db: &SqlitePool,
+        snapshot_id: i32,
+        fight_groups: Vec<HeroGroupSnapshotFightGroupNo>,
+    ) -> Result<SetHeroGroupSnapshotBatchReply, AppError> {
+        let mut tx = db.begin().await?;
+        let reply = self
+            .set_group_snapshot_batch_in_transaction(&mut tx, snapshot_id, fight_groups)
+            .await?;
+        tx.commit().await?;
+        Ok(reply)
+    }
+
+    pub async fn set_group_snapshot_batch_in_transaction(
+        &self,
+        tx: &mut Transaction<'_, Sqlite>,
+        snapshot_id: i32,
+        fight_groups: Vec<HeroGroupSnapshotFightGroupNo>,
+    ) -> Result<SetHeroGroupSnapshotBatchReply, AppError> {
+        if HeroGroupSnapshotType::from_id(snapshot_id).is_none() || fight_groups.is_empty() {
+            return Err(AppError::InvalidRequest);
+        }
+        let mut sub_ids = Vec::with_capacity(fight_groups.len());
+        let mut groups = Vec::with_capacity(fight_groups.len());
+        let mut seen = HashSet::with_capacity(fight_groups.len());
+        for group in fight_groups {
+            let sub_id = group.snapshot_sub_id.ok_or(AppError::InvalidRequest)?;
+            if sub_id <= 0 || !seen.insert(sub_id) {
+                return Err(AppError::InvalidRequest);
+            }
+            sub_ids.push(sub_id);
+            groups.push(snapshot_group(
+                sub_id,
+                group.fight_group.ok_or(AppError::InvalidRequest)?,
+            ));
+        }
+
+        if snapshot_id == HeroGroupSnapshotType::Common.id() {
+            for group in &groups {
+                hero_group_snapshots::save_common_group_snapshot_in_transaction(
+                    tx,
+                    self.player_id,
+                    snapshot_id,
+                    group,
+                )
+                .await?;
+            }
+        } else {
+            hero_group_snapshots::save_hero_group_snapshot_in_transaction(
+                tx,
+                self.player_id,
+                snapshot_id,
+                &groups,
+                &sub_ids,
+            )
+            .await?;
+        }
+
+        Ok(SetHeroGroupSnapshotBatchReply {
+            snapshot_id: Some(snapshot_id),
+            group_infos: sub_ids
+                .into_iter()
+                .zip(groups)
+                .map(|(snapshot_sub_id, group)| HeroGroupSnapshotGroupInfoNo {
+                    snapshot_sub_id: Some(snapshot_sub_id),
+                    group_info: Some(group.into()),
+                })
+                .collect(),
+        })
+    }
+
     pub async fn set_group_snapshot(
         &self,
         db: &SqlitePool,
+        snapshot_id: i32,
+        snapshot_sub_id: i32,
+        fight_group: FightGroup,
+    ) -> Result<SetHeroGroupSnapshotReply, AppError> {
+        let mut tx = db.begin().await?;
+        let reply = self
+            .set_group_snapshot_in_transaction(&mut tx, snapshot_id, snapshot_sub_id, fight_group)
+            .await?;
+        tx.commit().await?;
+        Ok(reply)
+    }
+
+    pub async fn set_group_snapshot_in_transaction(
+        &self,
+        tx: &mut Transaction<'_, Sqlite>,
         snapshot_id: i32,
         snapshot_sub_id: i32,
         fight_group: FightGroup,
@@ -101,22 +191,20 @@ impl HeroManager {
         let hero_group = snapshot_group(snapshot_sub_id, fight_group);
 
         if snapshot_id == HeroGroupSnapshotType::Common.id() {
-            let mut tx = db.begin().await?;
             hero_group_snapshots::save_common_group_snapshot_in_transaction(
-                &mut tx,
+                tx,
                 self.player_id,
                 snapshot_id,
                 &hero_group,
             )
             .await?;
-            tx.commit().await?;
         } else {
-            hero_group_snapshots::save_hero_group_snapshot(
-                db,
+            hero_group_snapshots::save_hero_group_snapshot_in_transaction(
+                tx,
                 self.player_id,
                 snapshot_id,
-                vec![hero_group.clone()],
-                vec![snapshot_sub_id],
+                std::slice::from_ref(&hero_group),
+                &[snapshot_sub_id],
             )
             .await?;
         }

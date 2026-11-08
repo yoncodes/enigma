@@ -6,7 +6,7 @@ use std::{
 
 use crate::engine::{
     event::{bus::EventBus, dispatcher, payload::BattleEvent},
-    manager::BattleManagers,
+    manager::{BattleManagers, buff::BuffCommand},
     runtime::{
         determinism::RoundDeterminism,
         executor::{RuleExecutionError, RuleOutcome, execute_rule_op_with},
@@ -21,7 +21,10 @@ use crate::engine::{
     skill::{
         action::{SkillPhase, SkillTarget},
         effect::SkillEffectCatalog,
-        rule::{SetupStage, output::RuleOp},
+        rule::{
+            SetupStage,
+            output::{BattleCommand, RuleOp},
+        },
         subscriber::SubscriberError,
         target::{TargetContext, TargetPool, TargetRequest, TargetResolver, targets_enemy},
     },
@@ -54,6 +57,26 @@ use reactions::{
 use reactions::{dispatch_event_groups, dispatch_owner_reactions, dispatch_reactions};
 use skill_dispatch::drain_skill;
 use state::DrainState;
+
+fn push_death(
+    frames: &mut [SemanticFrame],
+    path: &[usize],
+    managers: &mut BattleManagers,
+    death: crate::engine::manager::hp::DeathTransition,
+) {
+    if let Some(change) = managers.fight_task.record_kill(death.target_uid, 1) {
+        push_change(
+            frames,
+            path,
+            crate::engine::runtime::change::BattleChange::FightTask(change),
+        );
+    }
+    push_change(
+        frames,
+        path,
+        crate::engine::runtime::change::BattleChange::Death(death),
+    );
+}
 
 fn drain_queue(
     managers: &mut BattleManagers,
@@ -482,12 +505,58 @@ fn drain_queue_with_deferred(
                     .ok_or(DrainError::MissingActiveSkillContext)?;
                 execution.freeze_rate_amounts(&managers.gauge);
             }
+            RuleOp::ExpandActiveSkillTargets {
+                additional_count,
+                consume,
+            } => {
+                let frame_path = frame_path.ok_or(DrainError::MissingActiveSkillContext)?;
+                let action_path = active_skill_scope_path(&result.frames, &frame_path)
+                    .ok_or(DrainError::MissingActiveSkillContext)?;
+                let expanded = queue
+                    .iter_mut()
+                    .find_map(|queued| {
+                        (matches!(queued.trigger, SkillOpTrigger::Active)
+                            && queued.frame_path.as_ref() == Some(&action_path)
+                            && matches!(queued.op, RuleOp::Skill(_)))
+                        .then_some(queued.skill_execution.as_mut())
+                        .flatten()
+                    })
+                    .ok_or(DrainError::MissingActiveSkillContext)?
+                    .expand_skill_targets(managers, pool, additional_count);
+                if expanded && let Some(consume) = consume {
+                    drain_command(
+                        managers,
+                        base_pool,
+                        pool,
+                        catalog,
+                        determinism,
+                        context,
+                        queue,
+                        &mut result,
+                        state,
+                        &mut bus,
+                        &mut pending_hits,
+                        RuleOp::Command(BattleCommand::Buff(BuffCommand::Consume(consume))),
+                        trigger,
+                        skill_execution,
+                        Some(frame_path),
+                        parent_path,
+                        frame_group,
+                        independent_parent_group,
+                        frame_owner,
+                        subscriber,
+                        caster_frame,
+                    )?;
+                }
+            }
             command @ (RuleOp::Command(_)
             | RuleOp::Publish(_)
             | RuleOp::SkillLifecycle(_)
             | RuleOp::ActionHandSettlement { .. }
             | RuleOp::DeathSettlement(_)
             | RuleOp::BeginSkillAction { .. }
+            | RuleOp::PaySkillAction { .. }
+            | RuleOp::PaidSkillStarted(_)
             | RuleOp::BuffFeatureMarker { .. }
             | RuleOp::EffectMarker { .. }
             | RuleOp::SceneChange { .. }
@@ -643,10 +712,10 @@ fn commit_terminal(
 }
 
 fn invocation_frame_target(
-    target: crate::engine::skill::action::SkillTarget,
+    invocation: &crate::engine::skill::action::SkillInvocation,
     trigger: &SkillOpTrigger,
 ) -> Option<i64> {
-    match target {
+    invocation.frame_target.or_else(|| match invocation.target {
         crate::engine::skill::action::SkillTarget::Explicit(uid) => Some(uid),
         crate::engine::skill::action::SkillTarget::Inherited => match trigger {
             SkillOpTrigger::Event(event) => event.target_uid(),
@@ -654,7 +723,7 @@ fn invocation_frame_target(
         },
         crate::engine::skill::action::SkillTarget::Configured
         | crate::engine::skill::action::SkillTarget::LogicRule(_) => None,
-    }
+    })
 }
 
 fn attach_buff_grant_relation(
@@ -722,6 +791,7 @@ fn output_frame_path(
         OutputOwner::CausingEvent
         | OutputOwner::ActionSkillReaction
         | OutputOwner::NestedLifecycleMechanic
+        | OutputOwner::InitialSovereignBoost
         | OutputOwner::SetupParent
         | OutputOwner::SetupOrFinalSettlementParent => {
             unreachable!("conditional output ownership must be resolved before draining")

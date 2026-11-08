@@ -1,39 +1,29 @@
 use std::{
-    collections::{HashMap, VecDeque},
     env, fs, io,
     path::{Path, PathBuf},
 };
 
 use battle::tooling::{
     damage_tracing_enabled,
-    replay::{ReplayBattle, seed_observed_redeal},
+    replay::{ClothSkillType, ReplayBattle, seed_observed_redeal},
     scan::effect_catalog,
 };
 use battle_preview::{
     array_len_diff_lines, begin_round_inputs, build_metadata_source, canonical_comparison,
-    expand_compressed_fight_steps, first_diff_path, normalize_live_json, opening_determinism,
-    preview_attributes_with_request, preview_output_text, render_json_with_capture_conventions,
-    seed_action_determinism, seed_round_determinism, tower_plan_id_from_request,
-    value_at_diff_path,
+    comparable_json, expand_compressed_fight_steps, first_diff_path, normalize_live_json,
+    opening_determinism, preview_attributes_with_request, preview_output_text,
+    render_json_with_capture_conventions, seed_action_determinism, seed_round_determinism,
+    tower_plan_id_from_request, value_at_diff_path,
 };
 use sonettobuf::{
-    BeginRoundReply, BeginRoundRequest, Fight, FightRound, FightStep, UseClothSkillReply,
+    AutoRoundReply, AutoRoundRequest, BeginRoundReply, BeginRoundRequest, Fight, FightRound,
+    FightStep, UseClothSkillReply, UseClothSkillRequest,
 };
 
 mod capture;
+mod damage_comparison;
 
 use capture::CapturedBattle;
-
-const TRACED_DAMAGE_EFFECT_TYPES: [i32; 8] = [
-    sonettobuf::effect_type_enum::EffectType::Damage as i32,
-    sonettobuf::effect_type_enum::EffectType::Crit as i32,
-    sonettobuf::effect_type_enum::EffectType::Origindamage as i32,
-    sonettobuf::effect_type_enum::EffectType::Origincrit as i32,
-    sonettobuf::effect_type_enum::EffectType::Additionaldamage as i32,
-    sonettobuf::effect_type_enum::EffectType::Additionaldamagecrit as i32,
-    sonettobuf::effect_type_enum::EffectType::Nuodikarandomattack as i32,
-    sonettobuf::effect_type_enum::EffectType::Nuodikateamattack as i32,
-];
 
 fn main() -> anyhow::Result<()> {
     std::thread::Builder::new()
@@ -94,6 +84,16 @@ fn run() -> anyhow::Result<()> {
             replay_rounds(db, &battle, through, resync)
         });
         if let Ok(run) = run.as_ref() {
+            for outcome in &run.auto_outcomes {
+                if let Err(error) = report_auto_input(
+                    &input_root,
+                    &output_root,
+                    &outcome.captured,
+                    &outcome.generated,
+                ) {
+                    println!("{} auto=ERROR {error:#}", outcome.captured.display());
+                }
+            }
             for outcome in &run.cloth_outcomes {
                 if let Err(error) = report_cloth_input(
                     &input_root,
@@ -117,6 +117,84 @@ fn run() -> anyhow::Result<()> {
     }
 
     Ok(())
+}
+
+fn report_auto_input(
+    input_root: &Path,
+    output_root: &Path,
+    input: &Path,
+    generated: &AutoRoundReply,
+) -> anyhow::Result<()> {
+    let original_text = fs::read_to_string(input)?;
+    let original: serde_json::Value = serde_json::from_str(&original_text)?;
+    let generated = serde_json::to_value(generated)?;
+    let output_value = render_json_with_capture_conventions(&generated, &original);
+    let generated_compare = comparable_json(generated);
+    let original_compare = comparable_json(original.clone());
+    let matches = generated_compare == original_compare;
+    if !matches {
+        for path in auto_reply_diff_paths(&generated_compare, &original_compare) {
+            eprintln!("  auto diff: {path}");
+            let array_lines =
+                array_len_diff_lines(&generated_compare, &original_compare, &path, "");
+            if array_lines.is_empty() {
+                eprintln!(
+                    "    generated={} captured={}",
+                    value_at_diff_path(&generated_compare, &path, "")
+                        .map_or_else(|| "-".to_owned(), serde_json::Value::to_string),
+                    value_at_diff_path(&original_compare, &path, "")
+                        .map_or_else(|| "-".to_owned(), serde_json::Value::to_string),
+                );
+            } else {
+                for line in array_lines {
+                    eprintln!("    {line}");
+                }
+            }
+        }
+    }
+    let output = output_path(input_root, output_root, input)?;
+    if let Some(parent) = output.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    fs::write(
+        &output,
+        preview_output_text(&output_value, &original, original_text)?,
+    )?;
+    println!(
+        "{} auto={}",
+        output.display(),
+        if matches { "MATCH" } else { "DIFF" },
+    );
+    Ok(())
+}
+
+fn auto_reply_diff_paths(
+    generated: &serde_json::Value,
+    captured: &serde_json::Value,
+) -> Vec<String> {
+    let (serde_json::Value::Object(generated), serde_json::Value::Object(captured)) =
+        (generated, captured)
+    else {
+        return first_diff_path(generated, captured, "")
+            .into_iter()
+            .collect();
+    };
+    let mut fields = generated.keys().chain(captured.keys()).collect::<Vec<_>>();
+    fields.sort_unstable();
+    fields.dedup();
+    fields
+        .into_iter()
+        .filter_map(|field| {
+            let path = format!("/{field}");
+            match (generated.get(field), captured.get(field)) {
+                (Some(generated), Some(captured)) if generated != captured => {
+                    first_diff_path(generated, captured, &path).or(Some(path))
+                }
+                (None, Some(_)) | (Some(_), None) => Some(path),
+                _ => None,
+            }
+        })
+        .collect()
 }
 
 fn report_cloth_input(
@@ -207,9 +285,7 @@ fn report_input(
     };
     let original_text = fs::read_to_string(input)?;
     let original = captured_original(input)?;
-    if damage_tracing_enabled() {
-        report_damage_comparison(&generated_round, &captured_round(input)?);
-    }
+    damage_comparison::report(&generated_round, &captured_round(input)?);
     let generated = BeginRoundReply {
         round: Some(generated_round),
     };
@@ -311,8 +387,14 @@ struct ClothOutcome {
     generated: UseClothSkillReply,
 }
 
+struct AutoOutcome {
+    captured: PathBuf,
+    generated: AutoRoundReply,
+}
+
 struct ReplayRun {
     outcomes: Vec<RoundOutcome>,
+    auto_outcomes: Vec<AutoOutcome>,
     cloth_outcomes: Vec<ClothOutcome>,
     stopped: Option<String>,
     build: &'static str,
@@ -350,13 +432,15 @@ fn replay_rounds(
         .and_then(tower_plan_id_from_request)
         .map(|plan_id| battle::tooling::system_plan_rule_skills(db, &fight, plan_id))
         .unwrap_or_default();
-    let opening_determinism = opening_determinism(db, &fight, &captured_start_round);
+    let opening_determinism =
+        opening_determinism(db, &fight, &captured_start_round).map_err(anyhow::Error::msg)?;
     let mut runtime = ReplayBattle::new_with_attributes(
         battle::catalog::BattleCatalog::new(db),
         fight,
         ex_attributes,
         sp_attributes,
-    );
+    )
+    .map_err(anyhow::Error::msg)?;
     runtime
         .inherit_absorb_hurt_map_layout(&captured_start_round)
         .map_err(anyhow::Error::msg)?;
@@ -366,10 +450,11 @@ fn replay_rounds(
         .map_err(io::Error::other)?;
     if damage_tracing_enabled() {
         eprintln!("  start-round damage:");
-        report_damage_comparison(&start_round, &captured_start_round);
     }
+    damage_comparison::report(&start_round, &captured_start_round);
     let mut run = ReplayRun {
         outcomes: Vec::new(),
+        auto_outcomes: Vec::new(),
         cloth_outcomes: Vec::new(),
         stopped: None,
         build: build_metadata_source(&battle.metadata)?,
@@ -398,18 +483,26 @@ fn replay_rounds(
 
     for round in battle.rounds.iter().filter(|round| round.index <= through) {
         let index = round.index;
+        replay_auto_inputs(&round.autos, 0, &runtime, &mut run.auto_outcomes)?;
         // Capture problems block this round and every later one, never the earlier results.
         let prepared = (|| -> anyhow::Result<(BeginRoundRequest, FightRound)> {
             let request = begin_round_request(&round.request)?;
             let captured = captured_round(&round.reply)?;
-            validate_captured_round_continuity(&previous_captured_round, &captured)?;
-            replay_cloth_input(
-                &round.cloth,
-                &mut runtime,
-                resync,
-                &mut resynced,
-                &mut run.cloth_outcomes,
+            validate_captured_round_continuity(
+                &previous_captured_round,
+                &captured,
+                captured_extra_round(&round.cloth)?,
             )?;
+            for (index, cloth) in round.cloth.iter().enumerate() {
+                replay_cloth_input(
+                    std::slice::from_ref(cloth),
+                    &mut runtime,
+                    resync,
+                    &mut resynced,
+                    &mut run.cloth_outcomes,
+                )?;
+                replay_auto_inputs(&round.autos, index + 1, &runtime, &mut run.auto_outcomes)?;
+            }
             Ok((request, captured))
         })();
         let (request, captured) = match prepared {
@@ -446,6 +539,40 @@ fn replay_rounds(
     Ok(run)
 }
 
+fn replay_auto_inputs(
+    inputs: &[capture::CapturedAuto],
+    after_cloth: usize,
+    runtime: &ReplayBattle,
+    outcomes: &mut Vec<AutoOutcome>,
+) -> anyhow::Result<()> {
+    for input in inputs
+        .iter()
+        .filter(|input| input.after_cloth == after_cloth)
+    {
+        let request = auto_round_request(&input.request)?;
+        outcomes.push(AutoOutcome {
+            captured: input.reply.clone(),
+            generated: runtime.plan_auto_round(&request),
+        });
+    }
+    Ok(())
+}
+
+fn cloth_request(path: &Path) -> anyhow::Result<UseClothSkillRequest> {
+    let mut request: serde_json::Value = serde_json::from_str(&fs::read_to_string(path)?)?;
+    normalize_live_json(&mut request);
+    Ok(serde_json::from_value(request)?)
+}
+
+fn captured_extra_round(inputs: &[capture::CapturedCloth]) -> anyhow::Result<bool> {
+    for input in inputs {
+        if cloth_request(&input.request)?.r#type == Some(ClothSkillType::ExtraRound as i32) {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
 fn resync_round(
     runtime: &mut ReplayBattle,
     index: i32,
@@ -468,10 +595,7 @@ fn replay_cloth_input(
     outcomes: &mut Vec<ClothOutcome>,
 ) -> anyhow::Result<()> {
     for input in inputs {
-        let mut request: serde_json::Value =
-            serde_json::from_str(&fs::read_to_string(&input.request)?)?;
-        normalize_live_json(&mut request);
-        let request = serde_json::from_value(request)?;
+        let request = cloth_request(&input.request)?;
         let captured = input
             .reply
             .as_deref()
@@ -584,98 +708,13 @@ fn nested_steps(round: &FightRound) -> impl Iterator<Item = &FightStep> {
     })
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-struct DamageIdentity {
-    skill_id: i32,
-    source_uid: i64,
-    target_uid: i64,
-    effect_type: i32,
-    config_effect: i32,
-    buff_act_id: i32,
-}
-
-fn damage_observations(round: &FightRound) -> Vec<(DamageIdentity, (i32, bool))> {
-    nested_steps(round)
-        .flat_map(|step| {
-            step.act_effect.iter().filter_map(move |effect| {
-                let effect_type = effect.effect_type?;
-                TRACED_DAMAGE_EFFECT_TYPES
-                    .contains(&effect_type)
-                    .then_some((
-                        DamageIdentity {
-                            skill_id: step.act_id.unwrap_or_default(),
-                            source_uid: effect
-                                .hurt_info
-                                .as_ref()
-                                .and_then(|info| info.from_uid)
-                                .unwrap_or_else(|| step.from_id.unwrap_or_default()),
-                            target_uid: effect.target_id.unwrap_or_default(),
-                            effect_type,
-                            config_effect: effect.config_effect.unwrap_or_default(),
-                            buff_act_id: effect.buff_act_id.unwrap_or_default(),
-                        },
-                        (
-                            effect.effect_num.unwrap_or_default(),
-                            effect
-                                .hurt_info
-                                .as_ref()
-                                .and_then(|info| info.career_restraint)
-                                .unwrap_or_default(),
-                        ),
-                    ))
-            })
-        })
-        .collect()
-}
-
-fn report_damage_comparison(generated: &FightRound, captured: &FightRound) {
-    for (label, round) in [("generated", generated), ("captured", captured)] {
-        for effect in nested_steps(round)
-            .flat_map(|step| &step.act_effect)
-            .filter(|effect| {
-                effect.effect_type
-                    == Some(sonettobuf::effect_type_enum::EffectType::Twinsupcount as i32)
-            })
-        {
-            eprintln!(
-                "  conduit consumed {label}={} config={}",
-                effect.effect_num.unwrap_or_default(),
-                effect.config_effect.unwrap_or_default()
-            );
-        }
-    }
-    let mut captured = damage_observations(captured).into_iter().fold(
-        HashMap::<DamageIdentity, VecDeque<(i32, bool)>>::new(),
-        |mut amounts, (identity, observation)| {
-            amounts.entry(identity).or_default().push_back(observation);
-            amounts
-        },
-    );
-    for (identity, (generated, generated_restrained)) in damage_observations(generated) {
-        let captured = captured.get_mut(&identity).and_then(VecDeque::pop_front);
-        match captured {
-            Some((captured, captured_restrained)) => {
-                let delta = generated - captured;
-                eprintln!(
-                    "  damage parity identity={identity:?} generated={generated} captured={captured} delta={delta} restrained={generated_restrained}/{captured_restrained} earliest_observable_divergence={}",
-                    if delta == 0 { "none" } else { "final_effect" },
-                );
-            }
-            None => eprintln!(
-                "  damage parity identity={identity:?} generated={generated} captured=missing"
-            ),
-        }
-    }
-    for (identity, amounts) in captured {
-        for (captured, restrained) in amounts {
-            eprintln!(
-                "  damage parity identity={identity:?} generated=missing captured={captured} restrained={restrained}"
-            );
-        }
-    }
-}
-
 fn begin_round_request(path: &Path) -> anyhow::Result<BeginRoundRequest> {
+    let mut value: serde_json::Value = serde_json::from_str(&fs::read_to_string(path)?)?;
+    normalize_live_json(&mut value);
+    Ok(serde_json::from_value(value)?)
+}
+
+fn auto_round_request(path: &Path) -> anyhow::Result<AutoRoundRequest> {
     let mut value: serde_json::Value = serde_json::from_str(&fs::read_to_string(path)?)?;
     normalize_live_json(&mut value);
     Ok(serde_json::from_value(value)?)
@@ -694,10 +733,14 @@ fn captured_round(path: &Path) -> anyhow::Result<FightRound> {
     Ok(serde_json::from_value(round)?)
 }
 
-fn validate_captured_round_continuity(previous: &FightRound, next: &FightRound) -> io::Result<()> {
+fn validate_captured_round_continuity(
+    previous: &FightRound,
+    next: &FightRound,
+    extra_round: bool,
+) -> io::Result<()> {
     match (previous.cur_round, next.cur_round) {
         (Some(previous), Some(next_round))
-            if i64::from(next_round) != i64::from(previous) + 1
+            if i64::from(next_round) != i64::from(previous) + i64::from(!extra_round)
                 && !(next_round == previous && next.is_finish == Some(true)) =>
         {
             Err(io::Error::new(

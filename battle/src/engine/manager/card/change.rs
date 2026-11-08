@@ -2,6 +2,26 @@ use sonettobuf::CardInfo;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum CardChange {
+    SovereignCharged {
+        card: CardInfo,
+        index: usize,
+        team_type: i32,
+    },
+    SovereignUnlocked {
+        card: CardInfo,
+        team_type: i32,
+    },
+    HedoneUnlocked {
+        card: CardInfo,
+        index: usize,
+        team_type: i32,
+    },
+    InsertHand {
+        target_uid: i64,
+        card: CardInfo,
+        index: usize,
+        team_type: i32,
+    },
     DeckCount {
         deck_num: i32,
         team_type: i32,
@@ -16,6 +36,11 @@ pub enum CardChange {
     },
     OwnedAddHand {
         card: CardInfo,
+        team_type: i32,
+    },
+    HedoneAdd {
+        card: CardInfo,
+        index: usize,
         team_type: i32,
     },
     SpCardAdd {

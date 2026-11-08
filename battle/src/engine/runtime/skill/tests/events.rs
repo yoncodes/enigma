@@ -1,6 +1,7 @@
 use super::*;
 
 mod mane;
+mod resource;
 
 fn attack_crit_route_catalog(condition_opcode: i32) -> SkillEffectCatalog {
     let mut slot = SkillEffectSlot::new(
@@ -39,6 +40,7 @@ fn attack_crit_reaction(condition_opcode: i32) -> SkillInvocation {
 fn skill_action_event(extra_skill_kind: i32, crit_count: i32) -> BattleEvent {
     BattleEvent::SkillAction(crate::engine::skill::action::SkillActionEvent {
         source_uid: 10,
+        card_index: 0,
         skill_id: 100,
         target_uid: 10,
         target_uids: vec![10],
@@ -310,7 +312,7 @@ fn hit_context_uses_the_explicit_skill_catalog_rank() {
         target_uid: -1,
         skill_id,
         amount: 1,
-        resolved_damage: 1,
+        resolved_damage: 321,
         shield_absorbed: 0,
         career_restraint: true,
         damage_from: crate::engine::manager::hp::HurtDamageFromType::Skill,
@@ -331,6 +333,7 @@ fn hit_context_uses_the_explicit_skill_catalog_rank() {
         db.skill.get(skill_id).unwrap().skill_rank
     );
     assert_eq!(context.hit_career_restraint, Some(true));
+    assert_eq!(context.hit_resolved_damage, 321);
     assert!(context.active_skill_is_attack);
     assert_eq!(context.active_skill_mode, SkillExecutionMode::Active);
     assert_eq!(context.damage_target_count_kind, 1);
@@ -370,7 +373,7 @@ fn event_trigger_satisfies_only_its_driver_and_keeps_other_conditions() {
         let mut slot = SkillEffectSlot::new(
             ParsedBehavior::from_spec(
                 BehaviorSpec::new(60189, "AddEnergyToCard"),
-                vec![1, delta, 1],
+                vec![1, -1, delta],
                 Vec::new(),
             ),
             TargetRequest::self_only(),
@@ -465,7 +468,7 @@ fn event_conditions_use_the_deterministic_random_stream() {
     let mut slot = SkillEffectSlot::new(
         ParsedBehavior::from_spec(
             BehaviorSpec::new(60189, "AddEnergyToCard"),
-            vec![1, 2, 1],
+            vec![1, -1, 2],
             Vec::new(),
         ),
         TargetRequest::self_only(),
@@ -546,7 +549,7 @@ fn event_subscriber_does_not_publish_a_second_skill_action() {
     let mut slot = SkillEffectSlot::new(
         ParsedBehavior::from_spec(
             BehaviorSpec::new(60189, "AddEnergyToCard"),
-            vec![1, 2, 1],
+            vec![1, -1, 2],
             Vec::new(),
         ),
         TargetRequest::self_only(),
@@ -648,7 +651,7 @@ fn event_context_does_not_override_a_reactive_skills_own_target_rule() {
         slots: vec![SkillEffectSlot::new(
             ParsedBehavior::from_spec(
                 BehaviorSpec::new(60189, "AddEnergyToCard"),
-                vec![1, 2, 1],
+                vec![1, -1, 2],
                 Vec::new(),
             ),
             TargetRequest {

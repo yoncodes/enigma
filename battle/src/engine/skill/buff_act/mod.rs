@@ -44,13 +44,16 @@ pub mod career_ratio_fix;
 pub mod career_restraint;
 pub mod cast_channel;
 pub mod change_remove_buff_use_skill_param;
+pub mod charge_sovereign_card;
 pub mod conduit_select;
+pub mod consume_and_grant;
 pub mod consume_buff_add_buff_continue_channel;
 pub mod contract_cast_channel;
 pub mod control_team_injury_count_round;
 pub mod count_continue_channel;
 pub mod create_additional_damage;
 pub mod create_max_hp_additional_damage_and_remove;
+pub mod create_sovereign_card;
 pub mod crit_rate_alter2;
 pub mod crit_rate_alter_by_other_buff;
 pub mod crystal_add_buff;
@@ -67,17 +70,25 @@ pub mod dot_no_limit;
 pub mod dudu_bone_continue_channel;
 pub mod each_change_attr;
 pub mod each_change_attr_one_way;
+pub mod each_change_attr_one_way_after_add;
 pub mod effect_time;
 pub mod electric_transform;
 pub mod emitter_card_allocate_change;
+pub mod emitter_card_energy_limit;
 pub mod emitter_career;
+pub mod emitter_damage_type;
 pub mod emitter_energy_add_buff;
+pub mod emitter_extra_damage;
 pub mod emitter_num_change;
 pub mod emitter_rend_target;
+pub mod emitter_skill;
 pub mod emitter_tag;
+pub mod eureka_to_inspiration;
 pub mod ex_point_add_by_hit;
 pub mod ex_point_del;
+pub mod ex_point_fix;
 pub mod ex_point_overflow_bank;
+pub mod fantasy;
 pub mod fix_attr_by_sub_buff_layer;
 pub mod fix_attr_by_teammate_injury_count;
 pub mod fix_attr_team_energy;
@@ -85,9 +96,15 @@ pub mod fix_electric_upgrade;
 pub mod fix_temp_attr_by_buff_layer;
 pub mod fixed_hurt;
 pub mod forbid;
+pub mod foundation;
+pub mod foundation_counter;
 pub mod frozen;
+pub mod guard_break_reward;
 pub mod heat_scale_tag;
 pub mod heat_scale_use_skill;
+pub mod hedone_card;
+pub mod hedone_fix_attr;
+pub mod hedone_hurt_counter;
 pub mod hurt_to_progress;
 pub mod injury_bank;
 pub mod life_attack_fix_rate;
@@ -104,11 +121,13 @@ pub mod petrified;
 pub mod raspberry;
 pub mod real_damage_kill;
 pub mod rebound;
+pub mod record_replace_magic_circle;
 pub mod red_or_blue_count;
 pub mod registry;
 pub mod revive;
 pub mod riposte;
 pub mod rouge2_attr_to_role;
+pub mod round_start_ex_point;
 pub mod share_hurt;
 pub mod shell;
 pub mod shield;
@@ -116,9 +135,11 @@ pub mod sleep;
 pub mod special_count_cast_channel;
 pub mod special_count_continue_channel;
 pub mod team_immunity_times;
+pub mod team_per_power_add_buff;
 pub mod team_share_shield;
 pub mod toughness;
 pub mod transfer_energy_buff;
+pub mod unlock_sovereign_card;
 pub mod use_damage_skill_add_to_target;
 pub mod use_skill;
 pub mod use_skill_modifier;
@@ -607,6 +628,34 @@ pub struct BuffActRuleOp {
     pub frame_owner: BuffActFrameOwner,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BuffActRuleError {
+    ChargeSovereignCard(charge_sovereign_card::ChargeError),
+    UnlockSovereignCard(unlock_sovereign_card::UnlockError),
+    CreateSovereignCard(create_sovereign_card::CreateSovereignCardError),
+    HedoneCounter(crate::engine::manager::hedone_counter::HedoneCounterError),
+    HedoneCard(hedone_card::HedoneCardError),
+    RecordReplaceMagicCircle(record_replace_magic_circle::RecordReplaceMagicCircleError),
+}
+
+impl From<record_replace_magic_circle::RecordReplaceMagicCircleError> for BuffActRuleError {
+    fn from(value: record_replace_magic_circle::RecordReplaceMagicCircleError) -> Self {
+        Self::RecordReplaceMagicCircle(value)
+    }
+}
+
+impl From<crate::engine::manager::hedone_counter::HedoneCounterError> for BuffActRuleError {
+    fn from(value: crate::engine::manager::hedone_counter::HedoneCounterError) -> Self {
+        Self::HedoneCounter(value)
+    }
+}
+
+impl From<hedone_card::HedoneCardError> for BuffActRuleError {
+    fn from(value: hedone_card::HedoneCardError) -> Self {
+        Self::HedoneCard(value)
+    }
+}
+
 impl BuffActRuleOp {
     pub fn causing(op: RuleOp) -> Self {
         Self {
@@ -727,7 +776,23 @@ pub fn rule_ops(
     subscriber: &BuffActSubscriber,
     event: Option<&BattleEvent>,
 ) -> Option<Vec<BuffActRuleOp>> {
-    let definition = registry::find(subscriber.key.definition.opcode, &subscriber.act_type)?;
+    try_rule_ops(managers, pool, catalog, determinism, subscriber, event)
+        .ok()
+        .flatten()
+}
+
+pub fn try_rule_ops(
+    managers: &BattleManagers,
+    pool: &crate::engine::skill::target::TargetPool,
+    catalog: &crate::engine::skill::effect::SkillEffectCatalog,
+    determinism: &mut crate::engine::runtime::determinism::RoundDeterminism,
+    subscriber: &BuffActSubscriber,
+    event: Option<&BattleEvent>,
+) -> Result<Option<Vec<BuffActRuleOp>>, BuffActRuleError> {
+    let Some(definition) = registry::find(subscriber.key.definition.opcode, &subscriber.act_type)
+    else {
+        return Ok(None);
+    };
     let mut context = registry::RuntimeContext {
         managers,
         pool,
@@ -737,28 +802,39 @@ pub fn rule_ops(
         event,
     };
     let ops = if let Some(handler) = definition.runtime.handler {
-        let ops = handler(&mut context)?;
+        let Some(ops) = handler(&mut context) else {
+            return Ok(None);
+        };
         scoped_rule_ops(
             definition.runtime.frame_scope,
             definition.runtime.frame_source,
             ops,
         )
     } else if let Some(handler) = definition.runtime.scoped_handler {
+        let Some(ops) = handler(&mut context) else {
+            return Ok(None);
+        };
+        ops
+    } else if let Some(handler) = definition.runtime.fallible_scoped_handler {
         handler(&mut context)?
     } else {
-        let ops = registry::linked_rule_ops(
+        let Some(ops) = registry::linked_rule_ops(
             subscriber.owner_uid,
             subscriber.key.definition.opcode,
             &subscriber.act_type,
             &subscriber.args,
-        )?;
+        ) else {
+            return Ok(None);
+        };
         scoped_rule_ops(
             definition.runtime.frame_scope,
             definition.runtime.frame_source,
             ops,
         )
     };
-    Some(with_runtime_marker(definition, subscriber, event, ops))
+    Ok(Some(with_runtime_marker(
+        definition, subscriber, event, ops,
+    )))
 }
 
 fn with_runtime_marker(

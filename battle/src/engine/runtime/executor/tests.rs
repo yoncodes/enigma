@@ -14,6 +14,8 @@ use crate::engine::{
     skill::rule::{DefinitionKey, RuleDomain},
 };
 
+mod magic_circle_level;
+
 #[test]
 fn crystal_card_does_not_consume_buff_uids() {
     crate::test_support::init_config();

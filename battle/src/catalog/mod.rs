@@ -6,6 +6,7 @@ use crate::engine::skill::rule::{CommandOrigin, RuleDomain};
 const BURN_BUFF_FIGHT_CONST: i32 = 29;
 const CONTRACT_OWNER_BUFF_MAP: i32 = 30;
 const CONTRACT_BOUND_BUFF_MAP: i32 = 31;
+const MECHANIC_TUTORIAL_EPISODE_TYPE: i32 = 37;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct MagicCircleDefinition {
@@ -14,7 +15,15 @@ pub(crate) struct MagicCircleDefinition {
     pub enemy_attributes: Vec<(i32, i32)>,
     pub allied_buffs: Vec<i32>,
     pub enemy_buffs: Vec<i32>,
+    pub linked_buffs: Vec<i32>,
     pub self_skills: Vec<i32>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct MagicCircleLevel {
+    pub definition: FieldDefinition,
+    pub level: i32,
+    pub linked_buffs: Vec<i32>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -191,6 +200,42 @@ impl BattleCatalog {
             .collect()
     }
 
+    pub(crate) fn next_magic_circle_level(self, circle_id: i32) -> Option<MagicCircleLevel> {
+        let current = self.game_data.magic_wqsz.get(circle_id)?;
+        let next = self
+            .game_data
+            .magic_wqsz
+            .iter()
+            .find(|row| row.group == current.group && row.level == current.level + 1)?;
+        let circle = self.magic_circle(next.id)?;
+        Some(MagicCircleLevel {
+            definition: FieldDefinition {
+                field_id: next.id,
+                duration: circle.duration,
+            },
+            level: next.level,
+            linked_buffs: circle.linked_buffs,
+        })
+    }
+
+    pub(crate) fn return_magic_circle_level(self, circle_id: i32) -> Option<MagicCircleLevel> {
+        let current = self.game_data.magic_wqsz.get(circle_id)?;
+        let returned = self
+            .game_data
+            .magic_wqsz
+            .iter()
+            .find(|row| row.group == current.group && row.level == current.return_level)?;
+        let circle = self.magic_circle(returned.id)?;
+        Some(MagicCircleLevel {
+            definition: FieldDefinition {
+                field_id: returned.id,
+                duration: circle.duration,
+            },
+            level: returned.level,
+            linked_buffs: circle.linked_buffs,
+        })
+    }
+
     pub(crate) fn buff_has_effect_count(self, buff_id: i32) -> bool {
         self.game_data
             .skill_buff
@@ -257,18 +302,6 @@ impl BattleCatalog {
             .into_iter()
             .flat_map(|buff| buff.features.split('|'))
             .collect()
-    }
-
-    pub(crate) fn buff_has_master_halo(self, buff_id: i32) -> bool {
-        self.buff_feature_rows(buff_id).into_iter().any(|feature| {
-            matches!(
-                feature
-                    .split('#')
-                    .next()
-                    .and_then(|value| value.parse().ok()),
-                Some(771 | 772 | 822)
-            )
-        })
     }
 
     pub(crate) fn buff_pool(self, buff_id: i32) -> Option<Vec<i32>> {
@@ -428,6 +461,11 @@ impl BattleCatalog {
             .unwrap_or_default()
     }
 
+    pub(crate) fn skill_moxie_exempt(self, skill_id: i32) -> bool {
+        self.skill_effect(skill_id)
+            .is_some_and(|effect| effect.need_ex_point == 1)
+    }
+
     pub(crate) fn skill_is_big(self, skill_id: i32) -> bool {
         self.skill_effect(skill_id)
             .is_some_and(|effect| effect.is_big_skill != 0)
@@ -437,6 +475,11 @@ impl BattleCatalog {
         self.skill_effect(skill_id)
             .map(|effect| effect.effect_tag)
             .unwrap_or_default()
+    }
+
+    pub(crate) fn skill_target_type(self, skill_id: i32) -> Option<i32> {
+        self.game_data
+            .skill_target_type(&self.skill_effect(skill_id)?.logic_target)
     }
 
     pub(crate) fn skill_extra_kind(self, skill_id: i32) -> i32 {
@@ -495,6 +538,7 @@ impl BattleCatalog {
         Some(ClothPower::configured(
             cloth.max_power,
             cloth.r#use,
+            cloth.use_device_card,
             cloth.r#move,
             cloth.compose,
             &cloth.recover,
@@ -619,6 +663,13 @@ impl BattleCatalog {
 
     pub(crate) fn teaching_cards(self, episode_id: i32) -> Option<ConfiguredTeachingCards> {
         configured_teaching_cards(self.game_data, episode_id)
+    }
+
+    pub(crate) fn is_mechanic_tutorial(self, episode_id: i32) -> bool {
+        self.game_data
+            .episode
+            .get(episode_id)
+            .is_some_and(|episode| episode.r#type == MECHANIC_TUTORIAL_EPISODE_TYPE)
     }
 
     pub(crate) fn device_card_weights(
@@ -748,7 +799,10 @@ impl BattleCatalog {
             .get(battle_id)?
             .win_condition
             .split('#');
-        if parts.next().and_then(|value| value.parse::<i32>().ok()) != Some(3) {
+        if !matches!(
+            parts.next().and_then(|value| value.parse::<i32>().ok()),
+            Some(3 | 9)
+        ) {
             return None;
         }
         parts.next().and_then(|value| value.parse::<i32>().ok())
@@ -1051,14 +1105,56 @@ fn magic_circle_definition(
     circle_id: i32,
 ) -> Option<MagicCircleDefinition> {
     let row = game_data.magic_circle.get(circle_id)?;
+    let (complex_skill, linked_buffs) = parse_magic_circle_complex_effect(&row.complex_effect)
+        .unwrap_or_else(|reason| {
+            panic!(
+                "invalid magic circle {circle_id} complexEffect {:?}: {reason}",
+                row.complex_effect
+            )
+        });
     Some(MagicCircleDefinition {
         duration: row.round,
         allied_attributes: parse_attribute_pairs(&row.self_attrs),
         enemy_attributes: parse_attribute_pairs(&row.enemy_attrs),
         allied_buffs: parse_positive_ids(&row.self_buff),
         enemy_buffs: parse_positive_ids(&row.enemy_buff),
-        self_skills: parse_positive_ids(&row.self_skills),
+        linked_buffs,
+        self_skills: parse_positive_ids(&row.self_skills)
+            .into_iter()
+            .chain(complex_skill)
+            .collect(),
     })
+}
+
+fn parse_magic_circle_complex_effect(raw: &str) -> Result<(Option<i32>, Vec<i32>), &'static str> {
+    if raw.is_empty() {
+        return Ok((None, Vec::new()));
+    }
+    let (kind, payload) = raw.split_once(':').ok_or("missing kind separator")?;
+    if kind != "1" {
+        return Err("unsupported kind");
+    }
+    let mut fields = payload.split(',');
+    if fields.next() != Some("null") {
+        return Err("invalid marker");
+    }
+    let skill = fields
+        .next()
+        .and_then(|value| value.parse::<i32>().ok())
+        .filter(|id| *id > 0)
+        .ok_or("invalid skill")?;
+    let buffs = fields
+        .next()
+        .ok_or("missing buffs")?
+        .split('#')
+        .map(|value| value.parse::<i32>().ok().filter(|id| *id > 0))
+        .collect::<Option<Vec<_>>>()
+        .filter(|buffs| !buffs.is_empty())
+        .ok_or("invalid buffs")?;
+    if fields.next().is_some() {
+        return Err("unexpected field");
+    }
+    Ok((Some(skill), buffs))
 }
 
 fn parse_attribute_pairs(raw: &str) -> Vec<(i32, i32)> {
@@ -1194,6 +1290,12 @@ pub(crate) fn configured_teaching_cards(
     game_data: &config::GameDB,
     episode_id: i32,
 ) -> Option<ConfiguredTeachingCards> {
+    if let Some(row) = common::tutorial_card(episode_id) {
+        return Some(ConfiguredTeachingCards {
+            opening_cards: row.opening_cards.clone(),
+            refill_cards: row.refill_cards.clone(),
+        });
+    }
     let row = game_data.teaching_card.get(episode_id)?;
     Some(ConfiguredTeachingCards {
         opening_cards: row.opening_cards.clone(),

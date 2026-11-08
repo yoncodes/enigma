@@ -17,12 +17,20 @@ pub enum HeroGroupSnapshotType {
     FiveHero = 16,
     TowerComposeNormal = 17,
     TowerComposeBoss = 18,
-    Abyss = 19,
+    AbyssPreset = 19,
+    Rouge2 = 20,
+    AtomicDungeon = 21,
+    BossRushActMode = 22,
+    Abyss = 23,
 }
 
 impl HeroGroupSnapshotType {
-    pub const ALL_DESCENDING: [Self; 17] = [
+    pub const ALL_DESCENDING: [Self; 21] = [
         Self::Abyss,
+        Self::BossRushActMode,
+        Self::AtomicDungeon,
+        Self::Rouge2,
+        Self::AbyssPreset,
         Self::TowerComposeBoss,
         Self::TowerComposeNormal,
         Self::FiveHero,

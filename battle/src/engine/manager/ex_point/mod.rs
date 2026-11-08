@@ -111,6 +111,8 @@ pub struct ExPointState {
     pub kind: i32,
     pub recent_decrement: i32,
     pub gains_card_play: bool,
+    pub gains_card_move: bool,
+    pub gains_card_composition: bool,
 }
 
 impl Default for ExPointState {
@@ -121,6 +123,8 @@ impl Default for ExPointState {
             kind: ExPointKind::Common.as_wire(),
             recent_decrement: 0,
             gains_card_play: true,
+            gains_card_move: true,
+            gains_card_composition: true,
         }
     }
 }
@@ -165,11 +169,37 @@ pub struct ExPointApplyResult {
     pub config_effect: i32,
 }
 
+impl ExPointApplyResult {
+    fn event(self, origin: CommandOrigin) -> ExPointChangeEvent {
+        ExPointChangeEvent {
+            origin,
+            source_uid: self.source_uid,
+            target_uid: self.target_uid,
+            kind: self.kind,
+            before: self.before,
+            requested_delta: self.requested_delta,
+            applied_delta: self.applied_delta,
+            after: self.after,
+            overflow: self.overflow,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ExPointChange {
     pub origin: CommandOrigin,
     pub source_uid: i64,
     pub target_uid: i64,
+    pub delta: i32,
+    pub config_effect: i32,
+    pub effect_type: i32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LowestExPointChange {
+    pub origin: CommandOrigin,
+    pub source_uid: i64,
+    pub candidates: Vec<(i64, i32)>,
     pub delta: i32,
     pub config_effect: i32,
     pub effect_type: i32,
@@ -181,6 +211,17 @@ pub struct ExPointSet {
     pub source_uid: i64,
     pub target_uid: i64,
     pub value: i32,
+    pub config_effect: i32,
+    pub effect_type: i32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ExPointTransfer {
+    pub origin: CommandOrigin,
+    pub source_uid: i64,
+    pub from_uid: i64,
+    pub to_uid: i64,
+    pub amount: i32,
     pub config_effect: i32,
     pub effect_type: i32,
 }
@@ -260,6 +301,7 @@ pub enum ExPointCommand {
     Reduce(ExPointChange),
     Spend(ExPointChange),
     Set(ExPointSet),
+    Transfer(ExPointTransfer),
     ChangeMax(ExPointMaxChange),
     ConfigureSynchronization(ExPointConfigureSynchronization),
     RestartSynchronization(ExPointRestartSynchronization),
@@ -282,6 +324,11 @@ pub enum ExPointChanges {
     Resisted {
         target_uid: i64,
         resistance_id: i32,
+    },
+    Transfer {
+        origin: CommandOrigin,
+        loss: ExPointApplyResult,
+        gain: ExPointApplyResult,
     },
     SynchronizationConfigured {
         origin: CommandOrigin,
@@ -319,23 +366,26 @@ impl ExPointChanges {
     pub fn events(self) -> Vec<BattleEvent> {
         match self {
             Self::Value { origin, change } => {
-                let event = ExPointChangeEvent {
-                    origin,
-                    source_uid: change.source_uid,
-                    target_uid: change.target_uid,
-                    kind: change.kind,
-                    before: change.before,
-                    requested_delta: change.requested_delta,
-                    applied_delta: change.applied_delta,
-                    after: change.after,
-                    overflow: change.overflow,
-                };
+                let event = change.event(origin);
                 let mut events = Vec::with_capacity(2);
                 if change.applied_delta != 0 {
                     events.push(BattleEvent::ExPointChanged(event));
                 }
                 if change.overflow > 0 {
                     events.push(BattleEvent::ExPointOverflow(event));
+                }
+                events
+            }
+            Self::Transfer { origin, loss, gain } => {
+                let mut events = Vec::with_capacity(4);
+                for change in [loss, gain] {
+                    let event = change.event(origin);
+                    if change.applied_delta != 0 {
+                        events.push(BattleEvent::ExPointChanged(event));
+                    }
+                    if change.overflow > 0 {
+                        events.push(BattleEvent::ExPointOverflow(event));
+                    }
                 }
                 events
             }
@@ -520,6 +570,75 @@ impl ExPointManager {
                 },
             });
         }
+        if let ExPointCommand::Transfer(transfer) = command {
+            if transfer.source_uid == 0
+                || transfer.from_uid == 0
+                || transfer.to_uid == 0
+                || transfer.from_uid == transfer.to_uid
+                || transfer.amount <= 0
+            {
+                return Err(ExPointCommandError::InvalidCommand);
+            }
+            for uid in [transfer.from_uid, transfer.to_uid] {
+                if !self.states.contains_key(&uid) {
+                    return Err(ExPointCommandError::MissingTarget(uid));
+                }
+            }
+            let before = self.states[&transfer.from_uid];
+            let loss = if reduction_allowed {
+                self.apply(
+                    transfer.source_uid,
+                    transfer.from_uid,
+                    -transfer.amount,
+                    transfer.config_effect,
+                    transfer.effect_type,
+                )
+            } else {
+                ExPointApplyResult {
+                    source_uid: transfer.source_uid,
+                    target_uid: transfer.from_uid,
+                    kind: ExPointKind::from_wire(before.kind),
+                    before: before.current,
+                    requested_delta: -transfer.amount,
+                    applied_delta: 0,
+                    after: before.current,
+                    overflow: 0,
+                    cap: Self::cap_for_state(before),
+                    effect_type: transfer.effect_type,
+                    config_effect: transfer.config_effect,
+                }
+            };
+            let removed = -loss.applied_delta;
+            let before = self.states[&transfer.to_uid];
+            let gain = if gain_allowed && removed > 0 {
+                self.apply(
+                    transfer.source_uid,
+                    transfer.to_uid,
+                    removed,
+                    transfer.config_effect,
+                    transfer.effect_type,
+                )
+            } else {
+                ExPointApplyResult {
+                    source_uid: transfer.source_uid,
+                    target_uid: transfer.to_uid,
+                    kind: ExPointKind::from_wire(before.kind),
+                    before: before.current,
+                    requested_delta: removed,
+                    applied_delta: 0,
+                    after: before.current,
+                    overflow: 0,
+                    cap: Self::cap_for_state(before),
+                    effect_type: transfer.effect_type,
+                    config_effect: transfer.config_effect,
+                }
+            };
+            return Ok(ExPointChanges::Transfer {
+                origin: transfer.origin,
+                loss,
+                gain,
+            });
+        }
         let (origin, source_uid, target_uid, value, config_effect, effect_type, set, spend) =
             match command {
                 ExPointCommand::Change(value) => (
@@ -562,6 +681,7 @@ impl ExPointManager {
                     true,
                     false,
                 ),
+                ExPointCommand::Transfer(_) => unreachable!(),
                 ExPointCommand::ChangeMax(_) => unreachable!(),
                 ExPointCommand::ConfigureSynchronization(_) => unreachable!(),
                 ExPointCommand::RestartSynchronization(_) => unreachable!(),
@@ -688,6 +808,10 @@ impl ExPointManager {
         let kind = ExPointKind::from_wire(entity.ex_point_type.unwrap_or_default());
         let gains_card_play =
             kind == ExPointKind::Common && base_max.unwrap_or_else(|| kind.default_max()) > 0;
+        let gains_card_move =
+            kind == ExPointKind::Common && base_max.unwrap_or_else(|| kind.default_max()) > 0;
+        let gains_card_composition =
+            kind == ExPointKind::Common && base_max.unwrap_or_else(|| kind.default_max()) > 0;
         let base_max = base_max
             .filter(|max| *max > 0)
             .unwrap_or_else(|| kind.default_max());
@@ -699,6 +823,8 @@ impl ExPointManager {
                 kind: kind.as_wire(),
                 recent_decrement: 0,
                 gains_card_play,
+                gains_card_move,
+                gains_card_composition,
             }),
         );
     }
@@ -738,13 +864,19 @@ impl ExPointManager {
     pub fn gains_composition_ex_point(&self, uid: i64) -> bool {
         self.states
             .get(&uid)
-            .is_some_and(|state| state.gains_card_play)
+            .is_some_and(|state| state.gains_card_composition)
     }
 
     pub fn gains_card_play_ex_point(&self, uid: i64) -> bool {
         self.states
             .get(&uid)
             .is_some_and(|state| state.gains_card_play)
+    }
+
+    pub fn gains_card_move_ex_point(&self, uid: i64) -> bool {
+        self.states
+            .get(&uid)
+            .is_some_and(|state| state.gains_card_move)
     }
 
     pub fn synchronization_definition(&self, uid: i64) -> Option<SynchronizationDefinition> {

@@ -1,10 +1,11 @@
 use super::attacker::{Attacker, BattleRoster};
 use crate::engine::fight::{defender::Defender, versions};
 use anyhow::Result;
-use sonettobuf::{Fight, FightGroup, FightTaskBox, fight::FightActType};
+use sonettobuf::{Fight, FightGroup, fight::FightActType};
 
 pub struct BuiltFight {
     pub fight: Fight,
+    pub player_level: i32,
     pub ex_attributes: Vec<(i64, sonettobuf::HeroExAttribute)>,
     pub sp_attributes: Vec<(i64, sonettobuf::HeroSpAttribute)>,
     pub(crate) battle_rule_skills: Vec<crate::engine::fight::rules::OwnedBattleSkill>,
@@ -47,6 +48,7 @@ pub fn build_fight(
     )?;
 
     Ok(BuiltFight {
+        player_level: roster.player_level,
         fight: Fight {
             attacker: Some(attacker.team),
             defender: Some(defender.team),
@@ -62,7 +64,9 @@ pub fn build_fight(
             last_change_hero_uid: Some(0),
             progress: Some(0),
             progress_max: Some(0),
-            fight_task_box: Some(FightTaskBox { tasks: vec![] }),
+            fight_task_box: Some(crate::engine::manager::fight_task::configured_box(
+                catalog, episode_id,
+            )?),
             ..Default::default()
         },
         ex_attributes: attacker.ex_attributes,

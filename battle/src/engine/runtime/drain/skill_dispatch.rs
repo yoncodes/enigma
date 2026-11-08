@@ -21,9 +21,11 @@ pub(super) fn drain_skill(
     subscriber: Option<SubscriberContext>,
     caster_frame: Option<FrameOwner>,
 ) -> Result<(), DrainError> {
+    let active_cast = matches!(trigger, SkillOpTrigger::Active)
+        || matches!(&frame_owner, Some(FrameOwner::BuffAct { .. }));
     // After terminal commitment, skip active skills that have not
     // started a frame. Existing-frame continuations may finish settling.
-    if matches!(trigger, SkillOpTrigger::Active)
+    if active_cast
         && frame_path.is_none()
         && managers.terminal_outcome().is_some()
         && !invocation.mode.finishes_selected_conduit_phase()
@@ -31,9 +33,9 @@ pub(super) fn drain_skill(
         cancel_invocation_progress(managers, state, None, &invocation);
         return Ok(());
     }
-    let attack_has_no_target = matches!(trigger, SkillOpTrigger::Active)
+    let attack_has_no_target = active_cast
         && attack_has_no_target(&invocation, catalog, pool, managers, determinism, context);
-    if matches!(trigger, SkillOpTrigger::Active)
+    if active_cast
         && base_pool.team_type(invocation.plan.source_uid).is_some()
         && ((frame_path.is_none()
             && base_pool.entity(invocation.plan.source_uid).is_some()
@@ -88,7 +90,7 @@ pub(super) fn drain_skill(
             source_uid: invocation.plan.source_uid,
             skill_id: invocation.plan.skill_id,
             card_index: invocation.card_index,
-            target_uid: invocation_frame_target(invocation.target, &trigger),
+            target_uid: invocation_frame_target(&invocation, &trigger),
         }),
         &trigger,
     );
@@ -143,11 +145,7 @@ pub(super) fn drain_skill(
                 result,
                 state,
             )?;
-            push_change(
-                &mut result.frames,
-                &frame_path,
-                crate::engine::runtime::change::BattleChange::Death(death),
-            );
+            push_death(&mut result.frames, &frame_path, managers, death);
             defeated_owner_card_cleanups.push(death);
         }
     }
@@ -189,17 +187,19 @@ pub(super) fn drain_skill(
         &mut execution,
         &trigger,
     )?;
-    let configured_target_replaces_selection = matches!(trigger, SkillOpTrigger::Active)
+    let configured_target_replaces_selection = invocation.frame_target.is_none()
+        && matches!(trigger, SkillOpTrigger::Active)
         && execution.configured_target_replaces(
             invocation.target,
             invocation.plan.source_uid,
             pool,
         );
-    let preserves_selected_frame_target = execution.preserves_selected_frame_target(
-        invocation.target,
-        invocation.plan.source_uid,
-        pool,
-    );
+    let preserves_selected_frame_target = invocation.frame_target.is_some()
+        || execution.preserves_selected_frame_target(
+            invocation.target,
+            invocation.plan.source_uid,
+            pool,
+        );
     for &(slot_index, condition_key) in &emission.fired_rules {
         managers.mark_rule_fired(
             invocation.plan.source_uid,

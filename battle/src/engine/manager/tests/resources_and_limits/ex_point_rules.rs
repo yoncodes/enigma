@@ -321,6 +321,109 @@ fn moxie_reduction_immunity_blocks_reduction_but_allows_spending() {
 }
 
 #[test]
+fn moxie_transfer_respects_reduction_immunity() {
+    crate::test_support::init_config();
+    let entity = |uid, ex_point| FightEntityInfo {
+        uid: Some(uid),
+        ex_point: Some(ex_point),
+        current_hp: Some(100),
+        attr: Some(HeroAttribute {
+            hp: Some(100),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![entity(10, 0)],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![entity(-1, 2)],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let mut managers = BattleManagers::seeded(&fight);
+    let immunity_uid = managers
+        .execute_buff(BuffCommand::Grant(BuffGrant {
+            origin: CommandOrigin {
+                domain: RuleDomain::BuffAct,
+                key: DefinitionKey::new(509, "ImmunityExpointChange"),
+            },
+            source_uid: -1,
+            target_uid: -1,
+            buff_id: 5081,
+            amount: None,
+            occurrences: 1,
+            child_uid_reservations: 0,
+        }))
+        .unwrap()
+        .change
+        .added
+        .unwrap()
+        .buff
+        .uid
+        .unwrap();
+
+    let transfer = ExPointCommand::Transfer(ExPointTransfer {
+        origin: CommandOrigin {
+            domain: RuleDomain::Behavior,
+            key: DefinitionKey::new(30011, "AbsorbExPoint"),
+        },
+        source_uid: 10,
+        from_uid: -1,
+        to_uid: 10,
+        amount: 1,
+        config_effect: 30011,
+        effect_type: 0,
+    });
+    let changes = managers.execute_ex_point(transfer).unwrap();
+
+    assert!(matches!(
+        changes,
+        ExPointChanges::Transfer { loss, gain, .. }
+            if loss.applied_delta == 0 && gain.applied_delta == 0
+    ));
+    assert_eq!(managers.ex_point.get(-1), 2);
+    assert_eq!(managers.ex_point.get(10), 0);
+
+    managers
+        .execute_buff(BuffCommand::Remove(BuffRemove {
+            origin: CommandOrigin {
+                domain: RuleDomain::BuffAct,
+                key: DefinitionKey::new(509, "ImmunityExpointChange"),
+            },
+            target_uid: -1,
+            selector: BuffRemoveSelector::Uid(immunity_uid),
+        }))
+        .unwrap();
+    let changes = managers.execute_ex_point(transfer).unwrap();
+    assert!(matches!(
+        changes,
+        ExPointChanges::Transfer { loss, gain, .. }
+            if loss.applied_delta == -1 && gain.applied_delta == 1
+    ));
+    assert_eq!(managers.ex_point.get(-1), 1);
+    assert_eq!(managers.ex_point.get(10), 1);
+
+    managers.ex_point.add(10, 10, 4, 0);
+    let capped = managers.execute_ex_point(transfer).unwrap();
+    assert!(matches!(
+        capped,
+        ExPointChanges::Transfer { loss, gain, .. }
+            if loss.applied_delta == -1 && gain.applied_delta == 0 && gain.overflow == 1
+    ));
+    assert!(matches!(
+        capped.events().as_slice(),
+        [
+            crate::engine::event::payload::BattleEvent::ExPointChanged(loss),
+            crate::engine::event::payload::BattleEvent::ExPointOverflow(gain),
+        ] if loss.target_uid == -1 && gain.target_uid == 10 && gain.overflow == 1
+    ));
+}
+
+#[test]
 fn moxie_reduction_immunity_precedes_resistance() {
     crate::test_support::init_config();
     let fight = Fight {

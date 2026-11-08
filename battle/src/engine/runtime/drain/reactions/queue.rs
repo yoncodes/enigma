@@ -3,6 +3,7 @@ use super::*;
 #[allow(clippy::too_many_arguments)]
 pub(in crate::engine::runtime::drain) fn queued_reactions(
     pool: &TargetPool,
+    catalog: &SkillEffectCatalog,
     dispatched: dispatcher::DispatchBatch,
     event: &BattleEvent,
     parent_path: Option<&[usize]>,
@@ -16,6 +17,7 @@ pub(in crate::engine::runtime::drain) fn queued_reactions(
     for pass in dispatched.into_passes() {
         reactions.extend(queued_reaction_pass(
             pool,
+            catalog,
             pass,
             event,
             parent_path,
@@ -32,6 +34,7 @@ pub(in crate::engine::runtime::drain) fn queued_reactions(
 #[allow(clippy::too_many_arguments)]
 fn queued_reaction_pass(
     pool: &TargetPool,
+    catalog: &SkillEffectCatalog,
     dispatched: dispatcher::DispatchBatch,
     event: &BattleEvent,
     parent_path: Option<&[usize]>,
@@ -93,7 +96,18 @@ fn queued_reaction_pass(
                 invocation.reaction_batch_id = Some(*batch_id);
                 invocation.reaction_action_path = action_path.clone();
             }
-            let frame_scope = definition.reaction_frame_scope;
+            let frame_scope = subscriber
+                .slot_index
+                .and_then(|slot_index| {
+                    catalog
+                        .get(subscriber.skill_id)
+                        .and_then(|effect| effect.slots.get(slot_index))
+                })
+                .and_then(|slot| {
+                    crate::engine::skill::behavior::registry::find(&slot.behavior)
+                        .and_then(|behavior| behavior.reaction_frame_scope)
+                })
+                .unwrap_or(definition.reaction_frame_scope);
             let frame_source_uid = match definition.reaction_frame_source {
                 crate::engine::skill::condition::registry::ReactionFrameSource::Subscriber => {
                     subscriber.owner_uid
@@ -186,7 +200,7 @@ fn queued_reaction_pass(
         })
         .collect::<Result<Vec<_>, DrainError>>()?;
     for (subscriber, ops) in dispatched.buff_acts {
-        let ops = ops.ok_or(DrainError::MissingBuffActOp(
+        let ops = ops?.ok_or(DrainError::MissingBuffActOp(
             subscriber.key.definition.opcode,
         ))?;
         let key = required_buff_act_definition(

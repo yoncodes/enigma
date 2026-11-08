@@ -6,8 +6,8 @@ use crate::{
 use config::configs;
 use prost::Message;
 use sonettobuf::{
-    Act229ResetStageRequest, CmdId, GetAct229InfoRequest, StartAct229BattleReply,
-    StartAct229BattleRequest,
+    Act229ModifySkillRequest, Act229ModifyStageSubIdRequest, Act229ResetStageRequest, CmdId,
+    GetAct229InfoRequest, StartAct229BattleReply, StartAct229BattleRequest,
 };
 
 pub async fn on_get_act229_info(
@@ -122,5 +122,40 @@ pub async fn on_reset_act229_stage(
         .await?;
 
     ctx.send_reply(CmdId::Act229ResetStageCmd, reply, 0, req.up_tag)
+        .await
+}
+
+pub async fn on_modify_act229_skill(
+    ctx: &mut ConnectionContext,
+    req: ClientPacket,
+) -> Result<(), AppError> {
+    let msg = Act229ModifySkillRequest::decode(&req.data[..])?;
+    let activity_id = msg.activity_id.ok_or(AppError::InvalidRequest)?;
+    let stage_id = msg.stage_id.ok_or(AppError::InvalidRequest)?;
+    let db = ctx.state.db;
+    let reply = ctx
+        .player()?
+        .activity
+        .modify_act229_skill(db, activity_id, stage_id, msg.skill_ids)
+        .await?;
+
+    ctx.send_reply(CmdId::Act229ModifySkillCmd, reply, 0, req.up_tag)
+        .await
+}
+
+pub async fn on_modify_act229_stage_sub_id(
+    ctx: &mut ConnectionContext,
+    req: ClientPacket,
+) -> Result<(), AppError> {
+    let msg = Act229ModifyStageSubIdRequest::decode(&req.data[..])?;
+    let activity_id = msg.activity_id.ok_or(AppError::InvalidRequest)?;
+    let db = ctx.state.db;
+    let reply = ctx
+        .player()?
+        .activity
+        .modify_act229_stage_sub_ids(db, activity_id, msg.stage_sub_ids)
+        .await?;
+
+    ctx.send_reply(CmdId::Act229ModifyStageSubIdCmd, reply, 0, req.up_tag)
         .await
 }

@@ -9,6 +9,8 @@ pub struct BpDes {
     pub bp_id: i32,
     pub des: String,
     pub icon: String,
+    #[serde(rename = "iconDesc")]
+    pub icon_desc: String,
     #[serde(rename = "iconType")]
     pub icon_type: i32,
     pub id: i32,

@@ -15,15 +15,23 @@ pub mod electric;
 pub mod fake_hp;
 pub mod fight_progress;
 pub mod focus_all_entity_buff;
+pub mod foundation_counter;
 pub mod gauge;
 pub mod general;
+pub mod heal_or_buff;
+pub mod hedone;
+pub mod hedone_card;
+pub mod hedone_device_power;
 pub mod injury_bank;
 pub mod kill;
 pub mod magic_circle;
 pub mod monster_change;
 pub mod nuo_di_ka;
+pub mod periodic;
 pub mod poison;
+pub mod power_queue_rank;
 pub mod precast;
+pub mod prepare_skill;
 pub mod rate;
 pub mod registry;
 pub mod resource;
@@ -31,7 +39,10 @@ pub mod scene;
 pub mod shell;
 pub mod shield;
 pub mod skill_modifier;
+pub mod sovereign_boost;
+pub mod sovereign_enhancement;
 pub mod special_count;
+pub mod strengthen;
 pub mod summon;
 pub mod synchronization;
 pub mod toughness;
@@ -94,6 +105,7 @@ pub fn is_slot_supported(slot: &SkillEffectSlot) -> bool {
         return false;
     };
     is_supported(&slot.behavior)
+        && (definition.supports_slot)(slot)
         && definition.required_event.is_none_or(|required| {
             slot.compiled_subscriptions()
                 .is_ok_and(|subscriptions| subscriptions.iter().any(|key| key.event == required))
@@ -160,8 +172,8 @@ mod op_tests {
             ),
             Some(ops) if matches!(ops.as_slice(), [RuleOp::Command(BattleCommand::Card(
                 CardCommand::ChangeBasicEnergy(CardEnergyChange {
-                    delta: -1,
-                    count: 3,
+                    delta: 3,
+                    count: 1,
                     ..
                 })
             ))])

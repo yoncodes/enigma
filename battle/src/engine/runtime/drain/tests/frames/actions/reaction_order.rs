@@ -97,6 +97,7 @@ fn queued_reactions_preserve_dispatch_pass_order() {
     let started = BattleEvent::SkillEffectStarted(
         crate::engine::skill::action::SkillActionEvent {
             source_uid: 10,
+            card_index: 0,
             skill_id: 31050151,
             target_uid: -1,
             target_uids: vec![-1],
@@ -126,6 +127,7 @@ fn queued_reactions_preserve_dispatch_pass_order() {
     );
     let queued = queued_reactions(
         &TargetPool::default(),
+        &SkillEffectCatalog::default(),
         dispatcher::DispatchBatch {
             skills: vec![reaction(
                 -1,

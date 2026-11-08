@@ -108,7 +108,7 @@ pub async fn start_session(
         .last_login_timestamp
         .unwrap_or_default();
     let today = ServerTime::server_day(now);
-    let (is_new_day, _, reset_task_ids) =
+    let (is_new_day, is_new_week, reset_task_ids) =
         reconcile_periodic_resets_for_player(conn.player_mut()?, db, now).await?;
     let is_new_month = conn.player()?.state.is_new_month(now);
     if is_new_day {
@@ -138,6 +138,10 @@ pub async fn start_session(
     }
 
     let updated_tasks = conn.player_mut()?.tasks.sync_login(db, is_new_day).await?;
+    conn.player_mut()?
+        .activity
+        .sync_act186_login(db, is_new_day, is_new_week, now)
+        .await?;
     logic::turnback::TurnbackManager::new(session.user_id)
         .sync_state(db, conn.state.tables)
         .await?;

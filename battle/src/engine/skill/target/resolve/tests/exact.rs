@@ -152,7 +152,7 @@ fn ally_single_target_opcodes_keep_their_exact_selection_rules() {
     );
     assert_eq!(
         resolve_code(109, 10, &pool, &mut RoundDeterminism::default()),
-        vec![11]
+        vec![10]
     );
 }
 
@@ -197,11 +197,15 @@ fn resolves_lowest_highest_and_position_targets() {
 
 #[test]
 fn highest_ex_point_uses_current_main_ally_moxie() {
+    let mut device = entity_stats(13, 3, 100, 100, 65);
+    device.ex_point_type =
+        Some(crate::engine::manager::ex_point::ExPointKind::DevicePower.as_wire());
     let fight = Fight {
         attacker: Some(FightTeam {
             entitys: vec![
                 entity_stats(10, 1, 100, 100, 0),
                 entity_stats(11, 2, 100, 100, 0),
+                device,
             ],
             sub_entitys: vec![entity_stats(12, -1, 100, 100, 10)],
             ..Default::default()
@@ -371,6 +375,10 @@ fn resolves_runtime_secondary_and_deterministic_random_targets() {
     );
     assert_eq!(
         resolve_code_with_context(216, 10, &pool, &mut determinism, context),
+        vec![-10, -12]
+    );
+    assert_eq!(
+        resolve_code_with_context(252, 10, &pool, &mut determinism, context),
         vec![-10, -12]
     );
     assert_eq!(

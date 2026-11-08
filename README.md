@@ -1,6 +1,6 @@
 # Enigma
 
-### Current supported version: **3.8.0 Steam & Global client.**
+### Current supported version: **3.9.0 Steam & Global client.**
 
 [![Build and Release](https://github.com/yoncodes/enigma/actions/workflows/rust.yml/badge.svg)](https://github.com/yoncodes/enigma/actions/workflows/rust.yml)
 
@@ -24,11 +24,13 @@ The project is still under active development. Added support for certain game me
 
 2. Extract the archives into the same folder.
 
-3. Download [sonetto-data](https://gitlab.com/yoncodes/sonetto-data) then move excel2json to the same folder of gameserver.
+3. Download [sonetto-data](https://gitlab.com/yoncodes/sonetto-data). Copy its `excel2json` folder into `data` beside `gameserver`:
 
 ```text
 data/excel2json
 ```
+
+Use a matching data snapshot that includes the exported `explore_map.json` table.
 
 4. Download [sonetto-patch](https://github.com/yoncodes/sonetto-patch), then place `launcher.exe` and `sonetto.dll` in the game folder.
 
@@ -54,7 +56,7 @@ muipserver
 
 4. git clone https://gitlab.com/yoncodes/sonetto-data.git
 
-5. copy sonetto-data/excel2json to data/excel2json
+5. Copy `sonetto-data/excel2json` to `data/excel2json`, including the exported `explore_map.json` table.
 
 6. cargo build --release -p gameserver -p sdkserver -p muipserver
 

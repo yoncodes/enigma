@@ -5,6 +5,24 @@ use crate::engine::{
 };
 
 #[test]
+fn hit_trace_preserves_integer_precision_in_json() {
+    let mut result = calculate_with_trace(DamageFormulaInput::genesis(1_000, 1_000, 1_000));
+    result.skill_rate.numerator = i128::MAX;
+    let json = serde_json::to_string(&trace::HitTrace {
+        skill_id: 1,
+        source_uid: 10,
+        target_uid: -1,
+        fight_version: 7,
+        formula: DamageFormula::StandardSkill,
+        trace: &result,
+    })
+    .unwrap();
+    assert!(json.contains(&format!("\"numerator\":{}", i128::MAX)));
+    assert!(json.contains("\"defense\":{\"Skipped\":{\"input\":1000}}"));
+    assert!(json.contains("\"amount\":1000"));
+}
+
+#[test]
 fn settlement_calculates_once_and_emits_one_hp_command() {
     let formula = DamageFormulaInput {
         kind: DamageKind::Reality,

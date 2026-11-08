@@ -83,7 +83,7 @@ fn emit_ops(
         target_buffs: &context.managers.buff,
         hp: &context.managers.hp,
         fields: Some((&context.managers.field, context.managers.catalog())),
-        emitter: None,
+        emitter: Some(&context.managers.emitter),
         team_inspiration: 0,
     };
     let random_targets = (0..points)
@@ -305,6 +305,7 @@ fn emit_ops(
         context.source_uid,
         context.source_uid,
         context.managers,
+        &context.modifiers.attack_attributes,
     );
     if heal > 0 {
         ops.push(RuleOp::Command(BattleCommand::Hp(HpCommand::Heal(

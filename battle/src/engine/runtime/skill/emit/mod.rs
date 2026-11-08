@@ -86,6 +86,7 @@ fn action_event(
 ) -> SkillActionEvent {
     SkillActionEvent {
         source_uid: invocation.plan.source_uid,
+        card_index: invocation.card_index,
         skill_id: invocation.plan.skill_id,
         target_uid: execution
             .primary_target_uid
@@ -109,7 +110,7 @@ fn action_event(
         kill_count: execution.context.action_kill_count,
         crit_count: execution.context.action_crit_count,
         guard_break_count: execution.context.action_guard_break_count,
-        additional_moxie: invocation.additional_moxie,
+        additional_moxie: execution.context.additional_moxie,
         extra_skill_kind: execution.context.extra_skill_kind,
         mode: invocation.mode,
         teammate_injury_count: execution.injured_allies.len() as i32,
@@ -121,6 +122,8 @@ fn action_event(
 }
 
 mod dispatch;
+mod payment;
+mod trace;
 
 #[cfg(test)]
 pub(super) use dispatch::action_mode;

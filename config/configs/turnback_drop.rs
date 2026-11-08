@@ -14,6 +14,8 @@ pub struct TurnbackDrop {
     pub name: String,
     #[serde(rename = "picPath")]
     pub pic_path: String,
+    #[serde(rename = "showTxt")]
+    pub show_txt: String,
     #[serde(rename = "type")]
     pub r#type: i32,
 }

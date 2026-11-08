@@ -1,6 +1,55 @@
 use super::*;
 
 #[test]
+fn active_extra_action_kind_keeps_its_exact_after_hit_route() {
+    assert_eq!(
+        parse(626210, "ActionSkillExtraType", &["1".into()]),
+        Some(ParsedConditionKind::ExtraAction {
+            mode: super::super::super::extra::ExtraActionConditionMode::ActiveAction,
+            kinds: vec![1],
+        })
+    );
+    assert_eq!(
+        parse(626210, "ActionSkillExtraType", &["1,2,3".into()]),
+        Some(ParsedConditionKind::ExtraAction {
+            mode: super::super::super::extra::ExtraActionConditionMode::ActiveAction,
+            kinds: vec![1, 2, 3],
+        })
+    );
+    assert_eq!(
+        find_key(626210, "ActionSkillExtraType").map(|definition| definition.role),
+        Some(ConditionRole::Trigger {
+            event: EventKind::SkillAction,
+            phase: Some(SkillPhase::AfterHit),
+        })
+    );
+    for invalid in [
+        vec![],
+        vec!["0".into()],
+        vec!["2".into()],
+        vec!["4".into()],
+        vec!["1,2".into()],
+        vec!["1,1".into()],
+        vec!["1,,2".into()],
+        vec!["1,x".into()],
+        vec!["1".into(), "2".into()],
+    ] {
+        assert_eq!(parse(626210, "ActionSkillExtraType", &invalid), None);
+    }
+}
+
+#[test]
+fn exact_life_less_uses_the_default_hp_lost_reaction_lane() {
+    let definition = find_key(1, "LifeLess").unwrap();
+
+    assert_eq!(definition.dependencies, &[EventKind::HpLost]);
+    assert_eq!(
+        definition.reaction_timing.resolve(Default::default()),
+        ReactionTiming::Immediate
+    );
+}
+
+#[test]
 fn shared_damage_reacts_once_per_event_batch() {
     assert_eq!(
         find_key(695213, "ShareDamage").map(|definition| definition.reaction_multiplicity),
@@ -433,6 +482,10 @@ fn before_ap_resolution_keeps_its_exact_event_and_queue_preparation_roles() {
         parse(1061, "None", &[]),
         Some(ParsedConditionKind::None(NoneMode::ActionQueueCommitted))
     );
+    assert_eq!(
+        find_key(1061, "None").map(|definition| definition.reaction_frame_scope),
+        Some(ReactionFrameScope::Independent)
+    );
 }
 
 #[test]
@@ -542,12 +595,48 @@ fn round_start_field_presence_keeps_its_exact_key_and_route() {
 }
 
 #[test]
-fn static_team_battle_tag_threshold_runs_at_battle_start() {
+fn post_ultimate_field_absence_uses_the_immediate_skill_action_route() {
+    let definition = find_key(544203, "NotInMagicCircleId").unwrap();
+
+    assert_eq!(
+        parse(544203, "NotInMagicCircleId", &["42001".into()]),
+        Some(ParsedConditionKind::NotInMagicCircleId(vec![42001]))
+    );
+    assert_eq!(
+        definition.role,
+        ConditionRole::Trigger {
+            event: EventKind::SkillAction,
+            phase: Some(SkillPhase::Immediate),
+        }
+    );
+    assert!(find_key(544203, "InMagicCircleId").is_none());
+}
+
+#[test]
+fn field_presence_modifier_keeps_its_exact_immediate_route() {
+    let definition = find_key(542903, "InMagicCircleId").unwrap();
+
+    assert_eq!(
+        parse(542903, "InMagicCircleId", &["40002".into()]),
+        Some(ParsedConditionKind::InMagicCircleId(vec![40002]))
+    );
+    assert_eq!(
+        definition.role,
+        ConditionRole::Trigger {
+            event: EventKind::SkillAction,
+            phase: Some(SkillPhase::Immediate),
+        }
+    );
+    assert!(find_key(542903, "NotInMagicCircleId").is_none());
+}
+
+#[test]
+fn static_team_battle_tag_threshold_runs_on_enter_fight() {
     for opcode in [762005, 762021] {
         assert_eq!(
             find_key(opcode, "BattleTagNum").map(|definition| definition.role),
             Some(ConditionRole::Setup {
-                stage: SetupStage::BattleStart,
+                stage: SetupStage::EnterFight,
                 priority: 0,
             })
         );
@@ -723,6 +812,25 @@ fn round_end_buff_type_threshold_keeps_its_exact_route() {
 }
 
 #[test]
+fn round_end_indicator_threshold_keeps_its_exact_route() {
+    assert_eq!(
+        parse(98306, "IndicatorNum", &["3713".into(), "15".into()]),
+        Some(ParsedConditionKind::IndicatorAtLeast {
+            indicator_id: 3713,
+            threshold: 15,
+        })
+    );
+    assert_eq!(
+        find_key(98306, "IndicatorNum").map(|definition| definition.role),
+        Some(ConditionRole::Trigger {
+            event: EventKind::RoundEnd,
+            phase: None,
+        })
+    );
+    assert!(find_key(98306, "Other").is_none());
+}
+
+#[test]
 fn dream_visit_threshold_runs_during_entity_settlement() {
     let definition = find_key(51303, "HasTypeIdBuffMoreThan").unwrap();
 
@@ -760,6 +868,7 @@ fn immediate_buff_type_threshold_observes_add_and_update() {
 fn buff_presence_action_opcodes_keep_their_exact_phases() {
     for (opcode, type_name, phase) in [
         (19203, "HasBuffId", SkillPhase::Immediate),
+        (19901, "HasBuffId", SkillPhase::Immediate),
         (19208, "HasBuffId", SkillPhase::AfterDamage),
         (57208, "NoBuffId", SkillPhase::AfterDamage),
     ] {
@@ -790,6 +899,14 @@ fn post_hit_buff_presence_conditions_are_filters_with_event_dependencies() {
 }
 
 #[test]
+fn per_ex_point_reads_the_action_start_resource() {
+    assert_eq!(
+        find_key(58201, "PerExPoint").unwrap().read_timing,
+        ConditionReadTiming::ActionStart
+    );
+}
+
+#[test]
 fn genesis_critical_branch_uses_exact_static_buff_predicates() {
     for (opcode, type_name) in [(192081, "HasBuffId"), (572081, "NoBuffId")] {
         let definition = find_key(opcode, type_name).unwrap();
@@ -809,6 +926,13 @@ fn lethal_injury_skill_rate_gate_has_its_own_immediate_route() {
             event: EventKind::SkillAction,
             phase: Some(SkillPhase::Immediate),
         }
+    );
+    assert_eq!(definition.read_timing, ConditionReadTiming::ActionStart);
+    assert_eq!(
+        find_key(51203, "HasTypeIdBuffMoreThan")
+            .unwrap()
+            .read_timing,
+        ConditionReadTiming::Current
     );
     assert!(find_key(51201, "HasBuffId").is_none());
 }
@@ -863,7 +987,7 @@ fn maximum_buff_layer_gate_is_an_exact_inline_predicate() {
 fn own_ultimate_use_fires_before_the_ultimate_damages() {
     assert_eq!(
         parse(25201, "UseExSkill", &[]),
-        Some(ParsedConditionKind::UseExSkill)
+        Some(ParsedConditionKind::UseExSkill { slot: 0 })
     );
     assert_eq!(
         find_key(25201, "UseExSkill").map(|definition| definition.role),
@@ -872,6 +996,31 @@ fn own_ultimate_use_fires_before_the_ultimate_damages() {
             phase: Some(SkillPhase::Immediate),
         })
     );
+}
+
+#[test]
+fn paper_heron_ultimate_slot_uses_the_existing_immediate_route() {
+    assert_eq!(
+        parse(25203, "UseExSkill", &[]),
+        Some(ParsedConditionKind::UseExSkill { slot: 0 })
+    );
+    assert_eq!(
+        parse(25203, "UseExSkill", &["3".into()]),
+        Some(ParsedConditionKind::UseExSkill { slot: 3 })
+    );
+    assert_eq!(
+        parse(25203, "UseExSkill", &["2".into()]),
+        Some(ParsedConditionKind::UseExSkill { slot: 2 })
+    );
+    assert!(parse(25203, "UseExSkill", &["3".into(), "4".into()]).is_none());
+    assert_eq!(
+        find_key(25203, "UseExSkill").map(|definition| definition.role),
+        Some(ConditionRole::Trigger {
+            event: EventKind::SkillAction,
+            phase: Some(SkillPhase::Immediate),
+        })
+    );
+    assert!(parse(25201, "UseExSkill", &["3".into()]).is_none());
 }
 
 #[test]
@@ -943,6 +1092,42 @@ fn unregistered_family_parsers_do_not_bypass_exact_lookup() {
         Some(ParsedConditionKind::RoundInterval {
             start_round: 1,
             period: 0,
+        })
+    );
+}
+#[test]
+fn emitter_skill_condition_keeps_its_filtered_action_trigger() {
+    assert_eq!(
+        parse(903, "None", &[]),
+        Some(ParsedConditionKind::None(NoneMode::EmitterSkillAction))
+    );
+    let definition = find_key(903, "None").unwrap();
+    assert_eq!(
+        definition.role,
+        ConditionRole::Trigger {
+            event: EventKind::SkillAction,
+            phase: Some(SkillPhase::Immediate),
+        }
+    );
+}
+
+#[test]
+fn teammate_count_keeps_its_after_hit_route() {
+    for count in 0..=3 {
+        assert!(matches!(
+            parse(73210, "TeammateAliveNum", &[count.to_string()]),
+            Some(ParsedConditionKind::EntityCount {
+                scope: super::super::super::parse::EntityCountScope::AliveOtherTeammates,
+                compare: ConditionCompare::Equal,
+                count: parsed,
+            }) if parsed == count
+        ));
+    }
+    assert_eq!(
+        find_key(73210, "TeammateAliveNum").map(|definition| definition.role),
+        Some(ConditionRole::Trigger {
+            event: EventKind::SkillAction,
+            phase: Some(SkillPhase::AfterHit),
         })
     );
 }

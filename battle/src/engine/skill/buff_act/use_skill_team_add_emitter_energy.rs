@@ -10,6 +10,7 @@ use crate::engine::{
     },
     mechanic::impromptu,
     skill::{
+        action::SkillExecutionMode,
         effect::SkillEffectCatalog,
         rule::output::{BattleCommand, RuleOp},
         subscriber::BuffActSubscriber,
@@ -30,6 +31,7 @@ pub fn rule_ops(
     }
     let Some((power_id, inspiration)) = spec(
         feature,
+        action.mode,
         catalog.is_attack(action.skill_id),
         managers.catalog().skill_rank(action.skill_id),
     ) else {
@@ -74,14 +76,20 @@ pub fn rule_ops(
     Some(ops)
 }
 
-fn spec(feature: &BuffActSubscriber, is_attack: bool, rank: i32) -> Option<(i32, i32)> {
+fn spec(
+    feature: &BuffActSubscriber,
+    mode: SkillExecutionMode,
+    is_attack: bool,
+    rank: i32,
+) -> Option<(i32, i32)> {
     let [power_id, inspiration, ranks @ ..] = feature.args.as_slice() else {
         return None;
     };
     (super::subscriber_is_kind(
         feature,
         super::registry::BuffActKind::UseSkillTeamAddEmitterEnergy,
-    ) && is_attack
+    ) && mode == SkillExecutionMode::Active
+        && is_attack
         && (ranks.is_empty() || ranks.contains(&rank))
         && *power_id > 0
         && *inspiration > 0)
@@ -89,32 +97,5 @@ fn spec(feature: &BuffActSubscriber, is_attack: bool, rank: i32) -> Option<(i32,
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::engine::event::{kind::EventKind, subscription::SubscriptionKey};
-
-    #[test]
-    fn only_attack_incantations_of_configured_ranks_trigger() {
-        let feature = BuffActSubscriber {
-            owner_uid: 1,
-            source_uid: 1,
-            buff_uid: 1,
-            buff_id: 2240008,
-            team_type: 1,
-            owner_alive: true,
-            amount: 1,
-            key: SubscriptionKey::new(
-                EventKind::SkillCast,
-                crate::engine::skill::rule::DefinitionKey::new(881, "UseSkillTeamAddEmitterEnergy"),
-            ),
-            act_type: "UseSkillTeamAddEmitterEnergy".to_owned(),
-            effect_time: 2101,
-            effect_condition: 0,
-            args: vec![1, 2, 1, 2],
-            raw: "881#1#2#1,2".to_owned(),
-        };
-        assert_eq!(spec(&feature, true, 1), Some((1, 2)));
-        assert_eq!(spec(&feature, false, 1), None);
-        assert_eq!(spec(&feature, true, 3), None);
-    }
-}
+#[path = "use_skill_team_add_emitter_energy/tests.rs"]
+mod tests;

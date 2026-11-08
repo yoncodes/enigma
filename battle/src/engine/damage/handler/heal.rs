@@ -22,6 +22,7 @@ pub(super) fn attribute_amount(
     source_uid: i64,
     target_uid: i64,
     managers: &BattleManagers,
+    attack_attributes: &[(AttrId, i32)],
     behavior: &ParsedBehavior,
 ) -> Option<i32> {
     let [mode, attr_id, rate] = behavior.args.as_slice() else {
@@ -34,6 +35,7 @@ pub(super) fn attribute_amount(
         source_uid,
         target_uid,
         managers,
+        attack_attributes,
     ))
 }
 
@@ -41,6 +43,7 @@ pub(super) fn two_attribute_amount(
     source_uid: i64,
     target_uid: i64,
     managers: &BattleManagers,
+    attack_attributes: &[(AttrId, i32)],
     behavior: &ParsedBehavior,
 ) -> Option<i32> {
     let [_, _, missing_rate, _, _, source_hp_rate] = behavior.args.as_slice() else {
@@ -49,7 +52,13 @@ pub(super) fn two_attribute_amount(
     let target = managers.hp.get(target_uid);
     let base = scale_permille((target.max - target.current).max(0), *missing_rate)
         .saturating_add(scale_permille(managers.hp.max(source_uid), *source_hp_rate));
-    Some(modified(base, source_uid, target_uid, managers))
+    Some(modified(
+        base,
+        source_uid,
+        target_uid,
+        managers,
+        attack_attributes,
+    ))
 }
 
 pub(crate) fn modified(
@@ -57,11 +66,19 @@ pub(crate) fn modified(
     source_uid: i64,
     target_uid: i64,
     managers: &BattleManagers,
+    attack_attributes: &[(AttrId, i32)],
 ) -> i32 {
     if base <= 0 {
         return 0;
     }
     let (healing_done, healing_taken) = modifier_rates(source_uid, target_uid, managers);
+    let healing_done = healing_done.saturating_add(
+        attack_attributes
+            .iter()
+            .filter(|(attr, _)| *attr == AttrId::HealingDone)
+            .map(|(_, delta)| *delta)
+            .sum::<i32>(),
+    );
     scale_permille(scale_permille(base, healing_done), healing_taken).max(1)
 }
 
@@ -77,7 +94,7 @@ pub(crate) fn modified_fraction(
         return 0;
     }
     let base = (base_numerator / base_denominator).clamp(1, i128::from(i32::MAX)) as i32;
-    final_multiplier.apply(modified(base, source_uid, target_uid, managers))
+    final_multiplier.apply(modified(base, source_uid, target_uid, managers, &[]))
 }
 
 fn modifier_rates(source_uid: i64, target_uid: i64, managers: &BattleManagers) -> (i32, i32) {
@@ -142,6 +159,7 @@ pub(super) fn amount(
     target_uid: i64,
     pool: &TargetPool,
     managers: &BattleManagers,
+    attack_attributes: &[(AttrId, i32)],
     is_crit: bool,
     behavior: &ParsedBehavior,
 ) -> Option<i32> {
@@ -153,7 +171,7 @@ pub(super) fn amount(
         if is_full_restore(behavior) {
             base
         } else {
-            modified(base, source_uid, target_uid, managers)
+            modified(base, source_uid, target_uid, managers, attack_attributes)
         }
     } else {
         behavior.args.first().copied()?

@@ -8,7 +8,7 @@ fn direct_use_skill_publishes_an_action_but_no_act_does_not() {
     let mut modifiers = crate::engine::skill::action::SkillModifiers::default();
     let mut target = crate::engine::skill::target::TargetContext::default();
     let mut emit = |behavior: &ParsedBehavior| {
-        Handler::emit_ops(
+        crate::engine::skill::behavior::rule_ops(
             BehaviorOpContext {
                 source_uid: 10,
                 source_team: 1,
@@ -29,6 +29,11 @@ fn direct_use_skill_publishes_an_action_but_no_act_does_not() {
 
     let direct = emit(&ParsedBehavior::new(50008, "DirectUseSkill", vec![20]));
     let no_act = emit(&ParsedBehavior::new(50012, "DirectUseSkillNoAct", vec![20]));
+    let no_act2 = emit(&ParsedBehavior::new(
+        50038,
+        "DirectUseSkillNoAct2",
+        vec![22],
+    ));
     let card = emit(&ParsedBehavior::new(
         50039,
         "DirectUseSkillCard",
@@ -40,12 +45,24 @@ fn direct_use_skill_publishes_an_action_but_no_act_does_not() {
         [RuleOp::Skill(invocation)]
             if invocation.mode
                 == crate::engine::skill::action::SkillExecutionMode::Active
+                && invocation.start
+                    == crate::engine::skill::action::SkillStart::AfterCurrentAction
     ));
     assert!(matches!(
         no_act.as_slice(),
         [RuleOp::Skill(invocation)]
             if invocation.mode
                 == crate::engine::skill::action::SkillExecutionMode::Nested
+    ));
+    assert!(matches!(
+        no_act2.as_slice(),
+        [RuleOp::Skill(invocation)]
+            if invocation.plan.skill_id == 22
+                && invocation.plan.source_uid == 10
+                && invocation.target
+                    == crate::engine::skill::action::SkillTarget::Explicit(-1)
+                && invocation.mode
+                    == crate::engine::skill::action::SkillExecutionMode::Nested
     ));
     assert!(matches!(
         card.as_slice(),
@@ -55,6 +72,57 @@ fn direct_use_skill_publishes_an_action_but_no_act_does_not() {
                     == crate::engine::skill::action::SkillTarget::Configured
                 && invocation.mode
                     == crate::engine::skill::action::SkillExecutionMode::Active
+    ));
+}
+
+#[test]
+fn direct_use_skill_not_extra_keeps_the_nested_cast_out_of_extra_reactions() {
+    let behavior = ParsedBehavior::new(60223, "DirectUseSkillNotExtra", vec![31473162]);
+    assert!(crate::engine::skill::behavior::is_supported(&behavior));
+    let definition = crate::engine::skill::behavior::registry::find(&behavior).unwrap();
+    assert!(definition.destination);
+    assert_eq!(definition.output_owner, OutputOwner::Parent);
+    assert!(!crate::engine::skill::behavior::is_supported(
+        &ParsedBehavior::new(60223, "DirectUseSkillNotExtra", vec![31473162, 0])
+    ));
+    assert!(!crate::engine::skill::behavior::is_supported(
+        &ParsedBehavior::new(60223, "DirectUseSkillNotExtra", vec![31473162, 1])
+    ));
+    let managers = crate::engine::manager::BattleManagers::default();
+    let pool = TargetPool::default();
+    let mut determinism = RoundDeterminism::default();
+    let mut modifiers = crate::engine::skill::action::SkillModifiers::default();
+    let mut target = crate::engine::skill::target::TargetContext::default();
+
+    let ops = Handler::emit_ops(
+        BehaviorOpContext {
+            source_uid: 10,
+            source_team: 1,
+            target_uid: -5,
+            active_skill_id: 31473161,
+            transfer_count: 1,
+            event: None,
+            managers: &managers,
+            pool: &pool,
+            determinism: &mut determinism,
+            modifiers: &mut modifiers,
+            target: &mut target,
+        },
+        &behavior,
+    )
+    .unwrap();
+
+    assert!(matches!(
+        ops.as_slice(),
+        [RuleOp::Skill(invocation)]
+            if invocation.plan.source_uid == 10
+                && invocation.plan.skill_id == 31473162
+                && invocation.target
+                    == crate::engine::skill::action::SkillTarget::Explicit(-5)
+                && invocation.frame_target == Some(-5)
+                && invocation.mode
+                    == crate::engine::skill::action::SkillExecutionMode::Direct
+                && invocation.target_observed_extra_action == Some(false)
     ));
 }
 
@@ -278,7 +346,7 @@ fn direct_use_skill_no_act_accepts_only_observed_arities() {
 }
 
 #[test]
-fn consume_power_skill_repeats_cost_and_extra_action_for_each_affordable_cast() {
+fn consume_power_skill_repeats_cost_and_extra_action_for_each_affordable_use() {
     let fight = Fight {
         attacker: Some(FightTeam {
             entitys: vec![FightEntityInfo {
@@ -300,7 +368,7 @@ fn consume_power_skill_repeats_cost_and_extra_action_for_each_affordable_cast() 
     let mut determinism = RoundDeterminism::default();
     let mut modifiers = crate::engine::skill::action::SkillModifiers::default();
     let mut target = crate::engine::skill::target::TargetContext::default();
-    let behavior = ParsedBehavior::new(60188, "ConsumePowerUseSkill", vec![2, 31170145]);
+    let behavior = ParsedBehavior::new(60188, "ConsumePowerUseSkill", vec![2, 31170121]);
 
     let ops = Handler::emit_ops(
         BehaviorOpContext {
@@ -332,10 +400,10 @@ fn consume_power_skill_repeats_cost_and_extra_action_for_each_affordable_cast() 
             ))),
             RuleOp::Skill(second),
         ] if [first, second].into_iter().all(|invocation|
-            invocation.plan.skill_id == 31170145
+            invocation.plan.skill_id == 31170121
             && invocation.extra_skill_kind == Some(ExtraSkillKind::ExtraAction)
             && invocation.mode
-                == crate::engine::skill::action::SkillExecutionMode::Active
+                == crate::engine::skill::action::SkillExecutionMode::NestedExtra
         )
     ));
 }
@@ -641,6 +709,8 @@ fn direct_use_skill_two_preserves_the_configured_reinforced_subtype() {
     let mut target = crate::engine::skill::target::TargetContext::default();
     let behavior = ParsedBehavior::new(60053, "DirectUseSkill2", vec![30860143, 0, 0, 5]);
 
+    assert!(supports_direct_use_skill_two(&behavior));
+
     let ops = Handler::emit_ops(
         BehaviorOpContext {
             source_uid: 10,
@@ -667,4 +737,13 @@ fn direct_use_skill_two_preserves_the_configured_reinforced_subtype() {
                     == crate::engine::skill::action::SkillTarget::Explicit(-1)
                 && invocation.extra_skill_kind == Some(ExtraSkillKind::Reinforced)
     ));
+}
+
+#[test]
+fn direct_use_skill_two_rejects_unproven_modes() {
+    assert!(!supports_direct_use_skill_two(&ParsedBehavior::new(
+        60053,
+        "DirectUseSkill2",
+        vec![102011481, 0, 1, 5],
+    )));
 }

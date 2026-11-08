@@ -46,6 +46,30 @@ fn configured_seed_marks_entity_battle_rule_passives() {
 }
 
 #[test]
+fn replacement_roster_inherits_entity_battle_rule_passives() {
+    let fight = Fight {
+        battle_id: Some(40_106),
+        defender: Some(FightTeam::default()),
+        ..Default::default()
+    };
+    let mut manager = EntityManager::configured(catalog(), &fight);
+    let entity = FightEntityInfo {
+        uid: Some(-4),
+        team_type: Some(2),
+        passive_skill: vec![201_004],
+        ..Default::default()
+    };
+
+    manager.replace_team_roster(catalog(), 2, &[entity], &[]);
+
+    assert_eq!(manager.passive_skills(-4), Some(&[70_053, 201_004][..]));
+    assert_eq!(
+        manager.passive_source(-4, 70_053),
+        PassiveSourceKind::BattleRule
+    );
+}
+
+#[test]
 fn configured_ultimate_kind_applies_only_to_the_current_ultimate() {
     let fight = Fight {
         attacker: Some(FightTeam {

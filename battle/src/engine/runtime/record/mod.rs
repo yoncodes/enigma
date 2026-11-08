@@ -52,6 +52,7 @@ pub enum FrameOwner {
     },
     SetupMechanic,
     LifecycleMechanic,
+    InitialSovereignBoost,
     BuffDuration {
         owner_uid: i64,
         buff_uid: i64,
@@ -66,12 +67,16 @@ pub enum FrameOwner {
         target_uid: i64,
     },
     RoundPhase(RoundPhase),
+    SynchronizationCardState {
+        source_uid: i64,
+    },
     Command,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RoundPhase {
     ActionPhaseStart { team: i32 },
+    ActionPhaseEnd { team: i32 },
     CardRefill,
     RoundStartEvent,
     RoundStartSettlement,

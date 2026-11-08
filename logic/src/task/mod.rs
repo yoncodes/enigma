@@ -74,6 +74,13 @@ impl TaskManager {
                 .sync_room_tasks(db, config::configs::get())
                 .await?;
         }
+        if db_type_ids.is_empty() || db_type_ids.contains(&task_db::TaskType::NecrologistStory.id())
+        {
+            task_db::reconcile_necrologist_story_tasks(db, self.player_id).await?;
+        }
+        if db_type_ids.is_empty() || db_type_ids.contains(&task_db::TaskType::WeekWalk.id()) {
+            task_db::sync_weekwalk_tasks(db, self.player_id).await?;
+        }
         let tasks = task_db::list_by_types(db, self.player_id, db_type_ids.clone()).await?;
         self.cache_tasks(&tasks);
         let activity = task_db::list_activity(db, self.player_id, db_type_ids)
@@ -99,9 +106,15 @@ impl TaskManager {
                 .sync_room_tasks(db, config::configs::get())
                 .await?;
         }
-        let task = task_db::get_by_id(db, self.player_id, task_id)
+        let mut task = task_db::get_by_id(db, self.player_id, task_id)
             .await?
             .ok_or(AppError::InvalidRequest)?;
+        if task.type_id == task_db::TaskType::Turnback.id() {
+            crate::turnback::validate_task_claims(db, self.player_id, &[task_id]).await?;
+            task = task_db::get_by_id(db, self.player_id, task_id)
+                .await?
+                .ok_or(AppError::InvalidRequest)?;
+        }
         let mut tx = db.begin().await?;
         let task = task_db::finish_task_in_transaction(&mut tx, &task)
             .await?
@@ -146,6 +159,9 @@ impl TaskManager {
                 .sync_room_tasks(db, config::configs::get())
                 .await?;
         }
+        if type_id == task_db::TaskType::Turnback.id() {
+            crate::turnback::validate_task_claims(db, self.player_id, &task_ids).await?;
+        }
         let claimable = task_db::claimable_tasks(
             db,
             self.player_id,
@@ -155,6 +171,13 @@ impl TaskManager {
             task_ids.clone(),
         )
         .await?;
+        if type_id == task_db::TaskType::Turnback.id() && task_ids.is_empty() {
+            let ids = claimable
+                .iter()
+                .map(|task| task.task_id)
+                .collect::<Vec<_>>();
+            crate::turnback::validate_task_claims(db, self.player_id, &ids).await?;
+        }
         let mut tx = db.begin().await?;
         let tasks = task_db::finish_tasks_in_transaction(&mut tx, &claimable)
             .await?
@@ -259,11 +282,13 @@ impl TaskManager {
         task_id: Option<i32>,
     ) -> Result<(FinishReadTaskReply, Option<Task>), AppError> {
         let task_id = task_id.ok_or(AppError::InvalidRequest)?;
-        if task_db::get_by_id(db, self.player_id, task_id)
-            .await?
-            .is_some_and(|task| task.type_id == task_db::TaskType::ActBp.id())
-        {
-            return Err(AppError::InvalidRequest);
+        if let Some(task) = task_db::get_by_id(db, self.player_id, task_id).await? {
+            if task.type_id == task_db::TaskType::ActBp.id() {
+                return Err(AppError::InvalidRequest);
+            }
+            if task.type_id == task_db::TaskType::Turnback.id() {
+                crate::turnback::validate_task_claims(db, self.player_id, &[task_id]).await?;
+            }
         }
         let task = task_db::read_task(db, self.player_id, task_id).await?;
         if let Some(task) = &task {

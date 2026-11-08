@@ -2,6 +2,139 @@ use super::*;
 use sonettobuf::{Act128GetTotalRewardsReply, Act128GetTotalRewardsRequest};
 
 #[tokio::test]
+async fn act186_bulk_claim_routes_rewards_likes_then_reply() {
+    let data_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .join("data/excel2json");
+    let _ = config::init(data_dir.to_str().unwrap());
+    let row = configs::get()
+        .actvity186_task
+        .iter()
+        .find(|row| {
+            row.is_online != 0 && row.listener_type == "EpisodeFinish" && row.bonus.contains("26#")
+        })
+        .unwrap();
+    let mut reward = row.bonus.split('|').map(|part| {
+        let mut fields = part.split('#').map(|field| field.parse::<i32>().unwrap());
+        (
+            fields.next().unwrap(),
+            fields.next().unwrap(),
+            fields.next().unwrap(),
+        )
+    });
+    let (currency_type, currency_id, currency_amount) =
+        reward.find(|(kind, _, _)| *kind == 2).unwrap();
+    let (_, like_type, like_amount) = reward.find(|(kind, _, _)| *kind == 26).unwrap();
+
+    let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+    database::run_migrations(&pool).await.unwrap();
+    let player_id = 542;
+    sqlx::query(
+        "INSERT INTO users (id, username, created_at, updated_at)
+         VALUES (?, 'act186-route', 0, 0)",
+    )
+    .bind(player_id)
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let state = Box::leak(Box::new(AppState::new(pool, configs::get())));
+    let (outbound, mut packets) = mpsc::channel(16);
+    let mut ctx = ConnectionContext::new(outbound, state);
+    ctx.player = Some(Player::new(player_id, PlayerState::new(player_id, 0)));
+    database::db::game::activity_state::set(
+        ctx.state.db,
+        player_id,
+        row.activity_id,
+        database::db::game::activity_state::ActivityStateSet {
+            kind: database::db::game::activity_state::ActivityStateKind::Act186Task,
+            entry_id: row.id,
+            state: 0,
+            progress: row.max_progress,
+            ext: "",
+        },
+    )
+    .await
+    .unwrap();
+
+    let mut data = Vec::new();
+    FinishAllAct186TaskRequest {
+        activity_id: Some(row.activity_id),
+    }
+    .encode(&mut data)
+    .unwrap();
+    dispatch_command(
+        &mut ctx,
+        ClientPacket {
+            sequence: 1,
+            cmd_id: CmdId::FinishAllAct186TaskCmd as i16,
+            up_tag: 41,
+            data,
+        }
+        .encode(),
+    )
+    .await
+    .unwrap();
+
+    let CommandPacket::Push { cmd_id, body, .. } = packets.try_recv().unwrap() else {
+        panic!("Activity 186 claim did not emit its currency snapshot first");
+    };
+    assert_eq!(cmd_id, CmdId::CurrencyChangePushCmd);
+    let currency = CurrencyChangePush::decode(&*body).unwrap();
+    assert_eq!(
+        currency.change_currency[0].currency_id,
+        Some(currency_id as u32)
+    );
+    assert_eq!(currency.change_currency[0].quantity, Some(currency_amount));
+
+    let CommandPacket::Push { cmd_id, body, .. } = packets.try_recv().unwrap() else {
+        panic!("Activity 186 claim did not emit its material delta");
+    };
+    assert_eq!(cmd_id, CmdId::MaterialChangePushCmd);
+    let material = MaterialChangePush::decode(&*body).unwrap();
+    assert_eq!(
+        material.data_list[0].materil_type,
+        Some(currency_type as u32)
+    );
+    assert_eq!(material.data_list[0].materil_id, Some(currency_id as u32));
+    assert_eq!(material.data_list[0].quantity, Some(currency_amount));
+
+    let CommandPacket::Push { cmd_id, body, .. } = packets.try_recv().unwrap() else {
+        panic!("Activity 186 claim did not emit its like total");
+    };
+    assert_eq!(cmd_id, CmdId::Act186LikePushCmd);
+    let like = Act186LikePush::decode(&*body).unwrap();
+    assert_eq!(like.activity_id, Some(row.activity_id));
+    assert_eq!(like.like_infos[0].like_type, Some(like_type));
+    assert_eq!(like.like_infos[0].value, Some(like_amount));
+
+    let CommandPacket::Reply {
+        cmd_id: CmdId::FinishAllAct186TaskCmd,
+        body,
+        result_code: 0,
+        up_tag: 41,
+        ..
+    } = packets.try_recv().unwrap()
+    else {
+        panic!("Activity 186 claim did not emit its reply last");
+    };
+    let reply = FinishAllAct186TaskReply::decode(&*body).unwrap();
+    assert_eq!(reply.activity_id, Some(row.activity_id));
+    assert_eq!(reply.task_ids, vec![row.id]);
+    assert!(packets.try_recv().is_err());
+    let db = ctx.state.db;
+    assert!(
+        ctx.player_mut()
+            .unwrap()
+            .activity
+            .finish_all_act186_tasks(db, Some(row.activity_id))
+            .await
+            .is_err()
+    );
+}
+
+#[tokio::test]
 async fn act239_commands_route_and_emit_the_captured_claim_sequence() {
     let data_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()

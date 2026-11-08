@@ -170,6 +170,22 @@ impl BuffDefinition {
         let status_id = buff_type.map(|row| row.r#type).unwrap_or(row.is_good_buff);
         let include_entries = parse_include_entries(include_types);
         let include_types_valid = include_entries.is_ok();
+        let mut resolved_features = super::feature::resolve_features_from(Some(game), features);
+        let has_description = !row.desc.trim().is_empty()
+            && game
+                .language_en
+                .get(&row.desc)
+                .is_some_and(|description| !description.trim().is_empty());
+        if !has_description {
+            for feature in &mut resolved_features {
+                if feature.values.first().is_some_and(|act_id| {
+                    crate::engine::skill::buff_act::registry::find(*act_id, &feature.act_type)
+                        .is_some_and(|definition| definition.description_required)
+                }) {
+                    feature.arguments_supported = false;
+                }
+            }
+        }
         Self {
             id: row.id,
             type_id: row.type_id,
@@ -185,7 +201,7 @@ impl BuffDefinition {
             include_entries: include_entries.unwrap_or_default(),
             include_types_valid,
             attribute_deltas: parse_attribute_deltas(game, features),
-            features: super::feature::resolve_features_from(Some(game), features),
+            features: resolved_features,
             has_features: !features.trim().is_empty(),
             act_common_params: initial_act_common_params(game, features),
             take_stage: buff_type.map(|row| row.take_stage).unwrap_or_default(),
@@ -278,15 +294,6 @@ impl BuffDefinition {
                     .flat_map(move |definition| definition.markers(phase).iter().copied())
             })
             .collect()
-    }
-
-    pub(super) fn removal_max_hp_sync_act_id(&self) -> Option<i32> {
-        self.features.iter().find_map(|feature| {
-            feature
-                .wire
-                .filter(|wire| wire.removal_max_hp_sync(self.id))
-                .map(|wire| wire.key.opcode)
-        })
     }
 
     pub(super) fn command_refresh_wire_markers(
@@ -542,7 +549,9 @@ impl BuffDefinition {
                         0,
                     ),
                     BuffActInitialStateRule::SourceAttackThreshold
-                    | BuffActInitialStateRule::SourceAttackAttribute => return None,
+                    | BuffActInitialStateRule::SourceAttackAttribute
+                    | BuffActInitialStateRule::SourceAttack
+                    | BuffActInitialStateRule::FoundationCounter => return None,
                     BuffActInitialStateRule::FirstArgument => (
                         vec![feature.values.get(1).copied().unwrap_or_default()],
                         String::new(),
@@ -556,6 +565,12 @@ impl BuffDefinition {
                     BuffActInitialStateRule::StringCounter => (Vec::new(), "0".to_owned(), 0),
                     BuffActInitialStateRule::GrantValue => return None,
                     BuffActInitialStateRule::LostHpToFakeHp => return None,
+                    BuffActInitialStateRule::HedoneEnergy => {
+                        let config = crate::engine::skill::buff_act::hedone_card::parse(
+                            feature.values.get(1..)?,
+                        )?;
+                        (vec![0, config.storage_limit, 0], String::new(), 0)
+                    }
                 };
                 Some(super::BuffActInfoMarkerResult {
                     target_uid,
@@ -633,6 +648,17 @@ impl BuffDefinition {
                             str_param: Some(format!("{}#{value}", attr_id.id())),
                         })
                     }
+                    BuffActInitialStateRule::SourceAttack => Some(sonettobuf::BuffActInfo {
+                        act_id: Some(act_id),
+                        param: vec![source_attack?.max(0)],
+                        str_param: Some(String::new()),
+                    }),
+                    BuffActInitialStateRule::FoundationCounter => Some(
+                        crate::engine::skill::buff_act::foundation_counter::initial_act_info(
+                            source_attack?,
+                            &feature.values,
+                        )?,
+                    ),
                     BuffActInitialStateRule::GrantValue => {
                         let value = grant_values
                             .iter()
@@ -781,6 +807,10 @@ impl BuffDefinition {
 
     pub(super) fn shares_timed_stack_cap(&self) -> bool {
         self.duration > 0 && self.has_include_type(BuffIncludeType::Stacked)
+    }
+
+    pub(super) fn trims_timed_stack_cap(&self) -> bool {
+        self.duration > 0 && self.has_include_type(BuffIncludeType::TimedIndependentStacks)
     }
 
     pub(super) fn reserves_child_on_layer_refresh(&self) -> bool {
@@ -984,7 +1014,7 @@ impl BuffDefinition {
             })
     }
 
-    pub(super) fn keeps_permanent_instance(&self) -> bool {
+    pub(super) fn preserves_action_lifetime(&self) -> bool {
         self.duration == 0
             && ((self.is_no_show && !self.has_features)
                 || self.features.iter().any(|feature| {
@@ -998,6 +1028,14 @@ impl BuffDefinition {
                         )
                     )
                 }))
+    }
+
+    pub(super) fn preserves_regrant(&self) -> bool {
+        self.preserves_action_lifetime()
+            && !(self.is_no_show
+                && !self.has_features
+                && self.cannot_remove
+                && self.has_include_type(BuffIncludeType::ReplaceExisting))
     }
 
     pub(super) fn retains_existing_permanent_status(&self) -> bool {

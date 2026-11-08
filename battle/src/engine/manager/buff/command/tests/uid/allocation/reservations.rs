@@ -52,6 +52,10 @@ fn attacker_assist_uses_its_resolved_team_uid_lane() {
         manager.team_type(crate::engine::fight::rules::DEFENDER_SIDE_UID),
         Some(2)
     );
+    assert_eq!(
+        manager.team_type(crate::engine::manager::emitter::UID),
+        Some(1)
+    );
     assert_eq!(manager.team_type(404), None);
     assert_eq!(changes.change.added.unwrap().buff.uid, Some(902));
 }

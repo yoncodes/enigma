@@ -56,7 +56,10 @@ fn queued_invalid_ultimate_removal(
         .card
         .hand()
         .iter()
-        .find(|card| mechanic.is_ultimate(managers, card, entity))
+        .find(|card| {
+            !crate::engine::manager::card::CardManager::is_sovereign(card)
+                && mechanic.is_ultimate(managers, card, entity)
+        })
         .cloned();
     if mechanic.ultimate_ready(managers, entity) {
         return None;
@@ -367,7 +370,13 @@ fn dispatch_event_batch_inner(
                     .iter()
                     .filter_map(|event| match event {
                         BattleEvent::Hit(hit) if hit.target_uid == *target_uid => {
-                            pool.entity(hit.source_uid).map(|entity| entity.damage_type)
+                            pool.entity(hit.source_uid).map(|_| {
+                                crate::engine::skill::buff_act::emitter_damage_type::source_type(
+                                    hit.source_uid,
+                                    pool,
+                                    managers,
+                                )
+                            })
                         }
                         _ => None,
                     })

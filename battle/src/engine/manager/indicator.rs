@@ -23,6 +23,12 @@ pub struct IndicatorCommand {
     pub config_effect: i32,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct IndicatorClearCommand {
+    pub indicator_id: i32,
+    pub config_effect: i32,
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct IndicatorManager {
     damage_targets: HashMap<i64, i32>,
@@ -60,6 +66,21 @@ impl IndicatorManager {
         })
     }
 
+    pub fn clear(&mut self, command: IndicatorClearCommand) -> Option<EffectMarker> {
+        (command.indicator_id > 0).then(|| {
+            self.totals.remove(&command.indicator_id);
+            EffectMarker {
+                target_uid: i64::from(command.indicator_id),
+                effect_type: sonettobuf::effect_type_enum::EffectType::Indicatorchange as i32,
+                effect_num: 0,
+                effect_num1: None,
+                config_effect: command.config_effect,
+                reserve_id: None,
+                reserve_str: None,
+            }
+        })
+    }
+
     pub fn track_damage(&mut self, indicator_id: IndicatorId, target_uid: i64) {
         self.damage_targets.insert(target_uid, indicator_id as i32);
     }
@@ -84,8 +105,12 @@ impl IndicatorManager {
     }
 
     pub fn total(&self, indicator_id: IndicatorId) -> i32 {
+        self.value(indicator_id as i32)
+    }
+
+    pub fn value(&self, indicator_id: i32) -> i32 {
         self.totals
-            .get(&(indicator_id as i32))
+            .get(&indicator_id)
             .copied()
             .unwrap_or_default()
             .clamp(0, i64::from(i32::MAX)) as i32

@@ -60,6 +60,14 @@ impl RedDotManager {
         act233_red_dot_groups(db, self.player_id, activity_id).await
     }
 
+    pub async fn act220_group(
+        &self,
+        db: &SqlitePool,
+        activity_id: i32,
+    ) -> Result<RedDotGroup, AppError> {
+        act220_red_dot_group(db, self.player_id, activity_id).await
+    }
+
     pub async fn hide_infos(
         &self,
         db: &SqlitePool,
@@ -229,12 +237,21 @@ async fn apply_dynamic_red_dots(
             }
             RedDotId::ActivityNoviceTab => apply_activity101_red_dot(reply, db, player_id).await?,
             RedDotId::ActivityJieXiKaPhoto => {}
+            RedDotId::Activity220Task => {
+                if let Some(activity_id) = config::configs::get().latest_open_activity_id(220) {
+                    let group = act220_red_dot_group(db, player_id, activity_id).await?;
+                    replace_group(reply, group.define_id, group.infos);
+                }
+            }
             RedDotId::Activity239Bonus => {
                 for group in act239_red_dot_groups(db, player_id).await? {
                     replace_group(reply, group.define_id, group.infos);
                 }
             }
             RedDotId::V3a7Anniversary3ActBpSubTask | RedDotId::V3a7Anniversary3ActBpBonus => {}
+            RedDotId::V3a9BossRushAct
+            | RedDotId::V3a9RacingCarReward
+            | RedDotId::SP02AtomicReward => {}
             RedDotId::BattlePassBonus | RedDotId::BattlePassSpBonus => {}
             RedDotId::BattlePassTask => {
                 apply_bp_task_red_dot(reply, db, player_id, bp.map(|bp| bp.bp_id)).await?
@@ -297,6 +314,30 @@ async fn apply_trade_order_red_dot(
         }],
     );
     Ok(())
+}
+
+async fn act220_red_dot_group(
+    db: &SqlitePool,
+    player_id: i64,
+    activity_id: i32,
+) -> Result<RedDotGroup, AppError> {
+    let value = database::db::game::tasks::has_claimable_activity(
+        db,
+        player_id,
+        task_db::TaskType::Activity220,
+        activity_id,
+    )
+    .await?;
+    Ok(RedDotGroup {
+        define_id: RedDotId::Activity220Task.id(),
+        infos: vec![RedDotInfo {
+            id: i64::from(activity_id),
+            value: i32::from(value),
+            time: Some(0),
+            ext: None,
+        }],
+        replace_all: Some(true),
+    })
 }
 
 async fn trade_order_red_dot_value(db: &SqlitePool, player_id: i64) -> Result<i32, AppError> {

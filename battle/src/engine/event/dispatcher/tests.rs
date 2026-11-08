@@ -310,6 +310,7 @@ fn derived_skill_cast_does_not_require_a_skill_action_phase() {
     let catalog = SkillEffectCatalog::from_fight(config::configs::get(), &fight);
     let event = BattleEvent::SkillAction(crate::engine::skill::action::SkillActionEvent {
         source_uid: -1,
+        card_index: 0,
         skill_id: 370_001_002,
         target_uid: -2,
         target_uids: vec![-2],
@@ -382,6 +383,7 @@ fn ally_attacked_observer_uses_primary_hit_targets_once_per_action() {
     };
     let mut action = crate::engine::skill::action::SkillActionEvent {
         source_uid: -1,
+        card_index: 0,
         skill_id: 2,
         target_uid: 10,
         target_uids: vec![10, 11],
@@ -464,6 +466,7 @@ fn team_skill_observer_sees_allied_nested_actions() {
     };
     let action = |source_uid| crate::engine::skill::action::SkillActionEvent {
         source_uid,
+        card_index: 0,
         skill_id: 2,
         target_uid: -1,
         target_uids: vec![-1],
@@ -533,6 +536,7 @@ fn team_actor_buff_act_observes_an_allied_skill_action() {
     let catalog = SkillEffectCatalog::from_game_db(config::configs::get());
     let event = BattleEvent::SkillAction(crate::engine::skill::action::SkillActionEvent {
         source_uid: 11,
+        card_index: 0,
         skill_id: 100,
         target_uid: -1,
         target_uids: vec![-1],
@@ -571,8 +575,8 @@ fn team_actor_buff_act_observes_an_allied_skill_action() {
     assert!(dispatched.buff_acts.iter().any(|(subscriber, ops)| {
         subscriber.key.definition == DefinitionKey::new(800, "TeammateInjuryCount")
             && matches!(
-                ops.as_deref(),
-                Some([buff_act::BuffActRuleOp {
+                ops,
+                Ok(Some(ops)) if matches!(ops.as_slice(), [buff_act::BuffActRuleOp {
                     op: RuleOp::Command(BattleCommand::Buff(BuffCommand::AccumulateActValue(_))),
                     ..
                 }])
@@ -692,7 +696,7 @@ fn exact_linked_buff_act_emits_a_skill_output() {
         dispatched.buff_acts.as_slice(),
         [(
             subscriber,
-            Some(ops)
+            Ok(Some(ops))
         )] if subscriber.key.definition == DefinitionKey::new(759, "UseSkillToEnemy")
             && matches!(ops.as_slice(), [buff_act::BuffActRuleOp {
                 op: RuleOp::Skill(
@@ -871,36 +875,33 @@ fn committed_hit_discovers_target_attacked_skill_and_be_attacked_buff_act() {
                 && subscriber.skill_id == 530000151
                 && subscriber.key.event == EventKind::TargetAttacked)
     );
-    assert!(
-        dispatched
-            .buff_acts
-            .iter()
-            .any(|(subscriber, ops)| subscriber.owner_uid == -1
-                && subscriber.key.event == EventKind::BeAttacked
-                && subscriber.key.definition == DefinitionKey::new(926, "ExPointAddByHit")
-                && ops.as_ref().is_some_and(|ops| matches!(
-                    ops.as_slice(),
-                    [
-                        buff_act::BuffActRuleOp {
-                            op: RuleOp::Command(
-                                crate::engine::skill::rule::output::BattleCommand::Buff(_)
-                            ),
+    assert!(dispatched.buff_acts.iter().any(|(subscriber, ops)| {
+        subscriber.owner_uid == -1
+            && subscriber.key.event == EventKind::BeAttacked
+            && subscriber.key.definition == DefinitionKey::new(926, "ExPointAddByHit")
+            && matches!(ops, Ok(Some(ops)) if matches!(
+                ops.as_slice(),
+                [
+                    buff_act::BuffActRuleOp {
+                        op: RuleOp::Command(
+                            crate::engine::skill::rule::output::BattleCommand::Buff(_)
+                        ),
+                        ..
+                    },
+                    buff_act::BuffActRuleOp {
+                        op: RuleOp::BuffFeatureMarker {
+                            buff_act_id: 926,
                             ..
                         },
-                        buff_act::BuffActRuleOp {
-                            op: RuleOp::BuffFeatureMarker {
-                                buff_act_id: 926,
-                                ..
-                            },
-                            ..
-                        },
-                        buff_act::BuffActRuleOp {
-                            op: RuleOp::Command(
-                                crate::engine::skill::rule::output::BattleCommand::ExPoint(_)
-                            ),
-                            ..
-                        }
-                    ]
-                )))
-    );
+                        ..
+                    },
+                    buff_act::BuffActRuleOp {
+                        op: RuleOp::Command(
+                            crate::engine::skill::rule::output::BattleCommand::ExPoint(_)
+                        ),
+                        ..
+                    }
+                ]
+            ))
+    }));
 }

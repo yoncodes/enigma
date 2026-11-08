@@ -36,6 +36,152 @@ fn lookup_requires_the_exact_opcode_type_pair() {
 }
 
 #[test]
+fn hedone_stored_damage_settles_after_the_active_hit() {
+    let definition = find_key(60332, "HedoneHurt").unwrap();
+
+    assert_eq!(definition.kind, BehaviorKind::HedoneHurt);
+    assert_eq!(definition.phase, BehaviorPhase::AfterDamage);
+}
+
+#[test]
+fn consume_ex_point_validates_its_semantic_argument_shape() {
+    let definition = find_key(60174, "ConsumeExPointAddAttr").unwrap();
+    let supports = definition.supports.unwrap();
+
+    assert!(supports(&ParsedBehavior::new(
+        60174,
+        "ConsumeExPointAddAttr",
+        vec![211, 60, 1, 5, 221, 1000],
+    )));
+    assert!(!supports(&ParsedBehavior::new(
+        60174,
+        "ConsumeExPointAddAttr",
+        vec![211, 60, 1, 5, 221],
+    )));
+    assert!(!supports(&ParsedBehavior::new(
+        60174,
+        "ConsumeExPointAddAttr",
+        vec![205, 60, 1, 5, 221, 1000],
+    )));
+}
+
+#[test]
+fn unnamed_client_effect_emits_configured_strengthen_layers() {
+    let managers = crate::engine::manager::BattleManagers::default();
+    let pool = crate::engine::skill::target::TargetPool::default();
+    let definition = find_key(60304, "UnnamedClientEffect").expect("effect must be registered");
+    let supports = definition.supports.expect("arguments must stay exact");
+
+    assert_eq!(definition.phase, BehaviorPhase::Immediate);
+    assert!(definition.destination);
+
+    for layers in [2, 3, 4] {
+        let behavior = ParsedBehavior::new(60304, "UnnamedClientEffect", vec![1, layers]);
+        assert!(supports(&behavior));
+
+        let mut determinism = crate::engine::runtime::determinism::RoundDeterminism::default();
+        let mut modifiers = crate::engine::skill::action::SkillModifiers::default();
+        let mut target = crate::engine::skill::target::TargetContext {
+            runtime_target_uid: -4,
+            ..Default::default()
+        };
+        let ops = crate::engine::skill::behavior::rule_ops(
+            crate::engine::skill::behavior::BehaviorOpContext {
+                source_uid: 10,
+                source_team: 1,
+                target_uid: 10,
+                active_skill_id: 0,
+                transfer_count: 1,
+                event: None,
+                managers: &managers,
+                pool: &pool,
+                determinism: &mut determinism,
+                modifiers: &mut modifiers,
+                target: &mut target,
+            },
+            &behavior,
+        )
+        .unwrap();
+
+        assert!(matches!(
+            ops.as_slice(),
+            [crate::engine::skill::rule::output::RuleOp::EffectMarker {
+                target_uid: -4,
+                effect_type,
+                effect_num: 1,
+                effect_num1: Some(actual_layers),
+                config_effect: 0,
+                reserve_id: None,
+                reserve_str: None,
+            }] if *effect_type
+                == sonettobuf::effect_type_enum::EffectType::Unnamedstrengthen as i32
+                && *actual_layers == layers
+        ));
+    }
+
+    for args in [vec![1], vec![1, 1], vec![1, 5], vec![2, 4], vec![1, 4, 0]] {
+        assert!(!supports(&ParsedBehavior::new(
+            60304,
+            "UnnamedClientEffect",
+            args
+        )));
+    }
+}
+
+#[test]
+fn consumed_buff_target_expansion_runs_before_source_opening_markers() {
+    let definition = find_key(60036, "ConsumeBuffChangeTargets").unwrap();
+    let supports = definition.supports.unwrap();
+
+    assert_eq!(definition.phase, BehaviorPhase::SourceOpening);
+    assert!(supports(&ParsedBehavior::new(
+        60036,
+        "ConsumeBuffChangeTargets",
+        vec![31470005, 1, 4],
+    )));
+    for args in [
+        vec![31470005, 1],
+        vec![0, 1, 4],
+        vec![31470005, -1, 4],
+        vec![31470005, 1, 0],
+    ] {
+        assert!(!supports(&ParsedBehavior::new(
+            60036,
+            "ConsumeBuffChangeTargets",
+            args,
+        )));
+    }
+}
+
+#[test]
+fn moxie_absorption_accepts_exact_aliases() {
+    for opcode in [30002, 30011] {
+        let definition = find_key(opcode, "AbsorbExPoint").unwrap();
+        let supports = definition.supports.unwrap();
+
+        assert_eq!(definition.kind, BehaviorKind::AbsorbExPoint);
+        assert!(definition.destination);
+        assert!(supports(&ParsedBehavior::new(
+            opcode,
+            "AbsorbExPoint",
+            vec![1, 0]
+        )));
+        assert!(!supports(&ParsedBehavior::new(
+            opcode,
+            "AbsorbExPoint",
+            vec![1]
+        )));
+        assert!(!supports(&ParsedBehavior::new(
+            opcode,
+            "AbsorbExPoint",
+            vec![0, 0]
+        )));
+    }
+
+    assert!(find_key(30002, "DelExPoint").is_none());
+}
+
+#[test]
 fn consume_buff_reset_device_listens_to_allies_and_targets_its_owner() {
     let definition = find_key(60308, "ConsumeBuffResetDevice").unwrap();
 
@@ -304,6 +450,67 @@ fn per_consume_ex_point_direct_use_skill_keeps_its_exact_five_argument_shape() {
 }
 
 #[test]
+fn consumed_buff_rate_keeps_its_exact_nonnegative_count_grammar() {
+    let definition = find_key(60034, "ConsumeBuffUpSkillDamageRate").unwrap();
+    let supports = definition.supports.unwrap();
+
+    for args in [vec![90071, 0, 600], vec![90071, 5, 1500]] {
+        assert!(supports(&ParsedBehavior::new(
+            60034,
+            "ConsumeBuffUpSkillDamageRate",
+            args,
+        )));
+    }
+    for args in [
+        vec![],
+        vec![0, 5, 600],
+        vec![90071, -1, 600],
+        vec![90071, 5, 0],
+        vec![90071, 5, 600, 1],
+    ] {
+        assert!(!supports(&ParsedBehavior::new(
+            60034,
+            "ConsumeBuffUpSkillDamageRate",
+            args,
+        )));
+    }
+    assert!(find_key(60034, "ConsumeBuffChangeTargets").is_none());
+}
+
+#[test]
+fn direct_use_big_skill_is_argumentless() {
+    let definition = find_key(60175, "DirectUseBigSkill").unwrap();
+    let supports = definition.supports.unwrap();
+
+    assert!(supports(&ParsedBehavior::new(
+        60175,
+        "DirectUseBigSkill",
+        Vec::new()
+    )));
+    assert!(!supports(&ParsedBehavior::new(
+        60175,
+        "DirectUseBigSkill",
+        vec![1]
+    )));
+}
+
+#[test]
+fn consume_buff_use_skill_two_keeps_group_and_rank_shape() {
+    let valid = ParsedBehavior::new(60128, "ConsumeBuffUseSkill2", vec![30470171, 1, 2, 1]);
+    let definition = find(&valid).expect("exact consume-and-cast behavior must be registered");
+
+    assert_eq!(definition.kind, BehaviorKind::ConsumeBuffUseSkill2);
+    assert!(definition.supports.unwrap()(&valid));
+    assert_eq!((definition.references)(&valid).buffs, vec![30470171]);
+    assert!(!definition.supports.unwrap()(&ParsedBehavior::new(
+        60128,
+        "ConsumeBuffUseSkill2",
+        vec![30470171, 1, 3, 1],
+    )));
+    assert!(find_key(60128, "ConsumeBuffUseSkill").is_none());
+}
+
+#[test]
 fn destination_readiness_belongs_to_the_exact_registry_row() {
     let root_add =
         ParsedBehavior::from_spec(BehaviorSpec::new(1, "AddBuff"), vec![100, 1], Vec::new());
@@ -527,6 +734,32 @@ fn remove_buff_use_skill_keeps_its_exact_identity_and_phase() {
     assert_eq!(definition.kind, BehaviorKind::RemoveBuffUseSkill);
     assert_eq!(definition.phase, BehaviorPhase::AfterDamage);
     assert!(find_key(50018, "ConsumeBuffUseSkill").is_none());
+}
+
+#[test]
+fn remove_buff_to_enchant_keeps_its_exact_configured_shape() {
+    let definition = find_key(60285, "RemoveBuffToEnchant").unwrap();
+    let supports = definition.supports.unwrap();
+
+    assert_eq!(definition.kind, BehaviorKind::RemoveBuffToEnchant);
+    assert_eq!(definition.phase, BehaviorPhase::Immediate);
+    assert!(definition.destination);
+    assert!(supports(&ParsedBehavior::new(
+        60285,
+        "RemoveBuffToEnchant",
+        vec![31420001, 10011, 1],
+    )));
+    assert!(!supports(&ParsedBehavior::new(
+        60285,
+        "RemoveBuffToEnchant",
+        vec![31420001, 10002, 1],
+    )));
+    assert!(!supports(&ParsedBehavior::new(
+        60285,
+        "RemoveBuffToEnchant",
+        vec![31420001, 10011, 3],
+    )));
+    assert!(find_key(60285, "Enchant").is_none());
 }
 
 #[test]
@@ -826,7 +1059,7 @@ fn add_team_energy_is_parent_owned_only_during_setup() {
 }
 
 #[test]
-fn conduit_ex_point_is_parent_owned_for_setup_and_final_settlement() {
+fn conduit_ex_point_is_owned_by_its_trigger() {
     let definition = find_key(60292, "AddDeviceExPoint").unwrap();
 
     assert_eq!(
@@ -858,6 +1091,10 @@ fn conduit_ex_point_is_parent_owned_for_setup_and_final_settlement() {
     assert_eq!(
         definition.output_owner.resolve(None, false),
         OutputOwner::Skill
+    );
+    assert_eq!(
+        definition.reaction_frame_scope,
+        Some(crate::engine::skill::condition::registry::ReactionFrameScope::Causing)
     );
 }
 

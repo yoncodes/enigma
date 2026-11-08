@@ -22,6 +22,9 @@ use crate::engine::{
         buff_precast::{BuffPrecastChanges, BuffPrecastError},
         field_transfer::{FieldTransferChanges, FieldTransferError},
         focus_all_entity_buff::{FocusAllEntityBuffChanges, FocusAllEntityBuffError},
+        hedone_device_power::HedoneDevicePowerError,
+        hedone_starting_charge::{HedoneStartingChargeChanges, HedoneStartingChargeError},
+        magic_circle_level::{MagicCircleLevelChanges, MagicCircleLevelError},
         monster_change::{MonsterChangeChanges, MonsterChangeError},
         shell::{ShellChanges, ShellError},
     },
@@ -46,6 +49,8 @@ pub(crate) enum RuleOutcome {
         lifecycle: crate::engine::skill::action::SkillLifecycle,
         cost: ExPointChanges,
     },
+    ActionCostPaid(ExPointChanges),
+    PaidSkillStarted(crate::engine::skill::action::SkillLifecycle),
     ActionHandSettlement(Box<ActionHandSettlement>),
     Buff(Box<BuffChanges>),
     BuffBatch(Vec<BuffChanges>),
@@ -75,12 +80,14 @@ pub(crate) enum RuleOutcome {
     MonsterChange(Box<MonsterChangeChanges>),
     Card(Box<CardChanges>),
     BuffPrecast(Box<BuffPrecastChanges>),
+    HedoneStartingCharge(Box<HedoneStartingChargeChanges>),
     Conduit(ConduitChange),
     Contract(ContractChange),
     Field(FieldChange),
     FightProgress(FightProgressChange),
     FightProgressValue(FightProgressValueChange),
     FieldTransfer(Box<FieldTransferChanges>),
+    MagicCircleLevel(Box<MagicCircleLevelChanges>),
     FocusAllEntityBuff(Box<FocusAllEntityBuffChanges>),
     Shell(Box<ShellChanges>),
     RaspberryCapacity(Box<CapacityResult>),
@@ -111,6 +118,15 @@ impl RuleOutcome {
 
     pub(crate) fn owned_changes(&self) -> Vec<(OutputOwner, BattleChange)> {
         match self {
+            Self::Card(changes)
+                if changes.kind
+                    == crate::engine::manager::card::CardChangeKind::InitialSovereignBoost =>
+            {
+                vec![(
+                    OutputOwner::InitialSovereignBoost,
+                    BattleChange::Card(changes.clone()),
+                )]
+            }
             Self::BloodtitheSpend(changes) => vec![
                 (OutputOwner::Parent, BattleChange::Gauge(changes.gauge)),
                 (
@@ -231,7 +247,9 @@ impl RuleOutcome {
         match self {
             Self::PublishedEvent => Vec::new(),
             Self::SkillLifecycle(change) => vec![BattleChange::SkillLifecycle(change.clone())],
-            Self::DeathSettlement(death) => vec![BattleChange::Death(*death)],
+            Self::PaidSkillStarted(change) => vec![BattleChange::SkillLifecycle(change.clone())],
+            Self::ActionCostPaid(change) => vec![BattleChange::ExPoint(*change)],
+            Self::DeathSettlement(_) => Vec::new(),
             Self::SkillActionStarted { lifecycle, cost } => vec![
                 BattleChange::SkillLifecycle(lifecycle.clone()),
                 BattleChange::ExPoint(*cost),
@@ -327,10 +345,21 @@ impl RuleOutcome {
             Self::MonsterChange(changes) => {
                 vec![BattleChange::Entity(Box::new(changes.entity.clone()))]
             }
+            Self::Card(change)
+                if change.kind
+                    == crate::engine::manager::card::CardChangeKind::InitialSovereignBoost =>
+            {
+                Vec::new()
+            }
             Self::Card(change) => vec![BattleChange::Card(change.clone())],
             Self::BuffPrecast(changes) => vec![
                 BattleChange::Buff(Box::new(changes.buff.clone())),
                 BattleChange::Card(Box::new(changes.card.clone())),
+            ],
+            Self::HedoneStartingCharge(changes) => vec![
+                BattleChange::Card(Box::new(changes.card.clone())),
+                BattleChange::Buff(Box::new(changes.buff.clone())),
+                BattleChange::BuffActInfoMarker(changes.marker.clone()),
             ],
             Self::Conduit(change) => vec![BattleChange::Conduit(change.clone())],
             Self::Contract(change) => vec![BattleChange::Contract(change.clone())],
@@ -343,6 +372,21 @@ impl RuleOutcome {
                 .cloned()
                 .map(|change| BattleChange::Buff(Box::new(change)))
                 .chain(std::iter::once(BattleChange::Field(changes.field)))
+                .collect(),
+            Self::MagicCircleLevel(changes) => changes
+                .removed_buffs
+                .iter()
+                .cloned()
+                .map(|change| BattleChange::Buff(Box::new(change)))
+                .chain(std::iter::once(BattleChange::Field(changes.removed_field)))
+                .chain(
+                    changes
+                        .added_buffs
+                        .iter()
+                        .cloned()
+                        .map(|change| BattleChange::Buff(Box::new(change))),
+                )
+                .chain(std::iter::once(BattleChange::Field(changes.added_field)))
                 .collect(),
             Self::FocusAllEntityBuff(changes) => changes
                 .buffs
@@ -395,11 +439,17 @@ pub(crate) enum RuleExecutionError {
     NuoDiKa(crate::engine::mechanic::nuo_di_ka::NuoDiKaError),
     Card(CardCommandError),
     BuffPrecast(BuffPrecastError),
+    HedoneDevicePower(HedoneDevicePowerError),
+    HedoneStartingCharge(HedoneStartingChargeError),
     Conduit(ConduitError),
     Contract(ContractError),
     Field(FieldCommandError),
     FightProgress(FightProgressError),
+    HedoneCounter(crate::engine::manager::hedone_counter::HedoneCounterError),
+    HedoneCounterClear(crate::engine::manager::hedone_counter::HedoneCounterClearError),
+    HedoneDamage(crate::engine::manager::hedone_counter::HedoneDamageError),
     FieldTransfer(FieldTransferError),
+    MagicCircleLevel(MagicCircleLevelError),
     FocusAllEntityBuff(FocusAllEntityBuffError),
     Shell(ShellError),
     RaspberryCapacity(CapacityError),
@@ -475,6 +525,18 @@ impl From<BuffPrecastError> for RuleExecutionError {
     }
 }
 
+impl From<HedoneDevicePowerError> for RuleExecutionError {
+    fn from(value: HedoneDevicePowerError) -> Self {
+        Self::HedoneDevicePower(value)
+    }
+}
+
+impl From<HedoneStartingChargeError> for RuleExecutionError {
+    fn from(value: HedoneStartingChargeError) -> Self {
+        Self::HedoneStartingCharge(value)
+    }
+}
+
 impl From<ConduitError> for RuleExecutionError {
     fn from(value: ConduitError) -> Self {
         Self::Conduit(value)
@@ -499,9 +561,33 @@ impl From<FightProgressError> for RuleExecutionError {
     }
 }
 
+impl From<crate::engine::manager::hedone_counter::HedoneCounterError> for RuleExecutionError {
+    fn from(value: crate::engine::manager::hedone_counter::HedoneCounterError) -> Self {
+        Self::HedoneCounter(value)
+    }
+}
+
+impl From<crate::engine::manager::hedone_counter::HedoneCounterClearError> for RuleExecutionError {
+    fn from(value: crate::engine::manager::hedone_counter::HedoneCounterClearError) -> Self {
+        Self::HedoneCounterClear(value)
+    }
+}
+
+impl From<crate::engine::manager::hedone_counter::HedoneDamageError> for RuleExecutionError {
+    fn from(value: crate::engine::manager::hedone_counter::HedoneDamageError) -> Self {
+        Self::HedoneDamage(value)
+    }
+}
+
 impl From<FieldTransferError> for RuleExecutionError {
     fn from(value: FieldTransferError) -> Self {
         Self::FieldTransfer(value)
+    }
+}
+
+impl From<MagicCircleLevelError> for RuleExecutionError {
+    fn from(value: MagicCircleLevelError) -> Self {
+        Self::MagicCircleLevel(value)
     }
 }
 
@@ -644,13 +730,35 @@ pub(crate) fn execute_rule_op_with(
             .map(RuleOutcome::EffectMarker)
             .map_or(Ok(RuleOutcome::StateChanged), Ok),
         RuleOp::Command(BattleCommand::Indicator(command)) => managers
-            .indicator
-            .add(command)
+            .execute_indicator(command)
+            .map(RuleOutcome::EffectMarker)
+            .map_or(Ok(RuleOutcome::StateChanged), Ok),
+        RuleOp::Command(BattleCommand::IndicatorClear(command)) => managers
+            .execute_indicator_clear(command)
             .map(RuleOutcome::EffectMarker)
             .map_or(Ok(RuleOutcome::StateChanged), Ok),
         RuleOp::NuoDiKaHit(hit) => Ok(RuleOutcome::NuoDiKaHit(hit)),
         RuleOp::Command(BattleCommand::Injury(command)) => {
             Ok(RuleOutcome::Injury(managers.injury.execute(command)))
+        }
+        RuleOp::Command(BattleCommand::HedoneCounter(command)) => {
+            managers.hedone_counter.execute(command)?;
+            Ok(RuleOutcome::StateChanged)
+        }
+        RuleOp::Command(BattleCommand::HedoneCounterClear(command)) => {
+            crate::engine::manager::hedone_counter::clear(managers, command)?;
+            Ok(RuleOutcome::StateChanged)
+        }
+        RuleOp::Command(BattleCommand::HedoneDamage(command)) => {
+            let Some(execution) =
+                crate::engine::manager::hedone_counter::damage(managers, command)?
+            else {
+                return Ok(RuleOutcome::StateChanged);
+            };
+            for event in execution.changes.events() {
+                events.push(event);
+            }
+            Ok(RuleOutcome::Hp(Box::new(execution)))
         }
         RuleOp::Command(BattleCommand::Revive(command)) => {
             let changes = crate::engine::manager::revive::execute(managers, command)?;
@@ -682,6 +790,15 @@ pub(crate) fn execute_rule_op_with(
         }
         RuleOp::Command(BattleCommand::ExPoint(command)) => {
             let changes = managers.execute_ex_point_rolled(command, determinism)?;
+            for event in changes.events() {
+                events.push(event);
+            }
+            Ok(RuleOutcome::ExPoint(changes))
+        }
+        RuleOp::Command(BattleCommand::LowestExPoint(command)) => {
+            let Some(changes) = managers.execute_lowest_ex_point(command)? else {
+                return Ok(RuleOutcome::StateChanged);
+            };
             for event in changes.events() {
                 events.push(event);
             }
@@ -857,6 +974,26 @@ pub(crate) fn execute_rule_op_with(
             }
             Ok(RuleOutcome::BuffPrecast(Box::new(changes)))
         }
+        RuleOp::Command(BattleCommand::HedoneDevicePower(command)) => {
+            let change = crate::engine::mechanic::hedone_device_power::execute(managers, command)?;
+            for event in change.events() {
+                events.push(event);
+            }
+            Ok(RuleOutcome::Conduit(change))
+        }
+        RuleOp::Command(BattleCommand::HedoneStartingCharge(command)) => {
+            let changes =
+                crate::engine::mechanic::hedone_starting_charge::execute(managers, command)?;
+            for event in changes
+                .card
+                .events()
+                .into_iter()
+                .chain(changes.buff.events())
+            {
+                events.push(event);
+            }
+            Ok(RuleOutcome::HedoneStartingCharge(Box::new(changes)))
+        }
         RuleOp::Command(BattleCommand::Conduit(command)) => {
             let change = managers.conduit.execute(command)?;
             for event in change.events() {
@@ -893,6 +1030,26 @@ pub(crate) fn execute_rule_op_with(
                 events.push(event);
             }
             Ok(RuleOutcome::FieldTransfer(Box::new(changes)))
+        }
+        RuleOp::Command(BattleCommand::MagicCircleLevel(command)) => {
+            let changes = crate::engine::mechanic::magic_circle_level::execute(managers, command)?;
+            for buff in &changes.removed_buffs {
+                for event in buff.events() {
+                    events.push(event);
+                }
+            }
+            for event in changes.removed_field.events() {
+                events.push(event);
+            }
+            for buff in &changes.added_buffs {
+                for event in buff.events() {
+                    events.push(event);
+                }
+            }
+            for event in changes.added_field.events() {
+                events.push(event);
+            }
+            Ok(RuleOutcome::MagicCircleLevel(Box::new(changes)))
         }
         RuleOp::Command(BattleCommand::FocusAllEntityBuff(command)) => {
             let Some(changes) =
@@ -974,6 +1131,26 @@ pub(crate) fn execute_rule_op_with(
             Ok(RuleOutcome::StateChanged)
         }
         RuleOp::Skill(_) => Err(RuleExecutionError::UnexpectedSkill),
+        RuleOp::PaySkillAction { action, cost } => {
+            let changes = managers.execute_ex_point(cost)?;
+            managers
+                .hp
+                .capture_action_start(action.source_uid, action.skill_id);
+            for event in changes.events() {
+                events.push(event);
+            }
+            Ok(RuleOutcome::ActionCostPaid(changes))
+        }
+        RuleOp::PaidSkillStarted(lifecycle) => {
+            let crate::engine::skill::action::SkillLifecycle::PhaseCompleted(action) = &lifecycle
+            else {
+                return Err(RuleExecutionError::UnexpectedSkill);
+            };
+            events.push(crate::engine::event::payload::BattleEvent::SkillAction(
+                action.clone(),
+            ));
+            Ok(RuleOutcome::PaidSkillStarted(lifecycle))
+        }
         RuleOp::BeginSkillAction { lifecycle, cost } => {
             let changes = managers.execute_ex_point(cost)?;
             for event in changes.events() {
@@ -1036,6 +1213,7 @@ pub(crate) fn execute_rule_op_with(
             target_uid,
             effect_type,
             effect_num,
+            effect_num1,
             config_effect,
             reserve_id,
             reserve_str,
@@ -1044,7 +1222,7 @@ pub(crate) fn execute_rule_op_with(
                 target_uid,
                 effect_type,
                 effect_num,
-                effect_num1: None,
+                effect_num1,
                 config_effect,
                 reserve_id,
                 reserve_str,
@@ -1066,6 +1244,9 @@ pub(crate) fn execute_rule_op_with(
         }
         RuleOp::ImmediateReservePromotion => {
             unreachable!("reserve promotion is owned by the action drain")
+        }
+        RuleOp::ExpandActiveSkillTargets { .. } => {
+            unreachable!("conditional target expansion is owned by the skill drain")
         }
         RuleOp::FreezeActiveSkillRates => unreachable!("rate freezing is owned by the skill drain"),
     }

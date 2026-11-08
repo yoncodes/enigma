@@ -130,13 +130,17 @@ pub fn card_for(entity: &FightEntityInfo, skill_id: Option<i32>) -> Option<CardI
 }
 
 pub fn card_for_target(entity: &TargetEntity, skill_id: i32) -> Option<CardInfo> {
+    card_for_owner(entity.uid, entity.model_id, skill_id)
+}
+
+pub fn card_for_owner(owner_uid: i64, hero_id: i32, skill_id: i32) -> Option<CardInfo> {
     (skill_id > 0).then(|| CardInfo {
-        uid: Some(entity.uid),
+        uid: Some(owner_uid),
         skill_id: Some(skill_id),
         card_effect: None,
         temp_card: Some(false),
         card_type: Some(0),
-        hero_id: Some(entity.model_id),
+        hero_id: Some(hero_id),
         status: Some(0),
         target_uid: Some(0),
         energy: Some(0),

@@ -65,6 +65,21 @@ pub fn activity_schedule() -> &'static [config::ActivitySchedule] {
     &config().activity.schedule
 }
 
+pub fn hero_story_schedule() -> &'static [config::HeroStorySchedule] {
+    &config().activity.hero_story_schedule
+}
+
+pub fn tutorial_card(episode_id: i32) -> Option<&'static config::TutorialCardConfig> {
+    static TEMPLATE: OnceLock<config::ServerConfig> = OnceLock::new();
+    CONFIG
+        .get()
+        .unwrap_or_else(|| TEMPLATE.get_or_init(config::ServerConfig::template))
+        .tutorial_cards
+        .cards
+        .iter()
+        .find(|cards| cards.episode_id == episode_id)
+}
+
 pub fn init_tracing() {
     #[cfg(target_os = "windows")]
     let _ = ansi_term::enable_ansi_support();

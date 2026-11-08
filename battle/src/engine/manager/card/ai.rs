@@ -89,6 +89,28 @@ pub(crate) fn resolve_configured_targets(
     cards: &mut [CardInfo],
 ) -> Result<(), String> {
     let pool = TargetPool::from_fight_with_catalog(managers.catalog(), fight);
+    resolve_targets(
+        &pool,
+        managers,
+        catalog,
+        determinism,
+        TargetContext {
+            battle_id: fight.battle_id.unwrap_or_default(),
+            current_round: fight.cur_round.unwrap_or_default(),
+            ..Default::default()
+        },
+        cards,
+    )
+}
+
+pub(crate) fn resolve_targets(
+    pool: &TargetPool,
+    managers: &BattleManagers,
+    catalog: &SkillEffectCatalog,
+    determinism: &RoundDeterminism,
+    context: TargetContext,
+    cards: &mut [CardInfo],
+) -> Result<(), String> {
     for card in cards {
         let source_uid = card
             .uid
@@ -130,9 +152,7 @@ pub(crate) fn resolve_configured_targets(
                 active_skill_type: managers.catalog().damage_target_count_kind(code),
                 active_skill_effect_tag: catalog.effect_tag(skill_id),
                 damage_target_count_kind: managers.catalog().damage_target_count_kind(code),
-                battle_id: fight.battle_id.unwrap_or_default(),
-                current_round: fight.cur_round.unwrap_or_default(),
-                ..Default::default()
+                ..context
             },
         );
         let target_uid = card

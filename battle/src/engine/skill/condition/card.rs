@@ -1,5 +1,21 @@
 use super::{ParsedConditionKind, parse::parse_i32_args};
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AnchorOrder {
+    Earlier,
+    Later,
+}
+
+pub fn anchor_later(_: i32, _: &str, args: &[String]) -> Option<ParsedConditionKind> {
+    matches!(args, [side] if side == "1")
+        .then_some(ParsedConditionKind::CardAnchor(AnchorOrder::Later))
+}
+
+pub fn anchor_earlier(_: i32, _: &str, args: &[String]) -> Option<ParsedConditionKind> {
+    matches!(args, [side] if side == "2")
+        .then_some(ParsedConditionKind::CardAnchor(AnchorOrder::Earlier))
+}
+
 pub fn current_enchant(_: i32, _: &str, args: &[String]) -> Option<ParsedConditionKind> {
     Some(ParsedConditionKind::CurrentCardEnchant {
         enchant_id: args.first()?.parse().ok()?,
@@ -10,6 +26,17 @@ pub fn hand_skill_presence(_: i32, _: &str, args: &[String]) -> Option<ParsedCon
     Some(ParsedConditionKind::HandSkillPresence(parse_i32_args(
         args,
     )?))
+}
+
+pub fn hand_skill_presence_one(_: i32, _: &str, args: &[String]) -> Option<ParsedConditionKind> {
+    let [skill_id, minimum, mode] = args else {
+        return None;
+    };
+    if minimum != "1" || mode != "1" {
+        return None;
+    }
+    let skill_id = skill_id.parse().ok()?;
+    (skill_id > 0).then_some(ParsedConditionKind::HandSkillPresence(vec![skill_id]))
 }
 
 pub fn round_used_minimum_rank(_: i32, _: &str, args: &[String]) -> Option<ParsedConditionKind> {

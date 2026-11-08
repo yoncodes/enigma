@@ -1,6 +1,10 @@
 use sonettobuf::Fight;
 
-use crate::engine::{manager::BattleManagers, round::state::RoundState, skill::target::TargetPool};
+use crate::engine::{
+    manager::{BattleManagers, entity::RosterLane},
+    round::state::RoundState,
+    skill::target::TargetPool,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BattleOutcome {
@@ -20,20 +24,44 @@ impl BattleOutcome {
     }
 }
 
-pub(crate) fn defenders_defeated(pool: &TargetPool, managers: &BattleManagers) -> bool {
-    !pool.defender_all.is_empty()
-        && pool
-            .defender_all
-            .iter()
-            .all(|entity| managers.hp.current(entity.uid) <= 0)
+fn team_defeated(team_type: i32, managers: &BattleManagers) -> bool {
+    let roster = managers
+        .entity
+        .ordered_uids()
+        .filter(|uid| managers.entity.team_type(*uid) == Some(team_type))
+        .filter(|uid| managers.entity.roster_lane(*uid) == Some(RosterLane::Main))
+        .collect::<Vec<_>>();
+    !roster.is_empty()
+        && roster.iter().all(|uid| managers.hp.current(*uid) <= 0)
+        && (team_type != 2
+            || roster.iter().all(|uid| {
+                !managers
+                    .entity
+                    .has_pending_reserve_promotion(*uid, &managers.hp)
+            }))
 }
 
-pub(crate) fn attackers_defeated(pool: &TargetPool, managers: &BattleManagers) -> bool {
-    !pool.attacker_main.is_empty()
-        && pool
-            .attacker_main
-            .iter()
-            .all(|entity| managers.hp.current(entity.uid) <= 0)
+pub(crate) fn opponents_defeated(team_type: i32, managers: &BattleManagers) -> bool {
+    let opponent_team = match team_type {
+        1 => 2,
+        2 => 1,
+        _ => return false,
+    };
+    let roster = managers
+        .entity
+        .ordered_uids()
+        .filter(|uid| managers.entity.team_type(*uid) == Some(opponent_team))
+        .filter(|uid| managers.entity.roster_lane(*uid) == Some(RosterLane::Main))
+        .collect::<Vec<_>>();
+    !roster.is_empty() && roster.iter().all(|uid| managers.hp.current(*uid) <= 0)
+}
+
+pub(crate) fn defenders_defeated(_pool: &TargetPool, managers: &BattleManagers) -> bool {
+    team_defeated(2, managers)
+}
+
+pub(crate) fn attackers_defeated(_pool: &TargetPool, managers: &BattleManagers) -> bool {
+    team_defeated(1, managers)
 }
 
 pub(crate) fn battle_ended(fight: &Fight, pool: &TargetPool, managers: &BattleManagers) -> bool {
@@ -71,28 +99,15 @@ pub(crate) fn terminal_outcome_for_battle_id(
 
 pub(crate) fn battle_outcome(
     fight: &Fight,
-    _pool: &TargetPool,
+    pool: &TargetPool,
     managers: &BattleManagers,
 ) -> BattleOutcome {
-    let defenders_defeated = fight.defender.as_ref().is_some_and(|team| {
-        let entities = team.entitys.iter().chain(&team.sub_entitys);
-        let uids = entities.filter_map(|entity| entity.uid).collect::<Vec<_>>();
-        !uids.is_empty() && uids.into_iter().all(|uid| managers.hp.current(uid) <= 0)
-    });
     if configured_win_target_defeated(fight.battle_id.unwrap_or_default(), managers)
-        .unwrap_or(defenders_defeated && !managers.wave.has_next_wave())
+        .unwrap_or_else(|| defenders_defeated(pool, managers) && !managers.wave.has_next_wave())
     {
         return BattleOutcome::Victory;
     }
-    let attackers_defeated = fight.attacker.as_ref().is_some_and(|team| {
-        let uids = team
-            .entitys
-            .iter()
-            .filter_map(|entity| entity.uid)
-            .collect::<Vec<_>>();
-        !uids.is_empty() && uids.into_iter().all(|uid| managers.hp.current(uid) <= 0)
-    });
-    if attackers_defeated {
+    if attackers_defeated(pool, managers) {
         return BattleOutcome::Defeat;
     }
     if round_limit_reached(fight, managers) {
@@ -116,10 +131,11 @@ pub(crate) fn finish_if_battle_ended(
 }
 
 pub(crate) fn round_limit_reached(fight: &Fight, managers: &BattleManagers) -> bool {
+    // Setup starts at 1, and each played round has already advanced the counter.
     managers
         .battle_rule
         .max_round()
-        .is_some_and(|max_round| max_round > 0 && fight.cur_round.unwrap_or_default() >= max_round)
+        .is_some_and(|max_round| max_round > 0 && fight.cur_round.unwrap_or_default() > max_round)
 }
 
 fn configured_win_target_defeated(battle_id: i32, managers: &BattleManagers) -> Option<bool> {
@@ -130,63 +146,4 @@ fn configured_win_target_defeated(battle_id: i32, managers: &BattleManagers) -> 
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::test_support::init_config;
-    use sonettobuf::{FightEntityInfo, FightTeam, HeroAttribute};
-
-    fn depleted_wave(cur_wave: i32) -> (Fight, TargetPool, BattleManagers) {
-        init_config();
-        let fight = Fight {
-            battle_id: Some(2514),
-            cur_wave: Some(cur_wave),
-            defender: Some(FightTeam {
-                entitys: vec![FightEntityInfo {
-                    uid: Some(-1),
-                    current_hp: Some(1),
-                    attr: Some(HeroAttribute {
-                        hp: Some(1),
-                        ..Default::default()
-                    }),
-                    ..Default::default()
-                }],
-                ..Default::default()
-            }),
-            ..Default::default()
-        };
-        let pool = TargetPool::from_fight(&fight);
-        let mut managers = BattleManagers::seeded(&fight);
-        managers.hp.lose(-1, 1, 0);
-        (fight, pool, managers)
-    }
-
-    #[test]
-    fn depleted_intermediate_wave_is_not_terminal() {
-        let (fight, pool, managers) = depleted_wave(1);
-
-        assert!(defenders_defeated(&pool, &managers));
-        assert!(managers.wave.has_next_wave());
-        assert!(!battle_ended(&fight, &pool, &managers));
-    }
-
-    #[test]
-    fn depleted_final_wave_is_terminal() {
-        let (fight, pool, managers) = depleted_wave(4);
-
-        assert!(!managers.wave.has_next_wave());
-        assert!(battle_ended(&fight, &pool, &managers));
-    }
-
-    #[test]
-    fn committing_the_outcome_preserves_scheduler_owned_action_points() {
-        let (fight, pool, managers) = depleted_wave(4);
-        let mut state = RoundState {
-            act_point: 3,
-            ..Default::default()
-        };
-
-        assert!(finish_if_battle_ended(&mut state, &fight, &pool, &managers));
-        assert!(state.is_finish);
-        assert_eq!(state.act_point, 3);
-    }
-}
+mod tests;

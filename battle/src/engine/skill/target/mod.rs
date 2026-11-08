@@ -1,7 +1,9 @@
+pub(crate) mod card_selection;
 pub mod pool;
 pub mod request;
 pub mod resolve;
 
+pub(crate) use card_selection::CardSelectionResolver;
 pub use pool::{EntityDamageType, TargetContext, TargetEntity, TargetPool};
 pub use request::TargetRequest;
 pub(crate) use resolve::frame_anchor_for_rule;

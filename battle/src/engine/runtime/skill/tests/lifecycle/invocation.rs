@@ -46,6 +46,316 @@ fn active_invocation_initializes_the_condition_mode() {
 }
 
 #[test]
+fn unsupported_behavior_slot_fails_before_runtime_emission() {
+    crate::test_support::init_config();
+    let configured = SkillEffectCatalog::from_game_db(config::configs::get());
+    let mut unsupported = configured
+        .get(311401351)
+        .unwrap()
+        .slots
+        .iter()
+        .find(|slot| {
+            slot.behavior.spec.kind
+                == crate::engine::skill::behavior::classify::BehaviorKind::ConsumeExPointAddAttr
+        })
+        .unwrap()
+        .clone();
+    unsupported.target.code = 202;
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                team_type: Some(1),
+                current_hp: Some(100),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let managers = BattleManagers::seeded(&fight);
+    let pool = TargetPool::from_fight(&fight);
+    let mut catalog = SkillEffectCatalog::default();
+    catalog.insert(ParsedSkillEffect {
+        skill_id: 100,
+        slots: vec![unsupported],
+    });
+    let invocation: SkillInvocation = SkillRequest {
+        source_uid: 10,
+        skill_id: 100,
+    }
+    .into();
+
+    assert!(matches!(
+        emit_ops(
+            invocation,
+            &managers,
+            &pool,
+            &catalog,
+            &mut RoundDeterminism::default(),
+            &mut SkillExecution::new(TargetContext::default()),
+            &SkillOpTrigger::Active,
+        ),
+        Err(SkillOpError::MissingBehaviorOp {
+            skill_id,
+            key,
+        }) if skill_id == 100 && key == DefinitionKey::new(60174, "ConsumeExPointAddAttr")
+    ));
+}
+
+#[test]
+fn completed_action_combines_base_and_additional_moxie() {
+    crate::test_support::init_config();
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![
+                FightEntityInfo {
+                    uid: Some(10),
+                    model_id: Some(3114),
+                    team_type: Some(1),
+                    current_hp: Some(1_000),
+                    ex_point: Some(9),
+                    ex_point_max: Some(13),
+                    ex_skill: Some(311401351),
+                    attr: Some(HeroAttribute {
+                        hp: Some(1_000),
+                        attack: Some(1_000),
+                        defense: Some(100),
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                },
+                FightEntityInfo {
+                    uid: Some(20),
+                    model_id: Some(3147),
+                    team_type: Some(1),
+                    current_hp: Some(1_000),
+                    ex_point: Some(0),
+                    ex_point_max: Some(5),
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(-1),
+                model_id: Some(116371003),
+                team_type: Some(2),
+                current_hp: Some(100_000),
+                attr: Some(HeroAttribute {
+                    hp: Some(100_000),
+                    defense: Some(100),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let managers = BattleManagers::seeded(&fight);
+    let pool = TargetPool::from_fight(&fight);
+    let catalog = SkillEffectCatalog::from_game_db(config::configs::get());
+    let mut invocation: SkillInvocation = SkillRequest {
+        source_uid: 10,
+        skill_id: 311401351,
+    }
+    .into();
+    invocation.mode = SkillExecutionMode::Active;
+    invocation.card_index = 5;
+    invocation.target = SkillTarget::Explicit(-1);
+    let mut execution = SkillExecution::with_payment(
+        TargetContext::default(),
+        Some(crate::engine::skill::action::ActionPayment {
+            cost: crate::engine::manager::ex_point::ExPointCommand::Spend(
+                crate::engine::manager::ex_point::ExPointChange {
+                    origin: CommandOrigin {
+                        domain: RuleDomain::Skill,
+                        key: DefinitionKey::new(0, "TestPaidAction"),
+                    },
+                    source_uid: 10,
+                    target_uid: 10,
+                    delta: -5,
+                    config_effect: 0,
+                    effect_type: 0,
+                },
+            ),
+            composition: Vec::new(),
+        }),
+    );
+    let mut determinism = RoundDeterminism::default();
+    let mut completed = None;
+    let mut immediate_additional_moxie = None;
+
+    loop {
+        let emission = emit_ops(
+            invocation,
+            &managers,
+            &pool,
+            &catalog,
+            &mut determinism,
+            &mut execution,
+            &SkillOpTrigger::Active,
+        )
+        .unwrap();
+        completed = emission
+            .ops
+            .iter()
+            .find_map(|emission| match &emission.op {
+                RuleOp::SkillLifecycle(
+                    crate::engine::skill::action::SkillLifecycle::ActionCompleted(action),
+                ) => Some(action.clone()),
+                _ => None,
+            })
+            .or(completed);
+        immediate_additional_moxie = emission
+            .ops
+            .iter()
+            .find_map(|emission| match &emission.op {
+                RuleOp::BeginSkillAction {
+                    lifecycle: crate::engine::skill::action::SkillLifecycle::PhaseCompleted(action),
+                    ..
+                }
+                | RuleOp::SkillLifecycle(
+                    crate::engine::skill::action::SkillLifecycle::PhaseCompleted(action),
+                ) if action.phase == SkillPhase::Immediate => Some(action.additional_moxie),
+                _ => None,
+            })
+            .or(immediate_additional_moxie);
+        let Some(continuation) = emission.continuation else {
+            break;
+        };
+        invocation = continuation;
+    }
+
+    let completed = completed.expect("action must complete");
+    assert_eq!(immediate_additional_moxie, Some(4));
+    assert_eq!(completed.additional_moxie, 4);
+    assert_eq!(completed.moxie_spent, 9);
+}
+
+#[test]
+fn direct_big_completed_action_uses_the_gross_spend() {
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                team_type: Some(1),
+                current_hp: Some(100),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let managers = BattleManagers::seeded(&fight);
+    let pool = TargetPool::from_fight(&fight);
+    let mut catalog = SkillEffectCatalog::default();
+    catalog.insert(ParsedSkillEffect {
+        skill_id: 100,
+        slots: Vec::new(),
+    });
+    let mut invocation: SkillInvocation = SkillRequest {
+        source_uid: 10,
+        skill_id: 100,
+    }
+    .into();
+    invocation.mode = SkillExecutionMode::DirectBig;
+    invocation.moxie_spent = 5;
+    let mut execution = SkillExecution::new(TargetContext::default());
+    let mut determinism = RoundDeterminism::default();
+    let mut completed = None;
+
+    loop {
+        let emission = emit_ops(
+            invocation,
+            &managers,
+            &pool,
+            &catalog,
+            &mut determinism,
+            &mut execution,
+            &SkillOpTrigger::Active,
+        )
+        .unwrap();
+        completed = emission
+            .ops
+            .iter()
+            .find_map(|emission| match &emission.op {
+                RuleOp::SkillLifecycle(
+                    crate::engine::skill::action::SkillLifecycle::ActionCompleted(action),
+                ) => Some(action.clone()),
+                _ => None,
+            })
+            .or(completed);
+        let Some(continuation) = emission.continuation else {
+            break;
+        };
+        invocation = continuation;
+    }
+
+    let completed = completed.expect("action must complete");
+    assert_eq!(completed.additional_moxie, 0);
+    assert_eq!(completed.moxie_spent, 5);
+}
+
+#[test]
+fn direct_nested_invocation_owns_its_attack_context() {
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                current_hp: Some(100),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let managers = BattleManagers::seeded(&fight);
+    let pool = TargetPool::from_fight(&fight);
+    let mut catalog = SkillEffectCatalog::default();
+    catalog.insert(ParsedSkillEffect {
+        skill_id: 100,
+        slots: Vec::new(),
+    });
+    catalog.insert_damage_rate(100, 1000);
+    catalog.insert_effect_tag(100, 11);
+    let mut invocation: SkillInvocation = SkillRequest {
+        source_uid: 10,
+        skill_id: 100,
+    }
+    .into();
+    invocation.mode = SkillExecutionMode::Direct;
+    let mut execution = SkillExecution::new(TargetContext::default());
+
+    emit_ops(
+        invocation,
+        &managers,
+        &pool,
+        &catalog,
+        &mut RoundDeterminism::default(),
+        &mut execution,
+        &SkillOpTrigger::Active,
+    )
+    .unwrap();
+
+    assert_eq!(
+        execution.context.active_skill_mode,
+        SkillExecutionMode::Direct
+    );
+    assert!(execution.context.active_skill_is_attack);
+    assert_eq!(execution.context.active_skill_effect_tag, 11);
+    assert!(execution.context.direct_skill_body);
+    assert!(SkillExecutionMode::Direct.completes_action());
+    assert!(!crate::engine::skill::action::performs_extra_action(
+        0,
+        SkillExecutionMode::Direct,
+        0
+    ));
+}
+
+#[test]
 fn synchronization_uses_the_extra_action_lane_and_completes_its_own_action() {
     let fight = Fight {
         attacker: Some(FightTeam {
@@ -144,6 +454,13 @@ fn config_extra_actions_and_ripostes_publish_as_actions_without_changing_other_n
     assert_eq!(
         action_mode(SkillExecutionMode::Nested, None),
         SkillExecutionMode::Nested
+    );
+    assert_eq!(
+        action_mode(
+            SkillExecutionMode::NestedExtra,
+            Some(ExtraSkillKind::ExtraAction)
+        ),
+        SkillExecutionMode::NestedExtra
     );
 }
 

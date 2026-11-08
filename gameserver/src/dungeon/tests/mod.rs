@@ -5,6 +5,7 @@ fn runtime(fight: sonettobuf::Fight) -> battle::Battle {
         battle::catalog::BattleCatalog::new(config::configs::get()),
         fight,
     )
+    .unwrap()
 }
 
 fn act128_runtime_with_score(
@@ -61,7 +62,8 @@ fn act128_runtime_with_score(
             }),
             ..Default::default()
         },
-    );
+    )
+    .unwrap();
     runtime
         .build_start_steps(CardSetup {
             hand: vec![CardInfo {

@@ -709,9 +709,11 @@ impl BuffManager {
                 && active.buff.from_uid == Some(spec.route.source_uid)
         });
         let grant_values = self.plan_grant_values(&spec.definition, spec.route.source_uid);
-        let initial_act_info = spec
+        let mut initial_act_info = spec
             .definition
-            .initial_planned_act_info(spec.source_attack, &grant_values);
+            .initial_planned_act_info(spec.source_attack, &grant_values)
+            .unwrap_or_default();
+        initial_act_info.extend(spec.initial_act_info.iter().cloned());
         let mut child = self.add_one_with_uid(
             hp,
             spec.route,
@@ -728,7 +730,7 @@ impl BuffManager {
         }) {
             active.fanout_emitter_uid = Some(spec.emitter_uid);
         }
-        if let Some(initial_act_info) = initial_act_info {
+        if !initial_act_info.is_empty() {
             child.buff.act_info.extend(initial_act_info);
             if let Some(active) = self.buffs.iter_mut().find(|active| {
                 active.owner_uid == child.target_uid && active.buff.uid == child.buff.uid

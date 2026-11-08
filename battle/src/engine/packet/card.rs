@@ -2,6 +2,8 @@ use sonettobuf::{ActEffect, CardInfo, effect_type_enum::EffectType};
 
 use crate::engine::{fight::versions::RedealWireLayout, manager::card::CardChange};
 
+pub(super) mod sovereign;
+
 pub struct CardPacket;
 
 impl CardPacket {
@@ -33,6 +35,32 @@ impl CardPacket {
 
     pub fn from_change(change: CardChange) -> ActEffect {
         match change {
+            CardChange::SovereignUnlocked { card, team_type } => {
+                Self::update_data(0, card, team_type)
+            }
+            CardChange::SovereignCharged {
+                card,
+                index,
+                team_type,
+            }
+            | CardChange::HedoneUnlocked {
+                card,
+                index,
+                team_type,
+            } => Self::update_data(index, card, team_type),
+            CardChange::InsertHand {
+                target_uid,
+                card,
+                index,
+                team_type,
+            } => ActEffect {
+                target_id: Some(target_uid),
+                effect_type: Some(EffectType::Inserthandcard as i32),
+                effect_num: Some(i32::try_from(index + 1).expect("committed insertion position")),
+                card_info: Some(wire_card(card)),
+                team_type: Some(team_type),
+                ..Default::default()
+            },
             CardChange::DeckCount {
                 deck_num,
                 team_type,
@@ -42,6 +70,9 @@ impl CardPacket {
             CardChange::OwnedAddHand { card, team_type } => {
                 Self::configured_skill3_card(card, team_type)
             }
+            CardChange::HedoneAdd {
+                card, team_type, ..
+            } => Self::hedone_card(card, team_type),
             CardChange::SpCardAdd {
                 target_uid,
                 skill_id,
@@ -64,6 +95,21 @@ impl CardPacket {
                 config_effect,
             } => Self::mark_temporary(indices, team_type, config_effect),
             CardChange::CardsCompose { cards, .. } => Self::cards_compose(cards),
+        }
+    }
+
+    pub(crate) fn update_data(index: usize, card: CardInfo, team_type: i32) -> ActEffect {
+        ActEffect {
+            target_id: Some(0),
+            effect_type: Some(EffectType::Updatecarddata as i32),
+            effect_num: Some(i32::try_from(index + 1).expect("committed card position")),
+            effect_num1: Some(0),
+            config_effect: Some(0),
+            buff_act_id: Some(0),
+            reserve_id: Some(0),
+            team_type: Some(team_type),
+            card_info: Some(wire_card(card)),
+            ..Default::default()
         }
     }
 
@@ -132,9 +178,13 @@ impl CardPacket {
         ActEffect {
             target_id: Some(target_uid),
             effect_type: Some(EffectType::Addhandcard as i32),
-            effect_num: card.skill_id,
-            card_info: Some(card.clone()),
-            card_info_list: vec![card],
+            effect_num: Some(0),
+            config_effect: Some(0),
+            buff_act_id: Some(0),
+            reserve_id: Some(0),
+            card_info: Some(card),
+            team_type: Some(1),
+            effect_num1: Some(0),
             ..Default::default()
         }
     }
@@ -155,6 +205,12 @@ impl CardPacket {
         }
     }
 
+    pub fn hedone_card(card: CardInfo, team_type: i32) -> ActEffect {
+        let mut effect = Self::configured_skill3_card(card, team_type);
+        effect.effect_num = Some(1);
+        effect
+    }
+
     pub fn convert_owner_skill_card(
         owner_uid: i64,
         hand_index: usize,
@@ -165,12 +221,12 @@ impl CardPacket {
         ActEffect {
             target_id: Some(owner_uid),
             effect_type: Some(EffectType::Cardaconvertcardb as i32),
-            effect_num: Some(1),
-            config_effect: card.skill_id,
-            buff_act_id: Some(0),
-            reserve_id: i64::try_from(hand_index)
+            effect_num: i32::try_from(hand_index)
                 .ok()
                 .and_then(|index| index.checked_add(1)),
+            config_effect: card.skill_id,
+            buff_act_id: Some(0),
+            reserve_id: Some(1),
             card_info: Some(card),
             team_type: Some(team_type),
             effect_num1: Some(0),
@@ -317,6 +373,34 @@ impl CardPacket {
         Self::card_energy(cards, team_type, 0)
     }
 
+    pub fn change_card_energy(
+        before: &[CardInfo],
+        after: &[CardInfo],
+        team_type: i32,
+    ) -> Option<ActEffect> {
+        let changes = before
+            .iter()
+            .zip(after)
+            .enumerate()
+            .filter_map(|(index, (before, after))| {
+                let delta = after.energy.unwrap_or_default() - before.energy.unwrap_or_default();
+                (delta != 0).then(|| format!("{}#{delta}", index + 1))
+            })
+            .collect::<Vec<_>>();
+        (!changes.is_empty()).then(|| ActEffect {
+            target_id: Some(0),
+            effect_type: Some(EffectType::Changecardenergy as i32),
+            effect_num: Some(team_type),
+            config_effect: Some(0),
+            buff_act_id: Some(0),
+            reserve_id: Some(0),
+            reserve_str: Some(changes.join("|")),
+            team_type: Some(0),
+            effect_num1: Some(0),
+            ..Default::default()
+        })
+    }
+
     fn card_energy(cards: Vec<CardInfo>, team_type: i32, operation: i32) -> ActEffect {
         ActEffect {
             effect_type: Some(EffectType::Allocatecardenergy as i32),
@@ -443,8 +527,10 @@ mod tests {
         let deal = CardPacket::deal_card1();
 
         assert_eq!(add.effect_type, Some(EffectType::Addhandcard as i32));
-        assert_eq!(add.effect_num, Some(100));
+        assert_eq!(add.effect_num, Some(0));
+        assert_eq!(add.team_type, Some(1));
         assert_eq!(add.card_info.as_ref().unwrap().uid, Some(10));
+        assert!(add.card_info_list.is_empty());
         assert_eq!(push.effect_type, Some(EffectType::Cardspush as i32));
         assert_eq!(push.card_info_list.len(), 1);
         assert_eq!(temp.effect_type, Some(EffectType::Changetotempcard as i32));
@@ -521,6 +607,40 @@ mod tests {
             CardPacket::clear_card_energy(Vec::new(), 1).effect_num1,
             Some(0)
         );
+    }
+
+    #[test]
+    fn card_energy_change_projects_changed_positions_and_deltas() {
+        let before = vec![
+            CardInfo {
+                energy: Some(2),
+                ..Default::default()
+            },
+            CardInfo {
+                energy: Some(4),
+                ..Default::default()
+            },
+        ];
+        let after = vec![
+            CardInfo {
+                energy: Some(3),
+                ..Default::default()
+            },
+            CardInfo {
+                energy: Some(6),
+                ..Default::default()
+            },
+        ];
+
+        let effect = CardPacket::change_card_energy(&before, &after, 1).unwrap();
+
+        assert_eq!(
+            effect.effect_type,
+            Some(EffectType::Changecardenergy as i32)
+        );
+        assert_eq!(effect.effect_num, Some(1));
+        assert_eq!(effect.reserve_str.as_deref(), Some("1#1|2#2"));
+        assert!(effect.card_info_list.is_empty());
     }
 
     #[test]

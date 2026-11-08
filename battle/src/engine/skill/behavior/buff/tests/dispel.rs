@@ -175,6 +175,48 @@ fn eagle_exit_dispel_removes_the_configured_buff_type_family() {
 }
 
 #[test]
+fn purify_two_removes_each_configured_family() {
+    let behavior = ParsedBehavior::from_spec(
+        crate::engine::skill::behavior::classify::BehaviorSpec::new(20004, "Purify2"),
+        vec![6003, 31040001, 31041001],
+        vec!["6003".into(), "31040001".into(), "31041001".into()],
+    );
+    let definition = registry::find(&behavior).unwrap();
+
+    assert_eq!(definition.kind, BehaviorKind::Purify2);
+    assert!(definition.supports.unwrap()(&behavior));
+    let operations = remove_each_buff_family_ops(10, &behavior).unwrap();
+    assert!(matches!(
+        operations.as_slice(),
+        [
+            RuleOp::Command(BattleCommand::Buff(BuffCommand::Remove(BuffRemove {
+                selector: BuffRemoveSelector::IdOrType(6003),
+                ..
+            }))),
+            RuleOp::Command(BattleCommand::Buff(BuffCommand::Remove(BuffRemove {
+                selector: BuffRemoveSelector::IdOrType(31040001),
+                ..
+            }))),
+            RuleOp::Command(BattleCommand::Buff(BuffCommand::Remove(BuffRemove {
+                selector: BuffRemoveSelector::IdOrType(31041001),
+                ..
+            }))),
+        ]
+    ));
+    assert!(!definition.supports.unwrap()(&ParsedBehavior::new(
+        20004,
+        "Purify2",
+        vec![6003, 0]
+    )));
+    assert!(!definition.supports.unwrap()(&ParsedBehavior::from_spec(
+        crate::engine::skill::behavior::classify::BehaviorSpec::new(20004, "Purify2"),
+        vec![6003],
+        vec!["6003".into(), "bad".into()],
+    )));
+    assert!(registry::find_key(20004, "Purify1").is_none());
+}
+
+#[test]
 fn eagle_death_dispatches_the_exact_cleanup_through_buff_manager() {
     use crate::engine::{
         event::payload::{BattleEvent, EntityDiedEvent},

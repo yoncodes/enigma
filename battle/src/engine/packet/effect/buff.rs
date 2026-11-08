@@ -71,17 +71,6 @@ impl EffectPacket {
                 .flat_map(|transition| match transition {
                     crate::engine::manager::buff::BuffLifecycleTransition::Removed(removed) => {
                         let mut effects = Self::buff_delete_effects(removed);
-                        if let Some(buff_act_id) = removed
-                            .buff
-                            .buff_id
-                            .and_then(crate::engine::manager::buff::removal_max_hp_sync_act_id)
-                        {
-                            effects.push(Self::max_hp_change(
-                                removed.target_uid,
-                                removed.target_max_hp,
-                                buff_act_id,
-                            ));
-                        }
                         if let Some(shield) = changes
                             .shield_removed
                             .iter()
@@ -115,17 +104,6 @@ impl EffectPacket {
                 effects.push(reason);
             }
             effects.push(Self::buff_delete(removed));
-            if let Some(buff_act_id) = removed
-                .buff
-                .buff_id
-                .and_then(crate::engine::manager::buff::removal_max_hp_sync_act_id)
-            {
-                effects.push(Self::max_hp_change(
-                    removed.target_uid,
-                    removed.target_max_hp,
-                    buff_act_id,
-                ));
-            }
             if let Some(shield) = changes
                 .shield_removed
                 .iter()
@@ -134,6 +112,10 @@ impl EffectPacket {
                 effects.push(Self::shield_delete(shield.target_uid, shield.value));
             }
         }
+        effects.extend(Self::recorded_buff_refreshes(
+            changes,
+            0..changes.pre_add_refreshes,
+        ));
         if let Some(added) = &change.added {
             effects.extend(if changes.pre_add_markers_before_remove {
                 Self::buff_add_body(added)
@@ -147,7 +129,20 @@ impl EffectPacket {
                 .iter()
                 .map(Self::buff_act_info_marker),
         );
-        for (index, refreshed) in change.refreshed.iter().enumerate() {
+        effects.extend(Self::recorded_buff_refreshes(
+            changes,
+            changes.pre_add_refreshes..change.refreshed.len(),
+        ));
+        effects
+    }
+
+    fn recorded_buff_refreshes(
+        changes: &crate::engine::manager::buff::BuffChanges,
+        range: std::ops::Range<usize>,
+    ) -> Vec<ActEffect> {
+        let mut effects = Vec::new();
+        for index in range {
+            let refreshed = &changes.change.refreshed[index];
             let snapshot_markers = changes
                 .state_snapshot_wire
                 .iter()

@@ -46,6 +46,8 @@ async fn load_roster(
     plan: &BattleRosterPlan,
     fight_group: &FightGroup,
 ) -> Result<BattleRoster> {
+    let (_, player_level, _) =
+        database::db::game::player_infos::get_user_basic_info(db, player_id).await?;
     let heroes = UserHeroModel::new(player_id, db.clone());
     let mut fighters = Vec::new();
     for uid in plan.hero_uids().iter().copied() {
@@ -59,6 +61,7 @@ async fn load_roster(
 
     Ok(BattleRoster {
         user_id: player_id,
+        player_level,
         fighters,
         compose_support: load_compose_support(db, &heroes, plan).await?,
     })

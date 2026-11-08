@@ -558,7 +558,7 @@ async fn unlock_dungeon(
         .into_iter()
         .map(Into::into)
         .collect::<Vec<sonettobuf::UserChapterTypeNum>>();
-    let episode_ids = episodes
+    let completed_episode_ids = episodes
         .iter()
         .filter_map(|episode| episode.dungeon.as_ref().map(|dungeon| dungeon.episode_id))
         .collect::<Vec<_>>();
@@ -631,7 +631,8 @@ async fn unlock_dungeon(
     Ok(GmResponse::ok_data(
         format!("unlocked dungeon {target}"),
         serde_json::json!({
-            "passedPrerequisiteEpisodes": episode_ids,
+            "completedEpisodes": completed_episode_ids,
+            "passedPrerequisiteEpisodes": completed_episode_ids,
             "finishedTrails": trails.finished_element_ids,
             "finishedStories": finished_story_ids,
             "unlockedOpenIds": unlocked_open_ids,
@@ -1498,7 +1499,7 @@ fn parse_positive(value: &str, label: &str) -> Result<i32> {
 mod tests {
     use super::{
         MaterialKind, build_hero_upgrade_catalog, dungeon_catalog, entries_for_kind,
-        is_premium_hero_skin,
+        is_premium_hero_skin, unlock_dungeon,
     };
     use crate::net::app::AppState;
     use database::models::game::heros::UserHeroModel;
@@ -1516,6 +1517,42 @@ mod tests {
         assert!(!chapters.iter().any(|chapter| chapter["id"] == 201));
         assert!(episodes.iter().any(|episode| episode["id"] == 10102));
         assert!(episodes.iter().any(|episode| episode["id"] == 40101));
+    }
+
+    #[tokio::test]
+    async fn dungeon_unlock_response_preserves_completed_episode_alias() {
+        let data_dir = format!("{}/../data/excel2json", env!("CARGO_MANIFEST_DIR"));
+        let _ = config::init(&data_dir);
+        let pool = sqlx::SqlitePool::connect("sqlite::memory:").await.unwrap();
+        database::run_migrations(&pool).await.unwrap();
+        sqlx::query(
+            "INSERT INTO users (id, username, created_at, updated_at)
+             VALUES (37, 'dungeon-unlock', 0, 0)",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        database::db::game::player_infos::create_player_info(&pool, 37, 0)
+            .await
+            .unwrap();
+        let state = Box::leak(Box::new(AppState::new(pool, config::configs::get())));
+
+        let response = unlock_dungeon(state, 37, &["unlock", "stage", "40106"])
+            .await
+            .unwrap();
+        let data = response.data.unwrap();
+
+        assert_eq!(
+            data["completedEpisodes"],
+            data["passedPrerequisiteEpisodes"]
+        );
+        assert!(
+            data["completedEpisodes"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|episode_id| *episode_id == 40106)
+        );
     }
 
     #[test]

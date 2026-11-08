@@ -1,6 +1,81 @@
 use super::*;
 
 #[test]
+fn card_anchor_order_keeps_its_exact_predicates() {
+    use crate::engine::skill::condition::card::AnchorOrder;
+
+    assert_eq!(
+        parse(790203, "UnnamedCardAnchor", &["1".into()]),
+        Some(ParsedConditionKind::CardAnchor(AnchorOrder::Later))
+    );
+    assert_eq!(
+        parse(790210, "UnnamedCardAnchor", &["2".into()]),
+        Some(ParsedConditionKind::CardAnchor(AnchorOrder::Earlier))
+    );
+    assert!(parse(790203, "UnnamedCardAnchor", &["2".into()]).is_none());
+    assert!(parse(790210, "UnnamedCardAnchor", &["1".into()]).is_none());
+    assert_eq!(
+        find_key(790203, "UnnamedCardAnchor").map(|definition| definition.role),
+        Some(ConditionRole::Predicate)
+    );
+    assert_eq!(
+        find_key(790210, "UnnamedCardAnchor").map(|definition| definition.role),
+        Some(ConditionRole::Trigger {
+            event: EventKind::SkillAction,
+            phase: Some(SkillPhase::AfterHit),
+        })
+    );
+}
+
+#[test]
+fn enemy_effect_tag_keeps_its_exact_action_route() {
+    for tag in 1..=6 {
+        assert_eq!(
+            parse(551213, "BeAttackedByEffectTag", &[tag.to_string()]),
+            Some(ParsedConditionKind::ActiveSkillEffectTag(vec![tag]))
+        );
+    }
+    let definition = find_key(551213, "BeAttackedByEffectTag").unwrap();
+    assert_eq!(
+        definition.role,
+        ConditionRole::Trigger {
+            event: EventKind::SkillAction,
+            phase: Some(SkillPhase::HitPassives),
+        }
+    );
+    assert_eq!(
+        definition.skill_action_observer,
+        SkillActionObserver::OpposingTeam
+    );
+    for invalid in [
+        vec![],
+        vec!["0".into()],
+        vec!["7".into()],
+        vec!["1,2".into()],
+        vec!["1".into(), "2".into()],
+    ] {
+        assert_eq!(parse(551213, "BeAttackedByEffectTag", &invalid), None);
+    }
+}
+
+#[test]
+fn effect_entity_keeps_its_exact_actor_predicate() {
+    assert_eq!(
+        parse(25212, "UseExSkill", &[]),
+        Some(ParsedConditionKind::UseExSkill { slot: 0 })
+    );
+    assert_eq!(
+        parse(737212, "IsEffectEntity", &[]),
+        Some(ParsedConditionKind::ActiveSkillSourceIsTarget)
+    );
+    assert_eq!(
+        find_key(737212, "IsEffectEntity").map(|definition| definition.role),
+        Some(ConditionRole::Predicate)
+    );
+    assert_eq!(parse(737212, "IsEffectEntity", &["1".into()]), None);
+}
+
+#[test]
 fn other_ally_extra_action_keeps_its_exact_route() {
     assert_eq!(
         parse(403212, "SkillExtraType", &["1".into()]),
@@ -110,6 +185,41 @@ fn eureka_threshold_keeps_same_and_opposing_action_routes_distinct() {
         Some(SkillActionObserver::OpposingTeam)
     );
     assert!(find_key(180212999, "PowerCompareOther").is_none());
+}
+
+#[test]
+fn enemy_action_power_check_keeps_its_exact_grammar() {
+    for args in [
+        ["1".into(), "1".into(), "3".into()],
+        ["2".into(), "3".into(), "99".into()],
+        ["3".into(), "3".into(), "100".into()],
+    ] {
+        assert!(matches!(
+            parse(180213, "PowerCompare", &args),
+            Some(ParsedConditionKind::PowerCompare { .. })
+        ));
+    }
+    for args in [
+        vec!["1".into(), "1".into()],
+        vec!["0".into(), "1".into(), "3".into()],
+        vec!["1".into(), "0".into(), "3".into()],
+        vec!["1".into(), "1".into(), "-1".into()],
+        vec!["1".into(), "1".into(), "3".into(), "extra".into()],
+    ] {
+        assert_eq!(parse(180213, "PowerCompare", &args), None);
+    }
+    let definition = find_key(180213, "PowerCompare").unwrap();
+    assert_eq!(
+        definition.role,
+        ConditionRole::Trigger {
+            event: EventKind::AllyAction,
+            phase: None,
+        }
+    );
+    assert_eq!(
+        definition.skill_action_observer,
+        SkillActionObserver::OpposingTeam
+    );
 }
 
 #[test]
@@ -393,6 +503,72 @@ fn mirror_rule_buff_gates_keep_their_exact_phases() {
 }
 
 #[test]
+fn single_absent_buff_gate_keeps_its_round_start_lane() {
+    assert_eq!(
+        parse(57102, "NoBuffId", &["7254037".into()]),
+        Some(ParsedConditionKind::BuffId {
+            mode: BuffConditionMode::Absent,
+            buff_ids: vec![7254037],
+        })
+    );
+    for args in [
+        vec![],
+        vec!["0".into()],
+        vec!["7254037,7254038".into()],
+        vec!["7254037".into(), "7254038".into()],
+    ] {
+        assert_eq!(parse(57102, "NoBuffId", &args), None);
+    }
+    let definition = find_key(57102, "NoBuffId").unwrap();
+    assert_eq!(
+        definition.role,
+        ConditionRole::Setup {
+            stage: SetupStage::RoundStartCondition,
+            priority: 102,
+        }
+    );
+    assert!(definition.filters_behavior_targets);
+    assert!(definition.dependencies.is_empty());
+}
+
+#[test]
+fn absent_buff_lists_keep_their_round_end_lane() {
+    for (args, buff_ids) in [
+        (vec!["8085".into()], vec![8085]),
+        (
+            vec!["8085".into(), "8407".into(), "8410".into()],
+            vec![8085, 8407, 8410],
+        ),
+        (vec!["4150007,4150015".into()], vec![4150007, 4150015]),
+    ] {
+        assert_eq!(
+            parse(57302, "NoBuffId", &args),
+            Some(ParsedConditionKind::BuffId {
+                mode: BuffConditionMode::Absent,
+                buff_ids,
+            })
+        );
+    }
+    for args in [
+        vec![],
+        vec!["0".into()],
+        vec!["-1".into()],
+        vec!["8085,bad".into()],
+    ] {
+        assert_eq!(parse(57302, "NoBuffId", &args), None);
+    }
+    let definition = find_key(57302, "NoBuffId").unwrap();
+    assert_eq!(
+        definition.role,
+        ConditionRole::Trigger {
+            event: EventKind::RoundEnd,
+            phase: None,
+        }
+    );
+    assert!(definition.filters_behavior_targets);
+}
+
+#[test]
 fn nested_no_action_teammate_death_keeps_its_exact_event_key() {
     assert_eq!(
         parse(17012, "TeammateDead", &[]),
@@ -410,6 +586,30 @@ fn nested_no_action_teammate_death_keeps_its_exact_event_key() {
 
 #[test]
 fn hp_less_round_start_keys_keep_their_distinct_lanes() {
+    for threshold in [100, 250, 500, 750, 800] {
+        assert_eq!(
+            parse(1101, "LifeLess", &[threshold.to_string()]),
+            Some(ParsedConditionKind::HpPermille {
+                compare: ConditionCompare::LessThan,
+                threshold,
+            })
+        );
+    }
+    for args in [
+        vec![],
+        vec!["0".into()],
+        vec!["1000".into()],
+        vec!["500".into(), "extra".into()],
+    ] {
+        assert_eq!(parse(1101, "LifeLess", &args), None);
+    }
+    assert_eq!(
+        find_key(1101, "LifeLess").map(|definition| definition.role),
+        Some(ConditionRole::Setup {
+            stage: SetupStage::RoundStartCondition,
+            priority: 101,
+        })
+    );
     assert_eq!(
         find_key(1103, "LifeLess").map(|definition| definition.role),
         Some(ConditionRole::Setup {
@@ -579,6 +779,28 @@ fn accumulated_owner_buff_count_keeps_owner_scope_and_exact_key() {
         })
     );
     let definition = find_key(581, "AccAddBuffCountByBuffId").unwrap();
+    assert_eq!(definition.role, ConditionRole::Predicate);
+    assert_eq!(
+        definition.dependencies,
+        &[EventKind::BuffAdded, EventKind::BuffChanged]
+    );
+    assert_eq!(definition.reaction_frame_target, ReactionFrameTarget::Owner);
+}
+
+#[test]
+fn accumulated_owner_buff_type_count_keeps_its_exact_key() {
+    assert_eq!(
+        parse(
+            730212,
+            "AccAddBuffCountByBuffTypeIdAllEffect",
+            &["31400004".into(), "8".into()],
+        ),
+        Some(ParsedConditionKind::AccBuffTypeAddedCount {
+            type_ids: vec![31400004],
+            threshold: 8,
+        })
+    );
+    let definition = find_key(730212, "AccAddBuffCountByBuffTypeIdAllEffect").unwrap();
     assert_eq!(definition.role, ConditionRole::Predicate);
     assert_eq!(
         definition.dependencies,
@@ -804,6 +1026,28 @@ fn hopscotch_kill_count_uses_the_captured_after_hit_route() {
 
 #[test]
 fn hand_skill_presence_keeps_exact_card_identity_and_round_timing() {
+    assert_eq!(
+        parse(
+            708203,
+            "HandCardHasSkillId",
+            &["31560181".into(), "1".into(), "1".into()],
+        ),
+        Some(ParsedConditionKind::HandSkillPresence(vec![31560181]))
+    );
+    let hedone = find_key(708203, "HandCardHasSkillId").unwrap();
+    assert_eq!(hedone.role, ConditionRole::Predicate);
+    assert_eq!(hedone.read_timing, ConditionReadTiming::ActionStart);
+    for args in [
+        vec![],
+        vec!["31560181".into(), "1".into()],
+        vec!["31560181".into(), "2".into(), "1".into()],
+        vec!["31560181".into(), "1".into(), "2".into()],
+        vec!["invalid".into(), "1".into(), "1".into()],
+        vec!["0".into(), "1".into(), "1".into()],
+        vec!["-1".into(), "1".into(), "1".into()],
+    ] {
+        assert_eq!(parse(708203, "HandCardHasSkillId", &args), None);
+    }
     assert_eq!(
         parse(710301, "PerHandCardHasSkillId", &["118353040".into()],),
         Some(ParsedConditionKind::HandSkillPresence(vec![118353040]))

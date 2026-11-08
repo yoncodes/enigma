@@ -66,6 +66,7 @@ mod tests {
     fn cast(effect_tag: i32, target_uids: Vec<i64>) -> BattleEvent {
         BattleEvent::SkillAction(SkillActionEvent {
             source_uid: 10,
+            card_index: 0,
             skill_id: 1,
             target_uid: target_uids.first().copied().unwrap_or_default(),
             target_uids,

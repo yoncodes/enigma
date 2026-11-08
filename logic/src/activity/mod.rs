@@ -11,22 +11,29 @@ use sonettobuf::{
     Act160GetInfoReply, Act160MissionInfo, Act165GainMilestoneRewardReply,
     Act165GenerateEndingReply, Act165GetInfoReply, Act165ModifyKeywordReply, Act165RestartReply,
     Act165StoryInfo, Act172Info, Act186GameInfo, Act186Info, Act186LikeInfo, Act186TaskInfo,
-    Act205GetGameInfoReply, Act205GetInfoReply, Act206ChooseDirectionReply, Act206GetInfoReply,
-    Act208BonusNo, Act208ReceiveBonusReply, Act212BonusNo, Act212InfoNo, Act212ReceiveBonusReply,
-    Act218FinishGameReply, Act221SummonReply, Act228FlipGridGridReply, Act228GetFinalBonusReply,
-    Act228Info, Act229BattleFinishPush, Act229HeroNo, Act229ResetStageReply, Act239BonusNo,
-    Act239BonusReply, ActivityInfo, ActivityNewStageReadReply, BuildTrapReply, EndingInfo,
-    FinishAct125EpisodeReply, FinishAct146EpisodeReply, Get101BonusListReply, Get101BonusReply,
-    Get101InfosReply, Get101SpBonusReply, Get104InfosReply, Get116InfosReply, Get123InfosReply,
-    Get128InfosReply, Get136InfoReply, Get152InfoReply, Get153InfosReply, Get154InfosReply,
-    Get158InfosReply, Get166InfosReply, Get196InfoReply, Get197InfoReply, Get199InfoReply,
-    Get217InfosReply, Get218InfoReply, Get221InfoReply, GetAct125InfosReply, GetAct146InfosReply,
-    GetAct172InfoReply, GetAct186InfoReply, GetAct186SpBonusInfoReply, GetAct189InfoReply,
-    GetAct189OnceBonusReply, GetAct208InfoReply, GetAct209InfoReply, GetAct212InfoReply,
-    GetAct216InfoReply, GetAct225InfoReply, GetAct228InfoReply, GetAct229InfoReply,
-    GetAct236InfoReply, GetAct239InfoReply, GetActivityInfosReply, GetActivityInfosWithParamReply,
-    MarkActivity104StoryReply, MarkEpisodeAfterStoryReply, MarkPopSummaryReply, PutTrapReply,
-    StepInfo, UnlockPermanentReply, UpgradeElementReply,
+    Act186TaskPush, Act205GetGameInfoReply, Act205GetInfoReply, Act206ChooseDirectionReply,
+    Act206GetInfoReply, Act208BonusNo, Act208ReceiveBonusReply, Act212BonusNo, Act212InfoNo,
+    Act212ReceiveBonusReply, Act218FinishGameReply, Act221SummonReply, Act228FlipGridGridReply,
+    Act228GetFinalBonusReply, Act228Info, Act229BattleFinishPush, Act229HeroNo,
+    Act229ModifySkillReply, Act229ModifyStageSubIdReply, Act229ResetStageReply,
+    Act229StageTeamSubIdNo, Act229StageTeamSubIdPush, Act239BonusNo, Act239BonusReply,
+    Act243InfoPush, ActivityInfo, ActivityNewStageReadReply, BuildTrapReply, EndingInfo,
+    FinishAct125EpisodeReply, FinishAct146EpisodeReply, FinishAllAct186TaskReply,
+    Get101BonusListReply, Get101BonusReply, Get101InfosReply, Get101SpBonusReply, Get104InfosReply,
+    Get116InfosReply, Get123InfosReply, Get128InfosReply, Get136InfoReply, Get152InfoReply,
+    Get153InfosReply, Get154InfosReply, Get158InfosReply, Get166InfosReply, Get196InfoReply,
+    Get197InfoReply, Get199InfoReply, Get217InfosReply, Get218InfoReply, Get221InfoReply,
+    GetAct125InfosReply, GetAct146InfosReply, GetAct172InfoReply, GetAct186InfoReply,
+    GetAct186SpBonusInfoReply, GetAct189InfoReply, GetAct189OnceBonusReply, GetAct208InfoReply,
+    GetAct209InfoReply, GetAct212InfoReply, GetAct216InfoReply, GetAct225InfoReply,
+    GetAct228InfoReply, GetAct229InfoReply, GetAct236InfoReply, GetAct239InfoReply,
+    GetAct243InfoReply, GetActivityInfosReply, GetActivityInfosWithParamReply,
+    GetPartyOutSideInfoReply, MarkActivity104StoryReply, MarkEpisodeAfterStoryReply,
+    MarkPopSummaryReply, PutTrapReply, StepInfo, UnlockPermanentReply, UpgradeElementReply,
+};
+use sonettobuf::{
+    Act107GoodsInfo, Act220EpisodePush, Act220EpisodeRecord, Act220FinishEpisodeReply,
+    Get107GoodsInfoReply, GetAct220InfoReply,
 };
 use sqlx::SqlitePool;
 use std::collections::{HashMap, HashSet};
@@ -38,6 +45,7 @@ pub use manager::ActivityManager;
 
 mod act101;
 mod act104;
+mod act107;
 mod act116;
 mod act123;
 mod act125;
@@ -65,21 +73,30 @@ mod act212;
 mod act216;
 mod act217;
 mod act218;
+mod act220;
 mod act221;
 mod act225;
 mod act228;
 mod act229;
 mod act236;
 mod act239;
+mod act243;
 mod dice_hero;
+mod party_game;
+
+pub use act243::total_stars as activity243_total_stars;
 
 use act101::{get101_bonus, get101_bonus_list, get101_infos, get101_sp_bonus};
 use act104::{act104_infos, mark_activity104_story, mark_episode_after_story, mark_pop_summary};
+use act107::act107_goods_info;
 use act116::{build_trap, info as act116_info, put_trap, upgrade_element};
 use act123::{act123_infos, act153_infos};
 use act125::{act125_infos, finish_act125_episode};
 pub use act128::settle_act128_score_in_transaction;
-use act128::{act128_info, get_act128_milestone_bonus, get_act128_total_rewards};
+use act128::{
+    act128_info, change_act_mode, get_act128_exp, get_act128_milestone_bonus,
+    get_act128_total_rewards, get_gallery_infos, reset_act128_team, set_act128_team,
+};
 use act136::{act136_info, act136_select};
 use act146::{act146_episode_bonus, act146_infos, finish_act146_episode};
 use act152::{accept_act152_present, act152_info};
@@ -92,7 +109,8 @@ use act165::{
 };
 use act166::act166_infos;
 use act172::act172_info;
-use act186::{accept_act186_sp_bonus, act186_info, get_act186_sp_bonus_info};
+pub use act186::Act186TaskClaim;
+use act186::{accept_act186_sp_bonus, act186_info, finish_all, get_act186_sp_bonus_info};
 use act189::{act189_info, get_act189_once_bonus};
 use act196::{act196_gain, act196_info};
 use act197::{act197_explore, act197_info, act197_rummage};
@@ -106,16 +124,19 @@ use act212::{act212_info, receive_act212_bonus};
 use act216::{act216_info, finish_act216_task, get_act216_once_bonus};
 use act217::act217_infos;
 use act218::{accept_act218_reward, act218_info, finish_act218_game};
+use act220::{act220_info, finish_act220_episode};
 use act221::{act221_info, act221_select, act221_summon};
 use act225::act225_info;
 use act228::{act228_flip_grid, act228_get_final_bonus, act228_info};
 use act229::{
     act229_battle_episode, act229_heroes_available, act229_info, finish_act229_battle,
-    reset_act229_stage,
+    modify_act229_skill, modify_act229_stage_sub_ids, reset_act229_stage, touch_act229_stage_teams,
 };
 pub use act236::Act236ChargeUpdate;
 pub(crate) use act236::{act236_charge_update, active_act236_activity_id_at};
 use act236::{act236_get_auto_gain_reward, act236_info};
 pub(crate) use act239::act239_red_dot_entries;
 use act239::{act239_bonus, act239_info};
+use act243::{info as act243_info, info_push as act243_info_push};
 use catalog::*;
+use party_game::party_outside_info;

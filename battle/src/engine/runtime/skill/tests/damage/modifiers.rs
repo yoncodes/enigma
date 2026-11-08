@@ -156,6 +156,163 @@ fn source_passive_attack_modifier_is_collected_by_runtime_damage() {
 }
 
 #[test]
+fn paid_action_damage_uses_committed_source_and_target_state() {
+    crate::test_support::init_config();
+    const SKILL_ID: i32 = 999_999_008;
+    let fight = Fight {
+        version: Some(7),
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                current_hp: Some(1_000),
+                attr: Some(HeroAttribute {
+                    hp: Some(1_000),
+                    attack: Some(1_000),
+                    ..Default::default()
+                }),
+                buffs: vec![BuffInfo {
+                    uid: Some(1),
+                    buff_id: Some(434421),
+                    from_uid: Some(10),
+                    layer: Some(4),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(-1),
+                current_hp: Some(100_000),
+                attr: Some(HeroAttribute {
+                    hp: Some(100_000),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    managers.attribute.override_ex(
+        10,
+        &HeroExAttribute {
+            cri_dmg: Some(1_400),
+            ..Default::default()
+        },
+    );
+    let mut catalog = SkillEffectCatalog::from_game_db(config::configs::get());
+    catalog.insert(ParsedSkillEffect {
+        skill_id: SKILL_ID,
+        slots: Vec::new(),
+    });
+    catalog.insert_damage_rate(SKILL_ID, 1_000);
+    let mut invocation: SkillInvocation = SkillRequest {
+        source_uid: 10,
+        skill_id: SKILL_ID,
+    }
+    .into();
+    invocation.mode = SkillExecutionMode::Active;
+    invocation.target = SkillTarget::Explicit(-1);
+    let mut execution = SkillExecution::with_payment(
+        TargetContext::default(),
+        Some(crate::engine::skill::action::ActionPayment {
+            cost: crate::engine::manager::ex_point::ExPointCommand::Spend(
+                crate::engine::manager::ex_point::ExPointChange {
+                    origin: CommandOrigin {
+                        domain: RuleDomain::Skill,
+                        key: DefinitionKey::new(0, "TestPaidAction"),
+                    },
+                    source_uid: 10,
+                    target_uid: 10,
+                    delta: -5,
+                    config_effect: 0,
+                    effect_type: 0,
+                },
+            ),
+            composition: Vec::new(),
+        }),
+    );
+    let mut determinism = RoundDeterminism::default();
+    determinism.enqueue_hidden_crits(SKILL_ID, 10, [true]);
+    let mut damage = None;
+
+    loop {
+        let emission = emit_ops(
+            invocation,
+            &managers,
+            &pool,
+            &catalog,
+            &mut determinism,
+            &mut execution,
+            &SkillOpTrigger::Active,
+        )
+        .unwrap();
+        if emission.ops.iter().any(|emission| {
+            matches!(
+                &emission.op,
+                RuleOp::BeginSkillAction {
+                    lifecycle: crate::engine::skill::action::SkillLifecycle::PhaseCompleted(action),
+                    ..
+                } if action.phase == SkillPhase::Immediate
+            )
+        }) {
+            managers.buff.add_replacing_excluded_with_layer_specified(
+                &managers.hp,
+                10,
+                10,
+                434421,
+                5,
+                true,
+            );
+            managers.buff.add_replacing_excluded_with_layer_specified(
+                &managers.hp,
+                -1,
+                -1,
+                204,
+                1,
+                true,
+            );
+            managers.attribute.override_ex(
+                -1,
+                &HeroExAttribute {
+                    cri_def: Some(200),
+                    ..Default::default()
+                },
+            );
+        }
+        damage = emission
+            .ops
+            .iter()
+            .find_map(|emission| match &emission.op {
+                RuleOp::Command(BattleCommand::Hp(HpCommand::Damage(damage))) => {
+                    Some(damage.amount)
+                }
+                RuleOp::Command(BattleCommand::HpBatch(commands)) => {
+                    commands.iter().find_map(|command| match command {
+                        HpCommand::Damage(damage) => Some(damage.amount),
+                        _ => None,
+                    })
+                }
+                _ => None,
+            })
+            .or(damage);
+        let Some(continuation) = emission.continuation else {
+            break;
+        };
+        invocation = continuation;
+    }
+
+    assert_eq!(managers.buff.buff_id_amount(10, 434421), 9);
+    assert!(managers.buff.has_buff_id(-1, 204));
+    assert_eq!(managers.attribute.get(-1, AttrId::CriticalDef), 200);
+    assert_eq!(damage, Some(1_140));
+}
+
+#[test]
 fn configured_single_and_mass_attack_penalties_follow_the_skill_target_count() {
     crate::test_support::init_config();
     let fight = Fight {
@@ -719,6 +876,7 @@ fn linked_attack_attributes_keep_temporary_critical_damage_source_owned() {
         (AttrId::DmgBonus, 200),
         (AttrId::CriticalDmg, 500),
         (AttrId::IncantationMight, 300),
+        (AttrId::UltimateIncantationMightMultiplier, 1_000),
     ];
     let shared = vec![(AttrId::CriticalDmg, -700)];
 
@@ -734,6 +892,113 @@ fn linked_attack_attributes_keep_temporary_critical_damage_source_owned() {
         plan::LinkedDamagePlan::attack_attributes(&local, &shared, 10, 11),
         vec![(AttrId::DmgBonus, 200), (AttrId::CriticalDmg, -700)]
     );
+}
+
+fn hedone_fix_attr_damage(skill_id: i32, target_buff: Option<i32>) -> (i32, i32) {
+    crate::test_support::init_config();
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![
+                FightEntityInfo {
+                    uid: Some(10),
+                    model_id: Some(3145),
+                    ex_skill_level: Some(2),
+                    current_hp: Some(1_000),
+                    attr: Some(HeroAttribute {
+                        hp: Some(1_000),
+                        attack: Some(1_000),
+                        ..Default::default()
+                    }),
+                    buffs: vec![BuffInfo {
+                        uid: Some(1),
+                        buff_id: Some(31050144),
+                        from_uid: Some(20),
+                        count: Some(1),
+                        ..Default::default()
+                    }],
+                    ..Default::default()
+                },
+                FightEntityInfo {
+                    uid: Some(20),
+                    current_hp: Some(1_000),
+                    attr: Some(HeroAttribute {
+                        hp: Some(1_000),
+                        attack: Some(1_000),
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(-1),
+                current_hp: Some(100_000),
+                attr: Some(HeroAttribute {
+                    hp: Some(100_000),
+                    ..Default::default()
+                }),
+                buffs: target_buff
+                    .map(|buff_id| BuffInfo {
+                        uid: Some(2),
+                        buff_id: Some(buff_id),
+                        from_uid: Some(10),
+                        ..Default::default()
+                    })
+                    .into_iter()
+                    .collect(),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let managers = BattleManagers::seeded(&fight);
+    let pool = TargetPool::from_fight(&fight);
+    let mut catalog = SkillEffectCatalog::from_game_db(config::configs::get());
+    catalog.insert_damage_rate(skill_id, 5_000);
+    let invocation: SkillInvocation = SkillRequest {
+        source_uid: 10,
+        skill_id,
+    }
+    .into();
+    let mut execution = SkillExecution::new(TargetContext::default());
+    execution.configured_targets = Some(vec![-1]);
+    for activation in plan::LinkedDamagePlan::activations(&invocation, &managers, &execution) {
+        execution.activate_additional_damage(activation.additional);
+    }
+    let damage = plan::damage_ops(
+        &invocation,
+        &managers,
+        &pool,
+        &catalog,
+        skill_id,
+        &mut RoundDeterminism::default(),
+        &mut execution,
+    );
+    let [HpCommand::Damage(main)] = damage.damage.as_slice() else {
+        panic!("expected one main damage command")
+    };
+    let [HpCommand::Damage(linked)] = damage.additional_damage.as_slice() else {
+        panic!("expected one linked damage command")
+    };
+    (main.amount, linked.amount)
+}
+
+#[test]
+fn hedone_fix_attr_reaches_main_and_linked_conduit_damage() {
+    const CONDUIT_SKILL: i32 = 31450113;
+    const ORDINARY_SKILL: i32 = 999_999_013;
+    let conduit = hedone_fix_attr_damage(CONDUIT_SKILL, None);
+    let conduit_scar = hedone_fix_attr_damage(CONDUIT_SKILL, Some(31560122));
+    let ordinary = hedone_fix_attr_damage(ORDINARY_SKILL, None);
+    let ordinary_scar = hedone_fix_attr_damage(ORDINARY_SKILL, Some(31560122));
+
+    assert_eq!(conduit, (5_000, 300));
+    assert_eq!(conduit_scar, (5_400, 324));
+    assert_eq!(ordinary, (5_000, 300));
+    assert_eq!(ordinary_scar, ordinary);
 }
 
 #[test]

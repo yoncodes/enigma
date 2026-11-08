@@ -265,14 +265,14 @@ mod tests {
         assert!(!is_activity_online(138502));
         assert!(!is_activity_online(138512));
         assert!(!is_activity_online(138508));
-        assert!(is_activity_online(13801));
-        assert!(is_activity_online(13814));
+        assert!(is_activity_online(13901));
+        assert!(is_activity_online(13930));
         assert_eq!(
             catalog_infos()
                 .iter()
                 .filter(|info| info.online == Some(true))
                 .count(),
-            110
+            134
         );
     }
 
@@ -281,7 +281,7 @@ mod tests {
         let data_dir = format!("{}/../data/excel2json", env!("CARGO_MANIFEST_DIR"));
         let _ = config::init(&data_dir);
 
-        let activity_id = 13805;
+        let activity_id = 13905;
         let schedule = crate::activity::schedule::get(activity_id).unwrap();
         assert!(!active_act101_activity_ids_at(schedule.start_time - 1).contains(&activity_id));
         assert!(active_act101_activity_ids_at(schedule.start_time).contains(&activity_id));
@@ -339,8 +339,8 @@ mod tests {
         apply_act125_activity(&mut infos);
 
         assert!(infos.iter().any(|info| info.id.is_some()));
-        assert_eq!(default_act125_activity_id(), Some(13814));
-        assert!(infos.iter().any(|info| info.id == Some(13814)));
+        assert_eq!(default_act125_activity_id(), Some(13924));
+        assert!(infos.iter().any(|info| info.id == Some(13924)));
         assert!(
             infos
                 .iter()

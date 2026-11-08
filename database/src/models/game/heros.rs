@@ -127,6 +127,7 @@ pub struct InsightUpgrade {
 pub struct HeroGrant {
     pub is_new: bool,
     pub duplicate_count: i32,
+    pub initial_voice_ids: Vec<i32>,
 }
 
 pub async fn get_hero_by_uid(pool: &SqlitePool, hero_uid: i64) -> Result<HeroData> {
@@ -231,6 +232,13 @@ fn passive_skill_levels(hero: &Hero) -> Vec<i32> {
         .character_rank_passive_level(hero.hero_id, hero.rank)
         .unwrap_or_default();
     (1..=level).collect()
+}
+
+fn initial_voice_ids(game_data: &config::GameDB, hero_id: i32) -> Vec<i32> {
+    game_data
+        .character_voices_of_type(hero_id, config::CharacterVoiceType::Summon)
+        .map(|row| row.audio)
+        .collect()
 }
 
 impl HeroData {
@@ -370,6 +378,7 @@ impl UserHeroModel {
             return Ok(HeroGrant {
                 is_new: false,
                 duplicate_count,
+                initial_voice_ids: Vec::new(),
             });
         }
 
@@ -377,6 +386,7 @@ impl UserHeroModel {
         Ok(HeroGrant {
             is_new: true,
             duplicate_count: 0,
+            initial_voice_ids: initial_voice_ids(config::configs::get(), hero_id),
         })
     }
 
@@ -1222,13 +1232,10 @@ impl HeroModel<HeroData> for UserHeroModel {
         self.attach_owned_skins_in_transaction(tx, hero_uid, hero_id)
             .await?;
 
-        for voice in game_data
-            .character_voices(hero_id)
-            .filter(|row| row.r#type == 9 || row.r#type == 11)
-        {
+        for voice_id in initial_voice_ids(game_data, hero_id) {
             sqlx::query("INSERT INTO hero_voices (hero_uid, voice_id) VALUES (?, ?)")
                 .bind(hero_uid)
-                .bind(voice.audio)
+                .bind(voice_id)
                 .execute(&mut **tx)
                 .await?;
         }

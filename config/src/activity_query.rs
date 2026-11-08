@@ -1,3 +1,8 @@
+mod bonds;
+mod gallery;
+
+pub use bonds::{Activity128BondGroup, Activity128BondHero};
+
 use crate::{
     GameDB, activity104_episode::Activity104Episode, activity104_retail::Activity104Retail,
     activity104_special::Activity104Special, activity104_trial::Activity104Trial,
@@ -25,13 +30,6 @@ impl GameDB {
             })
             .map(|activity| activity.id)
             .max()
-    }
-
-    pub fn activity220_first_online_episode_id(&self, activity_id: i32) -> Option<i32> {
-        self.activity220_task
-            .iter()
-            .find(|row| row.activity_id == activity_id && row.is_online != 0)
-            .map(|row| row.episode_id)
     }
 
     pub fn activity236_charge_score(&self, activity_id: i32, goods_id: i32) -> Option<i32> {
@@ -192,17 +190,6 @@ impl GameDB {
 
 #[cfg(test)]
 mod tests {
-    #[test]
-    fn act220_first_online_episode_matches_the_captured_activity() {
-        crate::init_test_config();
-        let tables = crate::configs::get();
-
-        assert_eq!(
-            tables.activity220_first_online_episode_id(13710),
-            Some(1371001)
-        );
-    }
-
     #[test]
     fn act236_reward_rows_load_for_the_configured_activity() {
         crate::init_test_config();

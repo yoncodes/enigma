@@ -12,10 +12,13 @@ pub mod eureka;
 pub mod ex_point;
 pub mod field;
 pub mod fight_progress;
+pub mod fight_task;
 pub mod gauge;
+pub mod hedone_counter;
 pub mod hp;
 pub mod indicator;
 pub mod injury;
+pub mod player;
 pub mod revive;
 pub mod shield;
 pub mod summon;
@@ -69,12 +72,15 @@ pub struct BattleManagers {
     pub hp: HpManager,
     pub indicator: indicator::IndicatorManager,
     pub injury: injury::InjuryManager,
+    pub player: player::BattlePlayerManager,
     pub ex_point: ExPointManager,
     pub eureka: EurekaManager,
     pub gauge: gauge::GaugeManager,
+    pub hedone_counter: hedone_counter::HedoneCounterManager,
     pub nuo_di_ka: crate::engine::mechanic::nuo_di_ka::NuoDiKa,
     pub field: field::FieldManager,
     pub fight_progress: fight_progress::FightProgressManager,
+    pub fight_task: fight_task::FightTaskManager,
     pub upgrade: UpgradeManager,
     pub summon: SummonManager,
     pub toughness: toughness::ToughnessManager,
@@ -92,6 +98,7 @@ struct HpPlan {
     team_shared: Option<hp::TeamSharedShieldPlan>,
     team_shared_buff: Option<BuffPlan>,
     share: Option<ShareHurtPlan>,
+    foundation_counter: Option<FoundationCounterPlan>,
     hp_loss_state: Vec<HpLossStatePlan>,
 }
 
@@ -101,6 +108,11 @@ struct ShareHurtPlan {
 }
 
 struct HpLossStatePlan {
+    buff: BuffPlan,
+    marker: buff::BuffActInfoMarkerResult,
+}
+
+struct FoundationCounterPlan {
     buff: BuffPlan,
     marker: buff::BuffActInfoMarkerResult,
 }
@@ -245,11 +257,11 @@ impl BattleManagers {
                 );
                 (base + flat + base * delta / 1000).clamp(0, i64::from(i32::MAX)) as i32
             }
-            AttrId::CriticalDmg => {
-                self.attribute.get(uid, attr_id)
-                    + self.persistent_attribute_delta(uid, attr_id)
-                    + self.buff.fixed_attribute_delta(uid, attr_id)
-            }
+            AttrId::CriticalRate | AttrId::CriticalDmg => self
+                .attribute
+                .get(uid, attr_id)
+                .saturating_add(self.persistent_attribute_delta(uid, attr_id))
+                .saturating_add(self.buff.fixed_attribute_delta(uid, attr_id)),
             _ => self.attribute.get(uid, attr_id) + self.persistent_attribute_delta(uid, attr_id),
         }
     }
@@ -362,11 +374,14 @@ impl BattleManagers {
             _ => None,
         };
         let source_attack = source_uid.map(|uid| self.attack(uid));
+        let source_max_hp = source_uid
+            .map(|uid| self.origin_attribute(uid, crate::engine::entity::attr::AttrId::Hp));
         let mut plan = self.buff.plan_with_source_attack(
             &self.hp,
             command,
             buff::GrantInputs {
                 source_attack,
+                source_max_hp,
                 resist_roll,
             },
         )?;
@@ -383,6 +398,24 @@ impl BattleManagers {
                 )
         {
             plan.initialize_added_act_info_without_markers(act_info);
+        }
+        if let Some((source_uid, target_uid, buff_id, removed_buff_uids)) =
+            plan.after_add_attribute_route()
+            && let Some(act_info) = crate::engine::skill::buff_act::each_change_attr_one_way_after_add::definition_snapshot(
+                self,
+                buff_id,
+                source_uid,
+                target_uid,
+                &removed_buff_uids,
+            )
+        {
+            plan.initialize_added_and_fanout_act_info_without_markers(act_info);
+        }
+        if let Some((source_uid, target_uid, buff_id)) = plan.each_change_attr_route() {
+            let values = crate::engine::skill::buff_act::each_change_attr::definition_snapshot(
+                self, buff_id, source_uid, target_uid,
+            );
+            plan.add_attr_snapshots(values);
         }
         Ok(plan)
     }
@@ -456,8 +489,7 @@ impl BattleManagers {
     ) -> Result<HpExecution, hp::HpCommandError> {
         let commit = self.execute_hp_commit_with_target_count(command, 1)?;
         let indicator = self
-            .indicator
-            .record_damage(commit.changes.target_uid, commit.changes.applied_damage());
+            .record_damage_indicator(commit.changes.target_uid, commit.changes.applied_damage());
         Ok(HpExecution {
             changes: commit.changes,
             before_hp_markers: commit.before_hp_markers,
@@ -527,9 +559,10 @@ impl BattleManagers {
         Ok(commits
             .into_iter()
             .map(|commit| {
-                let indicator = self
-                    .indicator
-                    .record_damage(commit.changes.target_uid, commit.changes.applied_damage());
+                let indicator = self.record_damage_indicator(
+                    commit.changes.target_uid,
+                    commit.changes.applied_damage(),
+                );
                 HpExecution {
                     changes: commit.changes,
                     before_hp_markers: commit.before_hp_markers,
@@ -537,6 +570,39 @@ impl BattleManagers {
                 }
             })
             .collect())
+    }
+
+    pub(crate) fn execute_indicator(
+        &mut self,
+        command: indicator::IndicatorCommand,
+    ) -> Option<crate::engine::skill::rule::output::EffectMarker> {
+        let indicator_id = command.indicator_id;
+        let marker = self.indicator.add(command)?;
+        self.fight_task
+            .record_indicator(indicator_id, self.indicator.value(indicator_id));
+        Some(marker)
+    }
+
+    pub(crate) fn execute_indicator_clear(
+        &mut self,
+        command: indicator::IndicatorClearCommand,
+    ) -> Option<crate::engine::skill::rule::output::EffectMarker> {
+        let indicator_id = command.indicator_id;
+        let marker = self.indicator.clear(command)?;
+        self.fight_task.record_indicator(indicator_id, 0);
+        Some(marker)
+    }
+
+    fn record_damage_indicator(
+        &mut self,
+        target_uid: i64,
+        amount: i32,
+    ) -> Option<crate::engine::skill::rule::output::EffectMarker> {
+        let marker = self.indicator.record_damage(target_uid, amount)?;
+        let indicator_id = marker.target_uid as i32;
+        self.fight_task
+            .record_indicator(indicator_id, self.indicator.value(indicator_id));
+        Some(marker)
     }
 
     fn execute_hp_commit_with_target_count(
@@ -592,10 +658,10 @@ impl BattleManagers {
         } else {
             None
         };
-        if let hp::HpCommand::Damage(damage) | hp::HpCommand::SettleAccumulatedDamage(damage) =
-            &mut command
-            && let Some(cap) = self
-                .buff
+        let damage_cap = if let hp::HpCommand::Damage(damage)
+        | hp::HpCommand::SettleAccumulatedDamage(damage) = &mut command
+        {
+            self.buff
                 .active_features(hp)
                 .into_iter()
                 .filter(|feature| feature.owner_uid == damage.target_uid)
@@ -603,8 +669,62 @@ impl BattleManagers {
                     crate::engine::skill::buff_act::damage_not_more_than::cap(&feature, hp)
                 })
                 .min()
+        } else {
+            None
+        };
+        if let hp::HpCommand::Damage(damage) | hp::HpCommand::SettleAccumulatedDamage(damage) =
+            &mut command
+            && let Some(cap) = damage_cap
         {
             damage.amount = damage.amount.min(cap);
+        }
+        let mut foundation_counter = None;
+        if let hp::HpCommand::Damage(damage) = &mut command
+            && matches!(
+                damage.effect_kind,
+                hp::DamageEffectKind::Normal | hp::DamageEffectKind::Critical
+            )
+            && let Some(mitigation) = crate::engine::skill::buff_act::foundation::mitigate(
+                self,
+                damage.target_uid,
+                damage.amount,
+            )
+            .map_err(|_| hp::HpCommandError::InvalidFoundationState)?
+        {
+            let unsupported = share.is_some()
+                || damage_cap.is_some()
+                || crate::engine::skill::buff_act::lock_hp::max_loss(
+                    &self.buff,
+                    hp,
+                    damage.target_uid,
+                )
+                .is_some()
+                || self.buff.has_buff_act_kind(
+                    damage.target_uid,
+                    crate::engine::skill::buff_act::registry::BuffActKind::LostHpToFakeHp,
+                )
+                || !self
+                    .team_shared_shield_plans(hp, damage.target_uid, target_count)
+                    .is_empty();
+            if unsupported {
+                return Err(hp::HpCommandError::UnsupportedFoundationInteraction);
+            }
+            foundation_counter = crate::engine::skill::buff_act::foundation_counter::update(
+                self,
+                mitigation.source_uid,
+                mitigation.prevented,
+            )
+            .map_err(|_| hp::HpCommandError::InvalidFoundationCounterState)?
+            .map(|update| {
+                Ok(FoundationCounterPlan {
+                    buff: self
+                        .plan_buff(update.command)
+                        .map_err(|_| hp::HpCommandError::InvalidFoundationCounterState)?,
+                    marker: update.marker,
+                })
+            })
+            .transpose()?;
+            damage.amount = mitigation.damage;
         }
         match &mut command {
             hp::HpCommand::Damage(damage) | hp::HpCommand::SettleAccumulatedDamage(damage) => {
@@ -669,6 +789,7 @@ impl BattleManagers {
             team_shared,
             team_shared_buff,
             share,
+            foundation_counter,
             hp_loss_state: Vec::new(),
         })
     }
@@ -694,6 +815,9 @@ impl BattleManagers {
     }
 
     fn commit_hp_preview(&mut self, plan: &HpPlan) {
+        if let Some(state) = &plan.foundation_counter {
+            self.commit_buff(state.buff.clone());
+        }
         for share in plan.share.iter().flat_map(|share| &share.shares) {
             self.hp
                 .commit_validated_command_with_team_shared(*share, None);
@@ -703,14 +827,15 @@ impl BattleManagers {
     }
 
     fn commit_hp(&mut self, plan: HpPlan) -> HpCommit {
-        let before_hp_markers = plan
-            .hp_loss_state
-            .into_iter()
-            .map(|state| {
-                self.commit_buff(state.buff);
-                state.marker
-            })
-            .collect();
+        let mut before_hp_markers = Vec::new();
+        if let Some(state) = plan.foundation_counter {
+            self.commit_buff(state.buff);
+            before_hp_markers.push(state.marker);
+        }
+        before_hp_markers.extend(plan.hp_loss_state.into_iter().map(|state| {
+            self.commit_buff(state.buff);
+            state.marker
+        }));
         let shared_hurt = plan.share.map(|share| {
             let consumed = self.commit_buff(share.consume);
             let shares = share
@@ -906,6 +1031,38 @@ impl BattleManagers {
         self.execute_ex_point_with(command, resisted)
     }
 
+    pub(crate) fn execute_lowest_ex_point(
+        &mut self,
+        command: ex_point::LowestExPointChange,
+    ) -> Result<Option<ex_point::ExPointChanges>, ex_point::ExPointCommandError> {
+        if command.source_uid == 0 || command.delta <= 0 {
+            return Err(ex_point::ExPointCommandError::InvalidCommand);
+        }
+        let Some(target_uid) = command
+            .candidates
+            .iter()
+            .copied()
+            .filter(|(uid, _)| {
+                self.hp.current(*uid) > 0
+                    && ex_point::ExPointKind::from_wire(self.ex_point.kind(*uid))
+                        == ex_point::ExPointKind::Common
+            })
+            .min_by_key(|(uid, position)| (self.ex_point.get(*uid), *position, *uid))
+            .map(|(uid, _)| uid)
+        else {
+            return Ok(None);
+        };
+        self.execute_ex_point(ex_point::ExPointCommand::Change(ex_point::ExPointChange {
+            origin: command.origin,
+            source_uid: command.source_uid,
+            target_uid,
+            delta: command.delta,
+            config_effect: command.config_effect,
+            effect_type: command.effect_type,
+        }))
+        .map(Some)
+    }
+
     fn execute_ex_point_with(
         &mut self,
         command: ex_point::ExPointCommand,
@@ -934,29 +1091,46 @@ impl BattleManagers {
                 }
                 ex_point::ExPointCommand::Change(change)
             }
+            ex_point::ExPointCommand::Transfer(mut transfer) => {
+                if let Some(target_uid) = self.buff.buff_act_source_uid(
+                    transfer.to_uid,
+                    crate::engine::skill::buff_act::registry::BuffActKind::TransferAddExPoint,
+                ) {
+                    transfer.to_uid = target_uid;
+                }
+                ex_point::ExPointCommand::Transfer(transfer)
+            }
             ex_point::ExPointCommand::Reduce(change) => ex_point::ExPointCommand::Change(change),
             command => command,
         };
-        let target_uid = match command {
-            ex_point::ExPointCommand::Change(change) => Some(change.target_uid),
-            ex_point::ExPointCommand::Reduce(change) => Some(change.target_uid),
-            ex_point::ExPointCommand::Spend(change) => Some(change.target_uid),
-            ex_point::ExPointCommand::Set(change) => Some(change.target_uid),
+        let (gain_target_uid, reduction_target_uid) = match command {
+            ex_point::ExPointCommand::Change(change) if change.delta > 0 => {
+                (Some(change.target_uid), None)
+            }
+            ex_point::ExPointCommand::Change(change) => (None, Some(change.target_uid)),
+            ex_point::ExPointCommand::Reduce(change) => (None, Some(change.target_uid)),
+            ex_point::ExPointCommand::Spend(_) => (None, None),
+            ex_point::ExPointCommand::Set(change) => {
+                (Some(change.target_uid), Some(change.target_uid))
+            }
+            ex_point::ExPointCommand::Transfer(transfer) => {
+                (Some(transfer.to_uid), Some(transfer.from_uid))
+            }
             ex_point::ExPointCommand::ChangeMax(_)
             | ex_point::ExPointCommand::ConfigureSynchronization(_)
             | ex_point::ExPointCommand::RestartSynchronization(_)
             | ex_point::ExPointCommand::CompleteSynchronization(_)
             | ex_point::ExPointCommand::RecordSynchronizationAction(_)
             | ex_point::ExPointCommand::RecordSynchronizationDamage(_)
-            | ex_point::ExPointCommand::PublishSynchronizationHit(_) => None,
+            | ex_point::ExPointCommand::PublishSynchronizationHit(_) => (None, None),
         };
-        let gain_allowed = target_uid.is_none_or(|target_uid| {
+        let gain_allowed = gain_target_uid.is_none_or(|target_uid| {
             !self.buff.has_buff_act_kind(
                 target_uid,
                 crate::engine::skill::buff_act::registry::BuffActKind::ExPointCantAdd,
             )
         });
-        let reduction_allowed = target_uid.is_none_or(|target_uid| {
+        let reduction_allowed = reduction_target_uid.is_none_or(|target_uid| {
             !self.buff.has_buff_act_kind(
                 target_uid,
                 crate::engine::skill::buff_act::registry::BuffActKind::MoxieReductionImmunity,
@@ -1516,13 +1690,17 @@ impl BattleManagers {
     }
 
     /// Seeds every manager from the initial fight snapshot exactly once.
-    pub fn seeded_with_catalog(catalog: crate::catalog::BattleCatalog, fight: &Fight) -> Self {
+    pub fn seeded_with_catalog(
+        catalog: crate::catalog::BattleCatalog,
+        fight: &Fight,
+    ) -> anyhow::Result<Self> {
         let mut managers = Self {
             catalog_data: Some(catalog),
             fight_version: fight.version.unwrap_or_default(),
             ..Self::default()
         };
         managers.attribute.seed_with_catalog(catalog, fight);
+        managers.emitter.seed(fight);
         managers.battle_rule = battle_rule::BattleRuleManager::seed_with_catalog(catalog, fight);
         managers.hp.seed(fight);
         managers.toughness.seed_configured(catalog, fight);
@@ -1530,13 +1708,15 @@ impl BattleManagers {
         managers.eureka.seed(fight);
         managers.buff.set_catalog(catalog);
         managers.buff.seed(fight);
+        crate::engine::skill::buff_act::each_change_attr::seed(&mut managers);
         managers.card.set_catalog(catalog);
         managers.card.seed(fight);
         managers.conduit = ConduitManager::configured(catalog, fight);
         managers.entity = entity::EntityManager::configured(catalog, fight);
         managers.fight_progress.seed(fight);
+        managers.fight_task = fight_task::FightTaskManager::seed(catalog, fight)?;
         managers.wave = wave::WaveManager::seed_with_catalog(catalog, fight);
-        managers
+        Ok(managers)
     }
 
     #[cfg(test)]
@@ -1545,6 +1725,7 @@ impl BattleManagers {
             crate::catalog::BattleCatalog::new(crate::test_support::game_data()),
             fight,
         )
+        .expect("test fight must have a valid task snapshot")
     }
 
     /// Projects manager-owned entity state into the response `Fight` snapshot.
@@ -1564,7 +1745,9 @@ impl BattleManagers {
             self.project_entity_state(entity);
         }
         self.eureka.sync_fight(fight);
+        self.conduit.sync_fight(fight);
         self.fight_progress.sync_fight(fight);
+        self.fight_task.sync_fight(fight);
         let features = self.buff.active_features(&self.hp);
         if let Some(attacker) = fight.attacker.as_mut() {
             attacker.heat_scale = self.heat_scale_snapshot(1, &features);

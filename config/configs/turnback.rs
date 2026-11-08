@@ -47,6 +47,10 @@ pub struct Turnback {
     #[serde(rename = "openDailyBonus")]
     pub open_daily_bonus: bool,
     pub priority: i32,
+    #[serde(rename = "resourceReturnCondition")]
+    pub resource_return_condition: String,
+    #[serde(rename = "resourceReturnVitality")]
+    pub resource_return_vitality: String,
     #[serde(rename = "startStory")]
     pub start_story: i32,
     #[serde(rename = "subModuleIds")]

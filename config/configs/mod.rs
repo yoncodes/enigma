@@ -16,6 +16,7 @@ pub mod activity104_retail;
 pub mod activity104_special;
 pub mod activity104_trial;
 pub mod activity106_task;
+pub mod activity107;
 pub mod activity109_task;
 pub mod activity112_task;
 pub mod activity113_task;
@@ -34,8 +35,11 @@ pub mod activity125_task;
 pub mod activity128_const;
 pub mod activity128_countboss;
 pub mod activity128_episode;
+pub mod activity128_expand_bond;
+pub mod activity128_gallery;
 pub mod activity128_level;
 pub mod activity128_rewards;
+pub mod activity128_stage;
 pub mod activity128_task;
 pub mod activity130_task;
 pub mod activity131_task;
@@ -140,6 +144,7 @@ pub mod activity217_control;
 pub mod activity218_control;
 pub mod activity218_dailydifficultly;
 pub mod activity218_milestone_bonus;
+pub mod activity220_episode;
 pub mod activity220_task;
 pub mod activity221;
 pub mod activity221_ball;
@@ -160,6 +165,7 @@ pub mod activity226_task;
 pub mod activity228;
 pub mod activity229_const;
 pub mod activity229_episode;
+pub mod activity229_skill;
 pub mod activity229_task;
 pub mod activity233_bp;
 pub mod activity233_lv_bonus;
@@ -170,6 +176,8 @@ pub mod activity239;
 pub mod activity240;
 pub mod activity240_backdate;
 pub mod activity240_task;
+pub mod activity243_const;
+pub mod activity243_episode;
 pub mod actvity186_like;
 pub mod actvity186_mini_game;
 pub mod actvity186_stage;
@@ -242,6 +250,9 @@ pub mod equip_const;
 pub mod equip_skill;
 pub mod equip_strengthen;
 pub mod equip_strengthen_cost;
+pub mod explore_chest;
+pub mod explore_item;
+pub mod explore_scene;
 pub mod fairy_land_element;
 pub mod fairyland_puzzle;
 pub mod fairyland_puzzle_talk;
@@ -256,6 +267,7 @@ pub mod fight_eziozhuangbei;
 pub mod fight_eziozhuangbei_icon;
 pub mod fight_jgz_const;
 pub mod fight_prompt;
+pub mod fight_task;
 pub mod formula;
 pub mod friendless;
 pub mod guide;
@@ -278,11 +290,14 @@ pub mod investigate_clue;
 pub mod item;
 pub mod language_en;
 pub mod magic_circle;
+pub mod magic_wqsz;
 pub mod manufacture_building;
 pub mod manufacture_building_level;
 pub mod manufacture_building_trade_level;
 pub mod manufacture_const;
 pub mod manufacture_item;
+pub mod milestone;
+pub mod milestone_bonus;
 pub mod monster;
 pub mod monster_group;
 pub mod monster_instance;
@@ -309,6 +324,9 @@ pub mod power_item;
 pub mod production_line;
 pub mod production_line_level;
 pub mod push_box_task;
+pub mod racing_gift;
+pub mod racing_racer;
+pub mod racing_reward;
 pub mod reddot;
 pub mod resistances_attribute;
 pub mod resistances_const;
@@ -326,12 +344,19 @@ pub mod room_order_refresh;
 pub mod room_skin;
 pub mod room_theme;
 pub mod rouge2_active_skill;
+pub mod rouge2_attribute;
 pub mod rouge2_buff;
 pub mod rouge2_career;
+pub mod rouge2_difficulty;
+pub mod rouge2_formula;
+pub mod rouge2_genius;
+pub mod rouge2_genius_type;
 pub mod rouge2_material;
 pub mod rouge2_outside_const;
 pub mod rouge2_relics;
 pub mod rouge2_reward;
+pub mod rouge2_shop_date;
+pub mod rouge2_system;
 pub mod rule;
 pub mod same_currency_exchange;
 pub mod scene_switch;
@@ -345,9 +370,11 @@ pub mod skill_behavior_condition;
 pub mod skill_buff;
 pub mod skill_bufftype;
 pub mod skill_effect;
+pub mod skill_energy;
 pub mod skill_ex_level;
 pub mod skill_next;
 pub mod skill_passive_level;
+pub mod skill_target_type_define;
 pub mod skin;
 pub mod store;
 pub mod store_charge_goods;
@@ -370,6 +397,7 @@ pub mod task_achievement;
 pub mod task_activity_bonus;
 pub mod task_activity_show;
 pub mod task_daily;
+pub mod task_explore;
 pub mod task_guide;
 pub mod task_room;
 pub mod task_season;
@@ -415,12 +443,24 @@ pub mod trigger_action;
 pub mod turnback;
 pub mod turnback_daily_bonus;
 pub mod turnback_drop;
+pub mod turnback_return_range;
+pub mod turnback_return_reward;
 pub mod turnback_sign_in;
 pub mod turnback_task;
 pub mod turnback_task_bonus;
 pub mod udimo;
 pub mod udimo_background;
 pub mod udimo_decoration;
+pub mod weekwalk;
+pub mod weekwalk_dialog;
+pub mod weekwalk_element;
+pub mod weekwalk_scene;
+pub mod weekwalk_type;
+pub mod weekwalk_ver2;
+pub mod weekwalk_ver2_cup;
+pub mod weekwalk_ver2_element;
+pub mod weekwalk_ver2_skill;
+pub mod weekwalk_ver2_time;
 
 use std::sync::{Mutex, OnceLock};
 
@@ -441,6 +481,7 @@ pub struct GameDB {
     pub activity104_special: activity104_special::Activity104SpecialTable,
     pub activity104_trial: activity104_trial::Activity104TrialTable,
     pub activity106_task: activity106_task::Activity106TaskTable,
+    pub activity107: activity107::Activity107Table,
     pub activity109_task: activity109_task::Activity109TaskTable,
     pub activity112_task: activity112_task::Activity112TaskTable,
     pub activity113_task: activity113_task::Activity113TaskTable,
@@ -459,8 +500,11 @@ pub struct GameDB {
     pub activity128_const: activity128_const::Activity128ConstTable,
     pub activity128_countboss: activity128_countboss::Activity128CountbossTable,
     pub activity128_episode: activity128_episode::Activity128EpisodeTable,
+    pub activity128_expand_bond: activity128_expand_bond::Activity128ExpandBondTable,
+    pub activity128_gallery: activity128_gallery::Activity128GalleryTable,
     pub activity128_level: activity128_level::Activity128LevelTable,
     pub activity128_rewards: activity128_rewards::Activity128RewardsTable,
+    pub activity128_stage: activity128_stage::Activity128StageTable,
     pub activity128_task: activity128_task::Activity128TaskTable,
     pub activity130_task: activity130_task::Activity130TaskTable,
     pub activity131_task: activity131_task::Activity131TaskTable,
@@ -565,6 +609,7 @@ pub struct GameDB {
     pub activity218_control: activity218_control::Activity218ControlTable,
     pub activity218_dailydifficultly: activity218_dailydifficultly::Activity218DailydifficultlyTable,
     pub activity218_milestone_bonus: activity218_milestone_bonus::Activity218MilestoneBonusTable,
+    pub activity220_episode: activity220_episode::Activity220EpisodeTable,
     pub activity220_task: activity220_task::Activity220TaskTable,
     pub activity221: activity221::Activity221Table,
     pub activity221_ball: activity221_ball::Activity221BallTable,
@@ -585,6 +630,7 @@ pub struct GameDB {
     pub activity228: activity228::Activity228Table,
     pub activity229_const: activity229_const::Activity229ConstTable,
     pub activity229_episode: activity229_episode::Activity229EpisodeTable,
+    pub activity229_skill: activity229_skill::Activity229SkillTable,
     pub activity229_task: activity229_task::Activity229TaskTable,
     pub activity233_bp: activity233_bp::Activity233BpTable,
     pub activity233_lv_bonus: activity233_lv_bonus::Activity233LvBonusTable,
@@ -595,6 +641,8 @@ pub struct GameDB {
     pub activity240: activity240::Activity240Table,
     pub activity240_backdate: activity240_backdate::Activity240BackdateTable,
     pub activity240_task: activity240_task::Activity240TaskTable,
+    pub activity243_const: activity243_const::Activity243ConstTable,
+    pub activity243_episode: activity243_episode::Activity243EpisodeTable,
     pub actvity186_like: actvity186_like::Actvity186LikeTable,
     pub actvity186_mini_game: actvity186_mini_game::Actvity186MiniGameTable,
     pub actvity186_stage: actvity186_stage::Actvity186StageTable,
@@ -667,6 +715,9 @@ pub struct GameDB {
     pub equip_skill: equip_skill::EquipSkillTable,
     pub equip_strengthen: equip_strengthen::EquipStrengthenTable,
     pub equip_strengthen_cost: equip_strengthen_cost::EquipStrengthenCostTable,
+    pub explore_chest: explore_chest::ExploreChestTable,
+    pub explore_item: explore_item::ExploreItemTable,
+    pub explore_scene: explore_scene::ExploreSceneTable,
     pub fairy_land_element: fairy_land_element::FairyLandElementTable,
     pub fairyland_puzzle: fairyland_puzzle::FairylandPuzzleTable,
     pub fairyland_puzzle_talk: fairyland_puzzle_talk::FairylandPuzzleTalkTable,
@@ -681,6 +732,7 @@ pub struct GameDB {
     pub fight_eziozhuangbei_icon: fight_eziozhuangbei_icon::FightEziozhuangbeiIconTable,
     pub fight_jgz_const: fight_jgz_const::FightJgzConstTable,
     pub fight_prompt: fight_prompt::FightPromptTable,
+    pub fight_task: fight_task::FightTaskTable,
     pub formula: formula::FormulaTable,
     pub friendless: friendless::FriendlessTable,
     pub guide: guide::GuideTable,
@@ -703,11 +755,14 @@ pub struct GameDB {
     pub item: item::ItemTable,
     pub language_en: language_en::LanguageEnTable,
     pub magic_circle: magic_circle::MagicCircleTable,
+    pub magic_wqsz: magic_wqsz::MagicWqszTable,
     pub manufacture_building: manufacture_building::ManufactureBuildingTable,
     pub manufacture_building_level: manufacture_building_level::ManufactureBuildingLevelTable,
     pub manufacture_building_trade_level: manufacture_building_trade_level::ManufactureBuildingTradeLevelTable,
     pub manufacture_const: manufacture_const::ManufactureConstTable,
     pub manufacture_item: manufacture_item::ManufactureItemTable,
+    pub milestone: milestone::MilestoneTable,
+    pub milestone_bonus: milestone_bonus::MilestoneBonusTable,
     pub monster: monster::MonsterTable,
     pub monster_group: monster_group::MonsterGroupTable,
     pub monster_instance: monster_instance::MonsterInstanceTable,
@@ -734,6 +789,9 @@ pub struct GameDB {
     pub production_line: production_line::ProductionLineTable,
     pub production_line_level: production_line_level::ProductionLineLevelTable,
     pub push_box_task: push_box_task::PushBoxTaskTable,
+    pub racing_gift: racing_gift::RacingGiftTable,
+    pub racing_racer: racing_racer::RacingRacerTable,
+    pub racing_reward: racing_reward::RacingRewardTable,
     pub reddot: reddot::ReddotTable,
     pub resistances_attribute: resistances_attribute::ResistancesAttributeTable,
     pub resistances_const: resistances_const::ResistancesConstTable,
@@ -751,12 +809,19 @@ pub struct GameDB {
     pub room_skin: room_skin::RoomSkinTable,
     pub room_theme: room_theme::RoomThemeTable,
     pub rouge2_active_skill: rouge2_active_skill::Rouge2ActiveSkillTable,
+    pub rouge2_attribute: rouge2_attribute::Rouge2AttributeTable,
     pub rouge2_buff: rouge2_buff::Rouge2BuffTable,
     pub rouge2_career: rouge2_career::Rouge2CareerTable,
+    pub rouge2_difficulty: rouge2_difficulty::Rouge2DifficultyTable,
+    pub rouge2_formula: rouge2_formula::Rouge2FormulaTable,
+    pub rouge2_genius: rouge2_genius::Rouge2GeniusTable,
+    pub rouge2_genius_type: rouge2_genius_type::Rouge2GeniusTypeTable,
     pub rouge2_material: rouge2_material::Rouge2MaterialTable,
     pub rouge2_outside_const: rouge2_outside_const::Rouge2OutsideConstTable,
     pub rouge2_relics: rouge2_relics::Rouge2RelicsTable,
     pub rouge2_reward: rouge2_reward::Rouge2RewardTable,
+    pub rouge2_shop_date: rouge2_shop_date::Rouge2ShopDateTable,
+    pub rouge2_system: rouge2_system::Rouge2SystemTable,
     pub rule: rule::RuleTable,
     pub same_currency_exchange: same_currency_exchange::SameCurrencyExchangeTable,
     pub scene_switch: scene_switch::SceneSwitchTable,
@@ -770,9 +835,11 @@ pub struct GameDB {
     pub skill_buff: skill_buff::SkillBuffTable,
     pub skill_bufftype: skill_bufftype::SkillBufftypeTable,
     pub skill_effect: skill_effect::SkillEffectTable,
+    pub skill_energy: skill_energy::SkillEnergyTable,
     pub skill_ex_level: skill_ex_level::SkillExLevelTable,
     pub skill_next: skill_next::SkillNextTable,
     pub skill_passive_level: skill_passive_level::SkillPassiveLevelTable,
+    pub skill_target_type_define: skill_target_type_define::SkillTargetTypeDefineTable,
     pub skin: skin::SkinTable,
     pub store: store::StoreTable,
     pub store_charge_goods: store_charge_goods::StoreChargeGoodsTable,
@@ -795,6 +862,7 @@ pub struct GameDB {
     pub task_activity_bonus: task_activity_bonus::TaskActivityBonusTable,
     pub task_activity_show: task_activity_show::TaskActivityShowTable,
     pub task_daily: task_daily::TaskDailyTable,
+    pub task_explore: task_explore::TaskExploreTable,
     pub task_guide: task_guide::TaskGuideTable,
     pub task_room: task_room::TaskRoomTable,
     pub task_season: task_season::TaskSeasonTable,
@@ -840,12 +908,25 @@ pub struct GameDB {
     pub turnback: turnback::TurnbackTable,
     pub turnback_daily_bonus: turnback_daily_bonus::TurnbackDailyBonusTable,
     pub turnback_drop: turnback_drop::TurnbackDropTable,
+    pub turnback_return_range: turnback_return_range::TurnbackReturnRangeTable,
+    pub turnback_return_reward: turnback_return_reward::TurnbackReturnRewardTable,
     pub turnback_sign_in: turnback_sign_in::TurnbackSignInTable,
     pub turnback_task: turnback_task::TurnbackTaskTable,
     pub turnback_task_bonus: turnback_task_bonus::TurnbackTaskBonusTable,
     pub udimo: udimo::UdimoTable,
     pub udimo_background: udimo_background::UdimoBackgroundTable,
     pub udimo_decoration: udimo_decoration::UdimoDecorationTable,
+    pub weekwalk: weekwalk::WeekwalkTable,
+    pub weekwalk_dialog: weekwalk_dialog::WeekwalkDialogTable,
+    pub weekwalk_element: weekwalk_element::WeekwalkElementTable,
+    pub weekwalk_scene: weekwalk_scene::WeekwalkSceneTable,
+    pub weekwalk_type: weekwalk_type::WeekwalkTypeTable,
+    pub weekwalk_ver2: weekwalk_ver2::WeekwalkVer2Table,
+    pub weekwalk_ver2_cup: weekwalk_ver2_cup::WeekwalkVer2CupTable,
+    pub weekwalk_ver2_element: weekwalk_ver2_element::WeekwalkVer2ElementTable,
+    pub weekwalk_ver2_skill: weekwalk_ver2_skill::WeekwalkVer2SkillTable,
+    pub weekwalk_ver2_time: weekwalk_ver2_time::WeekwalkVer2TimeTable,
+    pub explore_map: crate::exploration::MapTable,
 }
 
 impl GameDB {
@@ -898,6 +979,9 @@ impl GameDB {
         let activity106_task = activity106_task::Activity106TaskTable::load(
             &format!("{}/activity106_task.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load activity106_task.json: {}", e))?;
+        let activity107 = activity107::Activity107Table::load(
+            &format!("{}/activity107.json", data_dir)
+        ).map_err(|e| anyhow::anyhow!("Failed to load activity107.json: {}", e))?;
         let activity109_task = activity109_task::Activity109TaskTable::load(
             &format!("{}/activity109_task.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load activity109_task.json: {}", e))?;
@@ -952,12 +1036,21 @@ impl GameDB {
         let activity128_episode = activity128_episode::Activity128EpisodeTable::load(
             &format!("{}/activity128_episode.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load activity128_episode.json: {}", e))?;
+        let activity128_expand_bond = activity128_expand_bond::Activity128ExpandBondTable::load(
+            &format!("{}/activity128_expand_bond.json", data_dir)
+        ).map_err(|e| anyhow::anyhow!("Failed to load activity128_expand_bond.json: {}", e))?;
+        let activity128_gallery = activity128_gallery::Activity128GalleryTable::load(
+            &format!("{}/activity128_gallery.json", data_dir)
+        ).map_err(|e| anyhow::anyhow!("Failed to load activity128_gallery.json: {}", e))?;
         let activity128_level = activity128_level::Activity128LevelTable::load(
             &format!("{}/activity128_level.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load activity128_level.json: {}", e))?;
         let activity128_rewards = activity128_rewards::Activity128RewardsTable::load(
             &format!("{}/activity128_rewards.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load activity128_rewards.json: {}", e))?;
+        let activity128_stage = activity128_stage::Activity128StageTable::load(
+            &format!("{}/activity128_stage.json", data_dir)
+        ).map_err(|e| anyhow::anyhow!("Failed to load activity128_stage.json: {}", e))?;
         let activity128_task = activity128_task::Activity128TaskTable::load(
             &format!("{}/activity128_task.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load activity128_task.json: {}", e))?;
@@ -1270,6 +1363,9 @@ impl GameDB {
         let activity218_milestone_bonus = activity218_milestone_bonus::Activity218MilestoneBonusTable::load(
             &format!("{}/activity218_milestone_bonus.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load activity218_milestone_bonus.json: {}", e))?;
+        let activity220_episode = activity220_episode::Activity220EpisodeTable::load(
+            &format!("{}/activity220_episode.json", data_dir)
+        ).map_err(|e| anyhow::anyhow!("Failed to load activity220_episode.json: {}", e))?;
         let activity220_task = activity220_task::Activity220TaskTable::load(
             &format!("{}/activity220_task.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load activity220_task.json: {}", e))?;
@@ -1330,6 +1426,9 @@ impl GameDB {
         let activity229_episode = activity229_episode::Activity229EpisodeTable::load(
             &format!("{}/activity229_episode.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load activity229_episode.json: {}", e))?;
+        let activity229_skill = activity229_skill::Activity229SkillTable::load(
+            &format!("{}/activity229_skill.json", data_dir)
+        ).map_err(|e| anyhow::anyhow!("Failed to load activity229_skill.json: {}", e))?;
         let activity229_task = activity229_task::Activity229TaskTable::load(
             &format!("{}/activity229_task.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load activity229_task.json: {}", e))?;
@@ -1360,6 +1459,12 @@ impl GameDB {
         let activity240_task = activity240_task::Activity240TaskTable::load(
             &format!("{}/activity240_task.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load activity240_task.json: {}", e))?;
+        let activity243_const = activity243_const::Activity243ConstTable::load(
+            &format!("{}/243_const.json", data_dir)
+        ).map_err(|e| anyhow::anyhow!("Failed to load 243_const.json: {}", e))?;
+        let activity243_episode = activity243_episode::Activity243EpisodeTable::load(
+            &format!("{}/243_episode.json", data_dir)
+        ).map_err(|e| anyhow::anyhow!("Failed to load 243_episode.json: {}", e))?;
         let actvity186_like = actvity186_like::Actvity186LikeTable::load(
             &format!("{}/actvity186_like.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load actvity186_like.json: {}", e))?;
@@ -1576,6 +1681,15 @@ impl GameDB {
         let equip_strengthen_cost = equip_strengthen_cost::EquipStrengthenCostTable::load(
             &format!("{}/equip_strengthen_cost.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load equip_strengthen_cost.json: {}", e))?;
+        let explore_chest = explore_chest::ExploreChestTable::load(
+            &format!("{}/explore_chest.json", data_dir)
+        ).map_err(|e| anyhow::anyhow!("Failed to load explore_chest.json: {}", e))?;
+        let explore_item = explore_item::ExploreItemTable::load(
+            &format!("{}/explore_item.json", data_dir)
+        ).map_err(|e| anyhow::anyhow!("Failed to load explore_item.json: {}", e))?;
+        let explore_scene = explore_scene::ExploreSceneTable::load(
+            &format!("{}/explore_scene.json", data_dir)
+        ).map_err(|e| anyhow::anyhow!("Failed to load explore_scene.json: {}", e))?;
         let fairy_land_element = fairy_land_element::FairyLandElementTable::load(
             &format!("{}/fairy_land_element.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load fairy_land_element.json: {}", e))?;
@@ -1618,6 +1732,9 @@ impl GameDB {
         let fight_prompt = fight_prompt::FightPromptTable::load(
             &format!("{}/fight_prompt.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load fight_prompt.json: {}", e))?;
+        let fight_task = fight_task::FightTaskTable::load(
+            &format!("{}/fight_task.json", data_dir)
+        ).map_err(|e| anyhow::anyhow!("Failed to load fight_task.json: {}", e))?;
         let formula = formula::FormulaTable::load(
             &format!("{}/formula.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load formula.json: {}", e))?;
@@ -1684,6 +1801,9 @@ impl GameDB {
         let magic_circle = magic_circle::MagicCircleTable::load(
             &format!("{}/magic_circle.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load magic_circle.json: {}", e))?;
+        let magic_wqsz = magic_wqsz::MagicWqszTable::load(
+            &format!("{}/magic_wqsz.json", data_dir)
+        ).map_err(|e| anyhow::anyhow!("Failed to load magic_wqsz.json: {}", e))?;
         let manufacture_building = manufacture_building::ManufactureBuildingTable::load(
             &format!("{}/manufacture_building.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load manufacture_building.json: {}", e))?;
@@ -1699,6 +1819,12 @@ impl GameDB {
         let manufacture_item = manufacture_item::ManufactureItemTable::load(
             &format!("{}/manufacture_item.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load manufacture_item.json: {}", e))?;
+        let milestone = milestone::MilestoneTable::load(
+            &format!("{}/milestone.json", data_dir)
+        ).map_err(|e| anyhow::anyhow!("Failed to load milestone.json: {}", e))?;
+        let milestone_bonus = milestone_bonus::MilestoneBonusTable::load(
+            &format!("{}/milestone_bonus.json", data_dir)
+        ).map_err(|e| anyhow::anyhow!("Failed to load milestone_bonus.json: {}", e))?;
         let monster = monster::MonsterTable::load(
             &format!("{}/monster.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load monster.json: {}", e))?;
@@ -1777,6 +1903,15 @@ impl GameDB {
         let push_box_task = push_box_task::PushBoxTaskTable::load(
             &format!("{}/push_box_task.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load push_box_task.json: {}", e))?;
+        let racing_gift = racing_gift::RacingGiftTable::load(
+            &format!("{}/racing_gift.json", data_dir)
+        ).map_err(|e| anyhow::anyhow!("Failed to load racing_gift.json: {}", e))?;
+        let racing_racer = racing_racer::RacingRacerTable::load(
+            &format!("{}/racing_racer.json", data_dir)
+        ).map_err(|e| anyhow::anyhow!("Failed to load racing_racer.json: {}", e))?;
+        let racing_reward = racing_reward::RacingRewardTable::load(
+            &format!("{}/racing_reward.json", data_dir)
+        ).map_err(|e| anyhow::anyhow!("Failed to load racing_reward.json: {}", e))?;
         let reddot = reddot::ReddotTable::load(
             &format!("{}/reddot.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load reddot.json: {}", e))?;
@@ -1828,12 +1963,27 @@ impl GameDB {
         let rouge2_active_skill = rouge2_active_skill::Rouge2ActiveSkillTable::load(
             &format!("{}/rouge2_active_skill.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load rouge2_active_skill.json: {}", e))?;
+        let rouge2_attribute = rouge2_attribute::Rouge2AttributeTable::load(
+            &format!("{}/rouge2_attribute.json", data_dir)
+        ).map_err(|e| anyhow::anyhow!("Failed to load rouge2_attribute.json: {}", e))?;
         let rouge2_buff = rouge2_buff::Rouge2BuffTable::load(
             &format!("{}/rouge2_buff.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load rouge2_buff.json: {}", e))?;
         let rouge2_career = rouge2_career::Rouge2CareerTable::load(
             &format!("{}/rouge2_career.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load rouge2_career.json: {}", e))?;
+        let rouge2_difficulty = rouge2_difficulty::Rouge2DifficultyTable::load(
+            &format!("{}/rouge2_difficulty.json", data_dir)
+        ).map_err(|e| anyhow::anyhow!("Failed to load rouge2_difficulty.json: {}", e))?;
+        let rouge2_formula = rouge2_formula::Rouge2FormulaTable::load(
+            &format!("{}/rouge2_formula.json", data_dir)
+        ).map_err(|e| anyhow::anyhow!("Failed to load rouge2_formula.json: {}", e))?;
+        let rouge2_genius = rouge2_genius::Rouge2GeniusTable::load(
+            &format!("{}/rouge2_genius.json", data_dir)
+        ).map_err(|e| anyhow::anyhow!("Failed to load rouge2_genius.json: {}", e))?;
+        let rouge2_genius_type = rouge2_genius_type::Rouge2GeniusTypeTable::load(
+            &format!("{}/rouge2_genius_type.json", data_dir)
+        ).map_err(|e| anyhow::anyhow!("Failed to load rouge2_genius_type.json: {}", e))?;
         let rouge2_material = rouge2_material::Rouge2MaterialTable::load(
             &format!("{}/rouge2_material.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load rouge2_material.json: {}", e))?;
@@ -1846,6 +1996,12 @@ impl GameDB {
         let rouge2_reward = rouge2_reward::Rouge2RewardTable::load(
             &format!("{}/rouge2_reward.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load rouge2_reward.json: {}", e))?;
+        let rouge2_shop_date = rouge2_shop_date::Rouge2ShopDateTable::load(
+            &format!("{}/rouge2_shop_date.json", data_dir)
+        ).map_err(|e| anyhow::anyhow!("Failed to load rouge2_shop_date.json: {}", e))?;
+        let rouge2_system = rouge2_system::Rouge2SystemTable::load(
+            &format!("{}/rouge2_system.json", data_dir)
+        ).map_err(|e| anyhow::anyhow!("Failed to load rouge2_system.json: {}", e))?;
         let rule = rule::RuleTable::load(
             &format!("{}/rule.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load rule.json: {}", e))?;
@@ -1885,6 +2041,9 @@ impl GameDB {
         let skill_effect = skill_effect::SkillEffectTable::load(
             &format!("{}/skill_effect.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load skill_effect.json: {}", e))?;
+        let skill_energy = skill_energy::SkillEnergyTable::load(
+            &format!("{}/skill_energy.json", data_dir)
+        ).map_err(|e| anyhow::anyhow!("Failed to load skill_energy.json: {}", e))?;
         let skill_ex_level = skill_ex_level::SkillExLevelTable::load(
             &format!("{}/skill_ex_level.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load skill_ex_level.json: {}", e))?;
@@ -1894,6 +2053,9 @@ impl GameDB {
         let skill_passive_level = skill_passive_level::SkillPassiveLevelTable::load(
             &format!("{}/skill_passive_level.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load skill_passive_level.json: {}", e))?;
+        let skill_target_type_define = skill_target_type_define::SkillTargetTypeDefineTable::load(
+            &format!("{}/skill_target_type_define.json", data_dir)
+        ).map_err(|e| anyhow::anyhow!("Failed to load skill_target_type_define.json: {}", e))?;
         let skin = skin::SkinTable::load(
             &format!("{}/skin.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load skin.json: {}", e))?;
@@ -1960,6 +2122,9 @@ impl GameDB {
         let task_daily = task_daily::TaskDailyTable::load(
             &format!("{}/task_daily.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load task_daily.json: {}", e))?;
+        let task_explore = task_explore::TaskExploreTable::load(
+            &format!("{}/task_explore.json", data_dir)
+        ).map_err(|e| anyhow::anyhow!("Failed to load task_explore.json: {}", e))?;
         let task_guide = task_guide::TaskGuideTable::load(
             &format!("{}/task_guide.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load task_guide.json: {}", e))?;
@@ -2095,6 +2260,12 @@ impl GameDB {
         let turnback_drop = turnback_drop::TurnbackDropTable::load(
             &format!("{}/turnback_drop.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load turnback_drop.json: {}", e))?;
+        let turnback_return_range = turnback_return_range::TurnbackReturnRangeTable::load(
+            &format!("{}/turnback_return_range.json", data_dir)
+        ).map_err(|e| anyhow::anyhow!("Failed to load turnback_return_range.json: {}", e))?;
+        let turnback_return_reward = turnback_return_reward::TurnbackReturnRewardTable::load(
+            &format!("{}/turnback_return_reward.json", data_dir)
+        ).map_err(|e| anyhow::anyhow!("Failed to load turnback_return_reward.json: {}", e))?;
         let turnback_sign_in = turnback_sign_in::TurnbackSignInTable::load(
             &format!("{}/turnback_sign_in.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load turnback_sign_in.json: {}", e))?;
@@ -2113,7 +2284,38 @@ impl GameDB {
         let udimo_decoration = udimo_decoration::UdimoDecorationTable::load(
             &format!("{}/udimo_decoration.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load udimo_decoration.json: {}", e))?;
+        let weekwalk = weekwalk::WeekwalkTable::load(
+            &format!("{}/weekwalk.json", data_dir)
+        ).map_err(|e| anyhow::anyhow!("Failed to load weekwalk.json: {}", e))?;
+        let weekwalk_dialog = weekwalk_dialog::WeekwalkDialogTable::load(
+            &format!("{}/weekwalk_dialog.json", data_dir)
+        ).map_err(|e| anyhow::anyhow!("Failed to load weekwalk_dialog.json: {}", e))?;
+        let weekwalk_element = weekwalk_element::WeekwalkElementTable::load(
+            &format!("{}/weekwalk_element.json", data_dir)
+        ).map_err(|e| anyhow::anyhow!("Failed to load weekwalk_element.json: {}", e))?;
+        let weekwalk_scene = weekwalk_scene::WeekwalkSceneTable::load(
+            &format!("{}/weekwalk_scene.json", data_dir)
+        ).map_err(|e| anyhow::anyhow!("Failed to load weekwalk_scene.json: {}", e))?;
+        let weekwalk_type = weekwalk_type::WeekwalkTypeTable::load(
+            &format!("{}/weekwalk_type.json", data_dir)
+        ).map_err(|e| anyhow::anyhow!("Failed to load weekwalk_type.json: {}", e))?;
+        let weekwalk_ver2 = weekwalk_ver2::WeekwalkVer2Table::load(
+            &format!("{}/weekwalk_ver2.json", data_dir)
+        ).map_err(|e| anyhow::anyhow!("Failed to load weekwalk_ver2.json: {}", e))?;
+        let weekwalk_ver2_cup = weekwalk_ver2_cup::WeekwalkVer2CupTable::load(
+            &format!("{}/weekwalk_ver2_cup.json", data_dir)
+        ).map_err(|e| anyhow::anyhow!("Failed to load weekwalk_ver2_cup.json: {}", e))?;
+        let weekwalk_ver2_element = weekwalk_ver2_element::WeekwalkVer2ElementTable::load(
+            &format!("{}/weekwalk_ver2_element.json", data_dir)
+        ).map_err(|e| anyhow::anyhow!("Failed to load weekwalk_ver2_element.json: {}", e))?;
+        let weekwalk_ver2_skill = weekwalk_ver2_skill::WeekwalkVer2SkillTable::load(
+            &format!("{}/weekwalk_ver2_skill.json", data_dir)
+        ).map_err(|e| anyhow::anyhow!("Failed to load weekwalk_ver2_skill.json: {}", e))?;
+        let weekwalk_ver2_time = weekwalk_ver2_time::WeekwalkVer2TimeTable::load(
+            &format!("{}/weekwalk_ver2_time.json", data_dir)
+        ).map_err(|e| anyhow::anyhow!("Failed to load weekwalk_ver2_time.json: {}", e))?;
 
+        let explore_map = crate::exploration::MapTable::load(data_dir, &explore_scene)?;
         Ok(Self {
             achievement,
             achievement_task,
@@ -2131,6 +2333,7 @@ impl GameDB {
             activity104_special,
             activity104_trial,
             activity106_task,
+            activity107,
             activity109_task,
             activity112_task,
             activity113_task,
@@ -2149,8 +2352,11 @@ impl GameDB {
             activity128_const,
             activity128_countboss,
             activity128_episode,
+            activity128_expand_bond,
+            activity128_gallery,
             activity128_level,
             activity128_rewards,
+            activity128_stage,
             activity128_task,
             activity130_task,
             activity131_task,
@@ -2255,6 +2461,7 @@ impl GameDB {
             activity218_control,
             activity218_dailydifficultly,
             activity218_milestone_bonus,
+            activity220_episode,
             activity220_task,
             activity221,
             activity221_ball,
@@ -2275,6 +2482,7 @@ impl GameDB {
             activity228,
             activity229_const,
             activity229_episode,
+            activity229_skill,
             activity229_task,
             activity233_bp,
             activity233_lv_bonus,
@@ -2285,6 +2493,8 @@ impl GameDB {
             activity240,
             activity240_backdate,
             activity240_task,
+            activity243_const,
+            activity243_episode,
             actvity186_like,
             actvity186_mini_game,
             actvity186_stage,
@@ -2357,6 +2567,9 @@ impl GameDB {
             equip_skill,
             equip_strengthen,
             equip_strengthen_cost,
+            explore_chest,
+            explore_item,
+            explore_scene,
             fairy_land_element,
             fairyland_puzzle,
             fairyland_puzzle_talk,
@@ -2371,6 +2584,7 @@ impl GameDB {
             fight_eziozhuangbei_icon,
             fight_jgz_const,
             fight_prompt,
+            fight_task,
             formula,
             friendless,
             guide,
@@ -2393,11 +2607,14 @@ impl GameDB {
             item,
             language_en,
             magic_circle,
+            magic_wqsz,
             manufacture_building,
             manufacture_building_level,
             manufacture_building_trade_level,
             manufacture_const,
             manufacture_item,
+            milestone,
+            milestone_bonus,
             monster,
             monster_group,
             monster_instance,
@@ -2424,6 +2641,9 @@ impl GameDB {
             production_line,
             production_line_level,
             push_box_task,
+            racing_gift,
+            racing_racer,
+            racing_reward,
             reddot,
             resistances_attribute,
             resistances_const,
@@ -2441,12 +2661,19 @@ impl GameDB {
             room_skin,
             room_theme,
             rouge2_active_skill,
+            rouge2_attribute,
             rouge2_buff,
             rouge2_career,
+            rouge2_difficulty,
+            rouge2_formula,
+            rouge2_genius,
+            rouge2_genius_type,
             rouge2_material,
             rouge2_outside_const,
             rouge2_relics,
             rouge2_reward,
+            rouge2_shop_date,
+            rouge2_system,
             rule,
             same_currency_exchange,
             scene_switch,
@@ -2460,9 +2687,11 @@ impl GameDB {
             skill_buff,
             skill_bufftype,
             skill_effect,
+            skill_energy,
             skill_ex_level,
             skill_next,
             skill_passive_level,
+            skill_target_type_define,
             skin,
             store,
             store_charge_goods,
@@ -2485,6 +2714,7 @@ impl GameDB {
             task_activity_bonus,
             task_activity_show,
             task_daily,
+            task_explore,
             task_guide,
             task_room,
             task_season,
@@ -2530,12 +2760,25 @@ impl GameDB {
             turnback,
             turnback_daily_bonus,
             turnback_drop,
+            turnback_return_range,
+            turnback_return_reward,
             turnback_sign_in,
             turnback_task,
             turnback_task_bonus,
             udimo,
             udimo_background,
             udimo_decoration,
+            weekwalk,
+            weekwalk_dialog,
+            weekwalk_element,
+            weekwalk_scene,
+            weekwalk_type,
+            weekwalk_ver2,
+            weekwalk_ver2_cup,
+            weekwalk_ver2_element,
+            weekwalk_ver2_skill,
+            weekwalk_ver2_time,
+            explore_map,
         })
     }
 

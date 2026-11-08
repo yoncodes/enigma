@@ -1,6 +1,26 @@
 use super::*;
 
 #[test]
+fn sovereign_card_generation_has_an_exact_runtime_route() {
+    let definition = find(1133, "UnnamedAddSpCard").expect("special-card generation rule");
+    assert!(definition.validate_arguments(None, &[31472131, 9, 31470001, 4], None));
+    assert_eq!(
+        runtime_event(1133, "UnnamedAddSpCard", 105),
+        Some(EventKind::RoundStartCard)
+    );
+    assert!(definition.completion_gap.is_some());
+    assert!(definition.runtime.fallible_scoped_handler.is_some());
+    for args in [
+        &[31472131, 9, 31470001][..],
+        &[31472131, 0, 31470001, 4],
+        &[31472131, 9, 31470001, 0],
+    ] {
+        assert!(!definition.validate_arguments(None, args, None));
+    }
+    assert!(find(1133, "AddSpTempCard").is_none());
+}
+
+#[test]
 fn share_hurt_marks_adds_and_refreshes() {
     let wire = find(872, "ShareHurt").unwrap().wire.unwrap();
 
@@ -59,6 +79,21 @@ fn attr_transactions_follow_the_buff_lifecycle_boundary() {
         runtime_publication(100, "Attr", EventKind::BuffRemoved),
         PublicationPhase::AfterPublish
     );
+}
+
+#[test]
+fn each_change_attr_requires_exact_attribute_arguments() {
+    let definition = find(834, "EachChangeAttr").unwrap();
+    let supports = definition.supports.unwrap();
+
+    assert!(supports(&[205, 0, 102, 150]));
+    assert!(!supports(&[205, 0, 102]));
+    assert!(!supports(&[999, 0, 102, 150]));
+    assert!(!supports(&[205, -1, 102, 150]));
+    assert!(!supports(&[205, 0, 999, 150]));
+    assert!(!supports(&[205, 0, 102, -1]));
+    assert!(!supports(&[101, 40, 101, 40]));
+    assert!(!supports(&[206, 0, 206, 100]));
 }
 
 #[test]
@@ -473,6 +508,128 @@ fn damage_cap_is_an_exact_static_consumer_with_its_captured_marker() {
             .unwrap()
             .markers(super::super::super::wire::WirePhase::Add),
         &[sonettobuf::effect_type_enum::EffectType::Damagenotmorethan as i32]
+    );
+}
+
+#[test]
+fn foundation_shield_is_an_exact_snapshotted_damage_consumer() {
+    let definition = find(1146, "FoundationShield").unwrap();
+
+    assert_eq!(definition.kind, BuffActKind::FoundationShield);
+    assert_eq!(
+        definition.state.initial,
+        Some(BuffActInitialStateRule::SourceAttack)
+    );
+    assert!(
+        !definition
+            .wire
+            .expect("FoundationShield has static wire metadata")
+            .initial_state_marker
+    );
+    assert_eq!(
+        destination(1146, "FoundationShield", &[102, 800, 31_400_007, 1600]),
+        Some(BuffActDestination::StateConsumer)
+    );
+    assert!(!has_destination(
+        1146,
+        "FoundationShield",
+        &[101, 800, 31_400_007, 1600]
+    ));
+    assert!(find(1146, "FoundationCounter").is_none());
+}
+
+#[test]
+fn foundation_counter_is_an_exact_snapshotted_state_consumer() {
+    let definition = find(1147, "FoundationCounter").unwrap();
+
+    assert_eq!(definition.kind, BuffActKind::FoundationCounter);
+    assert_eq!(
+        definition.state.initial,
+        Some(BuffActInitialStateRule::FoundationCounter)
+    );
+    assert!(definition.state.consumer);
+    assert_eq!(
+        destination(1147, "FoundationCounter", &[5000, 1000, 1000]),
+        Some(BuffActDestination::StateConsumer)
+    );
+    assert!(!has_destination(
+        1147,
+        "FoundationCounter",
+        &[0, 1000, 1000]
+    ));
+    assert!(find(1147, "FoundationShield").is_none());
+}
+
+#[test]
+fn hedone_counter_keeps_its_exact_hit_and_round_routes() {
+    let definition = find(1158, "HedoneHurtCounter").unwrap();
+
+    assert_eq!(definition.kind, BuffActKind::HedoneHurtCounter);
+    assert_eq!(definition.state.initial, None);
+    assert_eq!(
+        definition.setup.routes,
+        &[(SetupStage::EnterBattleStatic, 0)]
+    );
+    assert_eq!(
+        definition.setup_frame(SetupStage::EnterBattleStatic, 0),
+        (SetupFrameScope::SideSubscriberFrame, 0)
+    );
+    let wire = definition.wire.unwrap();
+    assert_eq!(
+        wire.markers(super::super::super::wire::WirePhase::Add),
+        &[sonettobuf::effect_type_enum::EffectType::None as i32]
+    );
+    assert!(
+        wire.markers(super::super::super::wire::WirePhase::Static)
+            .is_empty()
+    );
+    assert!(
+        wire.markers(super::super::super::wire::WirePhase::Refresh)
+            .is_empty()
+    );
+    assert!(definition.state.consumer);
+    assert!(subscribes_to_event(
+        1158,
+        "HedoneHurtCounter",
+        0,
+        EventKind::TargetAttacked
+    ));
+    assert!(subscribes_to_event(
+        1158,
+        "HedoneHurtCounter",
+        0,
+        EventKind::RoundEndAfterFinalSettlement
+    ));
+    assert!(has_destination(
+        1158,
+        "HedoneHurtCounter",
+        &[100, 31560121, 100, 4]
+    ));
+    assert!(!has_destination(
+        1158,
+        "HedoneHurtCounter",
+        &[100, 31560121, 100]
+    ));
+    assert!(find(1158, "FoundationCounter").is_none());
+}
+
+#[test]
+fn hedone_card_marks_only_its_add() {
+    let definition = find(1159, "HedoneCard").unwrap();
+    let wire = definition.wire.unwrap();
+
+    assert_eq!(definition.kind, BuffActKind::HedoneCard);
+    assert_eq!(
+        wire.markers(super::super::super::wire::WirePhase::Add),
+        &[sonettobuf::effect_type_enum::EffectType::None as i32]
+    );
+    assert!(
+        wire.markers(super::super::super::wire::WirePhase::Static)
+            .is_empty()
+    );
+    assert!(
+        wire.markers(super::super::super::wire::WirePhase::Refresh)
+            .is_empty()
     );
 }
 

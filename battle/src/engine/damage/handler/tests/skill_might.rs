@@ -77,15 +77,22 @@ fn forced_restraint_marks_the_resolved_hit() {
 }
 
 #[test]
-fn ultimate_might_uses_the_skill_to_effect_alias() {
+fn emitter_career_marks_the_resolved_hit() {
     init_config();
+    let mut emitter = entity(crate::engine::manager::emitter::UID, 1, 0, 1_000, 0);
+    emitter.buffs.push(BuffInfo {
+        uid: Some(1),
+        buff_id: Some(31410404),
+        from_uid: Some(10),
+        ..Default::default()
+    });
     let fight = Fight {
         attacker: Some(FightTeam {
-            entitys: vec![entity(10, 1, 1, 1_000, 0)],
+            entitys: vec![entity(10, 1, 1, 1_000, 0), emitter],
             ..Default::default()
         }),
         defender: Some(FightTeam {
-            entitys: vec![entity(-1, 2, 1, 0, 0)],
+            entitys: vec![entity(-1, 2, 2, 0, 0)],
             ..Default::default()
         }),
         ..Default::default()
@@ -94,12 +101,12 @@ fn ultimate_might_uses_the_skill_to_effect_alias() {
     let managers = BattleManagers::seeded(&fight);
     let command = resolve_attack_command(
         &AttackPlan {
-            source_uid: 10,
+            source_uid: crate::engine::manager::emitter::UID,
             target_uid: -1,
-            skill_id: 30230134,
+            skill_id: 1,
             rate: 1_000,
             rate_terms: Vec::new(),
-            attack_attributes: vec![(AttrId::UltimateMight, 180)],
+            attack_attributes: Vec::new(),
             career_ratio_bonus: 0,
             attack_career: None,
             additional_attack_career: None,
@@ -127,15 +134,99 @@ fn ultimate_might_uses_the_skill_to_effect_alias() {
         },
         CommandOrigin {
             domain: crate::engine::skill::rule::RuleDomain::Skill,
-            key: crate::engine::skill::rule::DefinitionKey::new(30230134, "SkillDamage"),
+            key: crate::engine::skill::rule::DefinitionKey::new(1, "SkillDamage"),
         },
     )
     .unwrap();
 
     assert!(matches!(
         command,
-        HpCommand::Damage(HpDamage { amount: 1_180, .. })
+        HpCommand::Damage(HpDamage {
+            hurt: HurtInfoData {
+                career_restraint: true,
+                ..
+            },
+            ..
+        })
     ));
+}
+
+#[test]
+fn skill_might_uses_classification_and_cross_attributes() {
+    init_config();
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![entity(10, 1, 1, 1_000, 0)],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![entity(-1, 2, 1, 0, 0)],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let managers = BattleManagers::seeded(&fight);
+    let cross = AttrId::from_raw(232).expect("configured ultimate incantation might multiplier");
+    for (skill_id, incantation_might, conversion, expected) in [
+        (30230134, 0, 0, 1_180),
+        (30230134, 333, 500, 1_346),
+        (31472131, 333, 1_000, 1_513),
+        (31470112, 333, 0, 1_513),
+        (31470112, 333, 1_000, 1_513),
+    ] {
+        for fight_version in [6, 7] {
+            let command = resolve_attack_command(
+                &AttackPlan {
+                    source_uid: 10,
+                    target_uid: -1,
+                    skill_id,
+                    rate: 1_000,
+                    rate_terms: Vec::new(),
+                    attack_attributes: vec![
+                        (AttrId::UltimateMight, 180),
+                        (AttrId::IncantationMight, incantation_might),
+                        (AttrId::IncantationSkillUltMightMultiplier, 1_000),
+                        (cross, conversion),
+                    ],
+                    career_ratio_bonus: 0,
+                    attack_career: None,
+                    additional_attack_career: None,
+                    force_career_restraint: false,
+                    critical_multiplier_remainder: 0,
+                    is_conduit: false,
+                    is_crit: false,
+                    assassinate: false,
+                    main_target: true,
+                    extra_skill_kind: 0,
+                    performs_extra_action: false,
+                    additional_enabled: false,
+                    additional_is_crit: None,
+                },
+                DamageRuntime {
+                    fight_version,
+                    pool: &pool,
+                    attributes: &managers.attribute,
+                    buffs: &managers.buff,
+                    target_buffs: &managers.buff,
+                    hp: &managers.hp,
+                    fields: None,
+                    emitter: None,
+                    team_inspiration: 0,
+                },
+                CommandOrigin {
+                    domain: crate::engine::skill::rule::RuleDomain::Skill,
+                    key: crate::engine::skill::rule::DefinitionKey::new(skill_id, "SkillDamage"),
+                },
+            )
+            .unwrap();
+
+            assert!(matches!(
+                command,
+                HpCommand::Damage(HpDamage { amount, .. }) if amount == expected
+            ));
+        }
+    }
 }
 
 #[test]

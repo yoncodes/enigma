@@ -136,6 +136,7 @@ mod tests {
             battle::catalog::BattleCatalog::new(configs::get()),
             sonettobuf::Fight::default(),
         )
+        .unwrap()
     }
 
     #[test]

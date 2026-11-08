@@ -75,12 +75,11 @@ fn scan_skill(
         }
         return;
     };
-    for (index, slot) in effect.slots.iter().enumerate() {
+    for slot in &effect.slots {
+        let slot_number = usize::from(slot.behavior.slot);
         let slot_path = format!(
             "{} > skill {} > slot {}",
-            pending.path,
-            skill_label,
-            index + 1
+            pending.path, skill_label, slot_number
         );
         let behavior_key = CapabilityKey::new(
             "behavior",
@@ -136,7 +135,7 @@ fn scan_skill(
         report.explain(format!(
             "Slot skill={} slot={} route={} behavior={}:{} kind={:?} phase={:?} destination={} refs=skills{:?}/buffs{:?}",
             pending.id,
-            index + 1,
+            slot_number,
             slot_route(catalog, pending.id, slot),
             slot.behavior.spec.key.opcode,
             slot.behavior.spec.key.type_name,
@@ -163,7 +162,7 @@ fn scan_skill(
             }
             Ok(_) => {}
         }
-        explain_conditions(&slot.conditions, pending.id, index + 1, report);
+        explain_conditions(&slot.conditions, pending.id, slot_number, report);
         check_conditions(&slot.conditions, &slot_path, report);
         for target in [&slot.target, &slot.condition_target] {
             let key = CapabilityKey::new("target", target.code, "Target");
@@ -440,6 +439,19 @@ fn scan_buff(
             let key = CapabilityKey::new("buff-act", act.id, &act.r#type);
             report.capability(key.clone());
             let definition = buff_act_registry::find(act.id, &act.r#type);
+            if definition.is_some_and(|definition| definition.description_required)
+                && (buff.desc.trim().is_empty()
+                    || db
+                        .language_en
+                        .get(&buff.desc)
+                        .is_none_or(|description| description.trim().is_empty()))
+            {
+                report.gap(key.clone(), "missing description evidence");
+                report.error(format!(
+                    "MissingBuffDescription path={} > buff {} act={} type={}",
+                    pending.path, pending.id, act.id, act.r#type
+                ));
+            }
             if definition.is_some()
                 && let Some(message) = malformed_buff_act_error(
                     &pending.path,

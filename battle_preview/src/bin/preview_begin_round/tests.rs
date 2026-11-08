@@ -1,33 +1,24 @@
 use super::*;
 
 #[test]
-fn damage_observations_use_the_damage_source_over_the_outer_actor() {
-    let damage = |source_uid| sonettobuf::ActEffect {
-        effect_type: Some(sonettobuf::effect_type_enum::EffectType::Additionaldamage as i32),
-        target_id: Some(30),
-        effect_num: Some(100),
-        hurt_info: Some(sonettobuf::FightHurtInfo {
-            from_uid: Some(source_uid),
-            ..Default::default()
-        }),
-        ..Default::default()
-    };
-    let round = FightRound {
-        fight_step: vec![FightStep {
-            act_id: Some(40),
-            from_id: Some(10),
-            act_effect: vec![damage(10), damage(20)],
-            ..Default::default()
-        }],
-        ..Default::default()
-    };
+fn auto_reply_diffs_report_each_mismatched_field() {
+    let generated = serde_json::json!({
+        "clothSkill": null,
+        "devicesOpers": [{"uid": "10", "index": 2}],
+        "opers": [{"param1": 3}],
+        "toId": "-1"
+    });
+    let captured = serde_json::json!({
+        "clothSkill": 4,
+        "devicesOpers": [{"uid": "10", "index": 2}],
+        "opers": [{"param1": 7}],
+        "toId": "-2"
+    });
 
-    let sources = damage_observations(&round)
-        .into_iter()
-        .map(|(identity, _)| identity.source_uid)
-        .collect::<Vec<_>>();
-
-    assert_eq!(sources, vec![10, 20]);
+    assert_eq!(
+        auto_reply_diff_paths(&generated, &captured),
+        ["/clothSkill", "/opers[0]/param1", "/toId"]
+    );
 }
 
 #[test]
@@ -45,12 +36,12 @@ fn captured_round_continuity_rejects_skips_and_reversals() {
         ..Default::default()
     };
 
-    let error = validate_captured_round_continuity(&previous, &skipped).unwrap_err();
+    let error = validate_captured_round_continuity(&previous, &skipped, false).unwrap_err();
 
     assert_eq!(error.kind(), io::ErrorKind::InvalidData);
     assert!(error.to_string().contains("previous round 1"));
     assert!(error.to_string().contains("next round 3"));
-    assert!(validate_captured_round_continuity(&previous, &reversed).is_err());
+    assert!(validate_captured_round_continuity(&previous, &reversed, false).is_err());
 }
 
 #[test]
@@ -67,26 +58,48 @@ fn captured_round_continuity_accepts_next_terminal_and_missing_evidence() {
         is_finish: Some(true),
         ..next.clone()
     };
-    assert!(validate_captured_round_continuity(&previous, &next).is_ok());
-    assert!(validate_captured_round_continuity(&next, &terminal).is_ok());
-    assert!(validate_captured_round_continuity(&FightRound::default(), &next).is_ok());
-    assert!(validate_captured_round_continuity(&next, &FightRound::default()).is_ok());
+    assert!(validate_captured_round_continuity(&previous, &next, false).is_ok());
+    assert!(validate_captured_round_continuity(&next, &terminal, false).is_ok());
+    assert!(validate_captured_round_continuity(&FightRound::default(), &next, false).is_ok());
+    assert!(validate_captured_round_continuity(&next, &FightRound::default(), false).is_ok());
 }
 
 #[test]
-fn captured_round_continuity_rejects_same_round_without_terminal_evidence() {
+fn captured_round_continuity_accepts_same_round_from_extra_round_input() {
     let round = FightRound {
         cur_round: Some(4),
         ..Default::default()
     };
 
-    assert!(validate_captured_round_continuity(&round, &round).is_err());
+    assert!(validate_captured_round_continuity(&round, &round, false).is_err());
+    assert!(validate_captured_round_continuity(&round, &round, true).is_ok());
 
     let maximum = FightRound {
         cur_round: Some(i32::MAX),
         ..Default::default()
     };
-    assert!(validate_captured_round_continuity(&maximum, &maximum).is_err());
+    assert!(validate_captured_round_continuity(&maximum, &maximum, false).is_err());
+}
+
+#[test]
+fn captured_extra_round_reads_the_cloth_operation_type() {
+    let path = std::env::temp_dir().join(format!(
+        "enigma-extra-round-{}-{}.json",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    fs::write(&path, r#"{"skillId":0,"fromId":"10","toId":"0","type":9}"#).unwrap();
+    let input = capture::CapturedCloth {
+        request: path.clone(),
+        reply: None,
+    };
+
+    assert!(captured_extra_round(&[input]).unwrap());
+
+    fs::remove_file(path).unwrap();
 }
 
 #[test]
@@ -410,7 +423,8 @@ fn captured_116385711_keeps_opening_owner_and_source_threshold_semantics() {
         fight,
         ex_attributes,
         sp_attributes,
-    );
+    )
+    .unwrap();
     runtime.start_round().unwrap();
     let generated = battle::tooling::start_reply(&runtime).round.unwrap();
 

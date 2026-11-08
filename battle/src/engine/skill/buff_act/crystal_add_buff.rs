@@ -180,6 +180,7 @@ mod tests {
     fn action() -> SkillActionEvent {
         SkillActionEvent {
             source_uid: 11,
+            card_index: 0,
             skill_id: 100,
             target_uid: -1,
             target_uids: vec![-1],

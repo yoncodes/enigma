@@ -3,7 +3,10 @@ use sonettobuf::{CardInfo, FightEntityInfo};
 use crate::engine::skill::rule::{DefinitionKey, RuleDomain};
 use crate::engine::{event::payload::BattleEvent, skill::rule::CommandOrigin};
 
-use super::{CardChange, CardManager, CardPlayChoice, EnchantedType, PlayedCard};
+use super::{
+    CardChange, CardManager, CardPlayChoice, CardPrepareAiSkill, EnchantedType, PlayedCard,
+    PreparedAiSkill, SovereignEnhancement,
+};
 
 pub const CARD_PLAY_ORIGIN: CommandOrigin = CommandOrigin {
     domain: RuleDomain::Lifecycle,
@@ -26,6 +29,7 @@ pub struct CardSetup {
 pub enum TemporaryCardKind {
     GenericSkill,
     ConfiguredSkill,
+    PrecastSkill,
     ConfiguredSkill3,
     HeroSkill,
 }
@@ -47,6 +51,42 @@ pub struct CardAddGenerated {
     pub target_uid: i64,
     pub skill_id: i32,
     pub hero_id: Option<i32>,
+    pub team_type: i32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CardAddHedone {
+    pub origin: CommandOrigin,
+    pub owner_uid: i64,
+    pub skill_id: i32,
+    pub hero_id: i32,
+    pub team_type: i32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CardInsertSovereign {
+    pub origin: CommandOrigin,
+    pub target_uid: i64,
+    pub skill_id: i32,
+    pub hero_id: i32,
+    pub max_position: usize,
+    pub team_type: i32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CardInitialSovereignBoost {
+    pub origin: CommandOrigin,
+    pub owner_uid: i64,
+    pub index: usize,
+    pub distance: usize,
+    pub team_type: i32,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct SovereignBoostChange {
+    pub from_index: usize,
+    pub to_index: usize,
+    pub card: CardInfo,
     pub team_type: i32,
 }
 
@@ -125,6 +165,7 @@ pub struct CardPersistTemporary {
 pub struct CardEnergyAllocation {
     pub origin: CommandOrigin,
     pub energies: Vec<i32>,
+    pub limit: i32,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -168,12 +209,6 @@ pub struct CardDraw {
     pub count: usize,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct CardPublishState {
-    pub origin: CommandOrigin,
-    pub team_type: i32,
-}
-
 #[derive(Debug, Clone, PartialEq)]
 pub struct CardOpeningDraw {
     pub origin: CommandOrigin,
@@ -185,8 +220,16 @@ pub struct CardOpeningDraw {
 pub struct CardRefillOne {
     pub origin: CommandOrigin,
     pub card: CardInfo,
+    pub stage: CardRefillStage,
     pub consume_draw_pile: bool,
     pub consume_deck: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CardRefillStage {
+    Opening,
+    AfterActions,
+    RoundStart,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -356,6 +399,15 @@ pub enum CardConsumptionKind {
     #[default]
     Generic,
     PaperCircle,
+    Hedone,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CardUnlockHedone {
+    pub origin: CommandOrigin,
+    pub owner_uid: i64,
+    pub skill_id: i32,
+    pub team_type: i32,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -363,6 +415,7 @@ pub enum CardConsumptionKind {
 pub enum CardCommand {
     Setup(CardSetup),
     PreserveRefillFloor,
+    PreserveDeckCount,
     ConsumeForEffect(CardConsumeForEffect),
     Move {
         origin: CommandOrigin,
@@ -375,6 +428,21 @@ pub enum CardCommand {
         card_index: usize,
     },
     AddGenerated(CardAddGenerated),
+    AddHedone(CardAddHedone),
+    InsertSovereign(CardInsertSovereign),
+    InitialSovereignBoost(CardInitialSovereignBoost),
+    UnlockSovereign {
+        origin: CommandOrigin,
+        owner_uid: i64,
+        team_type: i32,
+    },
+    UnlockHedone(CardUnlockHedone),
+    ChargeSovereign {
+        origin: CommandOrigin,
+        owner_uid: i64,
+        kind: SovereignEnhancement,
+        team_type: i32,
+    },
     AddUniversal(CardAddUniversal),
     RedealKeepRanks {
         origin: CommandOrigin,
@@ -392,7 +460,6 @@ pub enum CardCommand {
         origin: CommandOrigin,
     },
     Play(CardPlay),
-    PublishState(CardPublishState),
     Draw(CardDraw),
     DealOpening(CardOpeningDraw),
     RecycleDrawPile {
@@ -402,6 +469,7 @@ pub enum CardCommand {
     RefillOne(CardRefillOne),
     SetUltimateAvailability(CardSetUltimateAvailability),
     RefreshAiQueue(CardRefreshAiQueue),
+    PrepareAiSkill(CardPrepareAiSkill),
     SetAiQueue(CardSetAiQueue),
     SetTeamCards(CardSetTeamCards),
     RemoveOwner(CardRemoveOwner),
@@ -431,7 +499,7 @@ pub enum CardCommand {
         upgrades: Vec<QueuedCardRankUp>,
         rewritten: bool,
     },
-    ChangeAroundQueuedRanks {
+    ChangeQueuedRanks {
         origin: CommandOrigin,
         changes: Vec<QueuedCardRankChange>,
     },
@@ -441,6 +509,12 @@ pub enum CardCommand {
         team: i32,
         emitter_uid: i64,
         include_device_action: bool,
+    },
+    CompleteActionPhase {
+        origin: CommandOrigin,
+    },
+    BeginPostActionRefill {
+        origin: CommandOrigin,
     },
     ResolvePlayedRanks {
         origin: CommandOrigin,
@@ -465,12 +539,18 @@ impl CardCommand {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CardChangeKind {
+    SovereignCharged,
+    SovereignUnlocked,
+    HedoneUnlocked,
+    InitialSovereignBoost,
+    SovereignInserted,
     Setup,
     ConsumedForEffect,
     Moved,
     Dissolved,
     GeneratedAdded,
     OwnedGeneratedAdded,
+    HedoneAdded,
     UniversalAdded,
     RedealtKeepRanks,
     GenericTemporaryAdded,
@@ -484,13 +564,13 @@ pub enum CardChangeKind {
     TemporaryPersisted,
     TemporaryExpired,
     Played,
-    StatePublished,
     Drawn,
     OpeningDrawn,
     DrawPileRecycled,
     Refilled,
     UltimateAvailabilityChanged,
     AiQueueRefreshed,
+    AiSkillPrepared,
     AiQueueSet,
     TeamCardsSet,
     AiOwnerRemoved,
@@ -504,10 +584,12 @@ pub enum CardChangeKind {
     HandLimitChanged,
     HandLimitCleared,
     QueuedRankChanged,
-    AroundRanksChanged,
+    QueuedRanksChanged,
     HandRankChanged,
     DeckTopRanksChanged,
     ActionQueueCommitted,
+    ActionPhaseCompleted,
+    PostActionRefillStarted,
     PlayedRanksResolved,
     CastChannelRecorded,
     CastChannelResolved,
@@ -536,6 +618,7 @@ pub struct CardChanges {
     pub entity: Option<FightEntityInfo>,
     pub hand_limit: Option<(i64, i32)>,
     pub owner_removal: Option<CardOwnerRemoval>,
+    pub sovereign_boost: Option<SovereignBoostChange>,
     pub ai_invalidations: Vec<CardInvalidatedAi>,
     pub ai_queue: Option<Vec<CardInfo>>,
     pub team_cards: Option<Vec<CardInfo>>,
@@ -550,7 +633,8 @@ impl CardChanges {
                 cards: queue.cards.clone(),
             }];
         }
-        self.origin
+        let mut events: Vec<_> = self
+            .origin
             .filter(|_| self.before != self.after)
             .map(|origin| {
                 BattleEvent::CardChanged(crate::engine::event::payload::CardChangeEvent {
@@ -563,12 +647,33 @@ impl CardChanges {
                 })
             })
             .into_iter()
-            .collect()
+            .collect();
+        if let (
+            Some(origin),
+            Some(CardChange::InsertHand {
+                target_uid,
+                index,
+                team_type,
+                ..
+            }),
+        ) = (self.origin, &self.operation)
+        {
+            events.push(BattleEvent::SovereignCardCreated(
+                crate::engine::event::payload::SovereignCardCreatedEvent {
+                    origin,
+                    owner_uid: *target_uid,
+                    index: *index,
+                    team_type: *team_type,
+                },
+            ));
+        }
+        events
     }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CardCommandError {
+    PlayForbidden,
     InvalidCommand,
     InvalidPlaySkill,
     InvalidPlayIndex,
@@ -590,6 +695,7 @@ pub(super) fn execute(
     let mut consumption_kind = None;
     let mut hand_limit = None;
     let mut owner_removal = None;
+    let mut sovereign_boost = None;
     let mut ai_invalidations = Vec::new();
     let mut ai_queue = None;
     let mut team_cards = None;
@@ -624,8 +730,25 @@ pub(super) fn execute(
                 Vec::new(),
             )
         }
+        CardCommand::PreserveDeckCount => {
+            manager.preserve_deck_count();
+            (
+                None,
+                CardChangeKind::Setup,
+                None,
+                None,
+                Vec::new(),
+                Vec::new(),
+            )
+        }
         CardCommand::ConsumeForEffect(consume) => {
-            if !manager.consume_for_effect(consume.owner_uid, &consume.indices) {
+            let consumed = match consume.kind {
+                CardConsumptionKind::Hedone => manager.consume_conduit_energy(&consume.indices),
+                CardConsumptionKind::Generic | CardConsumptionKind::PaperCircle => {
+                    manager.consume_for_effect(consume.owner_uid, &consume.indices)
+                }
+            };
+            if !consumed {
                 return Err(CardCommandError::InvalidCommand);
             }
             consumed_indices = consume.indices;
@@ -687,6 +810,74 @@ pub(super) fn execute(
                 Vec::new(),
             )
         }
+        CardCommand::InitialSovereignBoost(boost) => {
+            sovereign_boost = Some(manager.initial_sovereign_boost(boost)?);
+            (
+                Some(boost.origin),
+                CardChangeKind::InitialSovereignBoost,
+                None,
+                None,
+                Vec::new(),
+                Vec::new(),
+            )
+        }
+        CardCommand::UnlockSovereign {
+            origin,
+            owner_uid,
+            team_type,
+        } => {
+            operation = Some(manager.unlock_sovereign(owner_uid, team_type)?);
+            (
+                Some(origin),
+                CardChangeKind::SovereignUnlocked,
+                None,
+                None,
+                Vec::new(),
+                Vec::new(),
+            )
+        }
+        CardCommand::UnlockHedone(unlock) => {
+            operation = Some(manager.unlock_hedone(unlock)?);
+            (
+                Some(unlock.origin),
+                CardChangeKind::HedoneUnlocked,
+                None,
+                None,
+                Vec::new(),
+                Vec::new(),
+            )
+        }
+        CardCommand::ChargeSovereign {
+            origin,
+            owner_uid,
+            kind,
+            team_type,
+        } => {
+            operation = Some(manager.charge_sovereign(owner_uid, kind, team_type)?);
+            (
+                Some(origin),
+                CardChangeKind::SovereignCharged,
+                None,
+                None,
+                Vec::new(),
+                Vec::new(),
+            )
+        }
+        CardCommand::InsertSovereign(insert) => {
+            operation = manager.insert_sovereign(insert)?;
+            let added = operation.as_ref().and_then(|operation| match operation {
+                CardChange::InsertHand { card, .. } => Some(card.clone()),
+                _ => None,
+            });
+            (
+                Some(insert.origin),
+                CardChangeKind::SovereignInserted,
+                added,
+                None,
+                Vec::new(),
+                Vec::new(),
+            )
+        }
         CardCommand::AddGenerated(add) => {
             let owned = match (add.hero_id, add.team_type) {
                 (None, 0) => false,
@@ -730,6 +921,21 @@ pub(super) fn execute(
                 Vec::new(),
             )
         }
+        CardCommand::AddHedone(add) => {
+            operation = Some(manager.add_hedone(add)?);
+            let card = operation.as_ref().and_then(|operation| match operation {
+                CardChange::HedoneAdd { card, .. } => Some(card.clone()),
+                _ => None,
+            });
+            (
+                Some(add.origin),
+                CardChangeKind::HedoneAdded,
+                card,
+                None,
+                Vec::new(),
+                Vec::new(),
+            )
+        }
         CardCommand::AddUniversal(add) => {
             let Some(skill) = super::UniversalCardSkill::from_rank(add.rank) else {
                 return Err(CardCommandError::InvalidCommand);
@@ -767,16 +973,17 @@ pub(super) fn execute(
                 return Err(CardCommandError::InvalidCommand);
             }
             let card = match add.kind {
-                TemporaryCardKind::GenericSkill => manager.add_temp_card(add.skill_id),
-                TemporaryCardKind::ConfiguredSkill
-                | TemporaryCardKind::ConfiguredSkill3
-                | TemporaryCardKind::HeroSkill => manager.add_temp_card_for(
-                    add.target_uid,
-                    add.skill_id,
-                    add.hero_id,
-                    add.reserve_id,
-                    add.team_type,
-                ),
+                TemporaryCardKind::GenericSkill
+                | TemporaryCardKind::ConfiguredSkill
+                | TemporaryCardKind::PrecastSkill => manager.add_temp_card(add.skill_id),
+                TemporaryCardKind::ConfiguredSkill3 | TemporaryCardKind::HeroSkill => manager
+                    .add_temp_card_for(
+                        add.target_uid,
+                        add.skill_id,
+                        add.hero_id,
+                        add.reserve_id,
+                        add.team_type,
+                    ),
             };
             operation = Some(CardChange::SpCardAdd {
                 target_uid: add.target_uid,
@@ -788,7 +995,9 @@ pub(super) fn execute(
                 Some(add.origin),
                 match add.kind {
                     TemporaryCardKind::GenericSkill => CardChangeKind::GenericTemporaryAdded,
-                    TemporaryCardKind::ConfiguredSkill => CardChangeKind::TemporaryAdded,
+                    TemporaryCardKind::ConfiguredSkill | TemporaryCardKind::PrecastSkill => {
+                        CardChangeKind::TemporaryAdded
+                    }
                     TemporaryCardKind::ConfiguredSkill3 => CardChangeKind::ConfiguredSkill3Added,
                     TemporaryCardKind::HeroSkill => CardChangeKind::HeroTemporaryAdded,
                 },
@@ -953,6 +1162,7 @@ pub(super) fn execute(
             {
                 return Err(CardCommandError::InvalidPlaySkill);
             }
+            manager.check_play_permission(play.hand_index, play.choice.as_ref())?;
             let played = manager
                 .play_card_with_record(
                     play.hand_index,
@@ -967,23 +1177,6 @@ pub(super) fn execute(
                 CardChangeKind::Played,
                 None,
                 Some(played),
-                Vec::new(),
-                Vec::new(),
-            )
-        }
-        CardCommand::PublishState(publish) => {
-            if publish.team_type == 0 {
-                return Err(CardCommandError::InvalidCommand);
-            }
-            operation = Some(CardChange::DeckCount {
-                deck_num: manager.deck_num(),
-                team_type: publish.team_type,
-            });
-            (
-                Some(publish.origin),
-                CardChangeKind::StatePublished,
-                None,
-                None,
                 Vec::new(),
                 Vec::new(),
             )
@@ -1051,7 +1244,7 @@ pub(super) fn execute(
                 return Err(CardCommandError::InvalidCommand);
             }
             manager.add_to_hand(refill.card.clone());
-            manager.record_refill(refill.card.clone());
+            manager.record_phase_refill(refill.stage, refill.card.clone());
             let owners = manager.compose_adjacent();
             if refill.consume_deck {
                 manager.set_deck_num(manager.deck_num().saturating_sub(1));
@@ -1076,6 +1269,23 @@ pub(super) fn execute(
                 Some(set.origin),
                 CardChangeKind::UltimateAvailabilityChanged,
                 set.available.then_some(set.card),
+                None,
+                Vec::new(),
+                Vec::new(),
+            )
+        }
+        CardCommand::PrepareAiSkill(prepare) => {
+            if prepare.owner_uid == 0 || prepare.skill_id <= 0 {
+                return Err(CardCommandError::InvalidCommand);
+            }
+            manager.prepared_ai_skills.push(PreparedAiSkill {
+                owner_uid: prepare.owner_uid,
+                skill_id: prepare.skill_id,
+            });
+            (
+                Some(prepare.origin),
+                CardChangeKind::AiSkillPrepared,
+                None,
                 None,
                 Vec::new(),
                 Vec::new(),
@@ -1210,11 +1420,12 @@ pub(super) fn execute(
             )
         }
         CardCommand::AllocateEnergy(allocation) => {
-            if allocation.energies.len() != manager.hand().len()
+            if allocation.limit <= 0
+                || allocation.energies.len() != manager.hand().len()
                 || allocation
                     .energies
                     .iter()
-                    .any(|value| !(0..=5).contains(value))
+                    .any(|value| !(0..=allocation.limit).contains(value))
             {
                 return Err(CardCommandError::InvalidCommand);
             }
@@ -1324,7 +1535,7 @@ pub(super) fn execute(
                 Vec::new(),
             )
         }
-        CardCommand::ChangeAroundQueuedRanks { origin, changes } => {
+        CardCommand::ChangeQueuedRanks { origin, changes } => {
             if changes.is_empty()
                 || changes
                     .iter()
@@ -1340,7 +1551,7 @@ pub(super) fn execute(
             }
             (
                 Some(origin),
-                CardChangeKind::AroundRanksChanged,
+                CardChangeKind::QueuedRanksChanged,
                 None,
                 None,
                 Vec::new(),
@@ -1417,6 +1628,28 @@ pub(super) fn execute(
             (
                 None,
                 CardChangeKind::ActionQueueCommitted,
+                None,
+                None,
+                Vec::new(),
+                Vec::new(),
+            )
+        }
+        CardCommand::CompleteActionPhase { origin } => {
+            manager.complete_action_phase();
+            (
+                Some(origin),
+                CardChangeKind::ActionPhaseCompleted,
+                None,
+                None,
+                Vec::new(),
+                Vec::new(),
+            )
+        }
+        CardCommand::BeginPostActionRefill { origin } => {
+            manager.begin_post_action_refill();
+            (
+                Some(origin),
+                CardChangeKind::PostActionRefillStarted,
                 None,
                 None,
                 Vec::new(),
@@ -1509,6 +1742,7 @@ pub(super) fn execute(
     if kind == CardChangeKind::ActionQueueCommitted {
         after.extend_from_slice(manager.team_cards());
     }
+    manager.record_opening_deal_change(kind, &before, &after, added.as_ref(), &drawn);
     Ok(CardChanges {
         origin,
         kind,
@@ -1529,6 +1763,7 @@ pub(super) fn execute(
         entity: None,
         hand_limit,
         owner_removal,
+        sovereign_boost,
         ai_invalidations,
         ai_queue,
         team_cards,

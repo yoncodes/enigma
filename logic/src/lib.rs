@@ -23,6 +23,7 @@ pub mod hero_invitation;
 pub mod inventory;
 pub mod investigate;
 pub mod mail;
+pub mod milestone;
 pub mod odyssey;
 pub mod preferences;
 pub mod profile;
@@ -43,6 +44,7 @@ pub mod time;
 pub mod turnback;
 pub mod types;
 pub mod udimo;
+pub mod weekwalk;
 
 pub use error::LogicError;
 

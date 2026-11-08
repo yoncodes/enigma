@@ -1,7 +1,7 @@
 use super::*;
 
 #[test]
-fn forbid_discards_non_ultimate_support_incantations_without_playing_them() {
+fn forbid_discards_support_cards_but_preserves_locked_cards() {
     init_config();
     assert!(buff_act::registry::has_destination(406, "Forbid", &[]));
     assert!(!buff_act::wire::find(406, "Forbid").unwrap().has_output());
@@ -82,6 +82,44 @@ fn forbid_discards_non_ultimate_support_incantations_without_playing_them() {
         200,
         crate::engine::skill::effect::catalog::SkillEffectTag::RealityDamage as i32,
     );
+
+    let mut locked = managers.clone();
+    locked
+        .execute_card(CardCommand::InsertSovereign(
+            crate::engine::manager::card::CardInsertSovereign {
+                origin: CARD_PLAY_ORIGIN,
+                target_uid: 10,
+                skill_id: 100,
+                hero_id: 3147,
+                max_position: 1,
+                team_type: 1,
+            },
+        ))
+        .unwrap();
+    let before = locked.card.clone();
+    assert!(matches!(
+        run_player_commands(
+            &mut locked,
+            &pool,
+            &catalog,
+            &mut RoundDeterminism::default(),
+            TargetContext::default(),
+            [RoundCommand::PlayCard {
+                card_index: 0,
+                target_uid: None,
+                chosen_skill_id: None,
+                recorded_skill: None,
+            }],
+            1,
+            crate::engine::manager::emitter::UID,
+        ),
+        Err(DrainError::Command(
+            crate::engine::runtime::executor::RuleExecutionError::Card(
+                crate::engine::manager::card::CardCommandError::PlayForbidden
+            )
+        ))
+    ));
+    assert_eq!(locked.card, before);
 
     let result = run_player_commands(
         &mut managers,

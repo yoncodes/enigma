@@ -1,6 +1,11 @@
 use super::*;
 use std::collections::{HashMap, HashSet};
 
+pub struct PlayerPhaseResult {
+    pub drain: DrainResult,
+    pub card_energy_finalized: bool,
+}
+
 /// Allocates configured card energy before the owning action phase begins.
 pub fn run_card_energy_allocation(
     managers: &mut BattleManagers,
@@ -57,6 +62,35 @@ pub fn run_action_phase_start(
         .into_iter()
         .map(|command| RuleOp::Command(BattleCommand::Conduit(command)));
     drain::run_command_group(managers, pool, catalog, determinism, context, ops)
+}
+
+pub fn run_action_phase_end(
+    managers: &mut BattleManagers,
+    pool: &TargetPool,
+    catalog: &SkillEffectCatalog,
+    determinism: &mut RoundDeterminism,
+    context: TargetContext,
+    team: i32,
+) -> Result<DrainResult, DrainError> {
+    let origin = CommandOrigin {
+        domain: RuleDomain::Lifecycle,
+        key: DefinitionKey::new(0, "ActionPhaseEnd"),
+    };
+    let mut phase = begin_round_phase(RoundPhase::ActionPhaseEnd { team });
+    append_round_phase(
+        &mut phase,
+        drain::run(
+            managers,
+            pool,
+            catalog,
+            determinism,
+            context,
+            [RuleOp::Command(BattleCommand::Card(
+                CardCommand::CompleteActionPhase { origin },
+            ))],
+        )?,
+    );
+    Ok(phase)
 }
 
 fn free_skill_consumed_remaining_buff(action: &DrainResult, source_uid: i64) -> bool {
@@ -146,6 +180,11 @@ pub fn run_conduit_phase(
                 let current_pool = pool.runtime_view(managers);
                 let unavailable = (skill.cost_value <= 0
                     && used_free_skills.contains(&(source_uid, skill.skill_id)))
+                    || (catalog.is_big_skill(skill.skill_id)
+                        && crate::engine::manager::ex_point::ExPointKind::from_wire(
+                            managers.ex_point.kind(source_uid),
+                        ) == crate::engine::manager::ex_point::ExPointKind::DevicePower
+                        && !managers.ex_point.is_full(source_uid))
                     || !managers.conduit.can_begin_skill(
                         source_uid,
                         skill.skill_id,
@@ -230,9 +269,22 @@ pub fn run_conduit_phase(
                 let can_repeat = skill.cost_value <= 0
                     && free_skill_consumed_remaining_buff(&action, source_uid);
                 used_free_skills.retain(|(uid, _)| !restarted_devices.contains(uid));
+                let activated = action.outcomes.iter().any(|outcome| {
+                    matches!(
+                        outcome,
+                        RuleOutcome::Conduit(
+                            crate::engine::manager::conduit::ConduitChange::SkillBegan {
+                                source_uid: owner_uid, skill_id, ..
+                            }
+                        ) if *owner_uid == source_uid && *skill_id == skill.skill_id
+                    )
+                });
                 append(&mut result, action);
-                ran = true;
-                if skill.cost_value <= 0 && !can_repeat && !restarted_devices.contains(&source_uid)
+                ran |= activated;
+                if activated
+                    && skill.cost_value <= 0
+                    && !can_repeat
+                    && !restarted_devices.contains(&source_uid)
                 {
                     used_free_skills.insert((source_uid, skill.skill_id));
                 }
@@ -362,7 +414,7 @@ pub fn run_player_phase(
     before_actions: Vec<SemanticFrame>,
     team: i32,
     emitter_uid: i64,
-) -> Result<DrainResult, DrainError> {
+) -> Result<PlayerPhaseResult, DrainError> {
     let context = TargetContext {
         battle_id: fight.battle_id.unwrap_or_default(),
         ..context
@@ -380,22 +432,27 @@ pub fn run_player_phase(
         Some(fight),
         before_actions,
     )?;
-    append(
-        &mut result,
-        run_impromptu(
-            managers,
-            pool,
-            catalog,
-            determinism,
-            context,
-            team,
-            emitter_uid,
-        )?,
-    );
+    let impromptu = run_impromptu(
+        managers,
+        pool,
+        catalog,
+        determinism,
+        context,
+        team,
+        emitter_uid,
+    )?;
+    let card_energy_finalized = impromptu.card_energy_finalized;
+    append(&mut result, impromptu.drain);
     if crate::engine::round::outcome::battle_ended(fight, pool, managers) {
-        return Ok(result);
+        return Ok(PlayerPhaseResult {
+            drain: result,
+            card_energy_finalized,
+        });
     }
-    Ok(result)
+    Ok(PlayerPhaseResult {
+        drain: result,
+        card_energy_finalized,
+    })
 }
 
 #[allow(clippy::large_enum_variant)]
@@ -431,6 +488,7 @@ struct QueuedPlayerAction {
     grants_ex_point: bool,
     grant_after_action: bool,
     composed_owners: Vec<(i64, i32)>,
+    before_rewards: Vec<(i64, i32)>,
     prelude: Vec<RuleOp>,
 }
 
@@ -558,6 +616,7 @@ fn run_player_card_ops(
                 grants_ex_point: false,
                 grant_after_action: false,
                 composed_owners: Vec::new(),
+                before_rewards: Vec::new(),
                 prelude,
             });
             continue;
@@ -566,6 +625,12 @@ fn run_player_card_ops(
             &op,
             PlayerCardOp::Move { .. } | PlayerCardOp::UseUniversal { .. } | PlayerCardOp::Play(_)
         );
+        if let PlayerCardOp::Play(play) = &op {
+            managers
+                .card
+                .check_play_permission(play.hand_index, play.choice.as_ref())
+                .map_err(|error| DrainError::Command(error.into()))?;
+        }
         let blocked_card_index = match &op {
             PlayerCardOp::Play(play)
                 if play
@@ -585,6 +650,7 @@ fn run_player_card_ops(
                 .get(*from_index)
                 .and_then(|card| card.uid)
                 .filter(|uid| managers.entity.team_type(*uid) == Some(team))
+                .filter(|uid| managers.ex_point.gains_card_move_ex_point(*uid))
                 .and_then(|owner_uid| {
                     let delta = 1_i32.saturating_add(managers.buff.buff_act_scalar(
                         owner_uid,
@@ -673,6 +739,7 @@ fn run_player_card_ops(
                 grants_ex_point,
                 grant_after_action: played.card.temp_card.unwrap_or_default(),
                 composed_owners: Vec::new(),
+                before_rewards: Vec::new(),
                 prelude: Vec::new(),
             })
         }));
@@ -711,15 +778,11 @@ fn run_player_card_ops(
             .collect::<Vec<_>>();
         append(&mut result, composed);
         if skills.len() > skill_count {
-            skills
-                .last_mut()
-                .expect("a played card records its skill")
+            let queued = skills.last_mut().expect("a played card records its skill");
+            queued.before_rewards.append(&mut pending_rewards);
+            queued
                 .composed_owners
-                .extend(
-                    pending_rewards
-                        .drain(..)
-                        .chain(composed_owners.into_iter().map(|owner_uid| (owner_uid, 1))),
-                );
+                .extend(composed_owners.into_iter().map(|owner_uid| (owner_uid, 1)));
         } else {
             pending_rewards.extend(composed_owners.into_iter().map(|owner_uid| (owner_uid, 1)));
         }
@@ -734,17 +797,19 @@ fn run_player_card_ops(
                 determinism,
                 context,
                 CARD_PLAY_ORIGIN,
-                pending_rewards,
+                std::mem::take(&mut pending_rewards),
             )?,
         );
-        result.frames.extend(before_actions);
-        return Ok(result);
+        if !include_device_action {
+            result.frames.extend(before_actions);
+            return Ok(result);
+        }
     }
     if !pending_rewards.is_empty() {
         skills
             .last_mut()
             .expect("a non-empty action queue has a final skill")
-            .composed_owners
+            .before_rewards
             .extend(pending_rewards);
     }
     let committed = run_action_queue_committed(
@@ -768,6 +833,7 @@ fn run_player_card_ops(
             grants_ex_point: false,
             grant_after_action: false,
             composed_owners: Vec::new(),
+            before_rewards: Vec::new(),
             prelude: Vec::new(),
         })
     }));
@@ -818,6 +884,7 @@ fn run_player_card_ops(
             grants_ex_point,
             grant_after_action,
             composed_owners,
+            before_rewards,
             prelude,
         } = queued;
         let is_card_action = source == PlayerActionSource::Card;
@@ -830,7 +897,10 @@ fn run_player_card_ops(
             skill.plan.skill_id = played.skill_id;
         }
         let source_uid = skill.plan.source_uid;
-        let source_alive = !is_card_action || managers.hp.current(source_uid) > 0;
+        let side_owned_card =
+            is_card_action && crate::engine::fight::rules::is_side_uid(source_uid);
+        let source_alive =
+            !is_card_action || side_owned_card || managers.hp.current(source_uid) > 0;
         let is_ultimate = pool.entity(source_uid).is_some_and(|entity| {
             crate::engine::mechanic::card::CardMechanic.is_ultimate_skill(
                 managers,
@@ -874,13 +944,37 @@ fn run_player_card_ops(
             | (None, crate::engine::skill::action::SkillTarget::Configured)
             | (None, crate::engine::skill::action::SkillTarget::LogicRule(_)) => true,
         };
-        let current_opponents = pool.enemies(source_uid, false);
-        let current_opponents_defeated = !current_opponents.is_empty()
-            && current_opponents
-                .iter()
-                .all(|enemy| managers.hp.current(enemy.uid) <= 0);
-        if !source_alive || !target_alive || current_opponents_defeated && targets_enemy {
-            let mut rewards = composed_owners;
+        let current_opponents_defeated =
+            crate::engine::round::outcome::opponents_defeated(team, managers);
+        append(
+            &mut result,
+            run_card_composition_rewards(
+                managers,
+                pool,
+                catalog,
+                determinism,
+                context,
+                CARD_PLAY_ORIGIN,
+                before_rewards,
+            )?,
+        );
+        if !source_alive
+            || !target_alive
+            || current_opponents_defeated && (targets_enemy || side_owned_card)
+        {
+            append(
+                &mut result,
+                run_card_composition_rewards(
+                    managers,
+                    pool,
+                    catalog,
+                    determinism,
+                    context,
+                    CARD_PLAY_ORIGIN,
+                    composed_owners,
+                )?,
+            );
+            let mut rewards = Vec::new();
             if !grant_after_action
                 && let Some(delta) =
                     card_play_resource_delta(managers, source_uid, grants_ex_point, is_ultimate)
@@ -895,7 +989,7 @@ fn run_player_card_ops(
                     RoundCue::CardInvalid {
                         card_index: skill.card_index,
                         team_type: team,
-                        reason: if current_opponents_defeated && targets_enemy {
+                        reason: if current_opponents_defeated {
                             CardInvalidReason::OpponentsDefeated
                         } else {
                             CardInvalidReason::Default
@@ -934,13 +1028,9 @@ fn run_player_card_ops(
             );
             continue;
         }
-        let (matching_rewards, other_rewards): (Vec<_>, Vec<_>) = composed_owners
+        let (own_rewards, other_rewards): (Vec<_>, Vec<_>) = composed_owners
             .into_iter()
             .partition(|(owner_uid, _)| *owner_uid == source_uid);
-        let queued_resource_delta = matching_rewards
-            .into_iter()
-            .map(|(_, delta)| delta)
-            .fold(0, i32::saturating_add);
         append(
             &mut result,
             run_card_composition_rewards(
@@ -953,6 +1043,7 @@ fn run_player_card_ops(
                 other_rewards,
             )?,
         );
+        let composition_rewards = super::card_rewards::changes(CARD_PLAY_ORIGIN, own_rewards);
         append(
             &mut result,
             run_active_action(
@@ -965,7 +1056,7 @@ fn run_player_card_ops(
                     skill,
                     grants_ex_point,
                     grant_after_action,
-                    queued_resource_delta,
+                    composition_rewards,
                     prelude,
                 },
             )?,
@@ -1068,29 +1159,9 @@ pub(super) fn run_card_composition_rewards(
     origin: CommandOrigin,
     rewards: impl IntoIterator<Item = (i64, i32)>,
 ) -> Result<DrainResult, DrainError> {
-    let rewards = rewards.into_iter().fold(
-        Vec::<(i64, i32)>::new(),
-        |mut combined, (owner_uid, delta)| {
-            if let Some((_, current)) = combined.iter_mut().find(|(uid, _)| *uid == owner_uid) {
-                *current = current.saturating_add(delta);
-            } else {
-                combined.push((owner_uid, delta));
-            }
-            combined
-        },
-    );
-    let ops = rewards.into_iter().map(|(owner_uid, delta)| {
-        RuleOp::Command(BattleCommand::ExPoint(ExPointCommand::Change(
-            ExPointChange {
-                origin,
-                source_uid: owner_uid,
-                target_uid: owner_uid,
-                delta,
-                config_effect: 0,
-                effect_type: sonettobuf::effect_type_enum::EffectType::Expointchange as i32,
-            },
-        )))
-    });
+    let ops = super::card_rewards::changes(origin, rewards)
+        .into_iter()
+        .map(|change| RuleOp::Command(BattleCommand::ExPoint(ExPointCommand::Change(change))));
     drain::run_command_group(managers, pool, catalog, determinism, context, ops)
 }
 
@@ -1122,7 +1193,7 @@ pub(super) struct ActiveActionRequest {
     pub(super) skill: crate::engine::skill::action::SkillInvocation,
     pub(super) grants_ex_point: bool,
     pub(super) grant_after_action: bool,
-    pub(super) queued_resource_delta: i32,
+    pub(super) composition_rewards: Vec<ExPointChange>,
     pub(super) prelude: Vec<RuleOp>,
 }
 
@@ -1138,7 +1209,7 @@ pub(super) fn run_active_action(
         mut skill,
         grants_ex_point,
         grant_after_action,
-        queued_resource_delta,
+        composition_rewards,
         prelude,
     } = request;
     let mut result = DrainResult::default();
@@ -1174,8 +1245,7 @@ pub(super) fn run_active_action(
         {
             pool.entity(source_uid)
                 .map(|entity| {
-                    crate::engine::mechanic::card::CardMechanic
-                        .required_ultimate_cost(managers, entity)
+                    crate::engine::skill::cost::moxie(managers, entity, skill.plan.skill_id)
                 })
                 .unwrap_or(current_resource)
         } else {
@@ -1192,9 +1262,56 @@ pub(super) fn run_active_action(
             current: current_resource,
         });
     }
+    if let Some(card) = managers
+        .card
+        .played()
+        .iter()
+        .find(|played| played.card_index == skill.card_index)
+        .map(|played| played.card.clone())
+    {
+        let uses_action_point = crate::engine::mechanic::card::CardMechanic.uses_action_point(
+            &card,
+            source_uid,
+            skill.plan.skill_id,
+            managers,
+            catalog,
+        );
+        managers
+            .card
+            .record_action_point_use(skill.card_index, uses_action_point);
+    }
     let resource_delta =
         card_play_resource_delta(managers, source_uid, grants_ex_point, is_ultimate);
-    let pre_action_delta = queued_resource_delta.saturating_add(
+    let ultimate_moxie = if boss_power.is_some() {
+        0
+    } else {
+        ultimate_cost.max(0)
+    };
+    let (composition_delta, payment) = if ultimate_moxie > 0 {
+        (
+            0,
+            Some(crate::engine::skill::action::ActionPayment {
+                cost: ExPointCommand::Spend(ExPointChange {
+                    origin: CARD_PLAY_ORIGIN,
+                    source_uid,
+                    target_uid: source_uid,
+                    delta: -ultimate_moxie,
+                    config_effect: 0,
+                    effect_type: sonettobuf::effect_type_enum::EffectType::Expointchange as i32,
+                }),
+                composition: composition_rewards,
+            }),
+        )
+    } else {
+        (
+            composition_rewards
+                .into_iter()
+                .map(|change| change.delta)
+                .fold(0, i32::saturating_add),
+            None,
+        )
+    };
+    let pre_action_delta = composition_delta.saturating_add(
         resource_delta
             .filter(|_| !grant_after_action)
             .unwrap_or_default(),
@@ -1221,31 +1338,16 @@ pub(super) fn run_active_action(
             )?,
         );
     }
-    let ultimate_moxie = if boss_power.is_some() {
-        0
-    } else {
-        ultimate_cost.max(0)
-    };
-    let action_cost = (ultimate_moxie > 0).then(|| {
-        ExPointCommand::Spend(ExPointChange {
-            origin: CARD_PLAY_ORIGIN,
-            source_uid,
-            target_uid: source_uid,
-            delta: -ultimate_moxie,
-            config_effect: 0,
-            effect_type: sonettobuf::effect_type_enum::EffectType::Expointchange as i32,
-        })
-    });
     append(
         &mut result,
-        drain::run_round_action_with_cost(
+        drain::run_round_action(
             managers,
             pool,
             catalog,
             determinism,
             context,
             prelude,
-            action_cost,
+            payment,
             skill,
         )?,
     );

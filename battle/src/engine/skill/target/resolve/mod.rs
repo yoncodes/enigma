@@ -1,5 +1,5 @@
 use crate::engine::{
-    manager::{BattleManagers, buff::BuffStatus, emitter},
+    manager::{BattleManagers, buff::BuffStatus, emitter, ex_point::ExPointKind},
     runtime::determinism::RoundDeterminism,
     skill::target::{
         BehaviorTargetOrder, TargetContext, TargetEntity, TargetPool, request::TargetRequest,
@@ -15,6 +15,7 @@ enum TargetRule {
     EventSubject,
     EventSource,
     Source,
+    AllActiveEntities,
     Allies,
     AlliesPreservingSelection,
     AssistBoss,
@@ -25,7 +26,6 @@ enum TargetRule {
     RandomAllyByRng,
     RandomOtherAllyByRng,
     LowestHpPercentageAlly,
-    LowestHpAlly,
     HighestAttackAlly,
     LowestExPointAlly,
     HighestExPointAlly,
@@ -59,10 +59,6 @@ enum TargetRule {
     AlliesWithoutStatus,
     SelectedTarget,
     PriorityEnemyWithMonsterLabel(i32),
-}
-
-fn captured_targets_match(resolved: &[i64], captured: &[i64]) -> bool {
-    resolved == captured
 }
 
 pub fn is_random_other_ally(target_code: i32) -> bool {
@@ -231,6 +227,9 @@ impl TargetResolver {
             TargetRule::EventSubject => runtime_target(context),
             TargetRule::EventSource => event_source(context),
             TargetRule::Source => vec![source_uid],
+            TargetRule::AllActiveEntities => {
+                pool.active_entities().map(|entity| entity.uid).collect()
+            }
             TargetRule::Allies | TargetRule::AlliesPreservingSelection => {
                 if crate::engine::fight::rules::is_side_uid(source_uid) {
                     vec![source_uid]
@@ -257,7 +256,6 @@ impl TargetResolver {
                 determinism,
             ),
             TargetRule::LowestHpPercentageAlly => lowest_hp_percentage(pool.allies(source_uid)),
-            TargetRule::LowestHpAlly => lowest_hp(pool.allies(source_uid)),
             TargetRule::HighestAttackAlly => highest_attack(pool.allies(source_uid), managers),
             TargetRule::LowestExPointAlly => lowest_ex_point(pool.allies(source_uid), source_uid),
             TargetRule::HighestExPointAlly => {
@@ -367,24 +365,6 @@ impl TargetResolver {
         {
             let primary = targets.remove(index);
             targets.insert(0, primary);
-        }
-        if let Some(captured) = determinism.take_skill_targets(skill_id, source_uid, request.code)
-            && !captured_targets_match(&targets, &captured)
-        {
-            let available = pool
-                .enemies(source_uid, true)
-                .iter()
-                .map(|entity| (entity.uid, entity.current_hp))
-                .collect::<Vec<_>>();
-            eprintln!(
-                "target drift: code={} skill={} source={} runtime={} logic={} attack={} resolved={targets:?} captured={captured:?} available={available:?}",
-                request.code,
-                skill_id,
-                source_uid,
-                context.runtime_target_uid,
-                context.logic_target,
-                context.active_skill_is_attack,
-            );
         }
         targets
     }
@@ -601,7 +581,6 @@ pub fn targets_enemy(code: i32) -> Option<bool> {
         | TargetRule::RandomAllyByRng
         | TargetRule::RandomOtherAllyByRng
         | TargetRule::LowestHpPercentageAlly
-        | TargetRule::LowestHpAlly
         | TargetRule::HighestAttackAlly
         | TargetRule::LowestExPointAlly
         | TargetRule::HighestExPointAlly
@@ -636,6 +615,7 @@ pub fn targets_enemy(code: i32) -> Option<bool> {
         | TargetRule::Fixed(_)
         | TargetRule::EventSubject
         | TargetRule::EventSource
+        | TargetRule::AllActiveEntities
         | TargetRule::Runtime
         | TargetRule::SelectedTarget
         | TargetRule::SynchronizationTarget => None,
@@ -656,9 +636,8 @@ fn target_rule(code: i32) -> Option<TargetRule> {
         309 => TargetRule::BoundAlly,
         106 => TargetRule::RandomAllyByRng,
         131 => TargetRule::RandomOtherAllyByRng,
-        107 => TargetRule::LowestHpPercentageAlly,
+        107 | 109 => TargetRule::LowestHpPercentageAlly,
         108 => TargetRule::HighestAttackAlly,
-        109 => TargetRule::LowestHpAlly,
         111 => TargetRule::LowestExPointAlly,
         112 => TargetRule::HighestExPointAlly,
         113..=116 => TargetRule::AllyPosition(code - 112),
@@ -683,8 +662,11 @@ fn target_rule(code: i32) -> Option<TargetRule> {
             include_source: false,
         },
         124 => TargetRule::AllyPosition(1),
+        125 => TargetRule::AllyPosition(2),
         127 => TargetRule::AllyPosition(4),
         132 => TargetRule::AlliesWithBattleTag,
+        1003 => TargetRule::AlliesWithMonsterLabel(3),
+        1004 => TargetRule::AlliesWithMonsterLabel(4),
         1007 => TargetRule::AlliesWithMonsterLabel(7),
         1008 => TargetRule::AlliesWithMonsterLabel(8),
         1009 => TargetRule::AlliesWithMonsterLabel(9),
@@ -701,7 +683,7 @@ fn target_rule(code: i32) -> Option<TargetRule> {
         210 => TargetRule::LowestHpPercentageEnemy,
         207 => TargetRule::HighestAttackEnemy,
         208 => TargetRule::HighestHpEnemy,
-        216 => TargetRule::SecondaryEnemies,
+        216 | 252 => TargetRule::SecondaryEnemies,
         235 => TargetRule::EnemyMostShell,
         244 => TargetRule::EnemyMostQueuedAttacks,
         222..=225 => TargetRule::EnemyPosition(code - 221),
@@ -715,7 +697,8 @@ fn target_rule(code: i32) -> Option<TargetRule> {
         247 => TargetRule::EnemyWithConfiguredBuffType,
         249 => TargetRule::AlliesWithStatus,
         250 => TargetRule::AlliesWithoutStatus,
-        301 | 302 => TargetRule::Enemies,
+        301 => TargetRule::AllActiveEntities,
+        302 => TargetRule::Enemies,
         307 => TargetRule::EnemyWithBuffAct,
         4101 => TargetRule::EnemiesWithMonsterLabel(101),
         _ => return None,
@@ -930,14 +913,6 @@ fn compare_hp_percentage(
         .cmp(&(i64::from(right_current) * i64::from(left_max.max(1))))
 }
 
-fn lowest_hp(entities: &[TargetEntity]) -> Vec<i64> {
-    entities
-        .iter()
-        .min_by_key(|entity| (entity.current_hp, entity.position, entity.uid))
-        .map(|entity| vec![entity.uid])
-        .unwrap_or_default()
-}
-
 fn highest_attack(entities: &[TargetEntity], managers: Option<&BattleManagers>) -> Vec<i64> {
     entities
         .iter()
@@ -1005,6 +980,11 @@ fn highest_ex_point(
 ) -> Vec<i64> {
     let uid = entities
         .iter()
+        .filter(|entity| {
+            managers.is_none_or(|managers| {
+                managers.ex_point.kind(entity.uid) == ExPointKind::Common.as_wire()
+            })
+        })
         .min_by_key(|entity| {
             (
                 -managers

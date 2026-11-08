@@ -2,6 +2,7 @@ use super::*;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DrainError {
+    AiPreparation(String),
     Command(RuleExecutionError),
     Skill(SkillOpError),
     MissingBuffActOp(i32),
@@ -9,6 +10,7 @@ pub enum DrainError {
         opcode: Option<i32>,
         type_name: String,
     },
+    BuffActRule(crate::engine::skill::buff_act::BuffActRuleError),
     MissingAssistBoss,
     InvalidAssistBossSkill(i32),
     InsufficientAssistBossPower(i32),
@@ -26,6 +28,13 @@ pub enum DrainError {
     RecursionLimitExceeded,
     MissingActiveSkillContext,
     MissingReactionSide(i64),
+    MissingCardStateTeam(i64),
+}
+
+impl From<crate::engine::skill::buff_act::BuffActRuleError> for DrainError {
+    fn from(value: crate::engine::skill::buff_act::BuffActRuleError) -> Self {
+        Self::BuffActRule(value)
+    }
 }
 
 pub(super) fn required_buff_act_definition(

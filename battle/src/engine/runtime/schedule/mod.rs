@@ -8,7 +8,8 @@ use crate::engine::{
         buff::{BuffCommand, BuffDurationAdvance},
         card::{
             CARD_ENERGY_CLEAR_ORIGIN, CARD_PLAY_ORIGIN, CardCommand, CardInvalidatePlayed,
-            CardPersistTemporary, CardRefillOne, CardRefreshAiQueue, CardSetAiQueue, CardSetup,
+            CardPersistTemporary, CardRefillOne, CardRefillStage, CardRefreshAiQueue,
+            CardSetAiQueue, CardSetup,
         },
         entity::RosterLane,
         eureka::{EurekaChange, EurekaCommand, PowerType},
@@ -90,12 +91,16 @@ const HAND_LIMIT_CLEANUP_ORIGIN: CommandOrigin = CommandOrigin {
 const ROUND_START_VERSION6_SYNC_SETUP: &[(SetupStage, i32)] =
     &[(SetupStage::RoundStart, 4), (SetupStage::BuffSync, 0)];
 
+mod ai;
+mod card_rewards;
 mod player;
 mod refill;
 mod resolution;
 mod settlement;
+mod sovereign;
 mod start;
 
+use ai::run_ai_preparation;
 pub(crate) use player::card_skill_is_blocked;
 pub use player::*;
 use player::{
@@ -437,6 +442,32 @@ pub fn run_ai_actions(
                     reason: CardInvalidReason::Default,
                 },
             );
+            let is_ultimate = pool.entity(choice.source_uid).is_some_and(|entity| {
+                crate::engine::mechanic::card::CardMechanic.is_ultimate_skill(
+                    managers,
+                    choice.skill_id,
+                    entity,
+                )
+            });
+            if let Some(delta) = card_play_resource_delta(
+                managers,
+                choice.source_uid,
+                catalog.grants_resource_on_card_play(choice.skill_id),
+                is_ultimate,
+            ) {
+                append(
+                    &mut result,
+                    run_card_composition_rewards(
+                        managers,
+                        pool,
+                        catalog,
+                        determinism,
+                        context,
+                        CARD_PLAY_ORIGIN,
+                        [(choice.source_uid, delta)],
+                    )?,
+                );
+            }
             continue;
         }
         if let Some(entity) = pool.entity(choice.source_uid)
@@ -487,7 +518,7 @@ pub fn run_ai_actions(
                     skill: invocation,
                     grants_ex_point: true,
                     grant_after_action: false,
-                    queued_resource_delta: 0,
+                    composition_rewards: Vec::new(),
                     prelude: Vec::new(),
                 },
             )?,
@@ -642,10 +673,25 @@ pub fn run_wave_entry_setup(
     owner_uids: &[i64],
 ) -> Result<DrainResult, DrainError> {
     let mut result = begin_round_phase(RoundPhase::EntityEntrySetup);
-    for (stage, priority) in [
-        (SetupStage::EnterFight, 0),
-        (SetupStage::RoundStartCondition, 100),
-    ] {
+    for &entering_uid in owner_uids {
+        let event = BattleEvent::EntityEntered {
+            target_uid: entering_uid,
+        };
+        append_entry_event(
+            &mut result,
+            event.clone(),
+            drain::run_owner_event(
+                managers,
+                pool,
+                catalog,
+                determinism,
+                context,
+                event,
+                std::slice::from_ref(&entering_uid),
+            )?,
+        );
+    }
+    for (stage, priority) in [(SetupStage::RoundStartCondition, 100)] {
         let next = drain::run_setup_stage_for_owners(
             managers,
             pool,
@@ -674,11 +720,6 @@ pub fn run_wave_entry_setup(
 }
 
 pub fn run_wave_entry(
-    managers: &mut BattleManagers,
-    pool: &TargetPool,
-    catalog: &SkillEffectCatalog,
-    determinism: &mut RoundDeterminism,
-    context: TargetContext,
     change: crate::engine::manager::wave::WaveAdvanced,
 ) -> Result<DrainResult, DrainError> {
     let mut result = DrainResult::default();
@@ -692,23 +733,25 @@ pub fn run_wave_entry(
         &root,
         BattleChange::WaveAdvanced(Box::new(change.clone())),
     );
-    for &entering_uid in &change.entering_uids {
-        append(
-            &mut result,
-            drain::run_owner_event(
-                managers,
-                pool,
-                catalog,
-                determinism,
-                context,
-                BattleEvent::EntityEntered {
-                    target_uid: entering_uid,
-                },
-                std::slice::from_ref(&entering_uid),
-            )?,
-        );
-    }
     Ok(result)
+}
+
+fn append_entry_event(result: &mut DrainResult, event: BattleEvent, next: DrainResult) {
+    result.outcomes.extend(next.outcomes);
+    result.events.extend(next.events);
+    let mut event_frame = SemanticFrame {
+        owner: FrameOwner::EventRule,
+        trigger: FrameTrigger::Event(event.clone()),
+        items: Vec::new(),
+    };
+    for frame in next.frames {
+        append_to_event(&mut event_frame.items, frame, &event);
+    }
+    let root = result
+        .frames
+        .first_mut()
+        .expect("entry-setup phase has a root");
+    root.items.push(FrameItem::Child(Box::new(event_frame)));
 }
 
 fn append(result: &mut DrainResult, next: DrainResult) {

@@ -14,9 +14,17 @@ use crate::engine::{
 pub(super) struct Handler;
 pub(super) struct ChildUidHandler;
 
-type ShieldFormula = (i32, AttrId, i32, AttrId, i32, Option<(AttrId, i32)>);
+type ShieldFormula = (
+    i32,
+    AttrId,
+    i32,
+    AttrId,
+    i32,
+    Option<(AttrId, i32)>,
+    Option<(i32, i32)>,
+);
 
-fn formula(behavior: &ParsedBehavior) -> Option<ShieldFormula> {
+fn formula(behavior: &ParsedBehavior, stack_bonus: bool) -> Option<ShieldFormula> {
     match behavior.args.as_slice() {
         [buff_id, raw_attr, rate, _, raw_max_attr, max_rate] => Some((
             *buff_id,
@@ -24,6 +32,7 @@ fn formula(behavior: &ParsedBehavior) -> Option<ShieldFormula> {
             *rate,
             AttrId::from_raw(*raw_max_attr)?,
             *max_rate,
+            None,
             None,
         )),
         [
@@ -42,13 +51,35 @@ fn formula(behavior: &ParsedBehavior) -> Option<ShieldFormula> {
             AttrId::from_raw(*raw_max_attr)?,
             *max_rate,
             Some((AttrId::from_raw(*raw_bonus_attr)?, *bonus_rate)),
+            None,
+        )),
+        [
+            buff_id,
+            raw_attr,
+            rate,
+            0,
+            raw_max_attr,
+            max_rate,
+            raw_bonus_attr,
+            bonus_rate,
+            stack_buff_id,
+            stack_rate,
+            -1,
+        ] if stack_bonus && *stack_buff_id > 0 && *stack_rate > 0 => Some((
+            *buff_id,
+            AttrId::from_raw(*raw_attr)?,
+            *rate,
+            AttrId::from_raw(*raw_max_attr)?,
+            *max_rate,
+            Some((AttrId::from_raw(*raw_bonus_attr)?, *bonus_rate)),
+            Some((*stack_buff_id, *stack_rate)),
         )),
         _ => None,
     }
 }
 
 fn supports(behavior: &ParsedBehavior) -> bool {
-    formula(behavior).is_some()
+    formula(behavior, false).is_some()
 }
 
 impl BehaviorHandler for Handler {
@@ -59,11 +90,11 @@ impl BehaviorHandler for Handler {
     }
 
     fn emit_ops(context: BehaviorOpContext<'_>, behavior: &ParsedBehavior) -> Option<Vec<RuleOp>> {
-        emit_ops(context, behavior, ShieldCarrierUid::Definition)
+        emit_ops(context, behavior, ShieldCarrierUid::Definition, false)
     }
 
     fn references(behavior: &ParsedBehavior) -> RuleReferences {
-        references(behavior)
+        references(behavior, false)
     }
 }
 
@@ -71,15 +102,15 @@ impl BehaviorHandler for ChildUidHandler {
     const VALIDATES_ARGUMENTS: bool = true;
 
     fn supports(behavior: &ParsedBehavior) -> bool {
-        supports(behavior)
+        formula(behavior, true).is_some()
     }
 
     fn emit_ops(context: BehaviorOpContext<'_>, behavior: &ParsedBehavior) -> Option<Vec<RuleOp>> {
-        emit_ops(context, behavior, ShieldCarrierUid::Child)
+        emit_ops(context, behavior, ShieldCarrierUid::Child, true)
     }
 
     fn references(behavior: &ParsedBehavior) -> RuleReferences {
-        references(behavior)
+        references(behavior, true)
     }
 }
 
@@ -87,8 +118,19 @@ fn emit_ops(
     context: BehaviorOpContext<'_>,
     behavior: &ParsedBehavior,
     carrier_uid: ShieldCarrierUid,
+    stack_bonus: bool,
 ) -> Option<Vec<RuleOp>> {
-    let (buff_id, amount_attr, rate, max_attr, max_rate, multiplier_bonus) = formula(behavior)?;
+    let (buff_id, amount_attr, rate, max_attr, max_rate, multiplier_bonus, stack_bonus) =
+        formula(behavior, stack_bonus)?;
+    let rate = stack_bonus.map_or(rate, |(buff_id, per_stack)| {
+        rate.saturating_add(
+            context
+                .managers
+                .buff
+                .buff_id_amount(context.source_uid, buff_id)
+                .saturating_mul(per_stack),
+        )
+    });
     Some(vec![RuleOp::Command(BattleCommand::Shield(
         ShieldCommand {
             origin: super::command_origin(behavior)?,
@@ -110,9 +152,13 @@ fn emit_ops(
     ))])
 }
 
-fn references(behavior: &ParsedBehavior) -> RuleReferences {
+fn references(behavior: &ParsedBehavior, stack_bonus: bool) -> RuleReferences {
+    let mut buffs = behavior.arg(0).into_iter().collect::<Vec<_>>();
+    if let Some((_, _, _, _, _, _, Some((buff_id, _)))) = formula(behavior, stack_bonus) {
+        buffs.push(buff_id);
+    }
     RuleReferences {
-        buffs: behavior.arg(0).into_iter().collect(),
+        buffs,
         ..Default::default()
     }
 }
@@ -176,6 +222,102 @@ mod tests {
             registered_carrier_uid(&marsha),
             ShieldCarrierUid::Definition
         );
+    }
+
+    #[test]
+    fn supply_shield_uses_its_configured_buff_stack_rate() {
+        crate::test_support::init_config();
+        let managers = BattleManagers::seeded(&sonettobuf::Fight {
+            attacker: Some(sonettobuf::FightTeam {
+                entitys: vec![
+                    sonettobuf::FightEntityInfo {
+                        uid: Some(10),
+                        current_hp: Some(1_000),
+                        attr: Some(sonettobuf::HeroAttribute {
+                            hp: Some(1_000),
+                            attack: Some(2_028),
+                            ..Default::default()
+                        }),
+                        buffs: vec![sonettobuf::BuffInfo {
+                            uid: Some(20),
+                            buff_id: Some(4_150_001),
+                            from_uid: Some(10),
+                            layer: Some(3),
+                            ..Default::default()
+                        }],
+                        ..Default::default()
+                    },
+                    sonettobuf::FightEntityInfo {
+                        uid: Some(11),
+                        current_hp: Some(1_000),
+                        attr: Some(sonettobuf::HeroAttribute {
+                            hp: Some(1_000),
+                            ..Default::default()
+                        }),
+                        ..Default::default()
+                    },
+                ],
+                ..Default::default()
+            }),
+            ..Default::default()
+        });
+        let pool = TargetPool::default();
+        let mut determinism = RoundDeterminism::default();
+        let mut modifiers = SkillModifiers::default();
+        let mut target = TargetContext::default();
+        let behavior = ParsedBehavior::new(
+            60183,
+            "SupplyShield2",
+            vec![
+                30_941_121, 102, 1_500, 0, 102, 6_000, 102, 0, 4_150_001, 50, -1,
+            ],
+        );
+
+        let ops = super::super::rule_ops(
+            BehaviorOpContext {
+                source_uid: 10,
+                source_team: 1,
+                target_uid: 11,
+                active_skill_id: 30_941_124,
+                transfer_count: 1,
+                event: None,
+                managers: &managers,
+                pool: &pool,
+                determinism: &mut determinism,
+                modifiers: &mut modifiers,
+                target: &mut target,
+            },
+            &behavior,
+        )
+        .unwrap();
+
+        assert!(matches!(
+            ops.as_slice(),
+            [RuleOp::Command(BattleCommand::Shield(command))]
+                if command.amount_rate == 1_650
+                    && command.max_rate == 6_000
+                    && command.multiplier_bonus == Some((AttrId::Attack, 0))
+        ));
+        assert_eq!(
+            ChildUidHandler::references(&behavior).buffs,
+            [30_941_121, 4_150_001]
+        );
+        assert!(ChildUidHandler::supports(&behavior));
+        assert!(!Handler::supports(&behavior));
+        assert!(!ChildUidHandler::supports(&ParsedBehavior::new(
+            60183,
+            "SupplyShield2",
+            vec![
+                30_941_121, 102, 1_500, 1, 102, 6_000, 102, 0, 4_150_001, 50, -1,
+            ],
+        )));
+        assert!(!ChildUidHandler::supports(&ParsedBehavior::new(
+            60183,
+            "SupplyShield2",
+            vec![
+                30_941_121, 102, 1_500, 0, 102, 6_000, 102, 0, 4_150_001, 50, 1,
+            ],
+        )));
     }
 
     #[test]

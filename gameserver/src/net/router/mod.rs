@@ -2,9 +2,9 @@ use crate::error::{AppError, ClientErrorAction, CmdError};
 use crate::handlers::{
     activity, arcade, bgm, bp, charge, chat, collection, command_post, common, critter, dice_hero,
     dungeon, equipment, exploration, fairyland, friends, guide, hero, hero_group, hero_invitation,
-    inventory, investigate, mail, manufacture, misc, odyssey, party, player_card, player_info,
-    player_misc, property, red_dot, room, rouge, sign_in, stat, store, story, summon, survival,
-    system, talent, tasks, teaching, tower, tower_compose, trade, turnback, udimo, user,
+    inventory, investigate, mail, manufacture, milestone, misc, odyssey, party, player_card,
+    player_info, player_misc, property, red_dot, room, rouge, sign_in, stat, store, story, summon,
+    survival, system, talent, tasks, teaching, tower, tower_compose, trade, turnback, udimo, user,
 };
 use crate::net::context::ConnectionContext;
 use crate::net::packet::ClientPacket;
@@ -18,7 +18,7 @@ macro_rules! dispatch {
     }) => {
         match $cmd_id {
             $(
-                $variant => $handler($ctx, $packet).await,
+                $variant => Box::pin($handler($ctx, $packet)).await,
             )*
             v => Err(AppError::Cmd(CmdError::UnhandledCmd(v))),
         }
@@ -52,7 +52,7 @@ pub async fn dispatch_command(ctx: &mut ConnectionContext, req: Vec<u8>) -> Resu
         };
     }
 
-    let result = Box::pin(dispatch_registered_command(ctx, cmd_id, req)).await;
+    let result = dispatch_registered_command(ctx, cmd_id, req).await;
 
     match result {
         Ok(()) => Ok(()),
@@ -111,6 +111,7 @@ async fn dispatch_registered_command(
         CmdId::GetHeroGroupSnapshotListCmd => hero_group::on_get_hero_group_snapshot_list,
         CmdId::SetHeroGroupEquipCmd => hero_group::on_set_hero_group_equip,
         CmdId::SetHeroGroupSnapshotCmd => hero_group::on_set_hero_group_snapshot,
+        CmdId::SetHeroGroupSnapshotBatchCmd => hero_group::on_set_hero_group_snapshot_batch,
         CmdId::ChangeHeroGroupSelectCmd => hero_group::on_change_hero_group_select,
         CmdId::CheckHeroGroupNameCmd => hero_group::on_check_hero_group_name,
         CmdId::UpdateHeroGroupNameCmd => hero_group::on_update_hero_group_name,
@@ -193,6 +194,8 @@ async fn dispatch_registered_command(
         CmdId::LogoutCmd => user::on_logout,
         CmdId::DebugLogoutCmd => user::on_debug_logout,
         CmdId::GetAllMailsCmd => mail::on_get_all_mails,
+        CmdId::GetMilestoneInfoCmd => milestone::on_get_info,
+        CmdId::GetMilestoneBonusCmd => milestone::on_get_bonus,
         CmdId::ReadMailCmd => mail::on_read_mail,
         CmdId::ReadMailBatchCmd => mail::on_read_mail_batch,
         CmdId::MailLockCmd => mail::on_mail_lock,
@@ -211,6 +214,8 @@ async fn dispatch_registered_command(
         CmdId::GetRedDotInfosCmd => red_dot::on_get_red_dot_infos,
         CmdId::ShowRedDotCmd => red_dot::on_show_red_dot,
         CmdId::PartyServerListCmd => party::on_party_server_list,
+        CmdId::TriggerPartyResultCmd => party::on_trigger_result,
+        CmdId::GetPartyOutSideInfoCmd => party::on_get_outside_info,
         CmdId::GetActivityInfosCmd => activity::on_get_activity_infos,
         CmdId::GetActivityInfosWithParamCmd => activity::on_get_activity_infos_with_param,
         CmdId::ActivityNewStageReadCmd => activity::on_activity_new_stage_read,
@@ -220,6 +225,7 @@ async fn dispatch_registered_command(
         CmdId::Act1001GetInfoCmd => activity::on_act1001_get_info,
         CmdId::Get101InfosCmd => activity::on_get_101_infos,
         CmdId::Get106InfosCmd => activity::on_get_106_infos,
+        CmdId::Get107GoodsInfoCmd => activity::on_get_goods_info,
         CmdId::Get108InfosCmd => activity::on_get_108_infos,
         CmdId::GetAct109InfoCmd => activity::on_get_act109_info,
         CmdId::Get111InfosCmd => activity::on_get_111_infos,
@@ -244,6 +250,7 @@ async fn dispatch_registered_command(
         CmdId::GetAct186InfoCmd => activity::on_get_act186_info,
         CmdId::GetAct186SpBonusInfoCmd => activity::on_get_act186_sp_bonus_info,
         CmdId::AcceptAct186SpBonusCmd => activity::on_accept_act186_sp_bonus,
+        CmdId::FinishAllAct186TaskCmd => activity::on_finish_all_act186_tasks,
         CmdId::GetAct189InfoCmd => activity::on_get_act189_info,
         CmdId::GetAct189OnceBonusCmd => activity::on_get_act189_once_bonus,
         CmdId::Get199InfoCmd => activity::on_get_199_info,
@@ -258,6 +265,11 @@ async fn dispatch_registered_command(
         CmdId::GetAct124InfosCmd => activity::on_get_act124_infos,
         CmdId::Get126InfosCmd => activity::on_get_126_infos,
         CmdId::Get128InfosCmd => activity::on_get_128_infos,
+        CmdId::Act128ChangeActModeCmd => activity::on_act128_change_act_mode,
+        CmdId::SetAct128TeamCmd => activity::on_set_act128_team,
+        CmdId::ResetAct128TeamCmd => activity::on_reset_act128_team,
+        CmdId::GetGalleryInfosCmd => activity::on_get_gallery_infos,
+        CmdId::Act128GetExpCmd => activity::on_act128_get_exp,
         CmdId::Act128GetTotalRewardsCmd => activity::on_act128_get_total_rewards,
         CmdId::Act128GetMilestoneBonusCmd => activity::on_act128_get_milestone_bonus,
         CmdId::Get129InfosCmd => activity::on_get_129_infos,
@@ -344,6 +356,7 @@ async fn dispatch_registered_command(
         CmdId::Act218FinishGameCmd => activity::on_act218_finish_game,
         CmdId::Act218AcceptRewardCmd => activity::on_act218_accept_reward,
         CmdId::GetAct220InfoCmd => activity::on_get_act220_info,
+        CmdId::Act220FinishEpisodeCmd => activity::on_finish_act220_episode,
         CmdId::Get221InfoCmd => activity::on_get_221_info,
         CmdId::Act221SummonCmd => activity::on_act221_summon,
         CmdId::Act221SelectCmd => activity::on_act221_select,
@@ -359,12 +372,18 @@ async fn dispatch_registered_command(
         CmdId::GetAct229InfoCmd => activity::on_get_act229_info,
         CmdId::StartAct229BattleCmd => activity::on_start_act229_battle,
         CmdId::Act229ResetStageCmd => activity::on_reset_act229_stage,
+        CmdId::Act229ModifySkillCmd => activity::on_modify_act229_skill,
+        CmdId::Act229ModifyStageSubIdCmd => activity::on_modify_act229_stage_sub_id,
         CmdId::GetAct231InfoCmd => activity::on_get_act231_info,
         CmdId::GetAct235InfoCmd => activity::on_get_act235_info,
         CmdId::GetAct236InfoCmd => activity::on_get_act236_info,
         CmdId::Act236GetAutoGainRewardCmd => activity::on_act236_get_auto_gain_reward,
         CmdId::GetAct239InfoCmd => activity::on_get_act239_info,
         CmdId::Act239BonusCmd => activity::on_act239_bonus,
+        CmdId::GetAct243InfoCmd => activity::on_get_act243_info,
+        CmdId::Act243UpgradeGiftCmd => activity::on_act243_upgrade_gift,
+        CmdId::Act243ReportEpisodeCmd => activity::on_act243_report_episode,
+        CmdId::Act243UnlockRacerCmd => activity::on_act243_unlock_racer,
         CmdId::Act240GetInfoCmd => activity::on_act240_get_info,
         CmdId::GetCommandPostInfoCmd => command_post::on_get_command_post_info,
         CmdId::CommandPostCharacterReadCmd => command_post::on_command_post_character_read,
@@ -432,10 +451,33 @@ async fn dispatch_registered_command(
         CmdId::GainInviteRewardCmd => hero_invitation::on_gain_reward,
         CmdId::GainFinalInviteRewardCmd => hero_invitation::on_gain_final_reward,
         CmdId::GetHeroStoryCmd => story::on_get_hero_story,
+        CmdId::UnlocHeroStoryCmd => story::on_unlock_hero_story,
         CmdId::GetNecrologistStoryCmd => story::on_get_necrologist_story,
+        CmdId::HeroStoryPlotFinishCmd => story::on_finish_hero_story_plot,
         CmdId::UpdateNecrologistStoryCmd => story::on_update_necrologist_story,
         CmdId::FinishNecrologistStoryModeCmd => story::on_finish_necrologist_story_mode,
         CmdId::GetExploreSimpleInfoCmd => exploration::on_get_explore_simple_info,
+        CmdId::ChangeMapCmd => exploration::on_change_map,
+        CmdId::GetExploreInfoCmd => exploration::on_get_explore_info,
+        CmdId::ExploreMoveCmd => exploration::on_move,
+        CmdId::ExploreInteractCmd => exploration::on_interact,
+        CmdId::ExploreUseItemCmd => exploration::on_use_item,
+        CmdId::GetWeekwalkInfoCmd => exploration::on_get_weekwalk_info,
+        CmdId::BeforeStartWeekwalkBattleCmd => exploration::on_before_start_weekwalk_battle,
+        CmdId::ChangeWeekwalkHeroGroupSelectCmd => exploration::on_change_weekwalk_hero_group_select,
+        CmdId::WeekwalkDialogCmd => exploration::on_weekwalk_dialog,
+        CmdId::WeekwalkDialogHistoryCmd => exploration::on_weekwalk_dialog_history,
+        CmdId::MarkPopShallowSettleCmd => exploration::on_mark_pop_shallow_settle,
+        CmdId::MarkPopDeepSettleCmd => exploration::on_mark_pop_deep_settle,
+        CmdId::MarkShowFinishedCmd => exploration::on_mark_show_finished,
+        CmdId::WeekwalkVer2GetInfoCmd => exploration::on_weekwalk_ver2_get_info,
+        CmdId::WeekwalkVer2MarkShowFinishedCmd => {
+            exploration::on_weekwalk_ver2_mark_show_finished
+        },
+        CmdId::WeekwalkVer2ChangeHeroGroupSelectCmd => {
+            exploration::on_weekwalk_ver2_change_hero_group_select
+        },
+        CmdId::WeekwalkVer2ChooseSkillCmd => exploration::on_weekwalk_ver2_choose_skill,
         CmdId::GetTowerInfoCmd => tower::on_get_info,
         CmdId::TowerMopUpCmd => tower::on_mop_up,
         CmdId::TowerResetSubEpisodeCmd => tower::on_reset_sub_episode,
@@ -446,10 +488,6 @@ async fn dispatch_registered_command(
         CmdId::TowerRenameTalentPlanCmd => tower::on_rename_talent_plan,
         CmdId::TowerComposeGetInfoCmd => tower_compose::on_tower_compose_get_info,
         CmdId::TowerComposeSetModsCmd => tower_compose::on_tower_compose_set_mods,
-        CmdId::GetWeekwalkInfoCmd => exploration::on_get_weekwalk_info,
-        CmdId::MarkPopShallowSettleCmd => exploration::on_mark_pop_shallow_settle,
-        CmdId::MarkPopDeepSettleCmd => exploration::on_mark_pop_deep_settle,
-        CmdId::WeekwalkVer2GetInfoCmd => exploration::on_weekwalk_ver2_get_info,
         CmdId::GetBlockPackageInfoRequsetCmd => room::on_get_block_package_info,
         CmdId::HideBlockPackageReddotCmd => room::on_hide_block_package_reddot,
         CmdId::HideBuildingReddotRequsetCmd => room::on_hide_building_reddot,
@@ -517,7 +555,12 @@ async fn dispatch_registered_command(
         CmdId::GetRougeOutsideInfoCmd => rouge::on_get_rouge_outside_info,
         CmdId::GetRouge2OutsideInfoCmd => rouge::on_get_rouge2_outside_info,
         CmdId::GetRouge2InfoCmd => rouge::on_get_rouge2_info,
+        CmdId::EnterRouge2SelectDifficultyCmd => rouge::on_enter_rouge2_select_difficulty,
+        CmdId::Rouge2ActiveGeniusCmd => rouge::on_rouge2_active_genius,
+        CmdId::Rouge2AlchemyCmd => rouge::on_rouge2_alchemy,
         CmdId::Rouge2GetUnlockCollectionsCmd => rouge::on_rouge2_get_unlock_collections,
+        CmdId::Rouge2RewardCmd => rouge::on_rouge2_reward,
+        CmdId::Rouge2SetSystemIdCmd => rouge::on_rouge2_set_system_id,
         CmdId::SurvivalOutSideGetInfoCmd => survival::on_get_outside_info,
         CmdId::OdysseyGetInfoCmd => odyssey::on_odyssey_get_info,
         CmdId::DiceHeroGetInfoCmd => dice_hero::on_dice_hero_get_info,
@@ -530,6 +573,10 @@ async fn dispatch_registered_command(
         CmdId::GetTurnbackDailyBonusCmd => turnback::on_get_turnback_daily_bonus,
         CmdId::TurnbackBonusPointCmd => turnback::on_turnback_bonus_point,
         CmdId::AcceptAllTurnbackBonusPointCmd => turnback::on_accept_all_turnback_bonus_point,
+        CmdId::TurnbackReturnRewardCmd => turnback::on_turnback_return_reward,
+        CmdId::AcceptAllTurnbackReturnRewardCmd => {
+            turnback::on_accept_all_turnback_return_reward
+        },
         CmdId::BuyDoubleBonusCmd => turnback::on_buy_double_bonus,
         CmdId::GetTradeTaskInfoCmd => trade::on_get_trade_task_info,
         CmdId::GetOrderInfoCmd => trade::on_get_order_info,
