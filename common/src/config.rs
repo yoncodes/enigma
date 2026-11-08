@@ -13,6 +13,8 @@ pub struct ServerConfig {
     pub paths: PathConfig,
     pub database: DatabaseConfig,
     pub summon: SummonConfig,
+    #[serde(default = "default_tutorial_cards_config")]
+    pub tutorial_cards: TutorialCardsConfig,
     #[serde(default = "default_weekwalk_v2_config")]
     pub weekwalk_v2: WeekwalkV2Config,
     #[serde(default = "default_rouge2_config")]
@@ -23,6 +25,29 @@ pub struct ServerConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SummonConfig {
     pub permanent_pool_ids: Vec<i32>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TutorialCardsConfig {
+    pub cards: Vec<TutorialCardConfig>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TutorialCardConfig {
+    pub episode_id: i32,
+    pub opening_cards: String,
+    pub refill_cards: String,
+}
+
+fn default_tutorial_cards_config() -> TutorialCardsConfig {
+    #[derive(Deserialize)]
+    struct Template {
+        tutorial_cards: TutorialCardsConfig,
+    }
+
+    toml::from_str::<Template>(CONFIG_TEMPLATE)
+        .expect("embedded tutorial cards must be valid")
+        .tutorial_cards
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -242,6 +267,22 @@ impl ServerConfig {
             anyhow::bail!("permanent summon pool IDs must be positive and unique");
         }
 
+        let tutorial_episode_ids = self
+            .tutorial_cards
+            .cards
+            .iter()
+            .map(|cards| cards.episode_id)
+            .collect::<std::collections::HashSet<_>>();
+        if tutorial_episode_ids.len() != self.tutorial_cards.cards.len()
+            || self
+                .tutorial_cards
+                .cards
+                .iter()
+                .any(|cards| cards.episode_id <= 0 || cards.opening_cards.is_empty())
+        {
+            anyhow::bail!("tutorial card episode IDs must be positive and unique with an opening");
+        }
+
         if self
             .weekwalk_v2
             .schedule
@@ -362,6 +403,12 @@ mod tests {
         assert_eq!(cfg.muip.port, 21100);
         assert_eq!(cfg.muip_gm.port, 21101);
         assert_eq!(cfg.summon.permanent_pool_ids, [2]);
+        assert_eq!(cfg.tutorial_cards.cards.len(), 4);
+        assert_eq!(cfg.tutorial_cards.cards[1].episode_id, 10002);
+        assert_eq!(
+            cfg.tutorial_cards.cards[1].opening_cards,
+            "100102#2|100102#2|100102#2|100101#1|100101#1|100101#2|100102#2"
+        );
         assert_eq!(cfg.weekwalk_v2.schedule[0].time_id, 21);
         assert_eq!(cfg.weekwalk_v2.schedule[0].layers[0].layer_id, 1069);
         assert_eq!(cfg.rouge2.initial_attributes.len(), 61);
@@ -379,6 +426,16 @@ mod tests {
 
         let config: ServerConfig = template.try_into().unwrap();
         assert_eq!(config.weekwalk_v2.schedule[0].time_id, 21);
+    }
+
+    #[test]
+    fn missing_tutorial_cards_use_embedded_defaults() {
+        let mut template: toml::Value = toml::from_str(CONFIG_TEMPLATE).unwrap();
+        template.as_table_mut().unwrap().remove("tutorial_cards");
+
+        let config: ServerConfig = template.try_into().unwrap();
+        assert_eq!(config.tutorial_cards.cards.len(), 4);
+        assert_eq!(config.tutorial_cards.cards[0].episode_id, 10001);
     }
 
     #[test]

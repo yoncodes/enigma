@@ -1290,6 +1290,12 @@ pub(crate) fn configured_teaching_cards(
     game_data: &config::GameDB,
     episode_id: i32,
 ) -> Option<ConfiguredTeachingCards> {
+    if let Some(row) = common::tutorial_card(episode_id) {
+        return Some(ConfiguredTeachingCards {
+            opening_cards: row.opening_cards.clone(),
+            refill_cards: row.refill_cards.clone(),
+        });
+    }
     let row = game_data.teaching_card.get(episode_id)?;
     Some(ConfiguredTeachingCards {
         opening_cards: row.opening_cards.clone(),

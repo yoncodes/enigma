@@ -26,6 +26,14 @@ path = "./db/sonetto.db"
 [summon]
 permanent_pool_ids = [2]
 
+[tutorial_cards]
+cards = [
+  { episode_id = 10001, opening_cards = "100101#1|100101#2|100102#1|100102#2|100101#1", refill_cards = "100101#2|100102#1" },
+  { episode_id = 10002, opening_cards = "100102#2|100102#2|100102#2|100101#1|100101#1|100101#2|100102#2", refill_cards = "100102#1|100101#1|100101#1|100102#2" },
+  { episode_id = 10003, opening_cards = "100109#2|100109#2|100109#1|100109#1|100109#2|100109#2|100109#1", refill_cards = "" },
+  { episode_id = 10101, opening_cards = "3028#2|3028#1|3028#1|3028#2|3028#2|3028#1", refill_cards = "" },
+]
+
 [weekwalk_v2]
 schedule = [
   { time_id = 21, start_time = 1793527200000, end_time = 1796119200000, pop_rule = true, layers = [
