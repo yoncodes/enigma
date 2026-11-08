@@ -1112,6 +1112,25 @@ fn emitter_skill_condition_keeps_its_filtered_action_trigger() {
 }
 
 #[test]
+fn teammate_count_keeps_its_after_damage_route() {
+    assert_eq!(
+        parse(73208, "TeammateAliveNum", &["3".into()]),
+        Some(ParsedConditionKind::EntityCount {
+            scope: super::super::super::parse::EntityCountScope::AliveOtherTeammates,
+            compare: ConditionCompare::Equal,
+            count: 3,
+        })
+    );
+    assert_eq!(
+        find_key(73208, "TeammateAliveNum").map(|definition| definition.role),
+        Some(ConditionRole::Trigger {
+            event: EventKind::SkillAction,
+            phase: Some(SkillPhase::AfterDamage),
+        })
+    );
+}
+
+#[test]
 fn teammate_count_keeps_its_after_hit_route() {
     for count in 0..=3 {
         assert!(matches!(
