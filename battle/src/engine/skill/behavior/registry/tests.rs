@@ -1059,7 +1059,7 @@ fn add_team_energy_is_parent_owned_only_during_setup() {
 }
 
 #[test]
-fn conduit_ex_point_is_parent_owned_for_setup_and_final_settlement() {
+fn conduit_ex_point_is_owned_by_its_trigger() {
     let definition = find_key(60292, "AddDeviceExPoint").unwrap();
 
     assert_eq!(
@@ -1091,6 +1091,10 @@ fn conduit_ex_point_is_parent_owned_for_setup_and_final_settlement() {
     assert_eq!(
         definition.output_owner.resolve(None, false),
         OutputOwner::Skill
+    );
+    assert_eq!(
+        definition.reaction_frame_scope,
+        Some(crate::engine::skill::condition::registry::ReactionFrameScope::Causing)
     );
 }
 

@@ -472,6 +472,7 @@ fn queued_selected_timing(
     }
     queued_reactions(
         pool,
+        catalog,
         dispatched,
         event,
         parent_path,
@@ -501,8 +502,9 @@ pub(in crate::engine::runtime::drain) fn dispatch_owner_reactions(
         event,
         &scoped_owner_uids,
     )?;
-    let mut reactions =
-        queued_reactions(pool, dispatched, event, None, None, None, None, None, None)?;
+    let mut reactions = queued_reactions(
+        pool, catalog, dispatched, event, None, None, None, None, None, None,
+    )?;
     if let Some(fanout) = queued_entity_entry_halo_fanout(event, None, None) {
         reactions.push(fanout);
     }
