@@ -229,9 +229,14 @@ pub(crate) fn plan(
         }
         opers.push(operation);
     }
-
-    let Some(selection) = conduit::operations(&simulation, &commands, Some(&conduit_plan)) else {
-        return reply(request, Vec::new(), devices_opers);
+    let selection = if commands == potential && !conduit_plan.has_card_switch() {
+        planned_devices
+    } else {
+        let Some(selection) = conduit::operations(&simulation, &commands, Some(&conduit_plan))
+        else {
+            return reply(request, Vec::new(), devices_opers);
+        };
+        selection
     };
     reply(request, opers, selection.requested)
 }

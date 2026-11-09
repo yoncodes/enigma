@@ -98,3 +98,59 @@ fn auto_round_keeps_equal_special_energy_cards_in_hand_order() {
         vec![Some(1), Some(1)]
     );
 }
+
+#[test]
+fn auto_round_plans_a_full_conduit_roster() {
+    let mut runtime = team_runtime(
+        vec![
+            team_hero(10, 3145, 1_000, [31450111, 31450121]),
+            team_hero(11, 3144, 1_000, [31440111, 31440121]),
+            team_hero(12, 3149, 1_000, [31490111, 31490121]),
+            team_hero(13, 3156, 1_000, [31560111, 31560121]),
+        ],
+        vec![
+            hand_card(10, 31450181, false),
+            hand_card(11, 31446012, false),
+            hand_card(12, 31446011, false),
+            hand_card(13, 31446012, false),
+            hand_card(10, 31446022, false),
+            hand_card(11, 31446011, false),
+            hand_card(12, 31446012, false),
+            hand_card(13, 31446011, false),
+            hand_card(10, 31446021, false),
+            hand_card(12, 31446022, false),
+        ],
+    );
+    runtime.round_state.act_point = 5;
+
+    let reply = runtime.plan_auto_round(&AutoRoundRequest::default());
+
+    assert_eq!(
+        reply
+            .opers
+            .iter()
+            .map(|oper| (
+                oper.oper_type,
+                oper.param1,
+                oper.param2,
+                oper.to_id,
+                oper.param3,
+                oper.card_param1.clone(),
+            ))
+            .collect::<Vec<_>>(),
+        [2, 3, 5, 1, 1].map(|index| (Some(2), Some(index), None, Some(-1), None, None))
+    );
+    assert_eq!(
+        reply
+            .devices_opers
+            .iter()
+            .map(|oper| (oper.uid, oper.index))
+            .collect::<Vec<_>>(),
+        [
+            (Some(10), Some(1)),
+            (Some(11), Some(2)),
+            (Some(12), Some(1)),
+            (Some(13), Some(1))
+        ]
+    );
+}

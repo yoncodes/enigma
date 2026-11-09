@@ -92,6 +92,12 @@ impl SelectionPlan {
         }
     }
 
+    pub(super) fn has_card_switch(&self) -> bool {
+        self.devices
+            .values()
+            .any(|state| state.switched_group.is_some())
+    }
+
     fn requested_group(&self, uid: i64, after_cards_group: i32, desired_group: i32) -> i32 {
         let Some(state) = self.devices.get(&uid) else {
             return desired_group;
@@ -135,23 +141,48 @@ pub(super) fn operations(
     let (after_cards, _) = simulation.player(opers, &operations)?;
 
     for (device_index, device) in devices.iter().enumerate() {
+        let base_operations = operations.clone();
+        let candidates = std::thread::scope(|scope| {
+            device
+                .skill_groups
+                .iter()
+                .enumerate()
+                .map(|(index, desired_skills)| {
+                    let group = index as i32 + 1;
+                    let requested_group = selection_plan.map_or(group, |plan| {
+                        plan.requested_group(
+                            device.uid,
+                            after_cards
+                                .conduit
+                                .selected_group(device.uid)
+                                .unwrap_or(device.selected_group),
+                            group,
+                        )
+                    });
+                    let mut candidate_operations = base_operations.clone();
+                    candidate_operations[device_index].index = Some(requested_group);
+                    scope.spawn(move || {
+                        (
+                            index,
+                            requested_group,
+                            simulate_group(
+                                simulation,
+                                opers,
+                                &candidate_operations,
+                                device.uid,
+                                desired_skills,
+                            ),
+                        )
+                    })
+                })
+                .collect::<Vec<_>>()
+                .into_iter()
+                .map(|worker| worker.join().expect("conduit scoring worker panicked"))
+                .collect::<Vec<_>>()
+        });
         let mut best = None;
-        for (index, desired_skills) in device.skill_groups.iter().enumerate() {
-            let group = index as i32 + 1;
-            let requested_group = selection_plan.map_or(group, |plan| {
-                plan.requested_group(
-                    device.uid,
-                    after_cards
-                        .conduit
-                        .selected_group(device.uid)
-                        .unwrap_or(device.selected_group),
-                    group,
-                )
-            });
-            operations[device_index].index = Some(requested_group);
-            let Some(candidate) =
-                simulate_group(simulation, opers, &operations, device.uid, desired_skills)
-            else {
+        for (index, requested_group, candidate) in candidates {
+            let Some(candidate) = candidate else {
                 continue;
             };
             let key = (candidate, Reverse(index));
