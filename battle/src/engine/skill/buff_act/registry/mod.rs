@@ -172,6 +172,7 @@ pub enum BuffActKind {
     NoneCastChannel,
     ConsumeCurBuffAndAuraAddBuff,
     ConsumeBuffAddBuffContinueChannel,
+    ConsumeBuffLayerCastChannel,
     ConsumeBuffContinueChannel,
     ControlTeamInjuryCountRound,
     CountContinueChannel,
@@ -1556,6 +1557,12 @@ buff_act_definitions! {
         supports: super::attr_by_heat_scale::supports,
         state_consumer: true,
         wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(1053, "AttrByHeatScale"), &[EffectType::None as i32]));
+    (1054, "ConsumeBuffLayerCastChannel") => ConsumeBuffLayerCastChannel,
+        runtime: |context| super::consume_buff_layer_cast_channel::rule_ops(context.managers, context.catalog, context.subscriber, context.event?),
+        supports: super::consume_buff_layer_cast_channel::supports,
+        parser: super::consume_buff_layer_cast_channel::parse,
+        references: references_for_feature,
+        wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(1054, "ConsumeBuffLayerCastChannel"), &[]));
     (1062, "HeatScaleDecrCounter") => HeatScaleDecrCounter, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(1062, "HeatScaleDecrCounter"), &[EffectType::None as i32]));
     (502, "Immunity") => Immunity,
         effect_time_subscription: false,
@@ -1751,6 +1758,17 @@ fn references_for_feature(
             &mut references,
             super::consume_and_grant::referenced_buff(&feature.args),
         ),
+        Some(BuffActKind::ConsumeBuffLayerCastChannel) => {
+            add_buff(
+                &mut references,
+                super::consume_buff_layer_cast_channel::referenced_buff(&feature.args),
+            );
+            references
+                .skills
+                .extend(super::consume_buff_layer_cast_channel::referenced_skills(
+                    &feature.args,
+                ));
+        }
         Some(BuffActKind::AddPassiveSkills)
         | Some(BuffActKind::AddSpTempCard)
         | Some(BuffActKind::CastChannel)

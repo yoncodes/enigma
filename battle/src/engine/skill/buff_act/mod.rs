@@ -48,6 +48,7 @@ pub mod charge_sovereign_card;
 pub mod conduit_select;
 pub mod consume_and_grant;
 pub mod consume_buff_add_buff_continue_channel;
+pub mod consume_buff_layer_cast_channel;
 pub mod contract_cast_channel;
 pub mod control_team_injury_count_round;
 pub mod count_continue_channel;
