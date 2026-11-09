@@ -558,6 +558,74 @@ fn combatant_entry_runs_its_enter_fight_passives() {
 }
 
 #[test]
+fn special_entry_runs_its_enter_fight_passives() {
+    crate::test_support::init_config();
+    let fight = Fight {
+        defender: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(-1),
+                model_id: Some(151401),
+                team_type: Some(2),
+                position: Some(1),
+                current_hp: Some(100),
+                attr: Some(HeroAttribute {
+                    hp: Some(100),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    let summoned =
+        crate::engine::fight::defender::Defender::build_monster_with_uid(151416, -2, 5, 2).unwrap();
+    let mut catalog = SkillEffectCatalog::from_roots(
+        config::configs::get(),
+        summoned.passive_skill,
+        std::iter::empty(),
+    );
+    catalog.insert(ParsedSkillEffect {
+        skill_id: 100,
+        slots: vec![SkillEffectSlot::new(
+            ParsedBehavior::from_spec(
+                BehaviorSpec::new(60056, "SummonSp2"),
+                vec![151416],
+                vec!["151416".to_owned()],
+            ),
+            TargetRequest::self_only(),
+        )],
+    });
+
+    let result = run_skill(
+        &mut managers,
+        &pool,
+        &catalog,
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+        SkillRequest {
+            source_uid: -1,
+            skill_id: 100,
+        }
+        .into(),
+        Default::default(),
+    )
+    .unwrap();
+
+    let entered_uid = result
+        .events
+        .iter()
+        .find_map(|event| match event {
+            BattleEvent::EntityEntered { target_uid } => Some(*target_uid),
+            _ => None,
+        })
+        .expect("special entry event");
+    assert!(managers.buff.has_buff_id(entered_uid, 11430021));
+}
+
+#[test]
 fn entry_halos_share_the_event_rule_that_cast_the_summon() {
     let (pool, mut managers, catalog) = entry_halo_summon_fixture();
     let trigger = SkillOpTrigger::Event(BattleEvent::Kind(

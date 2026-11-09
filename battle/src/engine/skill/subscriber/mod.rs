@@ -76,7 +76,7 @@ pub fn for_entity(
 
 pub fn active_skills(pool: &TargetPool, managers: &BattleManagers) -> Vec<(i64, i32)> {
     let mut skills = Vec::new();
-    for entity in pool.active_entities() {
+    for entity in subscriber_entities(pool) {
         skills.extend(entity_skill_owners(entity, pool, managers));
     }
     skills.extend(
@@ -410,7 +410,7 @@ fn collect_event_skills(
     subscriptions: impl Fn(i32) -> Result<Vec<(Option<usize>, SubscriptionKey)>, RouteError>,
 ) -> Result<Vec<SkillSubscriber>, SubscriberError> {
     let mut skills = Vec::new();
-    for entity in pool.active_entities() {
+    for entity in subscriber_entities(pool) {
         for (owner_uid, skill_id) in entity_skill_owners(entity, pool, managers) {
             push_skill_subscribers(
                 &mut skills,
@@ -558,7 +558,7 @@ fn collect_setup_stage(
     mut keys: impl FnMut(&SkillEffectSlot) -> Result<Vec<DefinitionKey>, RouteError>,
 ) -> Result<Vec<SetupSubscriber>, SubscriberError> {
     let mut skills = Vec::new();
-    for entity in pool.active_entities() {
+    for entity in subscriber_entities(pool) {
         skills.extend(entity_skill_owners(entity, pool, managers));
     }
     skills.extend(
@@ -593,6 +593,11 @@ fn collect_setup_stage(
     }
     subscribers.sort_by_key(|subscriber| !pool.source_is_attacker(subscriber.owner_uid));
     Ok(subscribers)
+}
+
+fn subscriber_entities(pool: &TargetPool) -> impl Iterator<Item = &TargetEntity> {
+    pool.entities()
+        .filter(|entity| !pool.is_reserve(entity.uid))
 }
 
 fn entity_skill_owners(
