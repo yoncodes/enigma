@@ -196,29 +196,40 @@ pub(super) fn operations(
                 .map(move |(index, _)| (device.uid, index + 1))
         })
         .collect::<HashSet<_>>();
+    let priority_pruning = devices.iter().any(|device| {
+        device
+            .skill_groups
+            .iter()
+            .enumerate()
+            .filter(|(index, _)| available.contains(&(device.uid, index + 1)))
+            .flat_map(|(_, skills)| skills)
+            .any(|skill| simulation.managers.catalog().skill_is_big(skill.skill_id))
+    });
     let mut seen = HashSet::new();
     let mut simulations = Vec::new();
     loop {
         record_groups(&mut seen, &operations)?;
         let jobs = group_jobs(&devices, &operations, &available);
-        if !simulations
-            .iter()
-            .any(|(candidate, _)| candidate == &operations)
-        {
-            simulations.push((
-                operations.clone(),
-                simulate_operations(simulation, opers, &operations),
-            ));
-        }
-        let current = simulations
-            .iter()
-            .find(|(candidate, _)| candidate == &operations)
-            .and_then(|(_, simulated)| simulated.as_ref());
         let mut current_scores = vec![None; devices.len()];
-        if let Some(job) = jobs.iter().find(|job| job.operations == operations) {
-            for candidate in &job.candidates {
-                current_scores[candidate.device_index] =
-                    current.and_then(|simulated| score_group(simulation, simulated, candidate));
+        if priority_pruning {
+            if !simulations
+                .iter()
+                .any(|(candidate, _)| candidate == &operations)
+            {
+                simulations.push((
+                    operations.clone(),
+                    simulate_operations(simulation, opers, &operations),
+                ));
+            }
+            let current = simulations
+                .iter()
+                .find(|(candidate, _)| candidate == &operations)
+                .and_then(|(_, simulated)| simulated.as_ref());
+            if let Some(job) = jobs.iter().find(|job| job.operations == operations) {
+                for candidate in &job.candidates {
+                    current_scores[candidate.device_index] =
+                        current.and_then(|simulated| score_group(simulation, simulated, candidate));
+                }
             }
         }
         let missing = jobs
@@ -229,18 +240,19 @@ pub(super) fn operations(
                     .any(|(operations, _)| operations == &job.operations)
             })
             .filter(|job| {
-                job.candidates.iter().any(|candidate| {
-                    priority_can_beat(
-                        current_scores[candidate.device_index],
-                        candidate
-                            .desired_skills
-                            .iter()
-                            .filter(|skill| {
-                                simulation.managers.catalog().skill_is_big(skill.skill_id)
-                            })
-                            .count() as i32,
-                    )
-                })
+                !priority_pruning
+                    || job.candidates.iter().any(|candidate| {
+                        priority_can_beat(
+                            current_scores[candidate.device_index],
+                            candidate
+                                .desired_skills
+                                .iter()
+                                .filter(|skill| {
+                                    simulation.managers.catalog().skill_is_big(skill.skill_id)
+                                })
+                                .count() as i32,
+                        )
+                    })
             })
             .map(|job| job.operations.clone())
             .collect::<Vec<_>>();
