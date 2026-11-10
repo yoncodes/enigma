@@ -71,7 +71,7 @@ impl BattleRuntime {
             &self.determinism,
             self.conduit_operations(),
         )
-        .map_err(|error| format!("invalid conduit auto-battle state: {error:?}"))
+        .map_err(|error| format!("auto-battle planning failed: {error:?}"))
     }
 
     #[cfg(test)]

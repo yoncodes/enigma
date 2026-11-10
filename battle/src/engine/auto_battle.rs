@@ -22,6 +22,21 @@ use crate::engine::{
 
 mod conduit;
 mod simulation;
+mod workers;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum AutoBattleError {
+    HedoneDevicePower(crate::engine::mechanic::hedone_device_power::HedoneDevicePowerError),
+    OscillatingConduitGroups,
+}
+
+impl From<crate::engine::mechanic::hedone_device_power::HedoneDevicePowerError>
+    for AutoBattleError
+{
+    fn from(error: crate::engine::mechanic::hedone_device_power::HedoneDevicePowerError) -> Self {
+        Self::HedoneDevicePower(error)
+    }
+}
 
 const HEAL_BELOW_HP_PERCENT: i64 = 80;
 const URGENT_HEAL_BELOW_HP_PERCENT: i64 = 60;
@@ -66,7 +81,7 @@ pub(crate) fn plan(
     round_state: &RoundState,
     determinism: &RoundDeterminism,
     devices_opers: Vec<FightDeviceOper>,
-) -> Result<AutoRoundReply, crate::engine::mechanic::hedone_device_power::HedoneDevicePowerError> {
+) -> Result<AutoRoundReply, AutoBattleError> {
     // Every card resolves before any skill runs, so indices, AP and readiness use round-start state.
     let pool = TargetPool::from_fight_with_catalog(managers.catalog(), fight);
     let preferred_target = request
@@ -170,7 +185,7 @@ pub(crate) fn plan(
         &commands,
         &devices_opers,
     )?;
-    let Some(planned_devices) = conduit::operations(&simulation, &potential, None) else {
+    let Some(planned_devices) = conduit::operations(&simulation, &potential)? else {
         return Ok(reply(request, Vec::new(), devices_opers));
     };
     conduit_plan.set_planned(&planned_devices.requested);
@@ -248,16 +263,8 @@ pub(crate) fn plan(
         }
         opers.push(operation);
     }
-    let selection = if commands == potential && !conduit_plan.has_card_switch() {
-        planned_devices
-    } else {
-        let Some(selection) = conduit::operations(&simulation, &commands, Some(&conduit_plan))
-        else {
-            return Ok(reply(request, Vec::new(), devices_opers));
-        };
-        selection
-    };
-    Ok(reply(request, opers, selection.requested))
+    let devices = conduit_plan.reconcile(&planned_devices.requested, &sim);
+    Ok(reply(request, opers, devices))
 }
 
 fn card_choice_options(card: &CardInfo, managers: &BattleManagers) -> Vec<i32> {
@@ -530,11 +537,13 @@ fn apply_prefix(
         *sim = after;
         *determinism = after_determinism;
     }
-    let Some((after, after_determinism)) = simulation.player(opers, devices) else {
-        return Ok(false);
-    };
-    *sim = after;
-    *determinism = after_determinism;
+    if opers.is_empty() {
+        let Some((after, after_determinism)) = simulation.player(opers, devices) else {
+            return Ok(false);
+        };
+        *sim = after;
+        *determinism = after_determinism;
+    }
     Ok(true)
 }
 
@@ -560,7 +569,7 @@ fn best_candidate(
 ) -> Result<Option<Candidate>, crate::engine::mechanic::hedone_device_power::HedoneDevicePowerError>
 {
     let mut error = None;
-    let candidate = cards
+    let mut candidates = cards
         .hand()
         .iter()
         .chain(cards.team_cards())
@@ -689,20 +698,6 @@ fn best_candidate(
                     })
                 })
                 .unwrap_or(resolved_target_uid);
-            let planned_conduit_switch = planned_devices.iter().any(|operation| {
-                operation.uid == Some(source_uid)
-                    && operation.index != sim.conduit.selected_group(source_uid)
-                    && card_selects_conduit_group(
-                        card_index,
-                        target_uid,
-                        chosen_skill_id,
-                        source_uid,
-                        operation.index,
-                        simulation,
-                        opers,
-                        devices,
-                    )
-            });
             Some(Candidate {
                 card_index,
                 source_uid,
@@ -724,38 +719,90 @@ fn best_candidate(
                 flexible_energy: energy_gain.is_some_and(|(power_type, _)| power_type == 0),
                 special_energy: energy_gain.is_some()
                     && managers.catalog().is_special_power_card(skill_id),
-                planned_conduit_switch,
+                planned_conduit_switch: false,
                 support,
                 damage_rate: catalog.damage_rate(skill_id),
                 rank: managers.catalog().card_skill_rank(card),
             })
         })
-        .max_by_key(|candidate| {
-            // Official auto casts ready ultimates left to right.
-            let strength = (!candidate.ultimate).then_some((candidate.damage_rate, candidate.rank));
+        .collect::<Vec<_>>();
+    if let Some(error) = error {
+        return Err(error);
+    }
+    let switch_jobs = candidates
+        .iter()
+        .enumerate()
+        .filter_map(|(index, candidate)| {
+            let group = planned_devices
+                .iter()
+                .find(|operation| {
+                    operation.uid == Some(candidate.source_uid)
+                        && operation.index != sim.conduit.selected_group(candidate.source_uid)
+                })?
+                .index;
+            Some((index, *candidate, group))
+        })
+        .collect::<Vec<_>>();
+    let switches = workers::run(switch_jobs.len(), |worker_count| {
+        let chunk_size = switch_jobs.len().div_ceil(worker_count);
+        std::thread::scope(|scope| {
+            switch_jobs
+                .chunks(chunk_size)
+                .map(|jobs| {
+                    scope.spawn(move || {
+                        jobs.iter()
+                            .map(|(index, candidate, group)| {
+                                (
+                                    *index,
+                                    card_selects_conduit_group(
+                                        candidate.card_index,
+                                        candidate.target_uid,
+                                        candidate.chosen_skill_id,
+                                        candidate.source_uid,
+                                        *group,
+                                        simulation,
+                                        opers,
+                                        devices,
+                                    ),
+                                )
+                            })
+                            .collect::<Vec<_>>()
+                    })
+                })
+                .collect::<Vec<_>>()
+                .into_iter()
+                .flat_map(|worker| worker.join().expect("auto-battle scoring worker panicked"))
+                .collect::<Vec<_>>()
+        })
+    });
+    for (index, switches_group) in switches {
+        candidates[index].planned_conduit_switch = switches_group;
+    }
+    Ok(candidates.into_iter().max_by_key(|candidate| {
+        // Official auto casts ready ultimates left to right.
+        let strength = (!candidate.ultimate).then_some((candidate.damage_rate, candidate.rank));
+        (
+            candidate.free,
+            candidate.ultimate,
+            candidate.support == Support::Urgent,
+            candidate.planned_conduit_switch,
             (
-                candidate.free,
-                candidate.ultimate,
-                candidate.support == Support::Urgent,
-                candidate.planned_conduit_switch,
-                (
-                    candidate.preferred_energy,
-                    candidate.energy,
-                    candidate.temporary && candidate.special_energy,
-                    candidate.energy_amount,
-                    candidate.special_energy,
-                    candidate.flexible_energy && !candidate.special_energy,
-                ),
-                // Give every hero a card before any hero plays a second one when utility is equal.
-                candidate.first_for_owner,
-                candidate.support,
-                strength,
-                Reverse(candidate.card_index),
-                Reverse(candidate.source_uid),
-                Reverse(candidate.skill_id),
-            )
-        });
-    error.map_or(Ok(candidate), Err)
+                candidate.preferred_energy,
+                candidate.energy,
+                candidate.temporary && candidate.special_energy,
+                candidate.energy_amount,
+                candidate.special_energy,
+                candidate.flexible_energy && !candidate.special_energy,
+            ),
+            // Give every hero a card before any hero plays a second one when utility is equal.
+            candidate.first_for_owner,
+            candidate.support,
+            strength,
+            Reverse(candidate.card_index),
+            Reverse(candidate.source_uid),
+            Reverse(candidate.skill_id),
+        )
+    }))
 }
 
 #[allow(clippy::too_many_arguments)]

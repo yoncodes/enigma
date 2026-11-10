@@ -121,13 +121,6 @@ impl BattleState {
             .unwrap_or_default()
     }
 
-    pub fn plan_auto_round(&self, request: &AutoRoundRequest) -> Result<AutoRoundReply, AppError> {
-        self.active
-            .as_ref()
-            .ok_or(AppError::InvalidRequest)?
-            .plan_auto_round(request)
-    }
-
     pub fn replay_episode_id(&self) -> Result<i32, AppError> {
         self.active
             .as_ref()

@@ -308,7 +308,7 @@ fn auto_round_rejects_invalid_hedone_owned_state() {
         .try_plan_auto_round(&AutoRoundRequest::default())
         .unwrap_err();
 
-    assert!(error.contains("invalid conduit auto-battle state"));
+    assert!(error.contains("auto-battle planning failed"));
 
     let missing = team_runtime(
         vec![team_hero(10, 3156, 1_000, [31560111, 31560121])],
@@ -318,7 +318,7 @@ fn auto_round_rejects_invalid_hedone_owned_state() {
         missing
             .try_plan_auto_round(&AutoRoundRequest::default())
             .unwrap_err()
-            .contains("invalid conduit auto-battle state")
+            .contains("auto-battle planning failed")
     );
 }
 
@@ -376,4 +376,70 @@ fn auto_round_plans_a_full_conduit_roster() {
             (Some(13), Some(1))
         ]
     );
+}
+
+#[test]
+fn auto_round_keeps_the_later_device_that_enables_an_earlier_team_pass() {
+    let mut runtime = team_runtime(
+        vec![
+            team_hero(10, 3149, 100_000, [31490111, 31490121]),
+            team_hero(11, 3149, 100_000, [31490111, 31490121]),
+        ],
+        Vec::new(),
+    );
+    let origin = CommandOrigin {
+        domain: RuleDomain::Behavior,
+        key: DefinitionKey::new(60294, "StopDeviceSkill"),
+    };
+    for source_uid in [10, 11] {
+        runtime
+            .managers
+            .conduit
+            .execute(ConduitCommand::SelectGroup {
+                source_uid,
+                group: 2,
+            })
+            .unwrap();
+    }
+    for (source_uid, skill_id) in [(10, 31490111), (11, 31490121)] {
+        runtime
+            .managers
+            .conduit
+            .execute(ConduitCommand::StopSkill {
+                origin,
+                source_uid,
+                team: 1,
+                skill_id,
+            })
+            .unwrap();
+    }
+
+    let reply = runtime.plan_auto_round(&AutoRoundRequest::default());
+
+    assert_eq!(
+        reply
+            .devices_opers
+            .iter()
+            .map(|operation| (operation.uid, operation.index))
+            .collect::<Vec<_>>(),
+        [(Some(10), Some(1)), (Some(11), Some(1))]
+    );
+    let pool = crate::engine::skill::target::TargetPool::from_fight_with_catalog(
+        runtime.catalog_data.unwrap(),
+        &runtime.fight,
+    );
+    let mut catalog = runtime.catalog.clone();
+    crate::engine::runtime::schedule::run_conduit_phase(
+        runtime.managers.catalog(),
+        &runtime.fight,
+        &mut runtime.managers,
+        &pool,
+        &mut catalog,
+        &mut runtime.determinism,
+        crate::engine::skill::target::TargetContext::default(),
+        &reply.devices_opers,
+    )
+    .unwrap();
+    assert_eq!(runtime.managers.conduit.uses(10), 1);
+    assert_eq!(runtime.managers.conduit.uses(11), 1);
 }

@@ -21,7 +21,9 @@ use crate::engine::{
 };
 
 use super::simulation::Simulation;
-use super::{Support, certain_buffs, is_shield_buff, support_need, target_options};
+use super::{
+    AutoBattleError, Support, certain_buffs, is_shield_buff, support_need, target_options, workers,
+};
 
 pub(super) mod lookahead;
 #[cfg(test)]
@@ -92,10 +94,27 @@ impl SelectionPlan {
         }
     }
 
-    pub(super) fn has_card_switch(&self) -> bool {
-        self.devices
-            .values()
-            .any(|state| state.switched_group.is_some())
+    pub(super) fn reconcile(
+        &self,
+        planned: &[FightDeviceOper],
+        managers: &BattleManagers,
+    ) -> Vec<FightDeviceOper> {
+        planned
+            .iter()
+            .map(|operation| {
+                let Some((uid, desired_group, after_cards_group)) =
+                    operation.uid.zip(operation.index).and_then(|(uid, group)| {
+                        Some((uid, group, managers.conduit.selected_group(uid)?))
+                    })
+                else {
+                    return operation.clone();
+                };
+                FightDeviceOper {
+                    uid: Some(uid),
+                    index: Some(self.requested_group(uid, after_cards_group, desired_group)),
+                }
+            })
+            .collect()
     }
 
     fn requested_group(&self, uid: i64, after_cards_group: i32, desired_group: i32) -> i32 {
@@ -123,8 +142,7 @@ pub(super) struct Selection {
 pub(super) fn operations(
     simulation: &Simulation<'_>,
     opers: &[BeginRoundOper],
-    selection_plan: Option<&SelectionPlan>,
-) -> Option<Selection> {
+) -> Result<Option<Selection>, AutoBattleError> {
     let devices = simulation
         .managers
         .conduit
@@ -138,64 +156,100 @@ pub(super) fn operations(
             index: Some(device.selected_group),
         })
         .collect::<Vec<_>>();
-    let (after_cards, _) = simulation.player(opers, &operations)?;
-
-    for (device_index, device) in devices.iter().enumerate() {
+    let mut seen = HashSet::new();
+    loop {
+        record_groups(&mut seen, &operations)?;
         let base_operations = operations.clone();
-        let candidates = std::thread::scope(|scope| {
-            device
-                .skill_groups
-                .iter()
-                .enumerate()
-                .map(|(index, desired_skills)| {
-                    let group = index as i32 + 1;
-                    let requested_group = selection_plan.map_or(group, |plan| {
-                        plan.requested_group(
-                            device.uid,
-                            after_cards
-                                .conduit
-                                .selected_group(device.uid)
-                                .unwrap_or(device.selected_group),
-                            group,
-                        )
-                    });
-                    let mut candidate_operations = base_operations.clone();
-                    candidate_operations[device_index].index = Some(requested_group);
-                    scope.spawn(move || {
+        let jobs = devices
+            .iter()
+            .enumerate()
+            .flat_map(|(device_index, device)| {
+                let base_operations = &base_operations;
+                device
+                    .skill_groups
+                    .iter()
+                    .enumerate()
+                    .map(move |(index, desired_skills)| {
+                        let requested_group = index as i32 + 1;
+                        let mut candidate_operations = base_operations.clone();
+                        candidate_operations[device_index].index = Some(requested_group);
                         (
+                            device_index,
                             index,
                             requested_group,
-                            simulate_group(
-                                simulation,
-                                opers,
-                                &candidate_operations,
-                                device.uid,
-                                desired_skills,
-                            ),
+                            candidate_operations,
+                            device.uid,
+                            desired_skills,
                         )
                     })
-                })
-                .collect::<Vec<_>>()
-                .into_iter()
-                .map(|worker| worker.join().expect("conduit scoring worker panicked"))
-                .collect::<Vec<_>>()
+            })
+            .collect::<Vec<_>>();
+        let candidates = workers::run(jobs.len(), |worker_count| {
+            let chunk_size = jobs.len().div_ceil(worker_count);
+            std::thread::scope(|scope| {
+                jobs.chunks(chunk_size)
+                    .map(|jobs| {
+                        scope.spawn(move || {
+                            jobs.iter()
+                                .map(
+                                    |(
+                                        device_index,
+                                        index,
+                                        requested_group,
+                                        candidate_operations,
+                                        source_uid,
+                                        desired_skills,
+                                    )| {
+                                        (
+                                            *device_index,
+                                            *index,
+                                            *requested_group,
+                                            simulate_group(
+                                                simulation,
+                                                opers,
+                                                candidate_operations,
+                                                *source_uid,
+                                                desired_skills,
+                                            ),
+                                        )
+                                    },
+                                )
+                                .collect::<Vec<_>>()
+                        })
+                    })
+                    .collect::<Vec<_>>()
+                    .into_iter()
+                    .flat_map(|worker| worker.join().expect("conduit scoring worker panicked"))
+                    .collect::<Vec<_>>()
+            })
         });
-        let mut best = None;
-        for (index, requested_group, candidate) in candidates {
-            let Some(candidate) = candidate else {
-                continue;
-            };
-            let key = (candidate, Reverse(index));
-            if best.as_ref().is_none_or(|(best_key, _)| key > *best_key) {
-                best = Some((key, requested_group));
+        let mut next = operations.clone();
+        for (device_index, device) in devices.iter().enumerate() {
+            let mut best = None;
+            for (_, index, requested_group, candidate) in candidates
+                .iter()
+                .filter(|(candidate_index, ..)| *candidate_index == device_index)
+            {
+                let Some(candidate) = candidate else {
+                    continue;
+                };
+                let key = (*candidate, Reverse(*index));
+                if best.as_ref().is_none_or(|(best_key, _)| key > *best_key) {
+                    best = Some((key, *requested_group));
+                }
             }
+            next[device_index].index = Some(best.map_or(device.selected_group, |(_, group)| group));
         }
-        operations[device_index].index =
-            Some(best.map_or(device.selected_group, |(_, group)| group));
+        if next == operations {
+            break;
+        }
+        operations = next;
     }
 
-    let (after_cards, _) = simulation.player(opers, &operations)?;
-    Some(Selection {
+    let Some((after_cards, _)) = simulation.player(opers, &operations) else {
+        return Ok(None);
+    };
+    Ok(Some(Selection {
         requested: operations,
         effective: after_cards
             .conduit
@@ -206,7 +260,16 @@ pub(super) fn operations(
                 index: Some(group),
             })
             .collect(),
-    })
+    }))
+}
+
+fn record_groups(
+    seen: &mut HashSet<Vec<Option<i32>>>,
+    operations: &[FightDeviceOper],
+) -> Result<(), AutoBattleError> {
+    seen.insert(operations.iter().map(|operation| operation.index).collect())
+        .then_some(())
+        .ok_or(AutoBattleError::OscillatingConduitGroups)
 }
 
 pub(super) fn selected_power_types(

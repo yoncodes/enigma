@@ -35,3 +35,27 @@ fn distinct_skills_keep_each_committed_cost_after_one_use_reduction() {
         [(skills[0], 0), (skills[1], 1)]
     );
 }
+
+#[test]
+fn rejects_a_two_state_group_cycle() {
+    let mut seen = HashSet::new();
+    let groups = |left, right| {
+        [
+            FightDeviceOper {
+                uid: Some(10),
+                index: Some(left),
+            },
+            FightDeviceOper {
+                uid: Some(11),
+                index: Some(right),
+            },
+        ]
+    };
+
+    assert_eq!(record_groups(&mut seen, &groups(1, 2)), Ok(()));
+    assert_eq!(record_groups(&mut seen, &groups(2, 1)), Ok(()));
+    assert_eq!(
+        record_groups(&mut seen, &groups(1, 2)),
+        Err(AutoBattleError::OscillatingConduitGroups)
+    );
+}
