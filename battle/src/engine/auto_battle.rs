@@ -65,7 +65,7 @@ pub(crate) fn plan(
     round_state: &RoundState,
     determinism: &RoundDeterminism,
     devices_opers: Vec<FightDeviceOper>,
-) -> AutoRoundReply {
+) -> Result<AutoRoundReply, crate::engine::mechanic::hedone_device_power::HedoneDevicePowerError> {
     // Every card resolves before any skill runs, so indices, AP and readiness use round-start state.
     let pool = TargetPool::from_fight_with_catalog(managers.catalog(), fight);
     let preferred_target = request
@@ -133,8 +133,8 @@ pub(crate) fn plan(
         &simulation,
         &devices_opers,
         &mut conduit_plan,
-    ) {
-        return reply(request, Vec::new(), devices_opers);
+    )? {
+        return Ok(reply(request, Vec::new(), devices_opers));
     }
 
     let live_pool = pool.runtime_view(managers);
@@ -149,9 +149,9 @@ pub(crate) fn plan(
         &choice_determinism,
         &request.opers,
         &devices_opers,
-    );
+    )?;
     let Some(planned_devices) = conduit::operations(&simulation, &potential, None) else {
-        return reply(request, Vec::new(), devices_opers);
+        return Ok(reply(request, Vec::new(), devices_opers));
     };
     conduit_plan.set_planned(&planned_devices.requested);
     let selected_power_types = conduit::selected_power_types(&sim, &planned_devices.effective);
@@ -189,7 +189,8 @@ pub(crate) fn plan(
             &simulation,
             &commands,
             &devices_opers,
-        ) else {
+        )?
+        else {
             break;
         };
         let play = CardPlay {
@@ -234,11 +235,11 @@ pub(crate) fn plan(
     } else {
         let Some(selection) = conduit::operations(&simulation, &commands, Some(&conduit_plan))
         else {
-            return reply(request, Vec::new(), devices_opers);
+            return Ok(reply(request, Vec::new(), devices_opers));
         };
         selection
     };
-    reply(request, opers, selection.requested)
+    Ok(reply(request, opers, selection.requested))
 }
 
 fn card_choice_options(card: &CardInfo, managers: &BattleManagers) -> Vec<i32> {
@@ -324,10 +325,10 @@ fn apply_prefix(
     simulation: &simulation::Simulation<'_>,
     devices: &[FightDeviceOper],
     conduit_plan: &mut conduit::SelectionPlan,
-) -> bool {
+) -> Result<bool, crate::engine::mechanic::hedone_device_power::HedoneDevicePowerError> {
     for (oper_index, oper) in opers.iter().enumerate() {
         let Some(command) = RoundCommand::from_oper(oper) else {
-            return false;
+            return Ok(false);
         };
         let mut played_source = None;
         let (card_command, ap_cost) = match command {
@@ -360,7 +361,7 @@ fn apply_prefix(
                 },
                 0,
             ),
-            RoundCommand::UseAssistBoss { .. } => return false,
+            RoundCommand::UseAssistBoss { .. } => return Ok(false),
             RoundCommand::PlayCard {
                 card_index,
                 target_uid,
@@ -368,10 +369,10 @@ fn apply_prefix(
                 recorded_skill,
             } => {
                 let Some(card) = cards.visible_card(card_index) else {
-                    return false;
+                    return Ok(false);
                 };
                 let Some((source_uid, skill_id)) = card_identity(card, chosen_skill_id) else {
-                    return false;
+                    return Ok(false);
                 };
                 let legal_target = legal_target(
                     source_uid,
@@ -383,7 +384,7 @@ fn apply_prefix(
                     &simulation.determinism,
                 );
                 if card_skill_is_blocked(managers, catalog, source_uid, skill_id) || !legal_target {
-                    return false;
+                    return Ok(false);
                 }
                 let ap_cost = action_point_cost(card, source_uid, skill_id, managers, catalog);
                 let play = CardPlay {
@@ -394,12 +395,13 @@ fn apply_prefix(
                     choice: None,
                     recorded_skill,
                 };
-                played_source = Some((source_uid, conduit_power_gain(skill_id, catalog).is_some()));
+                let energy = conduit_power_gain(source_uid, skill_id, sim, catalog)?.is_some();
+                played_source = Some((source_uid, energy));
                 (CardCommand::Play(play), ap_cost)
             }
         };
         if ap_cost > *normal_ap || cards.execute_command(card_command).is_err() {
-            return false;
+            return Ok(false);
         }
         *normal_ap = normal_ap.saturating_sub(ap_cost);
         if cards
@@ -408,12 +410,12 @@ fn apply_prefix(
             })
             .is_err()
         {
-            return false;
+            return Ok(false);
         }
         let before_group = played_source.and_then(|(uid, _)| sim.conduit.selected_group(uid));
         let Some((after, after_determinism)) = simulation.player(&opers[..=oper_index], devices)
         else {
-            return false;
+            return Ok(false);
         };
         if let Some((source_uid, energy)) = played_source {
             conduit_plan.observe_card(
@@ -430,11 +432,11 @@ fn apply_prefix(
         *determinism = after_determinism;
     }
     let Some((after, after_determinism)) = simulation.player(opers, devices) else {
-        return false;
+        return Ok(false);
     };
     *sim = after;
     *determinism = after_determinism;
-    true
+    Ok(true)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -456,8 +458,10 @@ fn best_candidate(
     simulation: &simulation::Simulation<'_>,
     opers: &[BeginRoundOper],
     devices: &[FightDeviceOper],
-) -> Option<Candidate> {
-    cards
+) -> Result<Option<Candidate>, crate::engine::mechanic::hedone_device_power::HedoneDevicePowerError>
+{
+    let mut error = None;
+    let candidate = cards
         .hand()
         .iter()
         .chain(cards.team_cards())
@@ -511,7 +515,13 @@ fn best_candidate(
             );
             let buffs = certain_buffs(skill_id, catalog);
             let effect_tag = catalog.effect_tag(skill_id);
-            let energy_gain = conduit_power_gain(skill_id, catalog);
+            let energy_gain = match conduit_power_gain(source_uid, skill_id, sim, catalog) {
+                Ok(gain) => gain,
+                Err(gain_error) => {
+                    error = Some(gain_error);
+                    return None;
+                }
+            };
             // An enemy's debuff may come from a passive, so debuff cards never count as redundant.
             let may_be_redundant = !catalog.is_attack(skill_id)
                 && effect_tag
@@ -645,7 +655,8 @@ fn best_candidate(
                 Reverse(candidate.source_uid),
                 Reverse(candidate.skill_id),
             )
-        })
+        });
+    error.map_or(Ok(candidate), Err)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -666,17 +677,44 @@ fn card_selects_conduit_group(
         .is_some_and(|(managers, _)| managers.conduit.selected_group(source_uid) == group)
 }
 
-fn conduit_power_gain(skill_id: i32, catalog: &SkillEffectCatalog) -> Option<(i32, i32)> {
-    catalog
+fn conduit_power_gain(
+    source_uid: i64,
+    skill_id: i32,
+    managers: &BattleManagers,
+    catalog: &SkillEffectCatalog,
+) -> Result<Option<(i32, i32)>, crate::engine::mechanic::hedone_device_power::HedoneDevicePowerError>
+{
+    use crate::engine::skill::behavior::classify::BehaviorKind;
+    let mut best = None;
+    for slot in catalog
         .get(skill_id)
         .into_iter()
         .flat_map(|effect| &effect.slots)
-        .filter(|slot| {
-            slot.behavior.spec.kind
-                == crate::engine::skill::behavior::classify::BehaviorKind::AddConduitPower
-        })
-        .filter_map(|slot| Some((*slot.behavior.args.first()?, *slot.behavior.args.get(1)?)))
-        .max_by_key(|(_, amount)| *amount)
+    {
+        let gain = match slot.behavior.spec.kind {
+            BehaviorKind::AddConduitPower => slot
+                .behavior
+                .args
+                .first()
+                .zip(slot.behavior.args.get(1))
+                .map(|(power_id, amount)| (*power_id, *amount)),
+            BehaviorKind::HedoneAddDevicePower => {
+                let Some(power_id) = slot.behavior.args.first() else {
+                    continue;
+                };
+                crate::engine::mechanic::hedone_device_power::available_gain(
+                    managers, source_uid, *power_id,
+                )?
+            }
+            _ => None,
+        };
+        if let Some(gain) = gain
+            && best.is_none_or(|best: (i32, i32)| gain.1 > best.1)
+        {
+            best = Some(gain);
+        }
+    }
+    Ok(best)
 }
 
 // Only unconditional `AddBuff` slots aimed at the card's own target count.

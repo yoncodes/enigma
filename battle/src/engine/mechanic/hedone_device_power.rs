@@ -25,6 +25,14 @@ pub enum HedoneDevicePowerError {
     Conduit(ConduitError),
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct ResolvedPowerGain {
+    source_uid: i64,
+    team: i32,
+    power_id: i32,
+    delta: i32,
+}
+
 impl From<HedoneCardError> for HedoneDevicePowerError {
     fn from(value: HedoneCardError) -> Self {
         Self::State(value)
@@ -41,24 +49,49 @@ pub(crate) fn execute(
     managers: &mut BattleManagers,
     command: HedoneDevicePowerCommand,
 ) -> Result<ConduitChange, HedoneDevicePowerError> {
-    if command.owner_uid == 0 || command.power_id <= 0 {
-        return Err(HedoneDevicePowerError::InvalidCommand);
-    }
-    let state = owner_state(managers, command.owner_uid)?
-        .filter(|state| state.unlocked && state.stored > 0)
-        .ok_or(HedoneDevicePowerError::InvalidCommand)?;
-    let delta = state
-        .stored
-        .checked_mul(state.config.power_add)
+    let gain = resolve_gain(managers, command.owner_uid, command.power_id)?
         .ok_or(HedoneDevicePowerError::InvalidCommand)?;
     Ok(managers
         .conduit
         .execute(ConduitCommand::ChangePower(ConduitPowerChange {
             origin: command.origin,
-            source_uid: state.owner_uid,
-            team: state.team_type,
-            power_id: command.power_id,
-            delta,
+            source_uid: gain.source_uid,
+            team: gain.team,
+            power_id: gain.power_id,
+            delta: gain.delta,
             kind: ConduitPowerChangeKind::Standard,
         }))?)
+}
+
+pub(crate) fn available_gain(
+    managers: &BattleManagers,
+    owner_uid: i64,
+    power_id: i32,
+) -> Result<Option<(i32, i32)>, HedoneDevicePowerError> {
+    resolve_gain(managers, owner_uid, power_id)
+        .map(|gain| gain.map(|gain| (gain.power_id, gain.delta)))
+}
+
+fn resolve_gain(
+    managers: &BattleManagers,
+    owner_uid: i64,
+    power_id: i32,
+) -> Result<Option<ResolvedPowerGain>, HedoneDevicePowerError> {
+    if owner_uid == 0 || power_id <= 0 {
+        return Err(HedoneDevicePowerError::InvalidCommand);
+    }
+    let state = owner_state(managers, owner_uid)?.ok_or(HedoneDevicePowerError::InvalidCommand)?;
+    if !state.unlocked || state.stored <= 0 {
+        return Ok(None);
+    }
+    let delta = state
+        .stored
+        .checked_mul(state.config.power_add)
+        .ok_or(HedoneDevicePowerError::InvalidCommand)?;
+    Ok(Some(ResolvedPowerGain {
+        source_uid: state.owner_uid,
+        team: state.team_type,
+        power_id,
+        delta,
+    }))
 }

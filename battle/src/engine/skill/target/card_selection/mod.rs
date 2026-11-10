@@ -24,10 +24,12 @@ impl CardSelectionResolver {
     ) -> Vec<i64> {
         if request.code == super::request::SOURCE_TARGET_CODE
             && catalog.get(skill_id).is_some_and(|effect| {
-                effect
-                    .slots
-                    .iter()
-                    .any(|slot| slot.behavior.spec.kind == BehaviorKind::AddConduitPower)
+                effect.slots.iter().any(|slot| {
+                    matches!(
+                        slot.behavior.spec.kind,
+                        BehaviorKind::AddConduitPower | BehaviorKind::HedoneAddDevicePower
+                    )
+                })
             })
         {
             return pool

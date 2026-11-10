@@ -58,10 +58,10 @@ pub struct BattleRuntime {
 
 impl BattleRuntime {
     /// Plans client auto-battle operations without mutating authoritative state.
-    pub fn plan_auto_round(
+    pub fn try_plan_auto_round(
         &self,
         request: &sonettobuf::AutoRoundRequest,
-    ) -> sonettobuf::AutoRoundReply {
+    ) -> Result<sonettobuf::AutoRoundReply, String> {
         crate::engine::auto_battle::plan(
             request,
             &self.fight,
@@ -71,6 +71,16 @@ impl BattleRuntime {
             &self.determinism,
             self.conduit_operations(),
         )
+        .map_err(|error| format!("invalid conduit auto-battle state: {error:?}"))
+    }
+
+    #[cfg(test)]
+    pub fn plan_auto_round(
+        &self,
+        request: &sonettobuf::AutoRoundRequest,
+    ) -> sonettobuf::AutoRoundReply {
+        self.try_plan_auto_round(request)
+            .expect("auto-battle fixture should have valid conduit state")
     }
 
     /// Evaluates the current terminal or wave outcome from manager-owned state.

@@ -25,7 +25,8 @@ pub(in crate::engine::auto_battle) fn operations(
     choice_determinism: &RoundDeterminism,
     prefix: &[BeginRoundOper],
     devices: &[FightDeviceOper],
-) -> Vec<BeginRoundOper> {
+) -> Result<Vec<BeginRoundOper>, crate::engine::mechanic::hedone_device_power::HedoneDevicePowerError>
+{
     let mut cards = cards.clone();
     let mut sim = sim.clone();
     let mut sim_determinism = determinism.clone();
@@ -62,7 +63,8 @@ pub(in crate::engine::auto_battle) fn operations(
             simulation,
             &opers,
             devices,
-        ) else {
+        )?
+        else {
             break;
         };
         let play = CardPlay {
@@ -93,5 +95,5 @@ pub(in crate::engine::auto_battle) fn operations(
             played_owners.insert(candidate.source_uid);
         }
     }
-    opers
+    Ok(opers)
 }

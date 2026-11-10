@@ -122,11 +122,10 @@ impl BattleState {
     }
 
     pub fn plan_auto_round(&self, request: &AutoRoundRequest) -> Result<AutoRoundReply, AppError> {
-        Ok(self
-            .active
+        self.active
             .as_ref()
             .ok_or(AppError::InvalidRequest)?
-            .plan_auto_round(request))
+            .plan_auto_round(request)
     }
 
     pub fn replay_episode_id(&self) -> Result<i32, AppError> {
@@ -250,8 +249,10 @@ impl ActiveBattle {
         crate::dungeon::battle_star(&self.runtime, self.battle_id)
     }
 
-    pub fn plan_auto_round(&self, request: &AutoRoundRequest) -> AutoRoundReply {
-        self.runtime.plan_auto_round(request)
+    pub fn plan_auto_round(&self, request: &AutoRoundRequest) -> Result<AutoRoundReply, AppError> {
+        self.runtime
+            .plan_auto_round(request)
+            .map_err(AppError::Custom)
     }
 
     pub fn use_cloth_skill(

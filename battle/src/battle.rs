@@ -74,8 +74,8 @@ impl Battle {
         self.runtime.attack_statistics()
     }
 
-    pub fn plan_auto_round(&self, request: &AutoRoundRequest) -> AutoRoundReply {
-        self.runtime.plan_auto_round(request)
+    pub fn plan_auto_round(&self, request: &AutoRoundRequest) -> Result<AutoRoundReply, String> {
+        self.runtime.try_plan_auto_round(request)
     }
 
     pub fn use_cloth_skill(&mut self, request: UseClothSkillRequest) -> Option<UseClothSkillReply> {
