@@ -453,10 +453,10 @@ fn event_entry(tables: &config::GameDB, schedule: &common::config::ActivitySched
         |activity| {
             resolve_name(
                 tables,
-                if activity.name_en.is_empty() {
-                    &activity.name
-                } else {
+                if activity.name.is_empty() {
                     &activity.name_en
+                } else {
+                    &activity.name
                 },
             )
         },

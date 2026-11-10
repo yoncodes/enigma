@@ -141,6 +141,15 @@ fn event_editor_persists_enabled_state_and_millisecond_times() {
             .name,
         "Ducks in the Suitcase"
     );
+    assert_eq!(
+        catalog
+            .events
+            .iter()
+            .find(|event| event.id == 13919)
+            .unwrap()
+            .name,
+        "Mane's Bulletin Event Mode"
+    );
     let event = original.activity.schedule.first().unwrap();
     let id = event.id;
     let start = event.start_time + 1_000;
