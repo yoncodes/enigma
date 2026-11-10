@@ -10,6 +10,7 @@ use crate::engine::{
         card::{
             CARD_PLAY_ORIGIN, CardCommand, CardManager, CardOpType, CardPlay, CardUseUniversal,
         },
+        eureka::PowerType,
     },
     round::{command::RoundCommand, state::RoundState},
     runtime::{determinism::RoundDeterminism, schedule::card_skill_is_blocked},
@@ -138,6 +139,25 @@ pub(crate) fn plan(
     }
 
     let live_pool = pool.runtime_view(managers);
+    let mut commands = request.opers.clone();
+    let mut opers = Vec::new();
+    if let Some(operation) = assist_boss_operation(
+        fight,
+        &sim,
+        &pool.runtime_view(&sim),
+        catalog,
+        &sim_determinism,
+        preferred_target,
+        &commands,
+    ) {
+        commands.push(operation.clone());
+        let Some((after, after_determinism)) = simulation.player(&commands, &devices_opers) else {
+            return Ok(reply(request, Vec::new(), devices_opers));
+        };
+        sim = after;
+        sim_determinism = after_determinism;
+        opers.push(operation);
+    }
     let potential = conduit::lookahead::operations(
         &cards,
         &simulation,
@@ -147,7 +167,7 @@ pub(crate) fn plan(
         preferred_target,
         &sim_determinism,
         &choice_determinism,
-        &request.opers,
+        &commands,
         &devices_opers,
     )?;
     let Some(planned_devices) = conduit::operations(&simulation, &potential, None) else {
@@ -155,8 +175,6 @@ pub(crate) fn plan(
     };
     conduit_plan.set_planned(&planned_devices.requested);
     let selected_power_types = conduit::selected_power_types(&sim, &planned_devices.effective);
-    let mut commands = request.opers.clone();
-    let mut opers = Vec::new();
     let mut reported_unsupported = HashSet::new();
     loop {
         let choices: Vec<_> = cards
@@ -289,6 +307,77 @@ fn reply(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
+fn assist_boss_operation(
+    fight: &Fight,
+    managers: &BattleManagers,
+    pool: &TargetPool,
+    catalog: &SkillEffectCatalog,
+    determinism: &RoundDeterminism,
+    preferred_target: Option<i64>,
+    prefix: &[BeginRoundOper],
+) -> Option<BeginRoundOper> {
+    let team = fight.attacker.as_ref()?;
+    let source_uid = team.assist_boss.as_ref()?.uid?;
+    let info = team.assist_boss_info.as_ref()?;
+    if info.curr_cd.unwrap_or_default() > 0 {
+        return None;
+    }
+    let used = prefix
+        .iter()
+        .filter_map(RoundCommand::from_oper)
+        .filter(|command| matches!(command, RoundCommand::UseAssistBoss { .. }))
+        .count() as i32;
+    if info
+        .round_use_limit
+        .is_some_and(|limit| limit > 0 && used >= limit)
+    {
+        return None;
+    }
+    let power = managers
+        .eureka
+        .get(source_uid, PowerType::AssistBoss.id())
+        .current;
+    info.skills.iter().find_map(|skill| {
+        let skill_id = skill.skill_id.filter(|skill_id| *skill_id > 0)?;
+        let cost = skill.need_power.unwrap_or_default().max(0);
+        if power < cost
+            || skill.power_low.is_some_and(|low| power < low)
+            || skill.power_high.is_some_and(|high| power > high)
+            || catalog.get(skill_id).is_none()
+            || !catalog.issues(skill_id).is_empty()
+            || card_skill_is_blocked(managers, catalog, source_uid, skill_id)
+        {
+            return None;
+        }
+        let targets = target_options(
+            source_uid,
+            skill_id,
+            preferred_target,
+            managers,
+            pool,
+            catalog,
+            determinism,
+        );
+        let buffs = certain_buffs(skill_id, catalog);
+        let target_uid = choose_target(
+            targets,
+            skill_id,
+            preferred_target,
+            &buffs,
+            managers,
+            pool,
+            catalog,
+        )?;
+        Some(BeginRoundOper {
+            oper_type: Some(CardOpType::AssistBoss.id()),
+            param1: Some(skill_id),
+            to_id: Some(target_uid),
+            ..Default::default()
+        })
+    })
+}
+
 fn play_operation(
     card_index: usize,
     target_uid: i64,
@@ -330,6 +419,16 @@ fn apply_prefix(
         let Some(command) = RoundCommand::from_oper(oper) else {
             return Ok(false);
         };
+        if matches!(command, RoundCommand::UseAssistBoss { .. }) {
+            let Some((after, after_determinism)) =
+                simulation.player(&opers[..=oper_index], devices)
+            else {
+                return Ok(false);
+            };
+            *sim = after;
+            *determinism = after_determinism;
+            continue;
+        }
         let mut played_source = None;
         let (card_command, ap_cost) = match command {
             RoundCommand::MoveCard {
@@ -361,7 +460,7 @@ fn apply_prefix(
                 },
                 0,
             ),
-            RoundCommand::UseAssistBoss { .. } => return Ok(false),
+            RoundCommand::UseAssistBoss { .. } => unreachable!("handled before card commands"),
             RoundCommand::PlayCard {
                 card_index,
                 target_uid,

@@ -1,4 +1,93 @@
 use super::*;
+use sonettobuf::{AssistBossInfo, AssistBossSkillInfo, PowerInfo};
+
+fn assist_boss_runtime(power: i32) -> BattleRuntime {
+    let fight = Fight {
+        battle_id: Some(77),
+        version: Some(7),
+        attacker: Some(FightTeam {
+            entitys: vec![team_hero(10, 3149, 1_000, [31490111, 31490121])],
+            assist_boss: Some(FightEntityInfo {
+                uid: Some(-100),
+                team_type: Some(1),
+                current_hp: Some(1_000),
+                power_infos: vec![PowerInfo {
+                    power_id: Some(4),
+                    num: Some(power),
+                    max: Some(5),
+                }],
+                ..Default::default()
+            }),
+            assist_boss_info: Some(AssistBossInfo {
+                skills: vec![AssistBossSkillInfo {
+                    skill_id: Some(104335001),
+                    need_power: Some(5),
+                    power_low: Some(0),
+                    power_high: Some(5),
+                }],
+                curr_cd: Some(0),
+                round_use_limit: Some(1),
+                ..Default::default()
+            }),
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![enemy(-1, 1_000)],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let mut runtime = runtime(fight);
+    runtime
+        .managers
+        .execute_card(CardCommand::Setup(CardSetup {
+            hand: vec![hand_card(10, 31446012, false)],
+            draw_pile: Vec::new(),
+            deck_num: 0,
+        }))
+        .unwrap();
+    runtime.round_state.act_point = 1;
+    runtime
+}
+
+#[test]
+fn auto_round_uses_a_ready_configured_assist_boss_before_conduit_cards() {
+    let mut runtime = assist_boss_runtime(5);
+
+    let reply = runtime.plan_auto_round(&AutoRoundRequest::default());
+
+    assert_eq!(reply.opers.len(), 2);
+    assert_eq!(reply.opers[0].oper_type, Some(CardOpType::AssistBoss.id()));
+    assert_eq!(reply.opers[0].param1, Some(104335001));
+    assert_eq!(reply.opers[0].to_id, Some(-100));
+    assert_eq!(reply.opers[1].oper_type, Some(CardOpType::PlayCard.id()));
+    let continued = runtime.plan_auto_round(&AutoRoundRequest {
+        opers: vec![reply.opers[0].clone()],
+        ..Default::default()
+    });
+    assert_eq!(continued.opers.len(), 1);
+    assert_eq!(
+        continued.opers[0].oper_type,
+        Some(CardOpType::PlayCard.id())
+    );
+    runtime
+        .advance_round(BeginRoundRequest {
+            opers: reply.opers,
+            devices_opers: reply.devices_opers,
+            auto_oper: Some(true),
+            ..Default::default()
+        })
+        .unwrap();
+    assert_eq!(runtime.managers.eureka.get(-100, 4).current, 0);
+
+    let unavailable = assist_boss_runtime(4).plan_auto_round(&AutoRoundRequest::default());
+    assert!(
+        unavailable
+            .opers
+            .iter()
+            .all(|operation| operation.oper_type != Some(CardOpType::AssistBoss.id()))
+    );
+}
 
 #[test]
 fn prefix_targets_use_queue_admission_state() {
