@@ -127,7 +127,7 @@ impl SelectionPlan {
                         Some((uid, group, managers.conduit.selected_group(uid)?))
                     })
                 else {
-                    return operation.clone();
+                    return *operation;
                 };
                 FightDeviceOper {
                     uid: Some(uid),
