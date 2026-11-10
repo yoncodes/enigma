@@ -379,6 +379,29 @@ fn auto_round_plans_a_full_conduit_roster() {
 }
 
 #[test]
+fn auto_round_uses_round_start_readiness_for_a_conduit_ultimate() {
+    let mut twins = team_hero(10, 3149, 1_000, [31490111, 31490121]);
+    twins.ex_point = Some(95);
+    twins.ex_point_type = Some(4);
+    twins.passive_skill = vec![31490171, 31490181, 31490191, 31490161];
+    let mut runtime = team_runtime(vec![twins], vec![hand_card(10, 31446012, false)]);
+
+    let reply = runtime.plan_auto_round(&AutoRoundRequest::default());
+
+    assert_eq!(runtime.managers.ex_point.get(10), 95);
+    assert!(!reply.opers.is_empty());
+    assert_ne!(reply.devices_opers[0].index, Some(3));
+    runtime
+        .advance_round(BeginRoundRequest {
+            opers: reply.opers,
+            devices_opers: reply.devices_opers,
+            ..Default::default()
+        })
+        .unwrap();
+    assert_eq!(runtime.managers.ex_point.get(10), 100);
+}
+
+#[test]
 fn auto_round_keeps_the_later_device_that_enables_an_earlier_team_pass() {
     let mut runtime = team_runtime(
         vec![

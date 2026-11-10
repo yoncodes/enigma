@@ -176,11 +176,31 @@ pub(super) fn operations(
             index: Some(device.selected_group),
         })
         .collect::<Vec<_>>();
+    let initial_pool = simulation.pool.runtime_view(&simulation.managers);
+    let available = devices
+        .iter()
+        .flat_map(|device| {
+            let source = initial_pool.entity(device.uid);
+            device
+                .skill_groups
+                .iter()
+                .enumerate()
+                .filter(move |(_, skills)| {
+                    !skills
+                        .iter()
+                        .any(|skill| simulation.managers.catalog().skill_is_big(skill.skill_id))
+                        || source.is_none_or(|source| {
+                            CardMechanic.ultimate_resource_ready(&simulation.managers, source)
+                        })
+                })
+                .map(move |(index, _)| (device.uid, index + 1))
+        })
+        .collect::<HashSet<_>>();
     let mut seen = HashSet::new();
     let mut simulations = Vec::new();
     loop {
         record_groups(&mut seen, &operations)?;
-        let jobs = group_jobs(&devices, &operations);
+        let jobs = group_jobs(&devices, &operations, &available);
         if !simulations
             .iter()
             .any(|(candidate, _)| candidate == &operations)
@@ -314,10 +334,14 @@ pub(super) fn operations(
 fn group_jobs<'a>(
     devices: &'a [ConduitDevice],
     operations: &[FightDeviceOper],
+    available: &HashSet<(i64, usize)>,
 ) -> Vec<GroupJob<'a>> {
     let mut jobs: Vec<GroupJob<'a>> = Vec::new();
     for (device_index, device) in devices.iter().enumerate() {
         for (group_index, desired_skills) in device.skill_groups.iter().enumerate() {
+            if !available.contains(&(device.uid, group_index + 1)) {
+                continue;
+            }
             let requested_group = group_index as i32 + 1;
             let mut candidate_operations = operations.to_vec();
             candidate_operations[device_index].index = Some(requested_group);

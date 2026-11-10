@@ -81,7 +81,11 @@ fn current_team_vector_is_simulated_once_for_all_devices() {
         })
         .collect::<Vec<_>>();
 
-    let jobs = group_jobs(&devices, &operations);
+    let available = devices
+        .iter()
+        .flat_map(|device| (1..=device.skill_groups.len()).map(move |group| (device.uid, group)))
+        .collect();
+    let jobs = group_jobs(&devices, &operations, &available);
 
     assert_eq!(jobs.len(), 3);
     assert_eq!(
@@ -92,6 +96,31 @@ fn current_team_vector_is_simulated_once_for_all_devices() {
             .len(),
         2
     );
+}
+
+#[test]
+fn unavailable_groups_are_not_simulation_jobs() {
+    let skill = ConduitSkill {
+        skill_id: 10,
+        cost_type: 1,
+        cost_value: 1,
+        is_stopped: false,
+    };
+    let devices = [ConduitDevice {
+        uid: 10,
+        selected_group: 1,
+        skill_groups: vec![vec![skill], vec![skill], vec![skill]],
+    }];
+    let operations = vec![FightDeviceOper {
+        uid: Some(10),
+        index: Some(1),
+    }];
+    let available = [(10, 1), (10, 2)].into_iter().collect();
+
+    let jobs = group_jobs(&devices, &operations, &available);
+
+    assert_eq!(jobs.len(), 2);
+    assert!(jobs.iter().all(|job| job.operations[0].index != Some(3)));
 }
 
 #[test]
