@@ -225,9 +225,9 @@ fn round_end_absorbs_normal_energy_through_the_registry() {
 }
 
 #[test]
-fn power_add_is_preserved_for_60334_without_scaling_stored_energy() {
+fn round_end_stops_at_storage_capacity_without_scaling_stored_energy() {
     crate::test_support::init_config();
-    let fight = fight(31560187, [0, 12, 0]);
+    let fight = fight(31560187, [7, 12, 1]);
     let pool = TargetPool::from_fight(&fight);
     let mut managers = BattleManagers::seeded(&fight);
     managers
@@ -244,7 +244,7 @@ fn power_add_is_preserved_for_60334_without_scaling_stored_energy() {
         .unwrap();
     let catalog = SkillEffectCatalog::from_roots(config::configs::get(), [], [31560187]);
 
-    drain::run_group_event(
+    let result = drain::run_group_event(
         &mut managers,
         &pool,
         &catalog,
@@ -257,9 +257,39 @@ fn power_add_is_preserved_for_60334_without_scaling_stored_energy() {
     .unwrap();
 
     let state = owner_state(&managers, -4).unwrap().unwrap();
-    assert_eq!(state.stored, 6);
+    assert_eq!(state.stored, 11);
     assert_eq!(state.maximum, 12);
     assert_eq!(state.config.power_add, 2);
+    assert_eq!(
+        managers
+            .card
+            .hand()
+            .iter()
+            .filter(|card| card.skill_id != Some(31560181))
+            .count(),
+        1
+    );
+
+    let projected = timeline::project_for_version(&result.frames, 7).unwrap();
+    let mut projected_effects = Vec::new();
+    effects(&projected, &mut projected_effects);
+    assert_eq!(
+        projected_effects
+            .iter()
+            .filter(|effect| {
+                effect.effect_type == Some(EffectType::Buffadd as i32)
+                    && effect.effect_num == Some(31560152)
+            })
+            .count(),
+        2
+    );
+    assert!(projected_effects.iter().any(|effect| {
+        effect.effect_type == Some(EffectType::Buffactinfoupdate as i32)
+            && effect
+                .buff_act_info
+                .as_ref()
+                .is_some_and(|info| info.act_id == Some(1159) && info.param == [11, 12, 1])
+    }));
 }
 
 #[test]
