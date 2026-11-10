@@ -59,3 +59,44 @@ fn rejects_a_two_state_group_cycle() {
         Err(AutoBattleError::OscillatingConduitGroups)
     );
 }
+
+#[test]
+fn current_team_vector_is_simulated_once_for_all_devices() {
+    let skill = ConduitSkill {
+        skill_id: 10,
+        cost_type: 1,
+        cost_value: 1,
+        is_stopped: false,
+    };
+    let devices = [10, 11].map(|uid| ConduitDevice {
+        uid,
+        selected_group: 1,
+        skill_groups: vec![vec![skill], vec![skill]],
+    });
+    let operations = devices
+        .iter()
+        .map(|device| FightDeviceOper {
+            uid: Some(device.uid),
+            index: Some(1),
+        })
+        .collect::<Vec<_>>();
+
+    let jobs = group_jobs(&devices, &operations);
+
+    assert_eq!(jobs.len(), 3);
+    assert_eq!(
+        jobs.iter()
+            .find(|job| job.operations == operations)
+            .unwrap()
+            .candidates
+            .len(),
+        2
+    );
+}
+
+#[test]
+fn only_strictly_lower_priority_groups_are_pruned() {
+    assert!(!priority_can_beat(Some((1, 0, 0)), 0));
+    assert!(priority_can_beat(Some((1, 0, 0)), 1));
+    assert!(priority_can_beat(None, 0));
+}

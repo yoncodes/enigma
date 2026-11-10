@@ -8,7 +8,7 @@ use sonettobuf::{BeginRoundOper, FightDeviceOper};
 use crate::engine::{
     manager::{
         BattleManagers,
-        conduit::{ConduitChange, ConduitSkill},
+        conduit::{ConduitChange, ConduitDevice, ConduitSkill},
     },
     mechanic::card::CardMechanic,
     runtime::{determinism::RoundDeterminism, executor::RuleOutcome, schedule::run_conduit_phase},
@@ -30,6 +30,26 @@ pub(super) mod lookahead;
 mod tests;
 
 type GroupScore = (i32, i32, i64);
+
+struct GroupCandidate<'a> {
+    device_index: usize,
+    group_index: usize,
+    requested_group: i32,
+    source_uid: i64,
+    desired_skills: &'a [ConduitSkill],
+}
+
+struct GroupJob<'a> {
+    operations: Vec<FightDeviceOper>,
+    candidates: Vec<GroupCandidate<'a>>,
+}
+
+struct GroupSimulation {
+    before: BattleManagers,
+    catalog: SkillEffectCatalog,
+    determinism: RoundDeterminism,
+    outcomes: Vec<RuleOutcome>,
+}
 
 #[derive(Debug, Default)]
 struct DeviceSelectionState {
@@ -157,72 +177,100 @@ pub(super) fn operations(
         })
         .collect::<Vec<_>>();
     let mut seen = HashSet::new();
+    let mut simulations = Vec::new();
     loop {
         record_groups(&mut seen, &operations)?;
-        let base_operations = operations.clone();
-        let jobs = devices
+        let jobs = group_jobs(&devices, &operations);
+        if !simulations
             .iter()
-            .enumerate()
-            .flat_map(|(device_index, device)| {
-                let base_operations = &base_operations;
-                device
-                    .skill_groups
+            .any(|(candidate, _)| candidate == &operations)
+        {
+            simulations.push((
+                operations.clone(),
+                simulate_operations(simulation, opers, &operations),
+            ));
+        }
+        let current = simulations
+            .iter()
+            .find(|(candidate, _)| candidate == &operations)
+            .and_then(|(_, simulated)| simulated.as_ref());
+        let mut current_scores = vec![None; devices.len()];
+        if let Some(job) = jobs.iter().find(|job| job.operations == operations) {
+            for candidate in &job.candidates {
+                current_scores[candidate.device_index] =
+                    current.and_then(|simulated| score_group(simulation, simulated, candidate));
+            }
+        }
+        let missing = jobs
+            .iter()
+            .filter(|job| {
+                !simulations
                     .iter()
-                    .enumerate()
-                    .map(move |(index, desired_skills)| {
-                        let requested_group = index as i32 + 1;
-                        let mut candidate_operations = base_operations.clone();
-                        candidate_operations[device_index].index = Some(requested_group);
-                        (
-                            device_index,
-                            index,
-                            requested_group,
-                            candidate_operations,
-                            device.uid,
-                            desired_skills,
-                        )
-                    })
+                    .any(|(operations, _)| operations == &job.operations)
+            })
+            .filter(|job| {
+                job.candidates.iter().any(|candidate| {
+                    priority_can_beat(
+                        current_scores[candidate.device_index],
+                        candidate
+                            .desired_skills
+                            .iter()
+                            .filter(|skill| {
+                                simulation.managers.catalog().skill_is_big(skill.skill_id)
+                            })
+                            .count() as i32,
+                    )
+                })
+            })
+            .map(|job| job.operations.clone())
+            .collect::<Vec<_>>();
+        let added = if missing.is_empty() {
+            Vec::new()
+        } else {
+            workers::run(missing.len(), |worker_count| {
+                let chunk_size = missing.len().div_ceil(worker_count);
+                std::thread::scope(|scope| {
+                    missing
+                        .chunks(chunk_size)
+                        .map(|operations| {
+                            scope.spawn(move || {
+                                operations
+                                    .iter()
+                                    .map(|operations| {
+                                        (
+                                            operations.clone(),
+                                            simulate_operations(simulation, opers, operations),
+                                        )
+                                    })
+                                    .collect::<Vec<_>>()
+                            })
+                        })
+                        .collect::<Vec<_>>()
+                        .into_iter()
+                        .flat_map(|worker| worker.join().expect("conduit scoring worker panicked"))
+                        .collect::<Vec<_>>()
+                })
+            })
+        };
+        simulations.extend(added);
+        let candidates = jobs
+            .iter()
+            .flat_map(|job| {
+                let simulated = simulations
+                    .iter()
+                    .find(|(operations, _)| operations == &job.operations)
+                    .and_then(|(_, simulated)| simulated.as_ref());
+                job.candidates.iter().map(move |candidate| {
+                    (
+                        candidate.device_index,
+                        candidate.group_index,
+                        candidate.requested_group,
+                        simulated
+                            .and_then(|simulated| score_group(simulation, simulated, candidate)),
+                    )
+                })
             })
             .collect::<Vec<_>>();
-        let candidates = workers::run(jobs.len(), |worker_count| {
-            let chunk_size = jobs.len().div_ceil(worker_count);
-            std::thread::scope(|scope| {
-                jobs.chunks(chunk_size)
-                    .map(|jobs| {
-                        scope.spawn(move || {
-                            jobs.iter()
-                                .map(
-                                    |(
-                                        device_index,
-                                        index,
-                                        requested_group,
-                                        candidate_operations,
-                                        source_uid,
-                                        desired_skills,
-                                    )| {
-                                        (
-                                            *device_index,
-                                            *index,
-                                            *requested_group,
-                                            simulate_group(
-                                                simulation,
-                                                opers,
-                                                candidate_operations,
-                                                *source_uid,
-                                                desired_skills,
-                                            ),
-                                        )
-                                    },
-                                )
-                                .collect::<Vec<_>>()
-                        })
-                    })
-                    .collect::<Vec<_>>()
-                    .into_iter()
-                    .flat_map(|worker| worker.join().expect("conduit scoring worker panicked"))
-                    .collect::<Vec<_>>()
-            })
-        });
         let mut next = operations.clone();
         for (device_index, device) in devices.iter().enumerate() {
             let mut best = None;
@@ -263,6 +311,39 @@ pub(super) fn operations(
     }))
 }
 
+fn group_jobs<'a>(
+    devices: &'a [ConduitDevice],
+    operations: &[FightDeviceOper],
+) -> Vec<GroupJob<'a>> {
+    let mut jobs: Vec<GroupJob<'a>> = Vec::new();
+    for (device_index, device) in devices.iter().enumerate() {
+        for (group_index, desired_skills) in device.skill_groups.iter().enumerate() {
+            let requested_group = group_index as i32 + 1;
+            let mut candidate_operations = operations.to_vec();
+            candidate_operations[device_index].index = Some(requested_group);
+            let candidate = GroupCandidate {
+                device_index,
+                group_index,
+                requested_group,
+                source_uid: device.uid,
+                desired_skills,
+            };
+            if let Some(job) = jobs
+                .iter_mut()
+                .find(|job| job.operations == candidate_operations)
+            {
+                job.candidates.push(candidate);
+            } else {
+                jobs.push(GroupJob {
+                    operations: candidate_operations,
+                    candidates: vec![candidate],
+                });
+            }
+        }
+    }
+    jobs
+}
+
 fn record_groups(
     seen: &mut HashSet<Vec<Option<i32>>>,
     operations: &[FightDeviceOper],
@@ -270,6 +351,10 @@ fn record_groups(
     seen.insert(operations.iter().map(|operation| operation.index).collect())
         .then_some(())
         .ok_or(AutoBattleError::OscillatingConduitGroups)
+}
+
+fn priority_can_beat(current: Option<GroupScore>, candidate_max: i32) -> bool {
+    current.is_none_or(|score| score.0 <= candidate_max)
 }
 
 pub(super) fn selected_power_types(
@@ -293,13 +378,11 @@ pub(super) fn selected_power_types(
         .collect()
 }
 
-fn simulate_group(
+fn simulate_operations(
     simulation: &Simulation<'_>,
     opers: &[BeginRoundOper],
     operations: &[FightDeviceOper],
-    source_uid: i64,
-    desired_skills: &[ConduitSkill],
-) -> Option<GroupScore> {
+) -> Option<GroupSimulation> {
     let (before, mut sim_determinism) = simulation.player(opers, operations)?;
     let mut sim = before.clone();
     let mut sim_catalog = simulation.catalog.clone();
@@ -318,23 +401,10 @@ fn simulate_group(
         skills.iter().map(|skill| skill.skill_id),
         std::iter::empty(),
     );
-    let current_pool = simulation.pool.runtime_view(&before);
-    let source = current_pool.entity(source_uid)?;
-    if before
-        .conduit
-        .selected_skills(source_uid)
-        .ok()?
-        .iter()
-        .any(|skill| sim_catalog.is_big_skill(skill.skill_id))
-        && !CardMechanic.ultimate_resource_ready(&before, source)
-    {
-        return None;
-    }
     if let Some(skill) = skills.iter().find(|skill| {
         sim_catalog.get(skill.skill_id).is_none() || !sim_catalog.issues(skill.skill_id).is_empty()
     }) {
         tracing::warn!(
-            source_uid,
             skill_id = skill.skill_id,
             issues = ?sim_catalog.issues(skill.skill_id),
             "auto-battle rejected unsupported conduit group"
@@ -363,25 +433,54 @@ fn simulate_group(
         context,
         operations,
     )
-    .inspect_err(|error| tracing::warn!(source_uid, ?error, "auto-battle rejected conduit group"))
+    .inspect_err(|error| tracing::warn!(?error, "auto-battle rejected conduit group"))
     .ok()?;
-    let pre_pool = simulation.pool.runtime_view(&before);
-    let score = executed_skills(&result.outcomes, source_uid, desired_skills)
-        .into_iter()
-        .map(|(skill, spent)| {
-            skill_score(
-                source_uid,
-                skill,
-                spent,
-                &before,
-                &pre_pool,
-                &sim_catalog,
-                &before_determinism,
-            )
-        })
-        .fold((0, 0, 0), |total, score| {
-            (total.0 + score.0, total.1 + score.1, total.2 + score.2)
-        });
+    Some(GroupSimulation {
+        before,
+        catalog: sim_catalog,
+        determinism: before_determinism,
+        outcomes: result.outcomes,
+    })
+}
+
+fn score_group(
+    simulation: &Simulation<'_>,
+    simulated: &GroupSimulation,
+    candidate: &GroupCandidate<'_>,
+) -> Option<GroupScore> {
+    let pre_pool = simulation.pool.runtime_view(&simulated.before);
+    let source = pre_pool.entity(candidate.source_uid)?;
+    if simulated
+        .before
+        .conduit
+        .selected_skills(candidate.source_uid)
+        .ok()?
+        .iter()
+        .any(|skill| simulated.catalog.is_big_skill(skill.skill_id))
+        && !CardMechanic.ultimate_resource_ready(&simulated.before, source)
+    {
+        return None;
+    }
+    let score = executed_skills(
+        &simulated.outcomes,
+        candidate.source_uid,
+        candidate.desired_skills,
+    )
+    .into_iter()
+    .map(|(skill, spent)| {
+        skill_score(
+            candidate.source_uid,
+            skill,
+            spent,
+            &simulated.before,
+            &pre_pool,
+            &simulated.catalog,
+            &simulated.determinism,
+        )
+    })
+    .fold((0, 0, 0), |total, score| {
+        (total.0 + score.0, total.1 + score.1, total.2 + score.2)
+    });
     (score != (0, 0, 0)).then_some(score)
 }
 
