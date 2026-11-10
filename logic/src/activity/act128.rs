@@ -55,6 +55,13 @@ pub async fn act128_info(
         ActivityStateKind::Act128ModeTeam,
     )
     .await?;
+    let max_total = activity_state::get(
+        db,
+        player_id,
+        activity_id,
+        ActivityStateKind::Act128MaxTotalLatestPoint,
+    )
+    .await?;
     let (player_exp, player_level) = rank_state(db, player_id).await?;
     let mut boss_ids = tables
         .activity128_episode
@@ -66,12 +73,14 @@ pub async fn act128_info(
     boss_ids.dedup();
 
     let mut boss_detail = Vec::with_capacity(boss_ids.len());
+    let mut total_latest_point = 0i32;
     for boss_id in boss_ids {
         let (total, highest, ext) = saved.get(&boss_id).cloned().unwrap_or_default();
         let (latest_point, team_ext) = teams
             .get(&boss_id)
             .map(|(latest, _, ext)| (*latest, ext.as_str()))
             .unwrap_or((0, ""));
+        total_latest_point = total_latest_point.saturating_add(latest_point);
         boss_detail.push(Act128BossDetail {
             boss_id: Some(boss_id),
             total_point: Some(total),
@@ -105,7 +114,12 @@ pub async fn act128_info(
                 .map(|(state, _, _)| *state != 0)
                 .unwrap_or_default(),
         ),
-        max_total_latest_point: Some(0),
+        max_total_latest_point: Some(
+            max_total
+                .get(&0)
+                .map(|(score, _, _)| *score)
+                .unwrap_or(total_latest_point),
+        ),
     })
 }
 
@@ -390,6 +404,48 @@ pub async fn settle_act128_score_in_transaction(
     .bind(ServerTime::now_ms())
     .fetch_one(&mut **tx)
     .await?;
+    preserve_max_total_latest_in_transaction(tx, player_id, route.activity_id).await?;
+    sqlx::query(
+        "INSERT INTO user_activity_state
+            (user_id, activity_id, kind, entry_id, state, progress, ext, updated_at)
+         VALUES (?, ?, ?, ?, ?, 0, '', ?)
+         ON CONFLICT(user_id, activity_id, kind, entry_id) DO UPDATE SET
+            state = excluded.state,
+            updated_at = excluded.updated_at",
+    )
+    .bind(player_id)
+    .bind(route.activity_id)
+    .bind(ActivityStateKind::Act128ModeTeam.id())
+    .bind(route.boss_id)
+    .bind(score)
+    .bind(ServerTime::now_ms())
+    .execute(&mut **tx)
+    .await?;
+    let total_latest = sqlx::query_scalar::<_, i64>(
+        "SELECT COALESCE(SUM(state), 0) FROM user_activity_state
+         WHERE user_id = ? AND activity_id = ? AND kind = ?",
+    )
+    .bind(player_id)
+    .bind(route.activity_id)
+    .bind(ActivityStateKind::Act128ModeTeam.id())
+    .fetch_one(&mut **tx)
+    .await?
+    .clamp(0, i64::from(i32::MAX)) as i32;
+    sqlx::query(
+        "INSERT INTO user_activity_state
+            (user_id, activity_id, kind, entry_id, state, progress, ext, updated_at)
+         VALUES (?, ?, ?, 0, ?, 0, '', ?)
+         ON CONFLICT(user_id, activity_id, kind, entry_id) DO UPDATE SET
+            state = MAX(user_activity_state.state, excluded.state),
+            updated_at = excluded.updated_at",
+    )
+    .bind(player_id)
+    .bind(route.activity_id)
+    .bind(ActivityStateKind::Act128MaxTotalLatestPoint.id())
+    .bind(total_latest)
+    .bind(ServerTime::now_ms())
+    .execute(&mut **tx)
+    .await?;
     Ok(tasks::act128::sync_score(
         tx,
         player_id,
@@ -399,6 +455,36 @@ pub async fn settle_act128_score_in_transaction(
         highest,
     )
     .await?)
+}
+
+pub(super) async fn preserve_max_total_latest_in_transaction(
+    tx: &mut Transaction<'_, Sqlite>,
+    player_id: i64,
+    activity_id: i32,
+) -> Result<(), AppError> {
+    let previous_total_latest = sqlx::query_scalar::<_, i64>(
+        "SELECT COALESCE(SUM(state), 0) FROM user_activity_state
+         WHERE user_id = ? AND activity_id = ? AND kind = ?",
+    )
+    .bind(player_id)
+    .bind(activity_id)
+    .bind(ActivityStateKind::Act128ModeTeam.id())
+    .fetch_one(&mut **tx)
+    .await?
+    .clamp(0, i64::from(i32::MAX)) as i32;
+    sqlx::query(
+        "INSERT OR IGNORE INTO user_activity_state
+            (user_id, activity_id, kind, entry_id, state, progress, ext, updated_at)
+         VALUES (?, ?, ?, 0, ?, 0, '', ?)",
+    )
+    .bind(player_id)
+    .bind(activity_id)
+    .bind(ActivityStateKind::Act128MaxTotalLatestPoint.id())
+    .bind(previous_total_latest)
+    .bind(ServerTime::now_ms())
+    .execute(&mut **tx)
+    .await?;
+    Ok(())
 }
 
 #[cfg(test)]
@@ -466,6 +552,29 @@ mod tests {
         .execute(&db)
         .await
         .unwrap();
+        activity_state::set(
+            &db,
+            7,
+            138520,
+            ActivityStateSet {
+                kind: ActivityStateKind::Act128ModeTeam,
+                entry_id: 2,
+                state: 5_000_000,
+                progress: 0,
+                ext: "",
+            },
+        )
+        .await
+        .unwrap();
+        team::reset(&db, 7, 138520, 2).await.unwrap();
+        let legacy_reset = act128_info(&db, 7, Some(138520)).await.unwrap();
+        let legacy_boss = legacy_reset
+            .boss_detail
+            .iter()
+            .find(|boss| boss.boss_id == Some(2))
+            .unwrap();
+        assert_eq!(legacy_boss.latest_point, Some(0));
+        assert_eq!(legacy_reset.max_total_latest_point, Some(5_000_000));
 
         for score in [4_580_648, 100] {
             let mut tx = db.begin().await.unwrap();
@@ -483,10 +592,20 @@ mod tests {
             .unwrap();
         assert_eq!(boss.total_point, Some(4_580_748));
         assert_eq!(boss.highest_point, Some(4_580_648));
-        assert_eq!(boss.latest_point, Some(0));
+        assert_eq!(boss.latest_point, Some(100));
         assert_eq!(boss.act_mode_team, Some(Default::default()));
         assert_eq!(reply.is_activity_mode_open, Some(false));
-        assert_eq!(reply.max_total_latest_point, Some(0));
+        assert_eq!(reply.max_total_latest_point, Some(5_000_000));
+
+        team::reset(&db, 7, 138520, 2).await.unwrap();
+        let reset = act128_info(&db, 7, Some(138520)).await.unwrap();
+        let reset_boss = reset
+            .boss_detail
+            .iter()
+            .find(|boss| boss.boss_id == Some(2))
+            .unwrap();
+        assert_eq!(reset_boss.latest_point, Some(0));
+        assert_eq!(reset.max_total_latest_point, Some(5_000_000));
     }
 
     #[tokio::test]

@@ -1,6 +1,9 @@
 use super::*;
 use database::{
-    db::game::{friends, player_infos},
+    db::game::{
+        activity_state::{self, ActivityStateKind, ActivityStateSet},
+        friends, player_infos,
+    },
     models::game::heros::UserHeroModel,
 };
 use sqlx::sqlite::SqlitePoolOptions;
@@ -71,6 +74,20 @@ async fn validates_assists_identity_bonds_and_persisted_state() {
     let mut owned = empty_slots();
     owned[0] = local_slot(owned_special);
     owned[1] = local_slot(owned_boost);
+    activity_state::set(
+        &db,
+        90,
+        activity_id,
+        ActivityStateSet {
+            kind: ActivityStateKind::Act128ModeTeam,
+            entry_id: boss_id,
+            state: 5_000_000,
+            progress: 0,
+            ext: "",
+        },
+    )
+    .await
+    .unwrap();
     let reply = set(
         &db,
         90,
@@ -85,6 +102,18 @@ async fn validates_assists_identity_bonds_and_persisted_state() {
     assert_eq!(
         reply.act_mode_team.unwrap().add_bond_group_id,
         Some(boost_group.group_id)
+    );
+    assert_eq!(
+        activity_state::get(
+            &db,
+            90,
+            activity_id,
+            ActivityStateKind::Act128MaxTotalLatestPoint,
+        )
+        .await
+        .unwrap()[&0]
+            .0,
+        5_000_000
     );
 
     let mut assisted = empty_slots();

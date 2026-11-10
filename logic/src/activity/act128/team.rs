@@ -1,4 +1,4 @@
-use super::ensure_act128_activity;
+use super::{ensure_act128_activity, preserve_max_total_latest_in_transaction};
 use crate::{error::AppError, profile::ProfileManager};
 use database::{
     db::game::{
@@ -41,7 +41,7 @@ pub(super) async fn set(
     };
     let projected = validate_and_project(db, player_id, activity_id, &stored).await?;
     let ext = serde_json::to_string(&stored)?;
-    activity_state::set(
+    save(
         db,
         player_id,
         activity_id,
@@ -69,7 +69,7 @@ pub(super) async fn reset(
     boss_id: i32,
 ) -> Result<ResetAct128TeamReply, AppError> {
     validate_route(activity_id, boss_id)?;
-    activity_state::set(
+    save(
         db,
         player_id,
         activity_id,
@@ -89,6 +89,19 @@ pub(super) async fn reset(
         act_mode_team: Some(Default::default()),
         latest_point: Some(0),
     })
+}
+
+async fn save(
+    db: &SqlitePool,
+    player_id: i64,
+    activity_id: i32,
+    state: ActivityStateSet<'_>,
+) -> Result<(), AppError> {
+    let mut tx = db.begin().await?;
+    preserve_max_total_latest_in_transaction(&mut tx, player_id, activity_id).await?;
+    activity_state::set_in_transaction(&mut tx, player_id, activity_id, state).await?;
+    tx.commit().await?;
+    Ok(())
 }
 
 pub(super) async fn from_state(
