@@ -1,5 +1,6 @@
 use config::GameDB;
 
+use crate::engine::manager::buff::BuffStatus;
 use crate::engine::skill::condition::{
     buff::BuffConditionMode, card, extra::ExtraActionConditionMode, lifecycle::LifecycleMode,
     none::NoneMode, registry,
@@ -110,6 +111,7 @@ pub enum ParsedConditionKind {
         compare: ConditionCompare,
         threshold: i32,
     },
+    PrimaryStatusAbsent(Vec<BuffStatus>),
     VisibleBuffStatusTypeCount {
         status_ids: Vec<i32>,
         compare: ConditionCompare,

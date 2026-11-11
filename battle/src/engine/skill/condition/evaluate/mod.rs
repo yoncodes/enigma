@@ -683,6 +683,13 @@ fn condition_kind_matches(
                 .sum();
             compare_value(amount, *compare, *threshold)
         }),
+        ParsedConditionKind::PrimaryStatusAbsent(statuses) => managers.is_some_and(|managers| {
+            condition_targets.iter().all(|uid| {
+                statuses
+                    .iter()
+                    .all(|status| !managers.buff.has_active_status(*uid, *status))
+            })
+        }),
         ParsedConditionKind::VisibleBuffStatusTypeCount {
             status_ids,
             compare,

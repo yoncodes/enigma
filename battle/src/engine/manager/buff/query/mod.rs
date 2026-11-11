@@ -141,6 +141,17 @@ impl BuffManager {
         })
     }
 
+    pub(crate) fn has_active_status(&self, owner_uid: i64, status: BuffStatus) -> bool {
+        self.buffs.iter().any(|active| {
+            active.effective
+                && active.owner_uid == owner_uid
+                && active
+                    .definition
+                    .as_ref()
+                    .is_some_and(|definition| definition.status == status)
+        })
+    }
+
     pub(crate) fn buffs_with_status(&self, owner_uid: i64, status: BuffStatus) -> Vec<(i32, i32)> {
         self.buffs
             .iter()
