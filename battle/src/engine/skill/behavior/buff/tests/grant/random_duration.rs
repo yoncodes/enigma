@@ -89,23 +89,89 @@ fn random_type_pool_replays_the_captured_configured_choice() {
 #[test]
 fn random_pool_arguments_require_a_configured_distinct_draw() {
     crate::test_support::init_config();
-    let behavior = |args| {
+    let behavior = |opcode, type_name, args| {
         ParsedBehavior::from_spec(
-            crate::engine::skill::behavior::classify::BehaviorSpec::new(20021, "AddBuffRanId"),
+            crate::engine::skill::behavior::classify::BehaviorSpec::new(opcode, type_name),
             args,
             Vec::new(),
         )
     };
 
-    assert!(super::super::grant::supports_random_pool(&behavior(vec![
-        22301851, 5
-    ])));
-    assert!(!super::super::grant::supports_random_pool(&behavior(vec![
-        22301851, 0
-    ])));
-    assert!(!super::super::grant::supports_random_pool(&behavior(vec![
-        0, 5
-    ])));
+    assert!(super::super::grant::supports_random_pool(&behavior(
+        20021,
+        "AddBuffRanId",
+        vec![22301851, 5]
+    )));
+    assert!(!super::super::grant::supports_random_pool(&behavior(
+        20021,
+        "AddBuffRanId",
+        vec![90311, 10]
+    )));
+    assert!(super::super::grant::supports_random_pool(&behavior(
+        20022,
+        "AddBuffRanTypeId",
+        vec![90311, 10]
+    )));
+    assert!(!super::super::grant::supports_random_pool(&behavior(
+        20021,
+        "AddBuffRanId",
+        vec![22301851, 0]
+    )));
+    assert!(!super::super::grant::supports_random_pool(&behavior(
+        20021,
+        "AddBuffRanId",
+        vec![0, 5]
+    )));
+}
+
+#[test]
+fn random_pool_draw_count_is_capped_by_the_configured_pool() {
+    crate::test_support::init_config();
+    let behavior = ParsedBehavior::from_spec(
+        crate::engine::skill::behavior::classify::BehaviorSpec::new(20022, "AddBuffRanTypeId"),
+        vec![90311, 10],
+        Vec::new(),
+    );
+    let managers = BattleManagers::default();
+    let mut determinism = RoundDeterminism::default();
+    let mut modifiers = crate::engine::skill::action::SkillModifiers::default();
+    let mut target = crate::engine::skill::target::TargetContext::default();
+
+    let ops = super::super::super::super::rule_ops(
+        BehaviorOpContext {
+            source_uid: 10,
+            source_team: 1,
+            target_uid: 20,
+            active_skill_id: 103370082,
+            transfer_count: 1,
+            event: None,
+            managers: &managers,
+            pool: &TargetPool::default(),
+            determinism: &mut determinism,
+            modifiers: &mut modifiers,
+            target: &mut target,
+        },
+        &behavior,
+    )
+    .unwrap();
+    let grants = ops
+        .iter()
+        .filter_map(|op| match op {
+            RuleOp::Command(BattleCommand::Buff(BuffCommand::Grant(grant))) => Some(grant),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    let buff_ids = grants
+        .iter()
+        .map(|grant| grant.buff_id)
+        .collect::<std::collections::HashSet<_>>();
+
+    assert_eq!(grants.len(), 6);
+    assert!(grants.iter().all(|grant| grant.target_uid == 20));
+    assert_eq!(
+        buff_ids,
+        std::collections::HashSet::from([90001, 90011, 90021, 90031, 90041, 90281])
+    );
 }
 
 #[test]

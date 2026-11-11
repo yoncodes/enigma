@@ -100,9 +100,16 @@ pub(super) fn supports_random_pool(behavior: &ParsedBehavior) -> bool {
     let [pool_buff_id, count] = behavior.args.as_slice() else {
         return false;
     };
+    let Some(definition) = super::registry::find(behavior) else {
+        return false;
+    };
     *pool_buff_id > 0
         && *count > 0
-        && random_buff_pool(behavior).is_some_and(|pool| *count as usize <= pool.len())
+        && random_buff_pool(behavior).is_some_and(|pool| {
+            !pool.is_empty()
+                && (definition.kind == BehaviorKind::AddBuffRanTypeId
+                    || *count as usize <= pool.len())
+        })
 }
 
 pub fn random_buff_pool(behavior: &ParsedBehavior) -> Option<Vec<i32>> {
