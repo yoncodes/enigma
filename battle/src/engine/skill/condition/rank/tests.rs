@@ -17,7 +17,7 @@ use sonettobuf::{Fight, FightEntityInfo, FightTeam, HeroAttribute};
 fn hedone_opening_rank_keeps_its_after_round_start_owner() {
     assert_eq!(
         registry::parse(789105, "Rank", &["2".into()]),
-        Some(crate::engine::skill::condition::parse::ParsedConditionKind::RankEquals(2))
+        Some(crate::engine::skill::condition::parse::ParsedConditionKind::RankAtLeast(2))
     );
     assert_eq!(
         registry::find_key(789105, "Rank").map(|definition| definition.role),
@@ -99,7 +99,7 @@ fn unlock_reward_uses_insight() {
 }
 
 #[test]
-fn hedone_opening_rank_is_exact() {
+fn hedone_opening_rank_accepts_higher_rank() {
     crate::test_support::init_config();
     let matches = |level| {
         let fight = Fight {
@@ -124,9 +124,9 @@ fn hedone_opening_rank_is_exact() {
         };
         let pool = TargetPool::from_fight(&fight);
         let managers = BattleManagers::seeded(&fight);
-        super::matches_exact(2, &[10], &managers, &pool)
+        super::matches(2, &[10], &managers, &pool)
     };
 
     assert!(matches(31));
-    assert!(!matches(121));
+    assert!(matches(121));
 }
