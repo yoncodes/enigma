@@ -171,13 +171,12 @@ fn route_shared_pool_change(
     managers: &crate::engine::manager::BattleManagers,
     command: GaugeCommand,
 ) -> Vec<RuleOp> {
+    if matches!(command.operation, GaugeOperation::ChangeValue { .. })
+        && managers.gauge.get(command.key).is_none()
+    {
+        return Vec::new();
+    }
     match command.key.kind {
-        GaugeKind::Bloodtithe
-            if matches!(command.operation, GaugeOperation::ChangeValue { .. })
-                && managers.gauge.get(command.key).is_none() =>
-        {
-            Vec::new()
-        }
         GaugeKind::Bloodtithe => {
             crate::engine::mechanic::bloodtithe::rule::value_change_rule_ops(command)
         }
@@ -208,10 +207,10 @@ mod tests {
         },
     };
 
-    fn blood_pool_value_change_ops(managers: &BattleManagers) -> Vec<RuleOp> {
+    fn shared_pool_value_change_ops(managers: &BattleManagers, args: Vec<i32>) -> Vec<RuleOp> {
         let behavior = ParsedBehavior::from_spec(
             BehaviorSpec::new(60191, "BloodPoolValueChange"),
-            vec![4],
+            args,
             Vec::new(),
         );
         let pool = TargetPool::default();
@@ -396,7 +395,14 @@ mod tests {
     fn blood_pool_value_change_without_bloodtithe_gauge_emits_no_operation() {
         let managers = BattleManagers::default();
 
-        assert!(blood_pool_value_change_ops(&managers).is_empty());
+        assert!(shared_pool_value_change_ops(&managers, vec![4]).is_empty());
+    }
+
+    #[test]
+    fn lingering_glow_value_change_without_gauge_emits_no_operation() {
+        let managers = BattleManagers::default();
+
+        assert!(shared_pool_value_change_ops(&managers, vec![5_000, 1]).is_empty());
     }
 
     #[test]
@@ -416,7 +422,7 @@ mod tests {
             ))
             .unwrap();
 
-        let ops = blood_pool_value_change_ops(&managers);
+        let ops = shared_pool_value_change_ops(&managers, vec![4]);
         assert!(matches!(
             ops.as_slice(),
             [RuleOp::Command(BattleCommand::Gauge(command))]
