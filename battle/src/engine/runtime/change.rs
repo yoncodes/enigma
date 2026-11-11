@@ -43,8 +43,6 @@ pub enum BattleChange {
     CardStateSnapshot(crate::engine::manager::card::CardStateSnapshot),
     ActionQueueCardState(crate::engine::manager::card::ActionQueueCardState),
     PlayerActionQueue(crate::engine::round::command::PlayerActionQueue),
-    ConduitSelectionPublication(crate::engine::round::command::ConduitSelections),
-    ConduitSelectionConfirmation(crate::engine::round::command::ConduitSelections),
     Conduit(ConduitChange),
     Contract(ContractChange),
     Field(FieldChange),

@@ -1056,30 +1056,6 @@ fn project_change(
                 .collect()
         }
         BattleChange::PlayerActionQueue(queue) => vec![CardPacket::use_cards(&queue.actions)],
-        BattleChange::ConduitSelectionPublication(publication) => publication
-            .selections
-            .iter()
-            .map(|selection| {
-                EffectPacket::conduit_group_selected(
-                    selection.source_uid,
-                    selection.team,
-                    selection.group,
-                    0,
-                )
-            })
-            .collect(),
-        BattleChange::ConduitSelectionConfirmation(confirmation) => confirmation
-            .selections
-            .iter()
-            .map(|selection| {
-                EffectPacket::conduit_group_selected(
-                    selection.source_uid,
-                    selection.team,
-                    selection.group,
-                    0,
-                )
-            })
-            .collect(),
         BattleChange::Card(changes) if changes.kind == CardChangeKind::UseCardQueued => {
             let queued = changes
                 .queued_use_card
@@ -1613,6 +1589,15 @@ fn project_cue(
             })]
         }
         RoundCue::ExtraRoundGranted => vec![EffectPacket::fight_param_change(18, 1)],
+        RoundCue::ConduitSelectionPublished(selection)
+        | RoundCue::ClientConduitSelectionConfirmed(selection) => {
+            vec![EffectPacket::conduit_group_selected(
+                selection.source_uid,
+                selection.team,
+                selection.group,
+                0,
+            )]
+        }
     }
 }
 

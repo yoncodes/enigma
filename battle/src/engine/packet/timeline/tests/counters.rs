@@ -317,12 +317,10 @@ fn positive_cost_reduced_to_zero_suppresses_only_the_begin_marker() {
 
 #[test]
 fn client_conduit_group_selection_projects_two_top_level_confirmations() {
-    let selections = crate::engine::round::command::ConduitSelections {
-        selections: vec![crate::engine::round::command::ConduitSelection {
-            source_uid: 263_811_366,
-            team: 1,
-            group: 3,
-        }],
+    let selection = crate::engine::round::command::ConduitSelection {
+        source_uid: 263_811_366,
+        team: 1,
+        group: 3,
     };
     let frames = [
         SemanticFrame {
@@ -339,16 +337,18 @@ fn client_conduit_group_selection_projects_two_top_level_confirmations() {
         SemanticFrame {
             owner: FrameOwner::ConduitSelectionPublication,
             trigger: crate::engine::runtime::record::FrameTrigger::Active,
-            items: vec![FrameItem::Change(Box::new(
-                BattleChange::ConduitSelectionPublication(selections.clone()),
-            ))],
+            items: vec![FrameItem::Cue(
+                crate::engine::runtime::record::RoundCue::ConduitSelectionPublished(selection),
+            )],
         },
         SemanticFrame {
             owner: FrameOwner::ConduitSelectionConfirmation,
             trigger: crate::engine::runtime::record::FrameTrigger::Active,
-            items: vec![FrameItem::Change(Box::new(
-                BattleChange::ConduitSelectionConfirmation(selections),
-            ))],
+            items: vec![FrameItem::Cue(
+                crate::engine::runtime::record::RoundCue::ClientConduitSelectionConfirmed(
+                    selection,
+                ),
+            )],
         },
     ];
 

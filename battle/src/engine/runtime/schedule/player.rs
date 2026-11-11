@@ -7,9 +7,50 @@ pub struct PlayerPhaseResult {
 }
 
 #[derive(Default)]
-struct CommittedConduitSelection {
+struct SelectionTransaction {
     selections: crate::engine::round::command::ConduitSelections,
     queue_actions: Vec<crate::engine::round::command::PlayerQueuedAction>,
+}
+
+impl SelectionTransaction {
+    fn record(&mut self, outcomes: &[RuleOutcome]) {
+        for outcome in outcomes {
+            let RuleOutcome::Conduit(change) = outcome else {
+                continue;
+            };
+            let (source_uid, team, group) = match change {
+                crate::engine::manager::conduit::ConduitChange::SelectionCommitted {
+                    source_uid,
+                    team,
+                    group,
+                }
+                | crate::engine::manager::conduit::ConduitChange::SelectionAdjusted {
+                    source_uid,
+                    team,
+                    group,
+                    ..
+                } => (*source_uid, *team, *group),
+                _ => continue,
+            };
+            if let Some(selection) = self
+                .selections
+                .selections
+                .iter_mut()
+                .find(|selection| selection.source_uid == source_uid)
+            {
+                selection.team = team;
+                selection.group = group;
+            } else {
+                self.selections
+                    .selections
+                    .push(crate::engine::round::command::ConduitSelection {
+                        source_uid,
+                        team,
+                        group,
+                    });
+            }
+        }
+    }
 }
 
 /// Allocates configured card energy before the owning action phase begins.
@@ -35,7 +76,7 @@ fn run_conduit_selection(
     determinism: &mut RoundDeterminism,
     context: TargetContext,
     operations: &[sonettobuf::FightDeviceOper],
-) -> Result<(DrainResult, CommittedConduitSelection), DrainError> {
+) -> Result<(DrainResult, SelectionTransaction), DrainError> {
     let commands = operations
         .iter()
         .filter_map(|operation| {
@@ -48,7 +89,7 @@ fn run_conduit_selection(
         })
         .collect::<Vec<_>>();
     if commands.is_empty() {
-        return Ok((DrainResult::default(), CommittedConduitSelection::default()));
+        return Ok((DrainResult::default(), SelectionTransaction::default()));
     }
     let result = drain::run_command_group_as(
         managers,
@@ -59,35 +100,14 @@ fn run_conduit_selection(
         FrameOwner::ConduitSelectionCommit,
         commands,
     )?;
-    let selections = result
-        .outcomes
-        .iter()
-        .filter_map(|outcome| match outcome {
-            RuleOutcome::Conduit(
-                crate::engine::manager::conduit::ConduitChange::SelectionCommitted {
-                    source_uid,
-                    team,
-                    group,
-                },
-            ) => Some(crate::engine::round::command::ConduitSelection {
-                source_uid: *source_uid,
-                team: *team,
-                group: *group,
-            }),
-            _ => None,
-        })
-        .collect::<Vec<_>>();
-    let queue_actions = (!selections.is_empty())
-        .then_some(crate::engine::round::command::PlayerQueuedAction::Conduit)
-        .into_iter()
-        .collect();
-    Ok((
-        result,
-        CommittedConduitSelection {
-            selections: crate::engine::round::command::ConduitSelections { selections },
-            queue_actions,
-        },
-    ))
+    let mut transaction = SelectionTransaction::default();
+    transaction.record(&result.outcomes);
+    if !transaction.selections.selections.is_empty() {
+        transaction
+            .queue_actions
+            .push(crate::engine::round::command::PlayerQueuedAction::Conduit);
+    }
+    Ok((result, transaction))
 }
 
 fn run_conduit_selection_publication(
@@ -97,11 +117,13 @@ fn run_conduit_selection_publication(
         frames: vec![SemanticFrame {
             owner: FrameOwner::ConduitSelectionPublication,
             trigger: FrameTrigger::Active,
-            items: vec![FrameItem::Change(Box::new(
-                crate::engine::runtime::change::BattleChange::ConduitSelectionPublication(
-                    selections.clone(),
-                ),
-            ))],
+            items: selections
+                .selections
+                .iter()
+                .copied()
+                .map(crate::engine::runtime::record::RoundCue::ConduitSelectionPublished)
+                .map(FrameItem::Cue)
+                .collect(),
         }],
         ..Default::default()
     }
@@ -117,11 +139,13 @@ fn run_conduit_selection_confirmation(
         frames: vec![SemanticFrame {
             owner: FrameOwner::ConduitSelectionConfirmation,
             trigger: FrameTrigger::Active,
-            items: vec![FrameItem::Change(Box::new(
-                crate::engine::runtime::change::BattleChange::ConduitSelectionConfirmation(
-                    selections.clone(),
-                ),
-            ))],
+            items: selections
+                .selections
+                .iter()
+                .copied()
+                .map(crate::engine::runtime::record::RoundCue::ClientConduitSelectionConfirmed)
+                .map(FrameItem::Cue)
+                .collect(),
         }],
         ..Default::default()
     }
@@ -675,7 +699,7 @@ fn run_player_card_ops(
     device_operations: &[sonettobuf::FightDeviceOper],
 ) -> Result<DrainResult, DrainError> {
     let mut result = DrainResult::default();
-    let (selection_commit, committed_selection) = run_conduit_selection(
+    let (selection_commit, mut selection) = run_conduit_selection(
         managers,
         pool,
         catalog,
@@ -684,10 +708,7 @@ fn run_player_card_ops(
         device_operations,
     )?;
     append(&mut result, selection_commit);
-    let CommittedConduitSelection {
-        selections,
-        queue_actions,
-    } = committed_selection;
+    let queue_actions = std::mem::take(&mut selection.queue_actions);
     let mut skills = Vec::new();
     let mut pending_rewards = Vec::new();
     for op in ops {
@@ -986,31 +1007,16 @@ fn run_player_card_ops(
             prelude: Vec::new(),
         })
     }));
-    let final_selections = crate::engine::round::command::ConduitSelections {
-        selections: selections
-            .selections
-            .iter()
-            .map(
-                |selection| crate::engine::round::command::ConduitSelection {
-                    source_uid: selection.source_uid,
-                    team: selection.team,
-                    group: managers
-                        .conduit
-                        .selected_group(selection.source_uid)
-                        .unwrap_or(selection.group),
-                },
-            )
-            .collect(),
-    };
+    selection.record(&committed.outcomes);
     append(&mut result, committed);
-    if !final_selections.selections.is_empty() {
+    if !selection.selections.selections.is_empty() {
         append(
             &mut result,
-            run_conduit_selection_publication(&final_selections),
+            run_conduit_selection_publication(&selection.selections),
         );
         append(
             &mut result,
-            run_conduit_selection_confirmation(&final_selections),
+            run_conduit_selection_confirmation(&selection.selections),
         );
     }
     let queue_preparation = queue_preparation_ops(managers, pool, catalog, context, &skills);
