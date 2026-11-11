@@ -303,6 +303,28 @@ impl SkillEffectCatalog {
                 Ok(mut slot) => {
                     slot.behavior.effect_id = row.id;
                     slot.behavior.slot = index as u8 + 1;
+                    if let Some(random) = crate::engine::skill::condition::query::find(
+                        &slot.conditions,
+                        &|condition| {
+                            matches!(
+                                condition.kind,
+                                ParsedConditionKind::Rouge2AttributeRandom { .. }
+                            )
+                        },
+                    ) {
+                        if let Some(attribute_tag) = rouge2_attribute_tag(db, row.id) {
+                            set_rouge2_attribute_tag(&mut slot.conditions, attribute_tag);
+                        } else {
+                            self.issues.entry(row.id).or_default().push(RuleIssue {
+                                effect_id: row.id,
+                                slot: index as u8 + 1,
+                                opcode: Some(random.opcode),
+                                type_name: Some(random.type_name.clone()),
+                                raw: "rouge2_buff.attributeTag".to_owned(),
+                                reason: RuleIssueReason::MissingConditionConfig,
+                            });
+                        }
+                    }
                     if let Some(definition) =
                         crate::engine::skill::behavior::registry::find(&slot.behavior)
                     {
@@ -576,6 +598,53 @@ impl SkillEffectCatalog {
     }
 }
 
+fn rouge2_attribute_tag(db: &GameDB, skill_id: i32) -> Option<i32> {
+    unique_rouge2_attribute_tag(
+        db.rouge2_buff
+            .iter()
+            .filter(|buff| {
+                numeric_ids(&buff.passive_skill_id)
+                    .any(|passive_skill_id| passive_skill_id == skill_id)
+            })
+            .flat_map(|buff| numeric_ids(&buff.attribute_tag)),
+    )
+}
+
+fn unique_rouge2_attribute_tag(tags: impl IntoIterator<Item = i32>) -> Option<i32> {
+    let mut tags = tags.into_iter();
+    let tag = tags.next()?;
+    tags.all(|candidate| candidate == tag).then_some(tag)
+}
+
+fn set_rouge2_attribute_tag(
+    conditions: &mut [crate::engine::skill::condition::ParsedCondition],
+    attribute_tag: i32,
+) {
+    for condition in conditions {
+        match &mut condition.kind {
+            ParsedConditionKind::Rouge2AttributeRandom {
+                attribute_tag: configured,
+                ..
+            } => *configured = attribute_tag,
+            ParsedConditionKind::Any(groups) => {
+                for group in groups {
+                    set_rouge2_attribute_tag(group, attribute_tag);
+                }
+            }
+            ParsedConditionKind::Not(inner) => {
+                if let ParsedConditionKind::Rouge2AttributeRandom {
+                    attribute_tag: configured,
+                    ..
+                } = inner.as_mut()
+                {
+                    *configured = attribute_tag;
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
 fn hero_upgrade_references(
     db: &GameDB,
     upgrade_id: i32,
@@ -668,5 +737,12 @@ mod tests {
         };
         assert_eq!(issue.reason, RuleIssueReason::MissingSummoned);
         assert!(issue.reason.is_blocking());
+    }
+
+    #[test]
+    fn rouge2_random_attribute_requires_one_consistent_configured_tag() {
+        assert_eq!(unique_rouge2_attribute_tag([]), None);
+        assert_eq!(unique_rouge2_attribute_tag([103, 103]), Some(103));
+        assert_eq!(unique_rouge2_attribute_tag([103, 104]), None);
     }
 }

@@ -687,12 +687,32 @@ pub(in crate::engine::runtime) fn emit_ops(
                 let mut context = execution.context;
                 if let Some(random) =
                     crate::engine::skill::condition::query::find(&conditions, &|condition| {
-                        matches!(condition.kind, ParsedConditionKind::Random { .. })
+                        crate::engine::skill::condition::query::is_random(condition)
                     })
                 {
-                    context.condition_random_roll = Some(
-                        determinism.condition_random_roll(invocation.plan.skill_id, random.opcode),
-                    );
+                    let deterministic_match = conditions
+                        .iter()
+                        .filter(|condition| {
+                            !crate::engine::skill::condition::query::is_random(condition)
+                        })
+                        .all(|condition| {
+                            conditions_match(
+                                std::slice::from_ref(condition),
+                                invocation.plan.source_uid,
+                                &condition_targets,
+                                Some(managers),
+                                pool,
+                                context,
+                            )
+                        });
+                    if !deterministic_match {
+                        return 0;
+                    }
+                    context.condition_random_roll = Some(determinism.condition_random_roll(
+                        invocation.plan.skill_id,
+                        invocation.plan.source_uid,
+                        random.opcode,
+                    ));
                 }
                 conditions_fire_count(
                     &conditions,

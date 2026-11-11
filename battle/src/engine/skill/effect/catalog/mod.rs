@@ -60,6 +60,7 @@ pub enum RuleIssueReason {
     MalformedBehavior,
     MalformedTarget,
     MissingBehavior,
+    MissingConditionConfig,
     MissingSummoned,
     UnsupportedBehavior,
 }
@@ -207,7 +208,8 @@ impl SkillEffectCatalog {
         ) {
             for condition in conditions {
                 match &condition.kind {
-                    ParsedConditionKind::Random { .. } => {
+                    ParsedConditionKind::Random { .. }
+                    | ParsedConditionKind::Rouge2AttributeRandom { .. } => {
                         let key = (skill_id, condition.opcode);
                         if !keys.contains(&key) {
                             keys.push(key);

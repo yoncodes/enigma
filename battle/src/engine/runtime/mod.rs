@@ -212,6 +212,15 @@ impl BattleRuntime {
         self.determinism.enqueue_random_skills(skills);
     }
 
+    pub fn seed_condition_randoms(
+        &mut self,
+        keys: impl IntoIterator<Item = (i32, i32)>,
+        choices: impl IntoIterator<Item = determinism::ConditionRandomChoice>,
+    ) {
+        self.determinism
+            .replace_condition_random_choices(keys, choices);
+    }
+
     pub fn seed_shell_moxie_choices(&mut self, choices: impl IntoIterator<Item = bool>) {
         self.determinism.replace_shell_moxie_choices(choices);
     }

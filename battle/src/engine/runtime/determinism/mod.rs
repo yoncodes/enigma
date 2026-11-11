@@ -43,6 +43,7 @@ pub struct MoxieReductionResistanceChoice {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ConditionRandomChoice {
     pub skill_id: i32,
+    pub source_uid: i64,
     pub opcode: i32,
     pub roll: i32,
 }
@@ -190,6 +191,17 @@ impl RoundDeterminism {
 
     pub fn script_condition_randoms(&mut self, keys: impl IntoIterator<Item = (i32, i32)>) {
         self.scripted_condition_random.extend(keys);
+    }
+
+    pub fn replace_condition_random_choices(
+        &mut self,
+        keys: impl IntoIterator<Item = (i32, i32)>,
+        choices: impl IntoIterator<Item = ConditionRandomChoice>,
+    ) {
+        self.condition_random_choices.clear();
+        self.scripted_condition_random.clear();
+        self.scripted_condition_random.extend(keys);
+        self.condition_random_choices.extend(choices);
     }
 
     pub fn enqueue_hidden_crits(
@@ -382,12 +394,12 @@ impl RoundDeterminism {
             .and_then(VecDeque::pop_front);
     }
 
-    pub fn condition_random_roll(&mut self, skill_id: i32, opcode: i32) -> i32 {
-        if let Some(index) = self
-            .condition_random_choices
-            .iter()
-            .position(|choice| choice.skill_id == skill_id && choice.opcode == opcode)
-        {
+    pub fn condition_random_roll(&mut self, skill_id: i32, source_uid: i64, opcode: i32) -> i32 {
+        if let Some(index) = self.condition_random_choices.iter().position(|choice| {
+            choice.skill_id == skill_id
+                && choice.source_uid == source_uid
+                && choice.opcode == opcode
+        }) {
             return self
                 .condition_random_choices
                 .remove(index)

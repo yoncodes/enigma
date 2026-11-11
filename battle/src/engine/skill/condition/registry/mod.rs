@@ -928,6 +928,10 @@ condition_definitions! {
     [762005] "BattleTagNum" => battle_tag::parse, setup_route(SetupStage::EnterFight, 0, &[]);
     [762021] "BattleTagNum" => battle_tag::parse, setup_route(SetupStage::EnterFight, 0, &[]);
     [1021002] "BattleTagCheck" => battle_tag::present, setup_route(SetupStage::EnterFight, 0, &[]);
+    [1021101] "BattleTagCheck" => battle_tag::present, predicate(&[]);
+    [1022101] "Rouge2AttrExRand" => parse::rouge2_attribute_random, companion_setup(reaction_targets_owner(event_trigger(EventKind::RoundEnd, None)), &[(SetupStage::RoundStartCondition, 101)]);
+    [10211061] "BattleTagCheck" => battle_tag::present, reaction_targets_owner(event_trigger(EventKind::ActionQueueCommitted, None));
+    [10221061] "Rouge2AttrExRand" => parse::rouge2_attribute_random, predicate(&[]);
     [1021209] "BattleTagCheck" => battle_tag::present, after_shared_hit(predicate(&[EventKind::TargetAttacked]));
     [762103] "BattleTagNum" => battle_tag::parse, setup_route(SetupStage::RoundStart, 1, &[]);
     [760212] "CurUseCardEnchant" => card::current_enchant, event_trigger(EventKind::AllyAction, None);

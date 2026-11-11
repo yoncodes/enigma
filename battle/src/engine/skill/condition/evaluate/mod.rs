@@ -407,11 +407,12 @@ pub(crate) fn condition_matches(
     );
     if crate::engine::diagnostics::enabled(crate::engine::diagnostics::TraceArea::Condition) {
         eprintln!(
-            "condition {} {} args={:?} source={source_uid} targets={condition_targets:?} skill={} buff_added={}/{}x{} on {} matched={matched}",
+            "condition {} {} args={:?} source={source_uid} targets={condition_targets:?} skill={} random_roll={:?} buff_added={}/{}x{} on {} matched={matched}",
             condition.opcode,
             condition.type_name,
             condition.raw_args,
             context.active_skill_id,
+            context.condition_random_roll,
             context.added_buff_id,
             context.added_buff_type_id,
             context.added_buff_amount,
@@ -893,6 +894,18 @@ fn condition_kind_matches(
         ParsedConditionKind::Random { threshold } => context
             .condition_random_roll
             .is_some_and(|roll| roll < *threshold),
+        ParsedConditionKind::Rouge2AttributeRandom {
+            multiplier,
+            attribute_tag,
+        } => managers.is_some_and(|managers| {
+            context.condition_random_roll.is_some_and(|roll| {
+                roll < managers
+                    .buff
+                    .mode_attribute(*attribute_tag)
+                    .saturating_mul(*multiplier)
+                    .clamp(0, 1000)
+            })
+        }),
         ParsedConditionKind::ExPointDecrease { threshold } => {
             context.ex_point_changed_uid != 0
                 && context.ex_point_delta < 0

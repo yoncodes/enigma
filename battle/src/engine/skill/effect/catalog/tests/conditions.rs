@@ -1,6 +1,47 @@
 use super::*;
 
 #[test]
+fn rouge2_round_resource_uses_the_configured_mode_attribute_and_round_boundaries() {
+    init_config();
+    let catalog = SkillEffectCatalog::from_game_db(config::configs::get());
+    let slot = &catalog.get(103377010).unwrap().slots[0];
+
+    assert!(slot.conditions.iter().any(|condition| {
+        condition.kind
+            == ParsedConditionKind::Rouge2AttributeRandom {
+                multiplier: 12,
+                attribute_tag: 103,
+            }
+    }));
+    assert_eq!(
+        slot.compiled_subscriptions()
+            .unwrap()
+            .into_iter()
+            .map(|subscription| subscription.event)
+            .collect::<Vec<_>>(),
+        [crate::engine::event::kind::EventKind::RoundEnd]
+    );
+    assert_eq!(
+        crate::engine::skill::condition::registry::find_key(1022101, "Rouge2AttrExRand")
+            .unwrap()
+            .companion_setup,
+        &[(
+            crate::engine::skill::rule::SetupStage::RoundStartCondition,
+            101,
+        )]
+    );
+}
+
+#[test]
+fn shared_rouge2_battle_tag_does_not_invent_a_round_end_trigger() {
+    init_config();
+    let catalog = SkillEffectCatalog::from_game_db(config::configs::get());
+    let slot = &catalog.get(109370116).unwrap().slots[0];
+
+    assert!(slot.compiled_subscriptions().unwrap().is_empty());
+}
+
+#[test]
 fn device_ultimate_compound_uses_the_activation_driver_in_either_order() {
     init_config();
 

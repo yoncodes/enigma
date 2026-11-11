@@ -507,6 +507,7 @@ fn event_conditions_use_the_deterministic_random_stream() {
     determinism.enqueue_condition_random_choices(vec![
         crate::engine::runtime::determinism::ConditionRandomChoice {
             skill_id: 100,
+            source_uid: 10,
             opcode: 552210,
             roll: 499,
         },

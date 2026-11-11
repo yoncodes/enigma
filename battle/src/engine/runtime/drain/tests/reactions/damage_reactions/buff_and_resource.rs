@@ -315,6 +315,7 @@ fn random_additional_target_passive_expands_the_configured_attack() {
     determinism.enqueue_condition_random_choices(vec![
         crate::engine::runtime::determinism::ConditionRandomChoice {
             skill_id: 370_001_002,
+            source_uid: 10,
             opcode: 552_203,
             roll: 499,
         },

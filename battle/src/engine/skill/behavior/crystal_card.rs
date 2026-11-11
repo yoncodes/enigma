@@ -21,12 +21,16 @@ impl BehaviorHandler for Handler {
         }
         let captured = context.determinism.take_crystal_card(&candidates);
         let weights = rank_weights(behavior);
-        let rank_roll = context
-            .determinism
-            .condition_random_roll(context.active_skill_id, behavior.spec.key.opcode);
-        let crystal_roll = context
-            .determinism
-            .condition_random_roll(context.active_skill_id, behavior.spec.key.opcode);
+        let rank_roll = context.determinism.condition_random_roll(
+            context.active_skill_id,
+            context.source_uid,
+            behavior.spec.key.opcode,
+        );
+        let crystal_roll = context.determinism.condition_random_roll(
+            context.active_skill_id,
+            context.source_uid,
+            behavior.spec.key.opcode,
+        );
         let skill_id = captured
             .as_ref()
             .and_then(|card| card.skill_id)

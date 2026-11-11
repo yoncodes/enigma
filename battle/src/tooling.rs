@@ -15,8 +15,8 @@ pub mod replay {
         runtime::{
             BattleRuntime as ReplayBattle, ClothSkillType,
             determinism::{
-                CrystalReuseChoice, HandRankChoice, MoxieReductionResistanceChoice,
-                RoundDeterminism, SkillTargetChoice,
+                ConditionRandomChoice, CrystalReuseChoice, HandRankChoice,
+                MoxieReductionResistanceChoice, RoundDeterminism, SkillTargetChoice,
             },
         },
     };
@@ -55,7 +55,7 @@ pub mod scan {
         };
 
         pub mod classify {
-            pub use crate::engine::skill::behavior::classify::BehaviorSpec;
+            pub use crate::engine::skill::behavior::classify::{BehaviorKind, BehaviorSpec};
         }
 
         pub mod registry {

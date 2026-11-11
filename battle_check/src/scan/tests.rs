@@ -47,6 +47,41 @@ fn event_required_behavior_without_route_is_a_gap() {
 }
 
 #[test]
+fn conditioned_battle_rule_requires_a_driver_or_static_collector() {
+    crate::init_config().unwrap();
+    let db = config::get();
+
+    for (skill_id, ready) in [(109_370_116, false), (103_377_010, true)] {
+        let mut catalog = SkillEffectCatalog::default();
+        let mut skills = VecDeque::from([Pending {
+            id: skill_id,
+            path: "test root".to_owned(),
+        }]);
+        let mut report = Report::default();
+
+        scan_closure(
+            db,
+            battle::catalog::BattleCatalog::new(db),
+            &mut catalog,
+            &mut skills,
+            &mut VecDeque::new(),
+            &mut report,
+        );
+
+        assert_eq!(report.is_ready(), ready, "errors={:?}", report.errors);
+        assert_eq!(
+            report
+                .errors
+                .iter()
+                .any(|error| error.contains("MissingConditionRoute")),
+            !ready,
+            "errors={:?}",
+            report.errors
+        );
+    }
+}
+
+#[test]
 fn reachable_timed_buff_reports_a_missing_duration_route() {
     crate::init_config().unwrap();
     let db = config::get();

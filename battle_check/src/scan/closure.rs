@@ -160,6 +160,27 @@ fn scan_skill(
                     "MissingConditionRoute path={slot_path} opcode={opcode} type={type_name}"
                 ));
             }
+            Ok(route)
+                if db.rule.get(pending.id).is_some()
+                    && !slot.conditions.is_empty()
+                    && route.branches.iter().all(|branch| branch.driver.is_none())
+                    && definition.is_none_or(|definition| {
+                        definition.collect_attack_modifier.is_none()
+                            && definition.collect_round_modifier.is_none()
+                            && definition.collect_queue_preparation.is_none()
+                    }) =>
+            {
+                for condition in slot.conditions.iter().flat_map(flatten_conditions) {
+                    report.gap(
+                        CapabilityKey::new("condition", condition.opcode, &condition.type_name),
+                        "missing exact route",
+                    );
+                    report.error(format!(
+                        "MissingConditionRoute path={slot_path} opcode={} type={}",
+                        condition.opcode, condition.type_name
+                    ));
+                }
+            }
             Ok(_) => {}
         }
         explain_conditions(&slot.conditions, pending.id, slot_number, report);

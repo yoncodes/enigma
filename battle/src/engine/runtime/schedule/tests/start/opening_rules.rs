@@ -934,6 +934,60 @@ fn twins_round_start_passive_adds_the_captured_precast_card() {
 }
 
 #[test]
+fn rouge2_round_start_random_resource_uses_the_captured_roll() {
+    init_config();
+    let fight = Fight {
+        version: Some(7),
+        custom_data: vec![sonettobuf::CustomData {
+            r#type: Some(sonettobuf::custom_data::CustomDataType::Rouge2 as i32),
+            data: Some(r#"{"attrFinalVal":{"103":5}}"#.to_owned()),
+        }],
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                model_id: Some(3149),
+                team_type: Some(1),
+                current_hp: Some(100),
+                ex_point: Some(70),
+                ex_point_max: Some(100),
+                passive_skill: vec![103377010],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    let catalog = SkillEffectCatalog::from_roots(config::configs::get(), [103377010], []);
+    let mut determinism = RoundDeterminism::default();
+    determinism.enqueue_condition_random_choices(vec![
+        crate::engine::runtime::determinism::ConditionRandomChoice {
+            skill_id: 103377010,
+            source_uid: 10,
+            opcode: 1022101,
+            roll: 0,
+        },
+    ]);
+
+    crate::engine::runtime::drain::run_setup_stage(
+        &mut managers,
+        &pool,
+        &catalog,
+        &mut determinism,
+        TargetContext {
+            current_round: 1,
+            ..Default::default()
+        },
+        SetupStage::RoundStartCondition,
+        101,
+    )
+    .unwrap();
+
+    assert_eq!(managers.ex_point.get(10), 100);
+}
+
+#[test]
 fn side_owned_round_start_skill_only_runs_for_the_scheduled_side() {
     init_config();
     let entity = |uid, team_type| FightEntityInfo {

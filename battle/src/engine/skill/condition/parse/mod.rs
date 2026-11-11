@@ -198,6 +198,10 @@ pub enum ParsedConditionKind {
     Random {
         threshold: i32,
     },
+    Rouge2AttributeRandom {
+        multiplier: i32,
+        attribute_tag: i32,
+    },
     PowerCompare {
         compare_code: i32,
         power_id: i32,
@@ -562,6 +566,17 @@ pub(super) fn hp_more(_: i32, _: &str, raw_args: &[String]) -> Option<ParsedCond
 pub(super) fn random(_: i32, _: &str, raw_args: &[String]) -> Option<ParsedConditionKind> {
     Some(ParsedConditionKind::Random {
         threshold: first_i32(raw_args)?.clamp(0, 1000),
+    })
+}
+
+pub(super) fn rouge2_attribute_random(
+    _: i32,
+    _: &str,
+    raw_args: &[String],
+) -> Option<ParsedConditionKind> {
+    Some(ParsedConditionKind::Rouge2AttributeRandom {
+        multiplier: first_i32(raw_args)?,
+        attribute_tag: 0,
     })
 }
 

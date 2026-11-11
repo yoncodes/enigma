@@ -18,6 +18,11 @@ pub fn opening_determinism(
     let mut determinism =
         RoundDeterminism::with_seed(fight.battle_id.unwrap_or_default().max(0) as u64);
     determinism.enqueue_hand_rank_choices(opening_hand_rank_choices(game_data, fight, round));
+    determinism.enqueue_condition_random_choices(opening_condition_random_choices(
+        battle::tooling::scan::effect_catalog::global(),
+        fight,
+        round,
+    ));
     let draws = round
         .team_a_cards1
         .iter()
@@ -68,6 +73,84 @@ pub fn opening_determinism(
     Ok(determinism)
 }
 
+fn opening_condition_random_choices(
+    catalog: &SkillEffectCatalog,
+    fight: &Fight,
+    round: &FightRound,
+) -> Vec<battle::tooling::replay::ConditionRandomChoice> {
+    fn resource_changes(step: &FightStep, changes: &mut Vec<(i64, i32)>) {
+        for effect in &step.act_effect {
+            if effect.effect_type
+                == Some(sonettobuf::effect_type_enum::EffectType::Expointchange as i32)
+                && let (Some(uid), Some(amount)) = (effect.target_id, effect.effect_num)
+            {
+                changes.push((uid, amount));
+            }
+            if let Some(nested) = effect.fight_step.as_ref() {
+                resource_changes(nested, changes);
+            }
+        }
+    }
+
+    let mut changes = Vec::new();
+    for step in &round.fight_step {
+        resource_changes(step, &mut changes);
+    }
+    let attackers = fight
+        .attacker
+        .iter()
+        .flat_map(|team| &team.entitys)
+        .collect::<Vec<_>>();
+    let mut choices = Vec::new();
+    for (skill_id, opcode) in catalog.random_condition_keys() {
+        let amounts = catalog
+            .get(skill_id)
+            .into_iter()
+            .flat_map(|effect| &effect.slots)
+            .filter(|slot| {
+                slot.behavior.spec.kind
+                    == battle::tooling::scan::behavior::classify::BehaviorKind::AddConduitExPoint
+            })
+            .filter_map(|slot| slot.behavior.args.first().copied())
+            .collect::<Vec<_>>();
+        if amounts.is_empty() {
+            continue;
+        }
+        for entity in attackers
+            .iter()
+            .filter(|entity| entity.passive_skill.contains(&skill_id))
+        {
+            let Some(source_uid) = entity.uid else {
+                continue;
+            };
+            let succeeded = {
+                amounts.iter().any(|amount| {
+                    let mut current = entity.ex_point.unwrap_or_default();
+                    changes
+                        .iter()
+                        .filter(|(target_uid, _)| *target_uid == source_uid)
+                        .any(|(_, applied)| {
+                            let expected = entity
+                                .ex_point_max
+                                .map(|maximum| (*amount).min((maximum - current).max(0)))
+                                .unwrap_or(*amount);
+                            let matches = expected > 0 && *applied == expected;
+                            current = current.saturating_add(*applied);
+                            matches
+                        })
+                })
+            };
+            choices.push(battle::tooling::replay::ConditionRandomChoice {
+                skill_id,
+                source_uid,
+                opcode,
+                roll: if succeeded { 0 } else { 999 },
+            });
+        }
+    }
+    choices
+}
+
 pub fn seed_round_determinism(
     runtime: &mut ReplayBattle,
     catalog: &SkillEffectCatalog,
@@ -95,6 +178,9 @@ pub fn seed_action_determinism(
 ) {
     runtime.seed_skill_targets(skill_target_choices(catalog, round));
     runtime.seed_random_skills(random_skill_choices(catalog, round));
+    let random_keys = catalog.random_condition_keys();
+    let condition_randoms = condition_random_choices(&random_keys, round);
+    runtime.seed_condition_randoms(random_keys.iter().copied(), condition_randoms);
     runtime.seed_shell_moxie_choices(shell_moxie_choices(config::configs::get(), round));
     runtime.seed_crystal_reuse_choices(crystal_reuse_choices(catalog, round));
     runtime.seed_moxie_reduction_resistance_choices(moxie_reduction_resistance_choices(
@@ -102,6 +188,41 @@ pub fn seed_action_determinism(
     ));
     let (hidden, additional, indirect_heals) = crit_choices(config::configs::get(), round);
     runtime.seed_crits(hidden, additional, indirect_heals);
+}
+
+fn condition_random_choices(
+    keys: &[(i32, i32)],
+    round: &FightRound,
+) -> Vec<battle::tooling::replay::ConditionRandomChoice> {
+    fn visit(
+        keys: &[(i32, i32)],
+        step: &FightStep,
+        choices: &mut Vec<battle::tooling::replay::ConditionRandomChoice>,
+    ) {
+        if let (Some(skill_id), Some(source_uid)) = (step.act_id, step.from_id) {
+            choices.extend(keys.iter().filter_map(|&(candidate, opcode)| {
+                (candidate == skill_id).then_some(battle::tooling::replay::ConditionRandomChoice {
+                    skill_id,
+                    source_uid,
+                    opcode,
+                    roll: 0,
+                })
+            }));
+        }
+        for nested in step
+            .act_effect
+            .iter()
+            .filter_map(|effect| effect.fight_step.as_ref())
+        {
+            visit(keys, nested, choices);
+        }
+    }
+
+    let mut choices = Vec::new();
+    for step in &round.fight_step {
+        visit(keys, step, &mut choices);
+    }
+    choices
 }
 
 fn captured_round_draws(round: &FightRound) -> Vec<CardInfo> {
@@ -670,6 +791,119 @@ mod tests {
             temp_card: Some(temporary),
             ..Default::default()
         }
+    }
+
+    #[test]
+    fn captured_random_passive_frames_seed_only_observed_successes() {
+        let round = FightRound {
+            fight_step: vec![FightStep {
+                act_effect: vec![
+                    sonettobuf::ActEffect {
+                        fight_step: Some(FightStep {
+                            act_id: Some(103335020),
+                            from_id: Some(10),
+                            ..Default::default()
+                        }),
+                        ..Default::default()
+                    },
+                    sonettobuf::ActEffect {
+                        fight_step: Some(FightStep {
+                            act_effect: vec![sonettobuf::ActEffect {
+                                fight_step: Some(FightStep {
+                                    act_id: Some(103335140),
+                                    from_id: Some(11),
+                                    ..Default::default()
+                                }),
+                                ..Default::default()
+                            }],
+                            ..Default::default()
+                        }),
+                        ..Default::default()
+                    },
+                ],
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+
+        assert_eq!(
+            condition_random_choices(&[(103335020, 10221061), (103335140, 10221061)], &round),
+            vec![
+                battle::tooling::replay::ConditionRandomChoice {
+                    skill_id: 103335020,
+                    source_uid: 10,
+                    opcode: 10221061,
+                    roll: 0,
+                },
+                battle::tooling::replay::ConditionRandomChoice {
+                    skill_id: 103335140,
+                    source_uid: 11,
+                    opcode: 10221061,
+                    roll: 0,
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn opening_resource_randoms_include_observed_successes_and_failures() {
+        crate::init_test_config();
+        let fight = Fight {
+            attacker: Some(sonettobuf::FightTeam {
+                entitys: [10, 11]
+                    .map(|uid| sonettobuf::FightEntityInfo {
+                        uid: Some(uid),
+                        passive_skill: vec![103377010],
+                        ex_point: Some(0),
+                        ex_point_max: Some(100),
+                        ..Default::default()
+                    })
+                    .to_vec(),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let round = FightRound {
+            fight_step: vec![FightStep {
+                act_effect: [70, 30]
+                    .map(|amount| sonettobuf::ActEffect {
+                        target_id: Some(10),
+                        effect_type: Some(
+                            sonettobuf::effect_type_enum::EffectType::Expointchange as i32,
+                        ),
+                        effect_num: Some(amount),
+                        ..Default::default()
+                    })
+                    .to_vec(),
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+
+        assert_eq!(
+            opening_condition_random_choices(
+                battle::tooling::scan::effect_catalog::global(),
+                &fight,
+                &round,
+            )
+            .into_iter()
+            .filter(|choice| choice.skill_id == 103377010)
+            .collect::<Vec<_>>(),
+            vec![
+                battle::tooling::replay::ConditionRandomChoice {
+                    skill_id: 103377010,
+                    source_uid: 10,
+                    opcode: 1022101,
+                    roll: 0,
+                },
+                battle::tooling::replay::ConditionRandomChoice {
+                    skill_id: 103377010,
+                    source_uid: 11,
+                    opcode: 1022101,
+                    roll: 999,
+                },
+            ]
+        );
     }
 
     #[test]

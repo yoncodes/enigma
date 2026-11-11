@@ -72,14 +72,21 @@ pub(super) fn resource_fire_count(
         return Some(0);
     }
     let Some(random) = query::find(conditions, &|condition| {
-        matches!(condition.kind, ParsedConditionKind::Random { .. })
+        matches!(
+            condition.kind,
+            ParsedConditionKind::Random { .. } | ParsedConditionKind::Rouge2AttributeRandom { .. }
+        )
     }) else {
         return Some(count);
     };
     Some(resource::event_conditions_count(
         conditions,
         ResourceConditionContext {
-            random_roll: Some(determinism.condition_random_roll(skill_id, random.opcode)),
+            random_roll: Some(determinism.condition_random_roll(
+                skill_id,
+                context.source_uid,
+                random.opcode,
+            )),
             ..context
         },
     ))
