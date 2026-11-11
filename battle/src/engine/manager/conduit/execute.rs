@@ -35,6 +35,7 @@ impl ConduitManager {
                 }
                 area.devices
                     .retain(|device| !defeated_uids.contains(&device.uid));
+                self.defeated_devices.extend(defeated_uids.iter().copied());
                 for uid in &defeated_uids {
                     self.running.remove(uid);
                     self.uses_this_round.remove(uid);

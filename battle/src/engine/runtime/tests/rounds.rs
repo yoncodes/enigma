@@ -418,6 +418,94 @@ fn client_conduit_selection_projects_two_top_level_confirmations_before_actions(
 }
 
 #[test]
+fn begin_round_drops_only_authoritatively_defeated_device_operations() {
+    crate::test_support::init_config();
+    let entity = |uid, model_id| FightEntityInfo {
+        uid: Some(uid),
+        model_id: Some(model_id),
+        current_hp: Some(100_000),
+        attr: Some(sonettobuf::HeroAttribute {
+            hp: Some(100_000),
+            attack: Some(1_000),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let fight = Fight {
+        version: Some(7),
+        attacker: Some(FightTeam {
+            entitys: vec![entity(10, 3144), entity(11, 3156), entity(12, 3001)],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![entity(-1, 1001)],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let mut battle = runtime(fight.clone());
+    battle.managers.hp.lose(10, 100_000, 0);
+    let command = battle
+        .managers
+        .conduit
+        .roster_refresh_commands(&[10])
+        .into_iter()
+        .next()
+        .unwrap();
+    battle.managers.conduit.execute(command).unwrap();
+
+    let round = battle
+        .build_begin_round_from_schedule(&BeginRoundRequest {
+            devices_opers: vec![
+                sonettobuf::FightDeviceOper {
+                    uid: Some(10),
+                    index: Some(1),
+                },
+                sonettobuf::FightDeviceOper {
+                    uid: Some(11),
+                    index: Some(1),
+                },
+            ],
+            ..Default::default()
+        })
+        .unwrap();
+
+    let selection_targets = round
+        .fight_step
+        .iter()
+        .flat_map(|step| &step.act_effect)
+        .filter(|effect| {
+            effect.effect_type
+                == Some(sonettobuf::effect_type_enum::EffectType::Deviceskillindex as i32)
+        })
+        .map(|effect| effect.target_id)
+        .collect::<Vec<_>>();
+    assert!(!selection_targets.is_empty());
+    assert!(selection_targets.iter().all(|target| *target == Some(11)));
+    assert!(
+        round
+            .fight_step
+            .iter()
+            .flat_map(|step| &step.act_effect)
+            .filter_map(|effect| effect.fight_step.as_ref())
+            .any(|step| step.from_id == Some(11) && step.card_index == Some(1))
+    );
+
+    let mut invalid = runtime(fight);
+    invalid.managers.hp.lose(12, 100_000, 0);
+    let error = invalid
+        .build_begin_round_from_schedule(&BeginRoundRequest {
+            devices_opers: vec![sonettobuf::FightDeviceOper {
+                uid: Some(12),
+                index: Some(1),
+            }],
+            ..Default::default()
+        })
+        .unwrap_err();
+    assert!(error.contains("MissingDevice(12)"), "{error}");
+}
+
+#[test]
 fn opening_round_uses_action_point_buffs_applied_during_setup() {
     crate::test_support::init_config();
     let fight = Fight {

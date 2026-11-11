@@ -1,4 +1,4 @@
-use sonettobuf::{BeginRoundRequest, Fight, FightRound, FightStep};
+use sonettobuf::{BeginRoundRequest, Fight, FightDeviceOper, FightRound, FightStep};
 
 use crate::engine::{
     manager::card::CardCommand,
@@ -52,6 +52,21 @@ fn append_client_conduit_selection_confirmations(
         });
     }
     frames
+}
+
+fn active_conduit_operations(
+    managers: &crate::engine::manager::BattleManagers,
+    operations: &[FightDeviceOper],
+) -> Vec<FightDeviceOper> {
+    operations
+        .iter()
+        .filter(|operation| {
+            operation.uid.is_none_or(|uid| {
+                !managers.conduit.is_defeated_device(uid) || managers.hp.current(uid) > 0
+            })
+        })
+        .cloned()
+        .collect()
 }
 
 struct WaveTransition {
@@ -202,6 +217,7 @@ impl BattleRuntime {
         let uses_action_phase_power_clear =
             crate::engine::fight::versions::round_start_setup_layout(fight_version)
                 == Some(crate::engine::fight::versions::RoundStartSetupLayout::Version7);
+        let device_operations = active_conduit_operations(&self.managers, &request.devices_opers);
 
         let conduit_selection = drain::run_command_group(
             &mut self.managers,
@@ -209,7 +225,7 @@ impl BattleRuntime {
             catalog,
             &mut self.determinism,
             context,
-            request.devices_opers.iter().filter_map(|operation| {
+            device_operations.iter().filter_map(|operation| {
                 Some(crate::engine::skill::rule::output::RuleOp::Command(
                     crate::engine::skill::rule::output::BattleCommand::Conduit(
                         crate::engine::manager::conduit::ConduitCommand::SelectGroup {
@@ -249,6 +265,7 @@ impl BattleRuntime {
                 },
             )
             .unwrap_or(context);
+        let device_operations = active_conduit_operations(&self.managers, &device_operations);
         let conduit = if ended_by_player {
             Default::default()
         } else {
@@ -260,7 +277,7 @@ impl BattleRuntime {
                 catalog,
                 &mut self.determinism,
                 conduit_context,
-                &request.devices_opers,
+                &device_operations,
             )
             .map_err(|error| format!("{error:?}"))?
         };
