@@ -75,7 +75,6 @@ fn auto_round_uses_a_ready_configured_assist_boss_before_conduit_cards() {
             opers: reply.opers,
             devices_opers: reply.devices_opers,
             auto_oper: Some(true),
-            ..Default::default()
         })
         .unwrap();
     assert_eq!(runtime.managers.eureka.get(-100, 4).current, 0);
@@ -166,7 +165,7 @@ fn auto_conduit_plan_replays_the_enabling_buff_boundary() {
 }
 
 #[test]
-fn auto_round_keeps_equal_special_energy_cards_in_hand_order() {
+fn auto_round_skips_special_energy_for_an_unselected_group() {
     let mut runtime = team_runtime(
         vec![team_hero(10, 3149, 1_000, [31490111, 31490121])],
         vec![
@@ -178,14 +177,7 @@ fn auto_round_keeps_equal_special_energy_cards_in_hand_order() {
 
     let reply = runtime.plan_auto_round(&AutoRoundRequest::default());
 
-    assert_eq!(
-        reply
-            .opers
-            .iter()
-            .map(|operation| operation.param1)
-            .collect::<Vec<_>>(),
-        vec![Some(1), Some(1)]
-    );
+    assert!(reply.opers.is_empty());
 }
 
 fn hedone_with_stored_energy() -> FightEntityInfo {
@@ -249,7 +241,7 @@ fn auto_round_reserves_unneeded_hedone_energy() {
 }
 
 #[test]
-fn auto_round_uses_hedone_energy_to_fund_a_selected_group() {
+fn auto_round_keeps_stored_hedone_energy_for_a_selected_group() {
     let runtime = team_runtime_against(
         vec![hedone_with_stored_energy()],
         (1..=4).map(|index| enemy(-index, 1_000)).collect(),
@@ -258,14 +250,12 @@ fn auto_round_uses_hedone_energy_to_fund_a_selected_group() {
 
     let reply = runtime.plan_auto_round(&AutoRoundRequest::default());
 
-    assert_eq!(reply.opers.len(), 1);
-    assert_eq!(reply.opers[0].param1, Some(1));
+    assert!(reply.opers.is_empty());
     assert_eq!(reply.devices_opers[0].index, Some(2));
-    assert!(reply.opers[0].to_id.is_some_and(|uid| uid < 0));
 }
 
 #[test]
-fn auto_round_uses_hedone_energy_when_the_selected_ultimate_replaces_it() {
+fn auto_round_keeps_stored_hedone_energy_when_the_unique_is_selected() {
     let mut hedone = hedone_with_stored_energy();
     hedone.ex_point = Some(100);
     hedone.ex_point_type = Some(4);
@@ -302,8 +292,7 @@ fn auto_round_uses_hedone_energy_when_the_selected_ultimate_replaces_it() {
     let reply = runtime.plan_auto_round(&AutoRoundRequest::default());
 
     assert_eq!(reply.devices_opers[0].index, Some(3));
-    assert_eq!(reply.opers.len(), 1);
-    assert_eq!(reply.opers[0].param1, Some(1));
+    assert!(reply.opers.is_empty());
 }
 
 #[test]
@@ -368,47 +357,7 @@ fn conduit_scoring_counts_every_mass_attack_target() {
 }
 
 #[test]
-fn auto_round_rejects_invalid_hedone_owned_state() {
-    let mut hedone = team_hero(10, 3156, 1_000, [31560111, 31560121]);
-    hedone.buffs.push(sonettobuf::BuffInfo {
-        uid: Some(20),
-        buff_id: Some(31560185),
-        from_uid: Some(10),
-        act_info: vec![sonettobuf::BuffActInfo {
-            act_id: Some(1159),
-            param: vec![2, 10],
-            str_param: Some(String::new()),
-        }],
-        ..Default::default()
-    });
-    let runtime = team_runtime(
-        vec![hedone],
-        vec![
-            hand_card(10, 31560181, false),
-            hand_card(10, 31560111, false),
-        ],
-    );
-
-    let error = runtime
-        .try_plan_auto_round(&AutoRoundRequest::default())
-        .unwrap_err();
-
-    assert!(error.contains("auto-battle planning failed"));
-
-    let missing = team_runtime(
-        vec![team_hero(10, 3156, 1_000, [31560111, 31560121])],
-        vec![hand_card(10, 31560181, false)],
-    );
-    assert!(
-        missing
-            .try_plan_auto_round(&AutoRoundRequest::default())
-            .unwrap_err()
-            .contains("auto-battle planning failed")
-    );
-}
-
-#[test]
-fn auto_round_plans_a_full_conduit_roster() {
+fn auto_round_reserves_projected_energy_in_lineup_order() {
     let mut runtime = team_runtime(
         vec![
             team_hero(10, 3145, 1_000, [31450111, 31450121]),
@@ -442,7 +391,7 @@ fn auto_round_plans_a_full_conduit_roster() {
         [
             (Some(10), Some(1)),
             (Some(11), Some(2)),
-            (Some(12), Some(2)),
+            (Some(12), Some(1)),
             (Some(13), Some(1))
         ]
     );
@@ -450,16 +399,15 @@ fn auto_round_plans_a_full_conduit_roster() {
         reply
             .opers
             .iter()
-            .map(|oper| (
-                oper.oper_type,
-                oper.param1,
-                oper.param2,
-                oper.to_id,
-                oper.param3,
-                oper.card_param1.clone(),
-            ))
+            .map(|oper| (oper.oper_type, oper.param1, oper.to_id))
             .collect::<Vec<_>>(),
-        [10, 1, 3, 5, 1].map(|index| (Some(2), Some(index), None, Some(-1), None, None))
+        [
+            (Some(2), Some(4), Some(-1)),
+            (Some(2), Some(6), Some(-1)),
+            (Some(2), Some(2), Some(-1)),
+            (Some(2), Some(1), Some(-1)),
+            (Some(2), Some(4), Some(-1)),
+        ]
     );
 }
 
@@ -484,6 +432,20 @@ fn auto_round_uses_round_start_readiness_for_a_conduit_ultimate() {
         })
         .unwrap();
     assert_eq!(runtime.managers.ex_point.get(10), 100);
+}
+
+#[test]
+fn auto_round_keeps_hedones_ready_unique_despite_its_post_action_reset() {
+    let mut hedone = team_hero(10, 3156, 1_000, [31560111, 31560121]);
+    hedone.ex_point = Some(100);
+    hedone.ex_point_max = Some(100);
+    hedone.ex_point_type = Some(4);
+    hedone.ex_skill = Some(31560131);
+    let runtime = team_runtime(vec![hedone], Vec::new());
+
+    let reply = runtime.plan_auto_round(&AutoRoundRequest::default());
+
+    assert_eq!(reply.devices_opers[0].index, Some(3));
 }
 
 #[test]

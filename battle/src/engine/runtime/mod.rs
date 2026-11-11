@@ -118,7 +118,10 @@ impl BattleRuntime {
         &self,
         request: &sonettobuf::AutoRoundRequest,
     ) -> sonettobuf::AutoRoundReply {
-        self.try_plan_auto_round(request)
+        let mut fixture = self.clone();
+        fixture.extend_current_card_skill_roots();
+        fixture
+            .try_plan_auto_round(request)
             .expect("auto-battle fixture should have valid conduit state")
     }
 

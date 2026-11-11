@@ -17,7 +17,7 @@ pub fn modifier(
     source_uid: i64,
     skill_id: i32,
 ) -> Option<(i32, RuleOp)> {
-    let (team, skill) = managers.conduit.skill(source_uid, skill_id)?;
+    let (team, skill) = managers.conduit.configured_skill(source_uid, skill_id)?;
     if skill.cost_type == 999 || skill.cost_value <= 0 {
         return None;
     }

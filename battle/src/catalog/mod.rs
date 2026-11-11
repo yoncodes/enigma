@@ -593,6 +593,16 @@ impl BattleCatalog {
             .unwrap_or_else(|| card.card_effect.unwrap_or_default())
     }
 
+    pub(crate) fn card_choice_skills(self, skill_id: i32) -> Vec<i32> {
+        self.game_data
+            .fight_card_choice
+            .get(skill_id)
+            .into_iter()
+            .flat_map(|row| row.choice_sk_ills.split('#'))
+            .filter_map(|skill_id| skill_id.trim().parse().ok())
+            .collect()
+    }
+
     pub(crate) fn skill_is_ultimate_for_model(self, skill_id: i32, model_id: i32) -> bool {
         self.game_data
             .skill

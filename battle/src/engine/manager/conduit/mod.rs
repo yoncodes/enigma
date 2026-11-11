@@ -453,7 +453,11 @@ impl ConduitManager {
         self.configured_skill(source_uid, skill_id).is_some()
     }
 
-    fn configured_skill(&self, source_uid: i64, skill_id: i32) -> Option<(i32, ConduitSkill)> {
+    pub(crate) fn configured_skill(
+        &self,
+        source_uid: i64,
+        skill_id: i32,
+    ) -> Option<(i32, ConduitSkill)> {
         self.areas.iter().find_map(|(team, area)| {
             let device = area
                 .devices

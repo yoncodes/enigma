@@ -53,6 +53,32 @@ fn run_start_schedule(
 }
 
 impl BattleRuntime {
+    pub(super) fn extend_current_card_skill_roots(&mut self) {
+        let card_skills = self
+            .managers
+            .card
+            .hand()
+            .iter()
+            .chain(self.managers.card.draw_pile())
+            .chain(self.managers.card.team_cards())
+            .chain(self.managers.card.ai_queue())
+            .filter_map(|card| card.skill_id)
+            .filter(|skill_id| *skill_id > 0)
+            .collect::<Vec<_>>();
+        let skill_ids = card_skills
+            .iter()
+            .copied()
+            .chain(
+                card_skills
+                    .iter()
+                    .flat_map(|skill_id| self.managers.catalog().card_choice_skills(*skill_id)),
+            )
+            .collect::<Vec<_>>();
+        self.catalog_data
+            .expect("battle runtime was not constructed with a catalog")
+            .extend_skill_roots(&mut self.catalog, skill_ids, std::iter::empty());
+    }
+
     pub fn start_round(&mut self) -> Result<FightRound, String> {
         let round = self.build_start_round_from_schedule()?;
         self.round = Some(round.clone());
@@ -238,6 +264,7 @@ impl BattleRuntime {
         );
         self.round_state.hero_sp_attributes = self.managers.hero_sp_attributes(&self.fight);
         self.round_state.last_change_hero_uid = self.fight.last_change_hero_uid.or(Some(0));
+        self.extend_current_card_skill_roots();
         let attacker = self.fight.attacker.as_ref();
         Ok(FightRound {
             act_point: Some(self.round_state.act_point),

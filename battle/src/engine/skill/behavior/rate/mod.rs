@@ -898,6 +898,39 @@ pub fn emit_active_target_attack_attributes(
     }
 }
 
+pub(crate) fn active_modifiers(
+    source_uid: i64,
+    skill_id: i32,
+    target_uid: i64,
+    runtime: RateRuntime<'_>,
+    determinism: &RoundDeterminism,
+) -> SkillModifiers {
+    let Some(effect) = runtime.effects.get(skill_id) else {
+        return SkillModifiers::default();
+    };
+    let mut modifiers = SkillModifiers::default();
+    let mut determinism = determinism.clone();
+    let mut context = runtime.context;
+    context.hit_source_uid = source_uid;
+    context.hit_target_uid = target_uid;
+    context.runtime_target_uid = target_uid;
+    for slot in &effect.slots {
+        collect_attack_modifier_slot(
+            &mut modifiers,
+            ModifierOwner {
+                uid: source_uid,
+                skill_id,
+            },
+            skill_id,
+            slot,
+            RateRuntime { context, ..runtime },
+            &mut determinism,
+            ModifierSide::Source,
+        );
+    }
+    modifiers
+}
+
 pub(crate) fn incoming_target_attack_modifiers(
     source_uid: i64,
     target_uid: i64,

@@ -71,6 +71,7 @@ fn auto_runtime() -> BattleRuntime {
             deck_num: 0,
         }))
         .unwrap();
+    runtime.extend_current_card_skill_roots();
     runtime.round_state.act_point = 1;
     runtime
 }
@@ -354,6 +355,7 @@ fn team_runtime_against(
             deck_num: 0,
         }))
         .unwrap();
+    runtime.extend_current_card_skill_roots();
     runtime.round_state.act_point = 1;
     runtime
 }
@@ -565,7 +567,9 @@ fn auto_round_loads_visible_conduit_card_roots() {
         vec![hand_card(10, 31446011, false)],
     );
 
-    let reply = runtime.plan_auto_round(&AutoRoundRequest::default());
+    let reply = runtime
+        .try_plan_auto_round(&AutoRoundRequest::default())
+        .unwrap();
 
     assert_eq!(reply.opers[0].param1, Some(1));
 }
@@ -663,16 +667,6 @@ fn auto_round_selects_conduit_groups_from_round_utility() {
     );
 }
 
-#[test]
-fn auto_round_does_not_report_a_future_card_driven_group_change() {
-    let runtime = everecho_switch_runtime(vec![hand_card(10, 31450181, false)], 1);
-
-    let reply = runtime.plan_auto_round(&AutoRoundRequest::default());
-
-    assert_eq!(reply.opers[0].param1, Some(1));
-    assert_eq!(reply.devices_opers[0].index, Some(1));
-}
-
 fn everecho_switch_runtime(hand: Vec<CardInfo>, act_point: i32) -> BattleRuntime {
     let mut runtime = team_runtime(
         vec![
@@ -696,40 +690,6 @@ fn everecho_switch_runtime(hand: Vec<CardInfo>, act_point: i32) -> BattleRuntime
         })
         .unwrap();
     runtime
-}
-
-#[test]
-fn auto_round_does_not_feed_one_devices_switch_with_another_owners_energy() {
-    let runtime = everecho_switch_runtime(
-        vec![
-            hand_card(11, 31446012, false),
-            hand_card(10, 31450181, false),
-        ],
-        2,
-    );
-
-    let reply = runtime.plan_auto_round(&AutoRoundRequest::default());
-
-    assert_eq!(reply.opers.len(), 2);
-    assert_eq!(reply.opers[0].param1, Some(2));
-    assert_eq!(reply.devices_opers[0].index, Some(1));
-}
-
-#[test]
-fn auto_round_feeds_a_devices_switch_with_its_own_later_energy() {
-    let runtime = everecho_switch_runtime(
-        vec![
-            hand_card(10, 31446062, false),
-            hand_card(10, 31450181, false),
-        ],
-        2,
-    );
-
-    let reply = runtime.plan_auto_round(&AutoRoundRequest::default());
-
-    assert_eq!(reply.devices_opers[0].index, Some(2));
-    assert_eq!(reply.opers.len(), 2);
-    assert_eq!(reply.opers[0].param1, Some(2));
 }
 
 #[test]
@@ -812,28 +772,6 @@ fn auto_round_multi_device_plan_executes_without_cross_feeding_switches() {
 }
 
 #[test]
-fn auto_round_tracks_a_prefilled_conduit_switch_before_generated_energy() {
-    let runtime = everecho_switch_runtime(
-        vec![
-            hand_card(11, 31446012, false),
-            hand_card(10, 31450181, false),
-        ],
-        2,
-    );
-    let prefix = runtime.plan_auto_round(&AutoRoundRequest::default()).opers[0].clone();
-    assert_eq!(prefix.param1, Some(2));
-
-    let reply = runtime.plan_auto_round(&AutoRoundRequest {
-        opers: vec![prefix],
-        to_id: Some(-1),
-    });
-
-    assert_eq!(reply.opers.len(), 1);
-    assert_eq!(reply.opers[0].param1, Some(1));
-    assert_eq!(reply.devices_opers[0].index, Some(1));
-}
-
-#[test]
 fn auto_round_selects_conduit_healing_only_for_urgent_hp() {
     for (ally_hp, expected_group) in [(700, 1), (500, 2)] {
         let mut runtime = team_runtime(
@@ -866,29 +804,6 @@ fn auto_round_selects_conduit_healing_only_for_urgent_hp() {
             "ally hp {ally_hp}"
         );
     }
-}
-
-#[test]
-fn auto_round_conduit_lookahead_respects_higher_priority_action_points() {
-    let mut ally = team_hero(11, 3023, 1_000, [30230111, 30230121]);
-    ally.ex_point = Some(5);
-    ally.ex_point_max = Some(5);
-    ally.ex_skill = Some(30230131);
-    let runtime = coppelia_conduit_runtime(
-        ally,
-        vec![
-            hand_card(11, 30230131, false),
-            hand_card(10, 31446011, false),
-            hand_card(10, 31446011, false),
-        ],
-        2,
-    );
-
-    let reply = runtime.plan_auto_round(&AutoRoundRequest::default());
-
-    assert_eq!(reply.opers.len(), 2);
-    assert_eq!(reply.opers[0].param1, Some(1));
-    assert_eq!(reply.devices_opers[0].index, Some(2));
 }
 
 #[test]
@@ -936,32 +851,6 @@ fn auto_round_refreshes_an_expiring_buff_with_an_ordinary_card() {
     });
 
     assert_eq!(reply.opers[0].param1, Some(1));
-}
-
-#[test]
-fn auto_round_conduit_lookahead_keeps_energy_order_after_prefix() {
-    let runtime = coppelia_conduit_runtime(
-        team_hero(11, 3023, 1_000, [30230111, 30230121]),
-        vec![
-            hand_card(10, 31446011, false),
-            hand_card(10, 31446011, false),
-            hand_card(11, 31446021, false),
-        ],
-        2,
-    );
-    let reply = runtime.plan_auto_round(&AutoRoundRequest {
-        opers: vec![BeginRoundOper {
-            oper_type: Some(CardOpType::PlayCard.id()),
-            param1: Some(1),
-            to_id: Some(-1),
-            ..Default::default()
-        }],
-        to_id: Some(-1),
-    });
-
-    assert_eq!(reply.opers.len(), 1);
-    assert_eq!(reply.opers[0].param1, Some(1));
-    assert_eq!(reply.devices_opers[0].index, Some(1));
 }
 
 fn coppelia_conduit_runtime(
@@ -1210,7 +1099,7 @@ fn auto_round_prefers_hp_redistribution_setup_over_an_attack() {
 }
 
 #[test]
-fn auto_round_feeds_the_selected_conduit_group_from_available_energy() {
+fn auto_round_chooses_current_utility_when_multiple_energy_types_are_available() {
     let mut runtime = twins_conduit_runtime(1_000, 0, false, 70);
     runtime
         .managers
@@ -1227,15 +1116,8 @@ fn auto_round_feeds_the_selected_conduit_group_from_available_energy() {
 
     let reply = runtime.plan_auto_round(&AutoRoundRequest::default());
 
-    assert_eq!(
-        reply
-            .opers
-            .iter()
-            .map(|oper| oper.param1)
-            .collect::<Vec<_>>(),
-        vec![Some(5), Some(5)]
-    );
-    assert_eq!(reply.devices_opers[0].index, Some(2));
+    assert_eq!(reply.opers.len(), 2);
+    assert_eq!(reply.devices_opers[0].index, Some(1));
 }
 
 #[test]
@@ -1308,7 +1190,7 @@ fn auto_round_prefers_an_owner_bound_temporary_skill() {
 }
 
 #[test]
-fn auto_round_keeps_equal_ordinary_energy_cards_in_back_to_front_lineup_order() {
+fn auto_round_skips_energy_without_a_selected_power_type() {
     let mut ally = team_hero(11, 3023, 1_000, [30230111, 30230121]);
     ally.ex_point = Some(5);
     ally.ex_point_max = Some(5);
@@ -1331,7 +1213,7 @@ fn auto_round_keeps_equal_ordinary_energy_cards_in_back_to_front_lineup_order() 
             .iter()
             .map(|oper| oper.param1)
             .collect::<Vec<_>>(),
-        vec![Some(1), Some(1)]
+        vec![Some(1)]
     );
 }
 

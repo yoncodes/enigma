@@ -62,9 +62,8 @@ fn changes(result: &DrainResult) -> Vec<(i64, i32)> {
 #[test]
 fn lowest_moxie_commands_reselect_from_committed_state() {
     let mut everecho = entity(40, 0, 100, Vec::new());
-    everecho.ex_point_type = Some(
-        crate::engine::manager::ex_point::ExPointKind::DevicePower.as_wire(),
-    );
+    everecho.ex_point_type =
+        Some(crate::engine::manager::ex_point::ExPointKind::DevicePower.as_wire());
     let fight = Fight {
         attacker: Some(FightTeam {
             entitys: vec![
