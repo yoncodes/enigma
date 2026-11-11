@@ -56,7 +56,46 @@ pub struct BattleRuntime {
     absorb_hurt_map_layout: AbsorbHurtMapLayout,
 }
 
+#[derive(Debug, Clone)]
+pub struct AutoRoundPlanner {
+    fight: Fight,
+    managers: BattleManagers,
+    catalog: SkillEffectCatalog,
+    round_state: RoundState,
+    determinism: RoundDeterminism,
+    devices: Vec<sonettobuf::FightDeviceOper>,
+}
+
+impl AutoRoundPlanner {
+    pub fn plan(
+        &self,
+        request: &sonettobuf::AutoRoundRequest,
+    ) -> Result<sonettobuf::AutoRoundReply, String> {
+        crate::engine::auto_battle::plan(
+            request,
+            &self.fight,
+            &self.managers,
+            &self.catalog,
+            &self.round_state,
+            &self.determinism,
+            self.devices.clone(),
+        )
+        .map_err(|error| format!("auto-battle planning failed: {error:?}"))
+    }
+}
+
 impl BattleRuntime {
+    pub(crate) fn auto_round_planner(&self) -> AutoRoundPlanner {
+        AutoRoundPlanner {
+            fight: self.fight.clone(),
+            managers: self.managers.clone(),
+            catalog: self.catalog.clone(),
+            round_state: self.round_state.clone(),
+            determinism: self.determinism.clone(),
+            devices: self.conduit_operations(),
+        }
+    }
+
     /// Plans client auto-battle operations without mutating authoritative state.
     pub fn try_plan_auto_round(
         &self,

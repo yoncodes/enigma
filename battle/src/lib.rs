@@ -10,7 +10,7 @@ mod battle;
 mod engine;
 
 pub use battle::Battle;
-pub use engine::runtime::BattleOutcome;
+pub use engine::runtime::{AutoRoundPlanner, BattleOutcome};
 
 #[cfg(test)]
 pub(crate) mod test_support;

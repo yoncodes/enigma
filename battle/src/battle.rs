@@ -7,7 +7,7 @@ use crate::{
     BattleOutcome,
     catalog::BattleCatalog,
     dungeon::BuiltFight,
-    engine::runtime::{BattleRuntime, determinism::RoundDeterminism},
+    engine::runtime::{AutoRoundPlanner, BattleRuntime, determinism::RoundDeterminism},
 };
 
 /// One authoritative battle simulation exposed through server-facing operations.
@@ -76,6 +76,10 @@ impl Battle {
 
     pub fn plan_auto_round(&self, request: &AutoRoundRequest) -> Result<AutoRoundReply, String> {
         self.runtime.try_plan_auto_round(request)
+    }
+
+    pub fn auto_round_planner(&self) -> AutoRoundPlanner {
+        self.runtime.auto_round_planner()
     }
 
     pub fn use_cloth_skill(&mut self, request: UseClothSkillRequest) -> Option<UseClothSkillReply> {
@@ -170,5 +174,10 @@ mod tests {
 
         assert_eq!(actual.reconnect_state(), expected.reconnect_state());
         assert_eq!(actual.outcome(), expected.outcome());
+        let request = AutoRoundRequest::default();
+        assert_eq!(
+            actual.plan_auto_round(&request).unwrap(),
+            actual.auto_round_planner().plan(&request).unwrap()
+        );
     }
 }

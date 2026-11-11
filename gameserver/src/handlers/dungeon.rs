@@ -519,14 +519,11 @@ pub async fn on_begin_round(
 
 pub async fn on_auto_round(ctx: &mut ConnectionContext, req: ClientPacket) -> Result<(), AppError> {
     let msg = AutoRoundRequest::decode(&req.data[..])?;
-    let active = ctx
-        .player()?
-        .battle
-        .active_snapshot()
-        .ok_or(AppError::InvalidRequest)?;
-    let reply = tokio::task::spawn_blocking(move || active.plan_auto_round(&msg))
+    let planner = ctx.player()?.battle.auto_round_planner()?;
+    let reply = tokio::task::spawn_blocking(move || planner.plan(&msg))
         .await
-        .map_err(|error| AppError::Custom(format!("auto-round planner failed: {error}")))??;
+        .map_err(|error| AppError::Custom(format!("auto-round planner failed: {error}")))?
+        .map_err(AppError::Custom)?;
 
     ctx.send_reply(CmdId::AutoRoundCmd, reply, 0, req.up_tag)
         .await

@@ -6,10 +6,10 @@ use flate2::{Compression, read::GzEncoder};
 use prost::Message;
 use serde::{Deserialize, Serialize};
 use sonettobuf::{
-    Act229HeroNo, AutoRoundReply, AutoRoundRequest, BeginRoundReply, BeginRoundRequest, CardInfo,
-    CardInfoPush, FightEntityInfo, FightReason, FightRoundOperRecord, ReconnectFightReply,
-    RedealCardInfoPush, ResetRoundReply, StartDungeonReply, StartDungeonRequest,
-    UseClothSkillOperRecord, UseClothSkillReply, UseClothSkillRequest, fight_reason,
+    Act229HeroNo, BeginRoundReply, BeginRoundRequest, CardInfo, CardInfoPush, FightEntityInfo,
+    FightReason, FightRoundOperRecord, ReconnectFightReply, RedealCardInfoPush, ResetRoundReply,
+    StartDungeonReply, StartDungeonRequest, UseClothSkillOperRecord, UseClothSkillReply,
+    UseClothSkillRequest, fight_reason,
 };
 use sqlx::SqlitePool;
 use std::io::Read;
@@ -33,6 +33,11 @@ impl BattleState {
 
     pub fn active_snapshot(&self) -> Option<ActiveBattle> {
         self.active.clone()
+    }
+
+    pub fn auto_round_planner(&self) -> Result<::battle::AutoRoundPlanner, AppError> {
+        let active = self.active.as_ref().ok_or(AppError::InvalidRequest)?;
+        Ok(active.runtime.auto_round_planner())
     }
 
     pub fn restore_active(&mut self, active: ActiveBattle) {
@@ -240,12 +245,6 @@ impl ActiveBattle {
 
     pub fn star(&self) -> Result<i32, AppError> {
         crate::dungeon::battle_star(&self.runtime, self.battle_id)
-    }
-
-    pub fn plan_auto_round(&self, request: &AutoRoundRequest) -> Result<AutoRoundReply, AppError> {
-        self.runtime
-            .plan_auto_round(request)
-            .map_err(AppError::Custom)
     }
 
     pub fn use_cloth_skill(

@@ -128,6 +128,9 @@ pub(crate) fn plan(
                 .filter_map(|oper| oper.param3)
                 .filter(|skill_id| *skill_id > 0),
         )
+        .collect::<HashSet<_>>()
+        .into_iter()
+        .filter(|skill_id| catalog.get(*skill_id).is_none())
         .collect();
     let catalog = if roots.is_empty() {
         std::borrow::Cow::Borrowed(catalog)
