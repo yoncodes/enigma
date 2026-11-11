@@ -1451,11 +1451,30 @@ fn project_change(
             ));
             effects
         }
-        BattleChange::EntityPromotion(promotion) => vec![EffectPacket::change_hero(
-            promotion.defeated_uid,
-            promotion.position,
-            promotion.entering.clone(),
-        )],
+        BattleChange::EntityPromotion(promotion) => {
+            let mut effects = vec![EffectPacket::change_hero(
+                promotion.defeated_uid,
+                promotion.position,
+                promotion.entering.clone(),
+            )];
+            if let Some(cycle) = &promotion.cycle {
+                effects.push(EffectPacket::call_monster_to_sub(
+                    promotion.team_type,
+                    cycle.reserve.clone(),
+                ));
+            }
+            effects
+        }
+        BattleChange::ReservePromotionBatchCompleted(completion) => completion
+            .cycles
+            .iter()
+            .map(|cycle| {
+                EffectPacket::remove_monster_sub(
+                    cycle.removed_uid,
+                    cycle.reserve.team_type.unwrap_or_default(),
+                )
+            })
+            .collect(),
         BattleChange::WaveAdvanced(change) => {
             vec![EffectPacket::new_change_wave(change.fight.clone())]
         }

@@ -272,6 +272,25 @@ impl EffectPacket {
         }
     }
 
+    pub fn call_monster_to_sub(team_type: i32, entity: FightEntityInfo) -> ActEffect {
+        ActEffect {
+            target_id: Some(0),
+            effect_type: Some(EffectType::Callmonstertosub as i32),
+            entity: Some(entity),
+            team_type: Some(team_type),
+            ..Default::default()
+        }
+    }
+
+    pub fn remove_monster_sub(target_uid: i64, team_type: i32) -> ActEffect {
+        ActEffect {
+            target_id: Some(target_uid),
+            effect_type: Some(EffectType::Removemonstersub as i32),
+            team_type: Some(team_type),
+            ..Default::default()
+        }
+    }
+
     pub fn new_change_wave(fight: sonettobuf::Fight) -> ActEffect {
         ActEffect {
             effect_type: Some(EffectType::Newchangewave as i32),

@@ -1,4 +1,4 @@
-use sonettobuf::{BuffInfo, FightTeam, HeroAttribute};
+use sonettobuf::{BuffInfo, FightTeam, HeroAttribute, PowerInfo};
 
 use super::*;
 use crate::engine::skill::rule::{DefinitionKey, RuleDomain};
@@ -362,6 +362,71 @@ fn promoted_defeated_unit_moves_behind_the_remaining_reserves() {
             .filter_map(|entity| entity.uid)
             .collect::<Vec<_>>(),
         [-3, -1]
+    );
+}
+
+#[test]
+fn cycle_substitution_replaces_the_defeated_reserve_with_a_fresh_copy() {
+    let entity = |uid, hp, position| FightEntityInfo {
+        uid: Some(uid),
+        model_id: Some(116_320_003),
+        team_type: Some(2),
+        current_hp: Some(hp),
+        ex_point: Some(3),
+        shield_value: Some(20),
+        position: Some(position),
+        attr: Some(HeroAttribute {
+            hp: Some(100),
+            ..Default::default()
+        }),
+        buffs: vec![BuffInfo {
+            uid: Some(uid.unsigned_abs() as i64),
+            buff_id: Some(99),
+            from_uid: Some(uid),
+            ..Default::default()
+        }],
+        power_infos: vec![PowerInfo {
+            power_id: Some(4),
+            num: Some(2),
+            max: Some(5),
+        }],
+        ..Default::default()
+    };
+    let mut fight = Fight {
+        defender: Some(FightTeam {
+            entitys: vec![entity(-1, 0, 1)],
+            sub_entitys: vec![entity(-2, 100, -1), entity(-3, 100, -2)],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let mut manager = EntityManager::seed(&fight);
+    let mut hp = HpManager::default();
+    hp.seed(&fight);
+
+    let promotion = manager.promote_reserves(&hp).remove(0);
+    let cycle = manager
+        .cycle_defeated_to_reserve(catalog(), &promotion)
+        .unwrap();
+    manager.sync_to_fight(&mut fight);
+
+    assert_eq!(cycle.removed_uid, -1);
+    assert_eq!(cycle.reserve.uid, Some(-4));
+    assert_eq!(cycle.reserve.current_hp, Some(100));
+    assert_eq!(cycle.reserve.position, Some(-2));
+    assert_eq!(cycle.reserve.ex_point, Some(3));
+    assert_eq!(cycle.reserve.shield_value, Some(20));
+    assert_eq!(cycle.reserve.buffs[0].buff_id, Some(99));
+    assert_eq!(cycle.reserve.power_infos[0].num, Some(2));
+    let defender = fight.defender.unwrap();
+    assert_eq!(defender.entitys[0].uid, Some(-2));
+    assert_eq!(
+        defender
+            .sub_entitys
+            .iter()
+            .filter_map(|entity| entity.uid)
+            .collect::<Vec<_>>(),
+        [-3, -4]
     );
 }
 

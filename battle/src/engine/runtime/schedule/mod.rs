@@ -567,11 +567,11 @@ pub fn run_promotions(
     catalog: &SkillEffectCatalog,
     determinism: &mut RoundDeterminism,
     context: TargetContext,
-    promotions: impl IntoIterator<Item = crate::engine::fight::reserve::Promotion>,
+    promotions: &crate::engine::fight::reserve::PromotionBatch,
 ) -> Result<DrainResult, DrainError> {
     let pool = pool.runtime_view(managers);
     let mut result = DrainResult::default();
-    for promotion in promotions {
+    for promotion in promotions.promotions().iter().cloned() {
         let entering_uid = promotion.entering_uid;
         let origin = CommandOrigin {
             domain: RuleDomain::Lifecycle,
@@ -660,6 +660,16 @@ pub fn run_promotions(
         promoted.outcomes.extend(entered.outcomes);
         promoted.events.extend(entered.events);
         append(&mut result, promoted);
+    }
+    if !promotions.completion().is_empty() {
+        result
+            .frames
+            .last_mut()
+            .expect("reserve cycles follow at least one promotion")
+            .items
+            .push(FrameItem::Change(Box::new(
+                BattleChange::ReservePromotionBatchCompleted(promotions.completion().clone()),
+            )));
     }
     Ok(result)
 }

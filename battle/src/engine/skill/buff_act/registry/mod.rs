@@ -177,6 +177,7 @@ pub enum BuffActKind {
     ControlTeamInjuryCountRound,
     CountContinueChannel,
     ConduitCardSelection,
+    CycleToSub,
     CreateAdditionalDamage,
     CreateHeroTempCards,
     CreateTempSkill3Card,
@@ -963,6 +964,9 @@ buff_act_definitions! {
         supports: |args| matches!(args, [power_id, delta] if *power_id > 0 && *delta != 0), wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(719, "PowerMaxAdd"), &[]));
     (720, "MonsterLabel") => MonsterLabel,
         effect_time_subscription: false, supports: |_| true, state_consumer: true, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(720, "MonsterLabel"), &[EffectType::Monsterlabelbuff as i32]));
+    (931, "CycleToSub") => CycleToSub,
+        effect_time_subscription: false, supports: |args| args.is_empty(), state_consumer: true,
+        wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(931, "CycleToSub"), &[]));
     (721, "DotNoLimit") => DotNoLimit,
         scoped_runtime: |context| super::dot_no_limit::rule_ops(context.managers, context.subscriber, context.event?),
         supports: |_| true, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(721, "DotNoLimit"), &[EffectType::Dot as i32]));

@@ -1518,24 +1518,49 @@ impl BattleManagers {
     pub(crate) fn promote_reserves(
         &mut self,
         fight: &mut Fight,
-    ) -> Vec<crate::engine::fight::reserve::Promotion> {
-        let mut promotions = self.entity.promote_reserves(&self.hp);
-        self.complete_promotions(&mut promotions);
+    ) -> crate::engine::fight::reserve::PromotionBatch {
+        let promotions = self.promote_reserves_matching(|_| true);
         self.sync_entities(fight);
         promotions
     }
 
     pub(crate) fn promote_immediate_reserves(
         &mut self,
-    ) -> Vec<crate::engine::fight::reserve::Promotion> {
-        let battle_rule = &self.battle_rule;
-        let mut promotions = self
-            .entity
-            .promote_immediate_reserves(&self.hp, |team_type| {
-                battle_rule.promotes_reserves_immediately(team_type)
-            });
-        self.complete_promotions(&mut promotions);
-        promotions
+    ) -> crate::engine::fight::reserve::PromotionBatch {
+        let immediate = [1, 2]
+            .into_iter()
+            .filter(|team_type| self.battle_rule.promotes_reserves_immediately(*team_type))
+            .collect::<Vec<_>>();
+        self.promote_reserves_matching(|team_type| immediate.contains(&team_type))
+    }
+
+    fn promote_reserves_matching(
+        &mut self,
+        promotes: impl Fn(i32) -> bool + Copy,
+    ) -> crate::engine::fight::reserve::PromotionBatch {
+        let mut promotions = Vec::new();
+        loop {
+            let batch = self.entity.promote_immediate_reserves(&self.hp, promotes);
+            if batch.is_empty() {
+                break;
+            }
+            for mut promotion in batch {
+                if self.buff.has_buff_act_kind(
+                    promotion.defeated_uid,
+                    crate::engine::skill::buff_act::registry::BuffActKind::CycleToSub,
+                ) {
+                    let catalog = self.catalog();
+                    if let Some(cycle) = self.entity.cycle_defeated_to_reserve(catalog, &promotion)
+                    {
+                        self.register_entity_state(&cycle.reserve);
+                        promotion.cycle = Some(cycle);
+                    }
+                }
+                self.complete_promotions(std::slice::from_mut(&mut promotion));
+                promotions.push(promotion);
+            }
+        }
+        crate::engine::fight::reserve::PromotionBatch::new(promotions)
     }
 
     fn complete_promotions(&self, promotions: &mut [crate::engine::fight::reserve::Promotion]) {

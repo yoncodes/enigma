@@ -522,9 +522,38 @@ impl EntityManager {
                 position: main_position.unwrap_or_default(),
                 team_type,
                 entering,
+                cycle: None,
             });
         }
         promotions
+    }
+
+    pub(crate) fn cycle_defeated_to_reserve(
+        &mut self,
+        catalog: crate::catalog::BattleCatalog,
+        promotion: &crate::engine::fight::reserve::Promotion,
+    ) -> Option<crate::engine::fight::reserve::CycleSubstitution> {
+        let mut reserve = self.identities.get(&promotion.defeated_uid)?.clone();
+        let reserves = self.reserve_order.entry(promotion.team_type).or_default();
+        reserves.retain(|uid| *uid != promotion.defeated_uid);
+        self.roster_lanes
+            .insert(promotion.defeated_uid, RosterLane::Replaced);
+
+        let uid = self.next_special_uid;
+        self.next_special_uid -= 1;
+        reserve.uid = Some(uid);
+        reserve.position = Some(-((reserves.len() + 1) as i32));
+        reserve.current_hp = reserve
+            .attr
+            .as_ref()
+            .and_then(|attr| attr.hp)
+            .or(reserve.current_hp);
+        self.register_in_lane(catalog, &reserve, RosterLane::Reserve);
+
+        Some(crate::engine::fight::reserve::CycleSubstitution {
+            removed_uid: promotion.defeated_uid,
+            reserve,
+        })
     }
 
     pub(crate) fn has_pending_reserve_promotion(&self, uid: i64, hp: &HpManager) -> bool {

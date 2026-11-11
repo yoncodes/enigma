@@ -97,6 +97,14 @@ fn entity_entry_reactions_are_siblings_of_the_causing_event_skill() {
 }
 
 #[test]
+fn battle_start_owner_setup_reactivates_for_entering_reserves() {
+    assert_eq!(
+        find_key(5021, "EnterFight").map(|definition| definition.reactivation_events),
+        Some(&[EventKind::EntityEntered][..])
+    );
+}
+
+#[test]
 fn round_end_frames_target_the_passive_owner() {
     assert_eq!(
         find_key(302, "None").map(|definition| definition.reaction_frame_target),

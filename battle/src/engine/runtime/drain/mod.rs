@@ -413,7 +413,7 @@ fn drain_queue_with_deferred(
                     catalog,
                     determinism,
                     context,
-                    promotions,
+                    &promotions,
                 )?;
                 for frame in promoted.frames.drain(..) {
                     push_frame_child(&mut result.frames, parent_path, frame);

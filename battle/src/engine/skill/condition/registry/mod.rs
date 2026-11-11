@@ -661,7 +661,7 @@ condition_definitions! {
     [5] "EnterFight" => lifecycle::enter_fight, reactivates_on(in_event_sibling_frame(setup_route(SetupStage::EnterFight, 0, &[])), &[EventKind::EntityEntered, EventKind::EntityTransformed]);
     [55, 1050, 655036, 655038] "None" => none::enter_battle, companion_setup(event_trigger(EventKind::EntityEntered, None), &[(SetupStage::EnterBattleStatic, 0)]);
     [6] "None" => none::unconditional, setup_route(SetupStage::Unconditional, 0, &[]);
-    [5021] "EnterFight" => lifecycle::battle_start, setup_route(SetupStage::BattleStart, 0, &[]);
+    [5021] "EnterFight" => lifecycle::battle_start, reactivates_on(setup_route(SetupStage::BattleStart, 0, &[]), &[EventKind::EntityEntered]);
     [100] "None" => none::round_start, setup_route(SetupStage::RoundStart, -1, &[]);
     [101] "None" => none::round_start, setup_route(SetupStage::RoundStartCondition, 101, &[]);
     [102] "None" => none::round_start, setup_route(SetupStage::RoundStartCondition, 102, &[]);

@@ -384,11 +384,11 @@ impl BattleRuntime {
             )?);
         }
         let promotions = if ended_during_attacker_actions {
-            Vec::new()
+            Default::default()
         } else {
             self.managers.promote_reserves(&mut self.fight)
         };
-        self.objectives.record_promotions(&promotions);
+        self.objectives.record_promotions(promotions.promotions());
         if !promotions.is_empty() {
             self.managers.sync_roster(&self.fight);
             pool = crate::engine::skill::target::TargetPool::from_fight_with_catalog(
@@ -402,7 +402,7 @@ impl BattleRuntime {
                 catalog,
                 &mut self.determinism,
                 context,
-                promotions.iter().cloned(),
+                &promotions,
             )
             .map_err(|error| format!("{error:?}"))?;
             ai_turn.observe(&promotion);
@@ -498,7 +498,7 @@ impl BattleRuntime {
                 &mut self.determinism,
                 context,
                 choices,
-                &promotions,
+                promotions.promotions(),
             )
             .map_err(|error| format!("{error:?}"))?;
             fight_steps.extend(project_result(ai, fight_version, absorb_hurt_map_layout)?);

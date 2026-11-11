@@ -277,6 +277,7 @@ fn ai_actions_credit_a_promoted_replacement_when_the_card_is_invalidated() {
         position: 1,
         team_type: 2,
         entering: FightEntityInfo::default(),
+        cycle: None,
     }];
 
     let result = run_ai_actions(

@@ -1,5 +1,7 @@
 use super::*;
 
+mod cycle_substitution;
+
 #[test]
 fn player_and_marked_monster_reserves_promote_after_the_action() {
     init_config();
@@ -203,7 +205,7 @@ fn reserve_promotion_records_roster_change_and_removes_the_old_ai_cards() {
         &SkillEffectCatalog::default(),
         &mut RoundDeterminism::default(),
         TargetContext::default(),
-        promotions,
+        &promotions,
     )
     .unwrap();
     let steps = crate::engine::packet::timeline::project(&result.frames).unwrap();
@@ -287,7 +289,7 @@ fn promoted_defender_joins_the_normal_round_start_once() {
         &catalog,
         &mut determinism,
         context,
-        promotions,
+        &promotions,
     )
     .unwrap();
     run_before_ai_round_start(
