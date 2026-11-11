@@ -25,7 +25,7 @@ mod conduit;
 #[derive(Debug)]
 pub(crate) enum AutoBattleError {
     MissingSkill(i32),
-    HedoneDevicePower(crate::engine::mechanic::hedone_device_power::HedoneDevicePowerError),
+    ConduitEnergy(conduit::CardEnergyError),
 }
 
 const HEAL_BELOW_HP_PERCENT: i64 = 80;
@@ -569,47 +569,25 @@ fn best_candidate(
             );
             let buffs = certain_buffs(skill_id, catalog);
             let effect_tag = catalog.effect_tag(skill_id);
-            let energy = cards.conduit_skill_energy(skill_id);
-            let hedone_energy = energy.is_some_and(|energy| energy.special)
-                && crate::engine::mechanic::hedone_device_power::owns_skill(catalog, skill_id);
-            let energy_amount = match energy {
-                Some(energy) if hedone_energy => {
-                    match crate::engine::mechanic::hedone_device_power::available_gain(
-                        managers,
-                        source_uid,
-                        energy.power_id,
-                    ) {
-                        Ok(gain) => gain.map_or(0, |(_, amount)| amount),
-                        Err(error) => {
-                            return Some(Err(AutoBattleError::HedoneDevicePower(error)));
-                        }
-                    }
-                }
-                Some(energy) => energy.amount,
-                None => 0,
+            let energy = match conduit::card_energy(
+                cards,
+                managers,
+                live_pool,
+                catalog,
+                source_uid,
+                skill_id,
+                temporary,
+                selected_power_types,
+            ) {
+                Ok(energy) => energy,
+                Err(error) => return Some(Err(AutoBattleError::ConduitEnergy(error))),
             };
-            let special_energy = energy.is_some_and(|energy| energy.special);
-            let preferred_energy = (hedone_energy && energy_amount > 0)
-                || (temporary
-                    && special_energy
-                    && crate::engine::mechanic::card::CardMechanic
-                        .ultimate_resource_ready(managers, source))
-                || energy.is_some_and(|energy| {
-                    if !energy.special && selected_power_types.is_empty() {
-                        return true;
-                    }
-                    live_pool.team_type(source_uid).is_some_and(|team| {
-                        selected_power_types
-                            .iter()
-                            .any(|(selected_team, selected_power)| {
-                                *selected_team == team
-                                    && (energy.power_id == 0 || *selected_power == energy.power_id)
-                            })
-                    })
-                });
-            if (energy_amount <= 0 && energy.is_some()) || (energy.is_some() && !preferred_energy) {
+            if energy.is_some_and(|energy| !energy.selectable()) {
                 return None;
             }
+            let energy_amount = energy.map_or(0, |energy| energy.amount);
+            let special_energy = energy.is_some_and(|energy| energy.special);
+            let preferred_energy = energy.is_some_and(|energy| energy.preferred);
             // An enemy's debuff may come from a passive, so debuff cards never count as redundant.
             let may_be_redundant = !catalog.is_attack(skill_id)
                 && effect_tag
@@ -697,7 +675,7 @@ fn best_candidate(
                 energy: device,
                 preferred_energy,
                 energy_amount,
-                flexible_energy: energy.is_some_and(|energy| energy.power_id == 0),
+                flexible_energy: energy.is_some_and(|energy| energy.flexible),
                 special_energy,
                 support,
                 damage_rate: catalog.damage_rate(skill_id),

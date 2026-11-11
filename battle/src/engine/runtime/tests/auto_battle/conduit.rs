@@ -299,17 +299,18 @@ fn auto_round_uses_stored_hedone_energy_when_the_unique_is_selected() {
 }
 
 #[test]
-fn auto_round_keeps_unstored_hedone_energy() {
+fn auto_round_rejects_missing_hedone_energy_state() {
     let runtime = team_runtime_against(
         vec![team_hero(10, 3156, 1_000, [31560111, 31560121])],
         (1..=4).map(|index| enemy(-index, 1_000)).collect(),
         vec![hedone_energy_card()],
     );
 
-    let reply = runtime.plan_auto_round(&AutoRoundRequest::default());
+    let error = runtime
+        .try_plan_auto_round(&AutoRoundRequest::default())
+        .unwrap_err();
 
-    assert!(reply.opers.is_empty());
-    assert_eq!(reply.devices_opers[0].index, Some(2));
+    assert!(error.contains("ConduitEnergy(Hedone(InvalidCommand))"));
 }
 
 #[test]
@@ -326,7 +327,7 @@ fn auto_round_rejects_malformed_hedone_energy_state() {
         .try_plan_auto_round(&AutoRoundRequest::default())
         .unwrap_err();
 
-    assert!(error.contains("HedoneDevicePower(State("));
+    assert!(error.contains("ConduitEnergy(Hedone(State("));
     assert!(error.contains("InvalidState"));
 }
 

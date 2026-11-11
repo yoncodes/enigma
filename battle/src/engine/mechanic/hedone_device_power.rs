@@ -91,9 +91,7 @@ fn resolve_gain(
     if owner_uid == 0 || power_id <= 0 {
         return Err(HedoneDevicePowerError::InvalidCommand);
     }
-    let Some(state) = owner_state(managers, owner_uid)? else {
-        return Ok(None);
-    };
+    let state = owner_state(managers, owner_uid)?.ok_or(HedoneDevicePowerError::InvalidCommand)?;
     if !state.unlocked || state.stored <= 0 {
         return Ok(None);
     }
