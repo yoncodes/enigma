@@ -308,6 +308,89 @@ fn plan_cards(
     energy_devices: &[FightDeviceOper],
     planned_devices: &[FightDeviceOper],
 ) -> Result<Option<CardPlan>, AutoBattleError> {
+    let Some(ordinary) = plan_cards_inner(
+        request,
+        fight,
+        managers,
+        catalog,
+        round_state,
+        determinism,
+        pool,
+        preferred_target,
+        energy_devices,
+        planned_devices,
+        &HashSet::new(),
+    )?
+    else {
+        return Ok(None);
+    };
+    let live_pool = pool.runtime_view(managers);
+    let mut special_energy = HashSet::new();
+    for card in managers
+        .card
+        .hand()
+        .iter()
+        .chain(managers.card.team_cards())
+    {
+        let Some((source_uid, skill_id)) = card_identity(card, None) else {
+            continue;
+        };
+        if !managers.card.can_use_card(card) || !is_stored_energy_card(skill_id, catalog) {
+            continue;
+        }
+        let Some((power_type, amount)) =
+            conduit_power_gain(source_uid, skill_id, managers, catalog)?
+        else {
+            continue;
+        };
+        if conduit::special_energy_useful(
+            managers,
+            &live_pool,
+            catalog,
+            determinism,
+            planned_devices,
+            &ordinary.energy,
+            &ordinary.stopped_skills,
+            source_uid,
+            skill_id,
+            power_type,
+            amount,
+        ) {
+            special_energy.insert((source_uid, skill_id));
+        }
+    }
+    if special_energy.is_empty() {
+        return Ok(Some(ordinary));
+    }
+    plan_cards_inner(
+        request,
+        fight,
+        managers,
+        catalog,
+        round_state,
+        determinism,
+        pool,
+        preferred_target,
+        energy_devices,
+        planned_devices,
+        &special_energy,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn plan_cards_inner(
+    request: &AutoRoundRequest,
+    fight: &Fight,
+    managers: &BattleManagers,
+    catalog: &SkillEffectCatalog,
+    round_state: &RoundState,
+    determinism: &RoundDeterminism,
+    pool: &TargetPool,
+    preferred_target: Option<i64>,
+    energy_devices: &[FightDeviceOper],
+    planned_devices: &[FightDeviceOper],
+    special_energy: &HashSet<(i64, i32)>,
+) -> Result<Option<CardPlan>, AutoBattleError> {
     let mut cards = managers.card.clone();
     let mut choice_determinism = determinism.clone();
     let mut normal_ap = round_state.act_point.max(0);
@@ -372,6 +455,7 @@ fn plan_cards(
             determinism,
             &selected_power_types,
             planned_devices,
+            special_energy,
             &mut reported_unsupported,
         )?
         else {
@@ -731,6 +815,7 @@ fn best_candidate(
     determinism: &RoundDeterminism,
     selected_power_types: &HashMap<(i64, i32), bool>,
     planned_devices: &[FightDeviceOper],
+    allowed_special_energy: &HashSet<(i64, i32)>,
     reported_unsupported: &mut HashSet<i32>,
 ) -> Result<Option<Candidate>, crate::engine::mechanic::hedone_device_power::HedoneDevicePowerError>
 {
@@ -798,6 +883,11 @@ fn best_candidate(
             };
             let special_energy =
                 energy_gain.is_some() && managers.catalog().is_special_power_card(skill_id);
+            if is_stored_energy_card(skill_id, catalog)
+                && !allowed_special_energy.contains(&(source_uid, skill_id))
+            {
+                return None;
+            }
             // An enemy's debuff may come from a passive, so debuff cards never count as redundant.
             let may_be_redundant = !catalog.is_attack(skill_id)
                 && effect_tag
@@ -1025,6 +1115,15 @@ fn conduit_power_gain(
         }
     }
     Ok(best)
+}
+
+fn is_stored_energy_card(skill_id: i32, catalog: &SkillEffectCatalog) -> bool {
+    catalog.get(skill_id).is_some_and(|effect| {
+        effect.slots.iter().any(|slot| {
+            slot.behavior.spec.kind
+                == crate::engine::skill::behavior::classify::BehaviorKind::HedoneAddDevicePower
+        })
+    })
 }
 
 // Only unconditional `AddBuff` slots aimed at the card's own target count.

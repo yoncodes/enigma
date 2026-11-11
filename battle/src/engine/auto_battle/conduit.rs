@@ -207,6 +207,171 @@ pub(super) fn selected_power_types(
         })
 }
 
+#[allow(clippy::too_many_arguments)]
+pub(super) fn special_energy_useful(
+    managers: &BattleManagers,
+    pool: &TargetPool,
+    catalog: &SkillEffectCatalog,
+    determinism: &RoundDeterminism,
+    operations: &[FightDeviceOper],
+    planned_energy: &HashMap<(i64, i32), i32>,
+    planned_stopped_skills: &HashSet<(i64, i32)>,
+    source_uid: i64,
+    card_skill_id: i32,
+    power_type: i32,
+    amount: i32,
+) -> bool {
+    if amount <= 0 {
+        return false;
+    }
+    if operations.iter().any(|operation| {
+        let Some((uid, group)) = operation.uid.zip(operation.index) else {
+            return false;
+        };
+        uid == source_uid
+            && managers
+                .conduit
+                .devices()
+                .find(|device| device.uid == uid)
+                .and_then(|device| device.skill_groups.get(group.saturating_sub(1) as usize))
+                .into_iter()
+                .flatten()
+                .filter(|skill| catalog.is_big_skill(skill.skill_id))
+                .flat_map(|skill| catalog.get(skill.skill_id))
+                .flat_map(|effect| &effect.slots)
+                .any(|slot| {
+                    slot.behavior.spec.kind == BehaviorKind::HedoneAddCard
+                        && slot.behavior.args.first() == Some(&card_skill_id)
+                })
+    }) {
+        return true;
+    }
+    let before = funded_paid_skills(
+        managers,
+        pool,
+        catalog,
+        determinism,
+        operations,
+        planned_energy,
+        planned_stopped_skills,
+    );
+    let mut with_candidate = planned_energy.clone();
+    *with_candidate.entry((source_uid, power_type)).or_default() += amount;
+    funded_paid_skills(
+        managers,
+        pool,
+        catalog,
+        determinism,
+        operations,
+        &with_candidate,
+        planned_stopped_skills,
+    ) > before
+}
+
+fn funded_paid_skills(
+    managers: &BattleManagers,
+    pool: &TargetPool,
+    catalog: &SkillEffectCatalog,
+    determinism: &RoundDeterminism,
+    operations: &[FightDeviceOper],
+    planned_energy: &HashMap<(i64, i32), i32>,
+    planned_stopped_skills: &HashSet<(i64, i32)>,
+) -> usize {
+    let mut typed = HashMap::<(i32, i32), i32>::new();
+    let mut generic = HashMap::<i32, i32>::new();
+    let mut pending_generic = HashMap::<i64, i32>::new();
+    for operation in operations {
+        let Some(uid) = operation.uid else {
+            continue;
+        };
+        let Some(team) = pool.team_type(uid) else {
+            continue;
+        };
+        generic
+            .entry(team)
+            .or_insert_with(|| managers.conduit.power(team, 0));
+    }
+    for (&(uid, power_type), &amount) in planned_energy {
+        let Some(team) = pool.team_type(uid) else {
+            continue;
+        };
+        if power_type == 0 {
+            *pending_generic.entry(uid).or_default() += amount;
+        } else {
+            *typed
+                .entry((team, power_type))
+                .or_insert_with(|| managers.conduit.power(team, power_type)) += amount;
+        }
+    }
+    let mut funded = 0;
+    for operation in operations {
+        let Some((source_uid, group)) = operation.uid.zip(operation.index) else {
+            continue;
+        };
+        let Some(team) = pool.team_type(source_uid) else {
+            continue;
+        };
+        let Some(skills) = managers
+            .conduit
+            .devices()
+            .find(|device| device.uid == source_uid)
+            .and_then(|device| device.skill_groups.get(group.saturating_sub(1) as usize))
+        else {
+            continue;
+        };
+        for skill in skills {
+            if skill.cost_type == 999
+                || skill.cost_value <= 0
+                || skill.is_stopped
+                || planned_stopped_skills.contains(&(source_uid, skill.skill_id))
+                || catalog.get(skill.skill_id).is_none()
+                || !catalog.issues(skill.skill_id).is_empty()
+                || (catalog.is_attack(skill.skill_id)
+                    && target_options(
+                        source_uid,
+                        skill.skill_id,
+                        None,
+                        managers,
+                        pool,
+                        catalog,
+                        determinism,
+                    )
+                    .is_empty())
+            {
+                continue;
+            }
+            let reduction = crate::engine::skill::buff_act::device_cost_reduce::modifier(
+                managers,
+                source_uid,
+                skill.skill_id,
+            )
+            .map(|(reduction, _)| reduction)
+            .unwrap_or_default();
+            let cost = skill.cost_after_reduction(reduction);
+            let specific = typed
+                .entry((team, skill.cost_type))
+                .or_insert_with(|| managers.conduit.power(team, skill.cost_type));
+            let team_generic = generic.entry(team).or_default();
+            let owner_generic = pending_generic.entry(source_uid).or_default();
+            if specific
+                .saturating_add(*team_generic)
+                .saturating_add(*owner_generic)
+                < cost
+            {
+                continue;
+            }
+            let specific_spent = cost.min(*specific);
+            *specific -= specific_spent;
+            let remaining = cost - specific_spent;
+            let owner_spent = remaining.min(*owner_generic);
+            *owner_generic -= owner_spent;
+            *team_generic -= remaining - owner_spent;
+            funded += 1;
+        }
+    }
+    funded
+}
+
 fn skill_score(
     source_uid: i64,
     skill_id: i32,

@@ -188,8 +188,7 @@ fn auto_round_keeps_equal_special_energy_cards_in_hand_order() {
     );
 }
 
-#[test]
-fn auto_round_targets_an_enemy_with_hedones_unlocked_energy_card() {
+fn hedone_with_stored_energy() -> FightEntityInfo {
     let mut hedone = team_hero(10, 3156, 1_000, [31560111, 31560121]);
     hedone.buffs.push(sonettobuf::BuffInfo {
         uid: Some(20),
@@ -202,6 +201,21 @@ fn auto_round_targets_an_enemy_with_hedones_unlocked_energy_card() {
         }],
         ..Default::default()
     });
+    hedone
+}
+
+fn hedone_energy_card() -> sonettobuf::CardInfo {
+    sonettobuf::CardInfo {
+        extra_infos: vec![sonettobuf::CardExtraInfo {
+            key: Some(8),
+            values: vec!["HedoneCard".to_owned()],
+        }],
+        ..hand_card(10, 31560181, false)
+    }
+}
+
+#[test]
+fn auto_round_reserves_unneeded_hedone_energy() {
     let free = |skill_id| sonettobuf::CardInfo {
         extra_infos: vec![sonettobuf::CardExtraInfo {
             key: Some(8),
@@ -209,12 +223,15 @@ fn auto_round_targets_an_enemy_with_hedones_unlocked_energy_card() {
         }],
         ..hand_card(10, skill_id, false)
     };
-    let runtime = team_runtime(vec![hedone], vec![free(31446011), free(31560181)]);
+    let runtime = team_runtime(
+        vec![hedone_with_stored_energy()],
+        vec![free(31446011), hedone_energy_card()],
+    );
 
     let reply = runtime.plan_auto_round(&AutoRoundRequest::default());
 
-    assert_eq!(reply.opers.len(), 2);
-    assert_eq!(reply.opers[0].param1, Some(2));
+    assert_eq!(reply.opers.len(), 1);
+    assert_eq!(reply.opers[0].param1, Some(1));
     assert!(
         reply
             .opers
@@ -229,16 +246,64 @@ fn auto_round_targets_an_enemy_with_hedones_unlocked_energy_card() {
             .collect::<Vec<_>>(),
         [(Some(10), Some(1))]
     );
+}
 
-    let continued = runtime
-        .try_plan_auto_round(&AutoRoundRequest {
-            opers: vec![reply.opers[0].clone()],
-            ..Default::default()
+#[test]
+fn auto_round_uses_hedone_energy_to_fund_a_selected_group() {
+    let runtime = team_runtime_against(
+        vec![hedone_with_stored_energy()],
+        (1..=4).map(|index| enemy(-index, 1_000)).collect(),
+        vec![hedone_energy_card()],
+    );
+
+    let reply = runtime.plan_auto_round(&AutoRoundRequest::default());
+
+    assert_eq!(reply.opers.len(), 1);
+    assert_eq!(reply.opers[0].param1, Some(1));
+    assert_eq!(reply.devices_opers[0].index, Some(2));
+    assert!(reply.opers[0].to_id.is_some_and(|uid| uid < 0));
+}
+
+#[test]
+fn auto_round_uses_hedone_energy_when_the_selected_ultimate_replaces_it() {
+    let mut hedone = hedone_with_stored_energy();
+    hedone.ex_point = Some(100);
+    hedone.ex_point_type = Some(4);
+    let mut runtime = team_runtime_against(
+        vec![hedone],
+        vec![enemy(-1, 1_000)],
+        vec![hedone_energy_card()],
+    );
+    runtime
+        .managers
+        .conduit
+        .execute(ConduitCommand::SelectGroup {
+            source_uid: 10,
+            group: 3,
         })
         .unwrap();
-    assert_eq!(continued.opers.len(), 1);
-    assert_eq!(continued.opers[0].param1, Some(1));
-    assert_eq!(continued.opers[0].to_id, Some(-1));
+    let origin = CommandOrigin {
+        domain: RuleDomain::Behavior,
+        key: DefinitionKey::new(60294, "StopDeviceSkill"),
+    };
+    for skill_id in [31560111, 31560121] {
+        runtime
+            .managers
+            .conduit
+            .execute(ConduitCommand::StopSkill {
+                origin,
+                source_uid: 10,
+                team: 1,
+                skill_id,
+            })
+            .unwrap();
+    }
+
+    let reply = runtime.plan_auto_round(&AutoRoundRequest::default());
+
+    assert_eq!(reply.devices_opers[0].index, Some(3));
+    assert_eq!(reply.opers.len(), 1);
+    assert_eq!(reply.opers[0].param1, Some(1));
 }
 
 #[test]
