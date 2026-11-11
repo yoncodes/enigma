@@ -87,6 +87,7 @@ pub enum RoundPhase {
     EntitySettlement,
     EntityBuffCleanup,
     EntityCardCleanup,
+    EntityConduitCleanup,
     EntityEntrySetup,
 }
 

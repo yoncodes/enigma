@@ -342,10 +342,6 @@ fn run_round_end_transition(
 ) -> Result<DrainResult, DrainError> {
     let mut result = DrainResult::default();
     push_cue(&mut result.frames, RoundCue::SmallRoundEnd { team_type: 1 });
-    append(
-        &mut result,
-        run_terminal_conduit_roster_refresh(managers, pool, catalog, determinism, context)?,
-    );
     push_cue(&mut result.frames, RoundCue::ClearUniversalCard);
     append(
         &mut result,
@@ -358,36 +354,7 @@ fn run_round_end_transition(
             settled_buffs,
         )?,
     );
-    append(
-        &mut result,
-        run_terminal_conduit_roster_refresh(managers, pool, catalog, determinism, context)?,
-    );
     Ok(result)
-}
-
-pub(crate) fn run_terminal_conduit_roster_refresh(
-    managers: &mut BattleManagers,
-    pool: &TargetPool,
-    catalog: &SkillEffectCatalog,
-    determinism: &mut RoundDeterminism,
-    context: TargetContext,
-) -> Result<DrainResult, DrainError> {
-    if managers.terminal_outcome().is_none() {
-        return Ok(DrainResult::default());
-    }
-    let defeated_uids = managers
-        .conduit
-        .selections()
-        .into_iter()
-        .map(|(uid, _)| uid)
-        .filter(|uid| managers.hp.current(*uid) == 0)
-        .collect::<Vec<_>>();
-    let commands = managers
-        .conduit
-        .terminal_roster_refresh_commands(&defeated_uids)
-        .into_iter()
-        .map(|command| RuleOp::Command(BattleCommand::Conduit(command)));
-    drain::run_command_group(managers, pool, catalog, determinism, context, commands)
 }
 
 pub fn run_entity_settlement(

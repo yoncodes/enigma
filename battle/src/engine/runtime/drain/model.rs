@@ -205,6 +205,54 @@ pub(super) fn queued_defeated_owner_card_cleanup(
     })
 }
 
+pub(super) fn queued_defeated_conduit_cleanups(
+    managers: &BattleManagers,
+    deaths: &[crate::engine::manager::hp::DeathTransition],
+    parent_path: &[usize],
+) -> Vec<QueuedOp> {
+    let defeated_uids = deaths
+        .iter()
+        .map(|death| death.target_uid)
+        .collect::<Vec<_>>();
+    managers
+        .conduit
+        .roster_refresh_commands(&defeated_uids)
+        .into_iter()
+        .map(|command| {
+            let crate::engine::manager::conduit::ConduitCommand::ReconcileDefeatedDevices {
+                defeated_uids,
+                ..
+            } = &command
+            else {
+                unreachable!("roster refresh planning emitted a non-reconciliation command");
+            };
+            let death = deaths
+                .iter()
+                .find(|death| defeated_uids.contains(&death.target_uid))
+                .expect("roster refresh planning preserves a defeated owner");
+            QueuedOp {
+                op: RuleOp::Command(crate::engine::skill::rule::output::BattleCommand::Conduit(
+                    command,
+                )),
+                trigger: SkillOpTrigger::Event(BattleEvent::EntityDied(
+                    crate::engine::event::payload::EntityDiedEvent {
+                        source_uid: death.source_uid,
+                        target_uid: death.target_uid,
+                    },
+                )),
+                skill_execution: None,
+                frame_path: None,
+                parent_path: Some(parent_path.to_vec()),
+                frame_group: None,
+                independent_parent_group: None,
+                frame_owner: Some(FrameOwner::RoundPhase(RoundPhase::EntityConduitCleanup)),
+                subscriber: None,
+                caster_frame: None,
+            }
+        })
+        .collect()
+}
+
 pub(super) fn queued_defeated_entity_halo_cleanup(
     managers: &BattleManagers,
     death: crate::engine::manager::hp::DeathTransition,

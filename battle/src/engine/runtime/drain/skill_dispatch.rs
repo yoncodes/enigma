@@ -234,7 +234,8 @@ pub(super) fn drain_skill(
         state.open_action(frame_path.clone());
     }
     let mut outputs = defeated_owner_card_cleanups
-        .into_iter()
+        .iter()
+        .copied()
         .filter_map(|death| {
             queued_defeated_owner_card_cleanup(
                 pool,
@@ -245,6 +246,11 @@ pub(super) fn drain_skill(
             )
         })
         .collect::<Vec<_>>();
+    outputs.extend(queued_defeated_conduit_cleanups(
+        managers,
+        &defeated_owner_card_cleanups,
+        &frame_path,
+    ));
     for emission in emission.ops {
         let skill::SkillEmissionOp {
             op,

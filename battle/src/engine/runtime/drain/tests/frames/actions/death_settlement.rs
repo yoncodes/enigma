@@ -152,6 +152,69 @@ fn scheduled_defender_cleanup_policy_keeps_player_cleanup_in_the_death_frame() {
 }
 
 #[test]
+fn defeated_conduit_owner_refreshes_roster_at_death() {
+    crate::test_support::init_config();
+    let entity = |uid, model_id| FightEntityInfo {
+        uid: Some(uid),
+        model_id: Some(model_id),
+        team_type: Some(1),
+        current_hp: Some(100),
+        attr: Some(HeroAttribute {
+            hp: Some(100),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![entity(10, 3144), entity(11, 3156)],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    let result = run(
+        &mut managers,
+        &pool,
+        &SkillEffectCatalog::default(),
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+        [RuleOp::Command(BattleCommand::Hp(
+            crate::engine::manager::hp::HpCommand::Kill(crate::engine::manager::hp::HpKill {
+                origin: CommandOrigin {
+                    domain: RuleDomain::Lifecycle,
+                    key: DefinitionKey::new(0, "TestConduitDeath"),
+                },
+                source_uid: -1,
+                target_uid: 10,
+                config_effect: 1,
+            }),
+        ))],
+    )
+    .unwrap();
+
+    assert_eq!(managers.conduit.selected_group(10), None);
+    assert_eq!(managers.conduit.selected_group(11), Some(1));
+    assert!(!managers.conduit.selected_skills(11).unwrap().is_empty());
+    assert_eq!(
+        result.outcomes.iter().find_map(|outcome| match outcome {
+            crate::engine::runtime::executor::RuleOutcome::Conduit(
+                crate::engine::manager::conduit::ConduitChange::RosterRefreshed(area),
+            ) => Some(
+                area.devices
+                    .iter()
+                    .map(|device| device.uid)
+                    .collect::<Vec<_>>()
+            ),
+            _ => None,
+        }),
+        Some(vec![11])
+    );
+    assert!(managers.conduit.roster_refresh_commands(&[10]).is_empty());
+}
+
+#[test]
 fn non_action_death_settles_after_its_reaction_and_card_cleanup() {
     crate::test_support::init_config();
     let fight = Fight {
@@ -249,6 +312,7 @@ fn non_action_death_settles_after_its_reaction_and_card_cleanup() {
 
 #[test]
 fn subscriber_group_finishes_before_death_settlement() {
+    crate::test_support::init_config();
     let fight = Fight {
         attacker: Some(FightTeam {
             entitys: vec![
@@ -266,11 +330,20 @@ fn subscriber_group_finishes_before_death_settlement() {
             ..Default::default()
         }),
         defender: Some(FightTeam {
-            entitys: vec![FightEntityInfo {
-                uid: Some(-1),
-                current_hp: Some(1),
-                ..Default::default()
-            }],
+            entitys: vec![
+                FightEntityInfo {
+                    uid: Some(-1),
+                    model_id: Some(3144),
+                    current_hp: Some(1),
+                    ..Default::default()
+                },
+                FightEntityInfo {
+                    uid: Some(-2),
+                    model_id: Some(3156),
+                    current_hp: Some(100),
+                    ..Default::default()
+                },
+            ],
             ..Default::default()
         }),
         ..Default::default()
@@ -419,10 +492,13 @@ fn subscriber_group_finishes_before_death_settlement() {
             target_uid: -1,
         }]
     );
+    assert_eq!(managers.conduit.selected_group(-1), None);
+    assert_eq!(managers.conduit.selected_group(-2), Some(1));
 }
 
 #[test]
 fn subscriber_group_does_not_settle_a_revived_target() {
+    crate::test_support::init_config();
     let fight = Fight {
         attacker: Some(FightTeam {
             entitys: vec![FightEntityInfo {
@@ -433,11 +509,20 @@ fn subscriber_group_does_not_settle_a_revived_target() {
             ..Default::default()
         }),
         defender: Some(FightTeam {
-            entitys: vec![FightEntityInfo {
-                uid: Some(-1),
-                current_hp: Some(1),
-                ..Default::default()
-            }],
+            entitys: vec![
+                FightEntityInfo {
+                    uid: Some(-1),
+                    model_id: Some(3144),
+                    current_hp: Some(1),
+                    ..Default::default()
+                },
+                FightEntityInfo {
+                    uid: Some(-2),
+                    model_id: Some(3156),
+                    current_hp: Some(100),
+                    ..Default::default()
+                },
+            ],
             ..Default::default()
         }),
         ..Default::default()
@@ -502,5 +587,13 @@ fn subscriber_group_does_not_settle_a_revived_target() {
     assert!(!result.outcomes.iter().any(|outcome| matches!(
         outcome,
         crate::engine::runtime::executor::RuleOutcome::DeathSettlement(_)
+    )));
+    assert_eq!(managers.conduit.selected_group(-1), Some(1));
+    assert_eq!(managers.conduit.selected_group(-2), Some(1));
+    assert!(!result.outcomes.iter().any(|outcome| matches!(
+        outcome,
+        crate::engine::runtime::executor::RuleOutcome::Conduit(
+            crate::engine::manager::conduit::ConduitChange::RosterRefreshed(_)
+        )
     )));
 }

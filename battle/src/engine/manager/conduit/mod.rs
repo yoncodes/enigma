@@ -303,7 +303,7 @@ impl ConduitManager {
             .collect()
     }
 
-    pub fn terminal_roster_refresh_commands(&self, defeated_uids: &[i64]) -> Vec<ConduitCommand> {
+    pub fn roster_refresh_commands(&self, defeated_uids: &[i64]) -> Vec<ConduitCommand> {
         self.areas
             .iter()
             .filter_map(|(team, area)| {

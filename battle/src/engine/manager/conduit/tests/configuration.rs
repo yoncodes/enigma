@@ -121,7 +121,7 @@ fn configured_seed_uses_selected_destiny_device_from_entity_loadout() {
 }
 
 #[test]
-fn terminal_roster_refresh_removes_defeated_devices_and_preserves_live_state() {
+fn roster_refresh_removes_defeated_devices_and_preserves_live_state() {
     crate::test_support::init_config();
     let fight = Fight {
         attacker: Some(FightTeam {
@@ -168,7 +168,7 @@ fn terminal_roster_refresh_removes_defeated_devices_and_preserves_live_state() {
         }))
         .unwrap();
 
-    let commands = manager.terminal_roster_refresh_commands(&[11]);
+    let commands = manager.roster_refresh_commands(&[11]);
     assert_eq!(commands.len(), 1);
     let change = manager.execute(commands[0].clone()).unwrap();
     let ConduitChange::RosterRefreshed(area) = change else {
@@ -192,7 +192,7 @@ fn terminal_roster_refresh_removes_defeated_devices_and_preserves_live_state() {
             .value,
         4
     );
-    assert!(manager.terminal_roster_refresh_commands(&[11]).is_empty());
+    assert!(manager.roster_refresh_commands(&[11]).is_empty());
 }
 
 #[test]

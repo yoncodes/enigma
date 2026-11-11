@@ -784,6 +784,7 @@ pub(super) fn drain_command(
         .iter()
         .map(|death| death.transition())
         .collect::<Vec<_>>();
+    let mut conduit_cleanup_deaths = cleanup_deaths.clone();
     let mut non_action_deaths = Vec::new();
     if settles_death_immediately && let Some(action_scope) = settlement_action_scope {
         for death in &settled_deaths {
@@ -806,6 +807,7 @@ pub(super) fn drain_command(
             );
         }
         cleanup_deaths.extend(settled_deaths.iter().map(|death| death.transition()));
+        conduit_cleanup_deaths.extend(settled_deaths.iter().map(|death| death.transition()));
     } else if let Some(action_scope) = active_action_scope {
         state.record_deaths(action_scope.clone(), settled_deaths.iter().copied());
     } else {
@@ -817,6 +819,7 @@ pub(super) fn drain_command(
             state.record_subscriber_deaths(group, &event_scope, settled_deaths.iter().copied());
             terminal_death = None;
         } else {
+            conduit_cleanup_deaths.extend(settled_deaths.iter().map(|death| death.transition()));
             non_action_deaths.extend(settled_deaths.iter().map(|death| death.transition()));
         }
     }
@@ -842,7 +845,8 @@ pub(super) fn drain_command(
             push_death(&mut result.frames, action_scope, managers, *death);
         }
         terminal_death = terminal_death.or_else(|| deaths.first().copied());
-        cleanup_deaths.extend(deaths);
+        cleanup_deaths.extend(deaths.iter().copied());
+        conduit_cleanup_deaths.extend(deaths);
     }
     let death_count = settled_deaths.len() + event_grouped_deaths.len();
     if death_count != 0
@@ -859,7 +863,7 @@ pub(super) fn drain_command(
     let cleanup_parent_path = settlement_action_scope
         .map(Vec::as_slice)
         .unwrap_or(event_scope.as_slice());
-    after_publish.extend(cleanup_deaths.into_iter().filter_map(|death| {
+    after_publish.extend(cleanup_deaths.iter().copied().filter_map(|death| {
         queued_defeated_owner_card_cleanup(
             pool,
             managers,
@@ -868,6 +872,11 @@ pub(super) fn drain_command(
             state.defender_card_cleanup_owner(),
         )
     }));
+    after_publish.extend(queued_defeated_conduit_cleanups(
+        managers,
+        &conduit_cleanup_deaths,
+        cleanup_parent_path,
+    ));
     let mut death_settlements = Vec::new();
     for death in non_action_deaths {
         if let Some(cleanup) = queued_defeated_entity_halo_cleanup(managers, death, &event_scope) {
