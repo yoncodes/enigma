@@ -455,6 +455,9 @@ fn condition_kind_matches(
         ParsedConditionKind::RankAtLeast(minimum) => managers.is_some_and(|managers| {
             super::rank::matches(*minimum, condition_targets, managers, pool)
         }),
+        ParsedConditionKind::RankEquals(expected) => managers.is_some_and(|managers| {
+            super::rank::matches_exact(*expected, condition_targets, managers, pool)
+        }),
         ParsedConditionKind::SovereignCardCreated => {
             context.runtime_target_uid != 0 && context.runtime_target_uid == source_uid
         }
