@@ -291,43 +291,18 @@ pub fn run_conduit_phase(
             let mut ran = false;
             let mut stop_emitted_this_pass = false;
             for (position, skill) in skills.into_iter().enumerate() {
-                let cost_modifier = crate::engine::skill::buff_act::device_cost_reduce::modifier(
-                    managers,
-                    source_uid,
-                    skill.skill_id,
-                );
-                let cost_reduction = cost_modifier
-                    .as_ref()
-                    .map(|(reduction, _)| *reduction)
-                    .unwrap_or_default();
-                let invocation: crate::engine::skill::action::SkillInvocation =
-                    crate::engine::skill::action::SkillRequest {
-                        source_uid,
-                        skill_id: skill.skill_id,
-                    }
-                    .into();
                 let current_pool = pool.runtime_view(managers);
-                let unavailable = (skill.cost_value <= 0
-                    && used_free_skills.contains(&(source_uid, skill.skill_id)))
-                    || (catalog.is_big_skill(skill.skill_id)
-                        && crate::engine::manager::ex_point::ExPointKind::from_wire(
-                            managers.ex_point.kind(source_uid),
-                        ) == crate::engine::manager::ex_point::ExPointKind::DevicePower
-                        && !managers.ex_point.is_full(source_uid))
-                    || !managers.conduit.can_begin_skill(
-                        source_uid,
-                        skill.skill_id,
-                        cost_reduction,
-                    )
-                    || drain::attack_has_no_target(
-                        &invocation,
-                        catalog,
-                        &current_pool,
-                        managers,
-                        determinism,
-                        context,
-                    );
-                if unavailable {
+                let admission = super::conduit::admit_skill(
+                    managers,
+                    &current_pool,
+                    catalog,
+                    determinism,
+                    context,
+                    source_uid,
+                    skill,
+                    used_free_skills.contains(&(source_uid, skill.skill_id)),
+                );
+                let Some(admission) = admission else {
                     if !crate::engine::round::outcome::battle_ended(fight, pool, managers)
                         || !stop_emitted_this_pass
                     {
@@ -347,7 +322,8 @@ pub fn run_conduit_phase(
                         stop_emitted_this_pass = true;
                     }
                     continue;
-                }
+                };
+                let cost_modifier = admission.cost_modifier;
                 let frame_target_uid = (catalog.logic_target(skill.skill_id)
                     == crate::engine::skill::target::request::SOURCE_TARGET_CODE)
                     .then(|| {
