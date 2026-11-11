@@ -1,17 +1,11 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
-use sonettobuf::{BeginRoundOper, FightDeviceOper};
+use sonettobuf::FightDeviceOper;
 
 use crate::engine::{
-    manager::{BattleManagers, conduit::ConduitChange},
+    manager::BattleManagers,
     mechanic::card::CardMechanic,
-    round::command::RoundCommand,
-    runtime::{
-        determinism::RoundDeterminism,
-        drain,
-        executor::RuleOutcome,
-        schedule::{run_conduit_phase, run_player_phase},
-    },
+    runtime::determinism::RoundDeterminism,
     skill::{
         behavior::classify::BehaviorKind,
         condition::parse::ParsedConditionKind,
@@ -20,9 +14,7 @@ use crate::engine::{
     },
 };
 
-use super::{
-    AutoBattleError, Support, certain_buffs, is_shield_buff, support_need, target_options,
-};
+use super::{Support, certain_buffs, is_shield_buff, support_need, target_options};
 
 pub(super) type GroupScore = (i32, i32, i32, i32, i64);
 
@@ -53,128 +45,145 @@ pub(super) fn operation_eligible(
 }
 
 #[allow(clippy::too_many_arguments)]
-pub(super) fn prepare_plan(
-    fight: &sonettobuf::Fight,
+pub(super) fn score_group(
     managers: &BattleManagers,
     pool: &TargetPool,
     catalog: &SkillEffectCatalog,
     determinism: &RoundDeterminism,
-    context: crate::engine::skill::target::TargetContext,
-    commands: &[BeginRoundOper],
-    operations: &[FightDeviceOper],
-) -> Result<PreparedPlan, AutoBattleError> {
-    let mut simulated = managers.clone();
-    simulated.begin_action_round();
-    let simulated_catalog = catalog.clone();
-    let mut simulated_determinism = determinism.clone();
-    let selected = drain::run_command_group(
-        &mut simulated,
-        pool,
-        &simulated_catalog,
-        &mut simulated_determinism,
-        context,
-        operations.iter().filter_map(|operation| {
-            Some(crate::engine::skill::rule::output::RuleOp::Command(
-                crate::engine::skill::rule::output::BattleCommand::Conduit(
-                    crate::engine::manager::conduit::ConduitCommand::SelectGroup {
-                        source_uid: operation.uid?,
-                        group: operation.index?,
-                    },
-                ),
-            ))
-        }),
-    )?;
-    let commands = commands
-        .iter()
-        .filter_map(RoundCommand::from_oper)
-        .collect::<Vec<_>>();
-    run_player_phase(
-        fight,
-        &mut simulated,
-        pool,
-        &simulated_catalog,
-        &mut simulated_determinism,
-        context,
-        commands,
-        selected.frames,
-        1,
-        crate::engine::manager::emitter::UID,
-    )?;
-    Ok(PreparedPlan {
-        managers: simulated,
-        catalog: simulated_catalog,
-        determinism: simulated_determinism,
-    })
-}
-
-pub(super) struct PreparedPlan {
-    managers: BattleManagers,
-    catalog: SkillEffectCatalog,
-    determinism: RoundDeterminism,
-}
-
-#[allow(clippy::too_many_arguments)]
-pub(super) fn score_plan(
-    prepared: &PreparedPlan,
-    fight: &sonettobuf::Fight,
-    pool: &TargetPool,
-    context: crate::engine::skill::target::TargetContext,
-    operations: &[FightDeviceOper],
-    scored_uid: i64,
-) -> Result<GroupScore, AutoBattleError> {
-    let mut simulated = prepared.managers.clone();
-    let mut simulated_catalog = prepared.catalog.clone();
-    let mut simulated_determinism = prepared.determinism.clone();
-    let scoring_managers = simulated.clone();
-    let scoring_pool = pool.runtime_view(&scoring_managers);
-    let result = run_conduit_phase(
-        simulated.catalog(),
-        fight,
-        &mut simulated,
-        pool,
-        &mut simulated_catalog,
-        &mut simulated_determinism,
-        context,
-        operations,
-    )?;
-    Ok(result
-        .outcomes
-        .iter()
-        .filter_map(|outcome| match outcome {
-            RuleOutcome::Conduit(ConduitChange::SkillBegan {
+    source_uid: i64,
+    group: i32,
+    planned_energy: &HashMap<(i64, i32), i32>,
+    planned_stopped_skills: &HashSet<(i64, i32)>,
+) -> GroupScore {
+    let Some(source) = pool.entity(source_uid) else {
+        return (0, 0, 0, 0, 0);
+    };
+    let Some(team) = pool.team_type(source_uid) else {
+        return (0, 0, 0, 0, 0);
+    };
+    let Some(skills) = managers
+        .conduit
+        .devices()
+        .find(|device| device.uid == source_uid)
+        .and_then(|device| device.skill_groups.get(group.saturating_sub(1) as usize))
+    else {
+        return (0, 0, 0, 0, 0);
+    };
+    let mut selected = managers.clone();
+    if selected
+        .conduit
+        .execute(crate::engine::manager::conduit::ConduitCommand::SelectGroup { source_uid, group })
+        .is_err()
+    {
+        return (0, 0, 0, 0, 0);
+    }
+    let managers = &selected;
+    let planned_power = |power_type| {
+        // Live lookahead lends typed card energy team-wide but keeps pending generic energy with its owner.
+        if power_type == 0 {
+            return planned_energy
+                .get(&(source_uid, power_type))
+                .copied()
+                .unwrap_or_default();
+        }
+        planned_energy
+            .iter()
+            .filter(|((uid, candidate_type), _)| {
+                *candidate_type == power_type && pool.team_type(*uid) == Some(team)
+            })
+            .map(|(_, amount)| *amount)
+            .sum::<i32>()
+    };
+    let mut generic = managers
+        .conduit
+        .power(team, 0)
+        .saturating_add(planned_power(0));
+    let mut specific = HashMap::new();
+    let mut total = (0, 0, 0, 0, 0);
+    let mut used_once = HashSet::new();
+    loop {
+        let mut ran = false;
+        for skill in skills {
+            if catalog.get(skill.skill_id).is_none()
+                || !catalog.issues(skill.skill_id).is_empty()
+                || skill.is_stopped
+                || planned_stopped_skills.contains(&(source_uid, skill.skill_id))
+                || used_once.contains(&skill.skill_id)
+                || super::card_conduit_switch(source_uid, skill.skill_id, managers, pool, catalog)
+                    .is_some_and(|redirected| redirected != group)
+                || (catalog.is_attack(skill.skill_id)
+                    && target_options(
+                        source_uid,
+                        skill.skill_id,
+                        None,
+                        managers,
+                        pool,
+                        catalog,
+                        determinism,
+                    )
+                    .is_empty())
+            {
+                continue;
+            }
+            let reduction = crate::engine::skill::buff_act::device_cost_reduce::modifier(
+                managers,
                 source_uid,
-                skill_id,
-                spent,
-                ..
-            }) if *source_uid == scored_uid => Some((*source_uid, *skill_id, *spent)),
-            _ => None,
-        })
-        .map(|(source_uid, skill_id, spent)| {
-            skill_score(
-                source_uid,
-                skill_id,
-                spent,
-                &scoring_managers,
-                &scoring_pool,
-                &simulated_catalog,
-                &prepared.determinism,
+                skill.skill_id,
             )
-        })
-        .fold((0, 0, 0, 0, 0), |total, score| {
-            (
+            .map(|(reduction, _)| reduction)
+            .unwrap_or_default();
+            let spent = skill.cost_after_reduction(reduction);
+            if skill.cost_type == 999 {
+                if !CardMechanic.ultimate_resource_ready(managers, source) {
+                    continue;
+                }
+                used_once.insert(skill.skill_id);
+            } else {
+                let available = specific.entry(skill.cost_type).or_insert_with(|| {
+                    managers
+                        .conduit
+                        .power(team, skill.cost_type)
+                        .saturating_add(planned_power(skill.cost_type))
+                });
+                if available.saturating_add(generic) < spent {
+                    continue;
+                }
+                let specific_spent = spent.min(*available);
+                *available -= specific_spent;
+                generic -= spent - specific_spent;
+                if spent == 0 {
+                    used_once.insert(skill.skill_id);
+                }
+            }
+            let score = skill_score(
+                source_uid,
+                skill.skill_id,
+                spent,
+                managers,
+                pool,
+                catalog,
+                determinism,
+            );
+            total = (
                 total.0 + score.0,
                 total.1 + score.1,
                 total.2 + score.2,
                 total.3.max(score.3),
                 total.4 + score.4,
-            )
-        }))
+            );
+            ran = true;
+        }
+        if !ran {
+            break;
+        }
+    }
+    total
 }
 
 pub(super) fn selected_power_types(
     managers: &BattleManagers,
     operations: &[FightDeviceOper],
-) -> HashSet<(i64, i32)> {
+) -> HashMap<(i64, i32), bool> {
     operations
         .iter()
         .filter_map(|operation| Some((operation.uid?, operation.index?)))
@@ -188,9 +197,14 @@ pub(super) fn selected_power_types(
                 .map(|skills| (uid, skills))
         })
         .flat_map(|(uid, skills)| skills.iter().map(move |skill| (uid, skill)))
-        .filter(|(_, skill)| skill.cost_type > 0 && skill.cost_type != 999 && skill.cost_value > 0)
-        .map(|(uid, skill)| (uid, skill.cost_type))
-        .collect()
+        .filter(|(_, skill)| skill.cost_type > 0 && skill.cost_type != 999)
+        .fold(HashMap::new(), |mut selected, (uid, skill)| {
+            selected
+                .entry((uid, skill.cost_type))
+                .and_modify(|paid| *paid |= skill.cost_value > 0)
+                .or_insert(skill.cost_value > 0);
+            selected
+        })
 }
 
 fn skill_score(

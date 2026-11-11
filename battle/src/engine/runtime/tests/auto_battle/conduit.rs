@@ -375,7 +375,7 @@ fn auto_round_plans_a_full_conduit_roster() {
             .map(|oper| (oper.uid, oper.index))
             .collect::<Vec<_>>(),
         [
-            (Some(10), Some(2)),
+            (Some(10), Some(1)),
             (Some(11), Some(2)),
             (Some(12), Some(2)),
             (Some(13), Some(1))
@@ -394,7 +394,7 @@ fn auto_round_plans_a_full_conduit_roster() {
                 oper.card_param1.clone(),
             ))
             .collect::<Vec<_>>(),
-        [1, 9, 4, 1, 4].map(|index| (Some(2), Some(index), None, Some(-1), None, None))
+        [10, 1, 3, 5, 1].map(|index| (Some(2), Some(index), None, Some(-1), None, None))
     );
 }
 
@@ -422,7 +422,7 @@ fn auto_round_uses_round_start_readiness_for_a_conduit_ultimate() {
 }
 
 #[test]
-fn auto_round_keeps_the_later_device_that_enables_an_earlier_team_pass() {
+fn auto_round_keeps_selected_groups_without_owner_energy() {
     let mut runtime = team_runtime(
         vec![
             team_hero(10, 3149, 100_000, [31490111, 31490121]),
@@ -465,7 +465,7 @@ fn auto_round_keeps_the_later_device_that_enables_an_earlier_team_pass() {
             .iter()
             .map(|operation| (operation.uid, operation.index))
             .collect::<Vec<_>>(),
-        [(Some(10), Some(1)), (Some(11), Some(1))]
+        [(Some(10), Some(2)), (Some(11), Some(2))]
     );
     let pool = crate::engine::skill::target::TargetPool::from_fight_with_catalog(
         runtime.catalog_data.unwrap(),

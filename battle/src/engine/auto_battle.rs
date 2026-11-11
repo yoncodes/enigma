@@ -28,7 +28,6 @@ mod conduit;
 #[derive(Debug)]
 pub(crate) enum AutoBattleError {
     HedoneDevicePower(crate::engine::mechanic::hedone_device_power::HedoneDevicePowerError),
-    Execution(crate::engine::runtime::drain::DrainError),
     OscillatingConduitGroups,
 }
 
@@ -37,12 +36,6 @@ impl From<crate::engine::mechanic::hedone_device_power::HedoneDevicePowerError>
 {
     fn from(error: crate::engine::mechanic::hedone_device_power::HedoneDevicePowerError) -> Self {
         Self::HedoneDevicePower(error)
-    }
-}
-
-impl From<crate::engine::runtime::drain::DrainError> for AutoBattleError {
-    fn from(error: crate::engine::runtime::drain::DrainError) -> Self {
-        Self::Execution(error)
     }
 }
 
@@ -62,6 +55,7 @@ struct Candidate {
     ultimate: bool,
     temporary: bool,
     energy: bool,
+    energy_power_type: Option<i32>,
     preferred_energy: bool,
     energy_amount: i32,
     flexible_energy: bool,
@@ -77,6 +71,8 @@ struct CardPlan {
     opers: Vec<BeginRoundOper>,
     committed_switches: HashMap<i64, i32>,
     unfed_switches: HashMap<i64, i32>,
+    energy: HashMap<(i64, i32), i32>,
+    stopped_skills: HashSet<(i64, i32)>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -143,11 +139,6 @@ pub(crate) fn plan(
         std::borrow::Cow::Owned(extended)
     };
     let catalog = catalog.as_ref();
-    let context = TargetContext {
-        battle_id: fight.battle_id.unwrap_or_default(),
-        current_round: round_state.next_round_number(),
-        ..Default::default()
-    };
     let mut devices = devices_opers;
     let Some(baseline) = plan_cards(
         request,
@@ -183,6 +174,11 @@ pub(crate) fn plan(
             let Some(uid) = devices[position].uid else {
                 continue;
             };
+            if let Some(group) = baseline.committed_switches.get(&uid).copied() {
+                changed |= devices[position].index != Some(group);
+                devices[position].index = Some(group);
+                continue;
+            }
             let Some(group_count) = managers
                 .conduit
                 .devices()
@@ -251,24 +247,16 @@ pub(crate) fn plan(
                 else {
                     continue;
                 };
-                let commands = request
-                    .opers
-                    .iter()
-                    .chain(&candidate_plan.opers)
-                    .cloned()
-                    .collect::<Vec<_>>();
-                let prepared = conduit::prepare_plan(
-                    fight,
+                let score = conduit::score_group(
                     managers,
-                    &pool,
+                    &live_pool,
                     catalog,
                     determinism,
-                    context,
-                    &commands,
-                    &candidate_devices,
-                )?;
-                let score =
-                    conduit::score_plan(&prepared, fight, &pool, context, &candidate_devices, uid)?;
+                    uid,
+                    group,
+                    &candidate_plan.energy,
+                    &candidate_plan.stopped_skills,
+                );
                 if score == (0, 0, 0, 0, 0) {
                     continue;
                 }
@@ -326,6 +314,8 @@ fn plan_cards(
     let mut played_owners = HashSet::new();
     let mut pending_switches = HashMap::new();
     let mut committed_switches = HashMap::new();
+    let mut energy = HashMap::new();
+    let mut stopped_skills = HashSet::new();
     if !apply_prefix(
         &mut cards,
         &mut normal_ap,
@@ -337,6 +327,8 @@ fn plan_cards(
         determinism,
         &mut pending_switches,
         &mut committed_switches,
+        &mut energy,
+        &mut stopped_skills,
     )? {
         return Ok(None);
     }
@@ -406,6 +398,14 @@ fn plan_cards(
         {
             committed_switches.insert(candidate.source_uid, group);
         }
+        if let Some(power_type) = candidate.energy_power_type {
+            *energy
+                .entry((candidate.source_uid, power_type))
+                .or_default() += candidate.energy_amount;
+        }
+        if catalog.is_interval(candidate.skill_id) {
+            stopped_skills.insert((candidate.source_uid, candidate.skill_id));
+        }
         if let Some(group) = card_conduit_switch(
             candidate.source_uid,
             candidate.skill_id,
@@ -429,6 +429,8 @@ fn plan_cards(
             .filter(|(uid, _)| !committed_switches.contains_key(uid))
             .collect(),
         committed_switches,
+        energy,
+        stopped_skills,
     }))
 }
 
@@ -585,6 +587,8 @@ fn apply_prefix(
     determinism: &RoundDeterminism,
     pending_switches: &mut HashMap<i64, i32>,
     committed_switches: &mut HashMap<i64, i32>,
+    energy: &mut HashMap<(i64, i32), i32>,
+    stopped_skills: &mut HashSet<(i64, i32)>,
 ) -> Result<bool, AutoBattleError> {
     for oper in opers {
         let Some(command) = RoundCommand::from_oper(oper) else {
@@ -653,7 +657,7 @@ fn apply_prefix(
                 let ap_cost = action_point_cost(card, source_uid, skill_id, managers, catalog);
                 conduit_observation = Some((
                     source_uid,
-                    conduit_power_gain(source_uid, skill_id, managers, catalog)?.is_some(),
+                    conduit_power_gain(source_uid, skill_id, managers, catalog)?,
                     card_conduit_switch(
                         source_uid,
                         skill_id,
@@ -670,7 +674,7 @@ fn apply_prefix(
                     choice: None,
                     recorded_skill,
                 };
-                played = Some(source_uid);
+                played = Some((source_uid, skill_id));
                 (CardCommand::Play(play), ap_cost)
             }
         };
@@ -686,19 +690,27 @@ fn apply_prefix(
         {
             return Ok(false);
         }
-        if let Some((source_uid, energy, switched_group)) = conduit_observation {
-            if energy && let Some(group) = pending_switches.get(&source_uid).copied() {
+        if let Some((source_uid, gain, switched_group)) = conduit_observation {
+            if gain.is_some()
+                && let Some(group) = pending_switches.get(&source_uid).copied()
+            {
                 committed_switches.insert(source_uid, group);
+            }
+            if let Some((power_type, amount)) = gain {
+                *energy.entry((source_uid, power_type)).or_default() += amount;
             }
             if let Some(group) = switched_group {
                 pending_switches.insert(source_uid, group);
                 committed_switches.remove(&source_uid);
             }
         }
-        if let Some(source_uid) = played
+        if let Some((source_uid, skill_id)) = played
             && ap_cost > 0
         {
             played_owners.insert(source_uid);
+            if catalog.is_interval(skill_id) {
+                stopped_skills.insert((source_uid, skill_id));
+            }
         }
     }
     Ok(true)
@@ -717,7 +729,7 @@ fn best_candidate(
     pool: &TargetPool,
     catalog: &SkillEffectCatalog,
     determinism: &RoundDeterminism,
-    selected_power_types: &HashSet<(i64, i32)>,
+    selected_power_types: &HashMap<(i64, i32), bool>,
     planned_devices: &[FightDeviceOper],
     reported_unsupported: &mut HashSet<i32>,
 ) -> Result<Option<Candidate>, crate::engine::mechanic::hedone_device_power::HedoneDevicePowerError>
@@ -784,6 +796,8 @@ fn best_candidate(
                     return None;
                 }
             };
+            let special_energy =
+                energy_gain.is_some() && managers.catalog().is_special_power_card(skill_id);
             // An enemy's debuff may come from a passive, so debuff cards never count as redundant.
             let may_be_redundant = !catalog.is_attack(skill_id)
                 && effect_tag
@@ -867,13 +881,16 @@ fn best_candidate(
                     && !played_owners.contains(&source_uid)
                     && support != Support::Unneeded,
                 energy: device,
+                energy_power_type: energy_gain.map(|(power_type, _)| power_type),
                 preferred_energy: energy_gain.is_some_and(|(power_type, _)| {
-                    power_type == 0 || selected_power_types.contains(&(source_uid, power_type))
+                    power_type == 0
+                        || selected_power_types
+                            .get(&(source_uid, power_type))
+                            .is_some_and(|paid| *paid || special_energy)
                 }),
                 energy_amount: energy_gain.map_or(0, |(_, amount)| amount),
                 flexible_energy: energy_gain.is_some_and(|(power_type, _)| power_type == 0),
-                special_energy: energy_gain.is_some()
-                    && managers.catalog().is_special_power_card(skill_id),
+                special_energy,
                 planned_conduit_switch: false,
                 support,
                 damage_rate: catalog.damage_rate(skill_id),
@@ -916,6 +933,8 @@ fn best_candidate(
                 candidate.energy_amount,
                 candidate.special_energy,
                 candidate.flexible_energy && !candidate.special_energy,
+                (candidate.energy && !candidate.special_energy)
+                    .then_some(candidate.lineup_position),
             ),
             // Give every hero a card before any hero plays a second one when utility is equal.
             candidate.first_for_owner,

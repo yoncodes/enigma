@@ -1308,7 +1308,7 @@ fn auto_round_prefers_an_owner_bound_temporary_skill() {
 }
 
 #[test]
-fn auto_round_keeps_equal_energy_cards_in_lineup_order_after_an_owner_plays() {
+fn auto_round_keeps_equal_ordinary_energy_cards_in_back_to_front_lineup_order() {
     let mut ally = team_hero(11, 3023, 1_000, [30230111, 30230121]);
     ally.ex_point = Some(5);
     ally.ex_point_max = Some(5);
@@ -1331,7 +1331,7 @@ fn auto_round_keeps_equal_energy_cards_in_lineup_order_after_an_owner_plays() {
             .iter()
             .map(|oper| oper.param1)
             .collect::<Vec<_>>(),
-        vec![Some(1), Some(2)]
+        vec![Some(1), Some(1)]
     );
 }
 
