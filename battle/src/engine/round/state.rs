@@ -56,10 +56,17 @@ impl RoundState {
         self.extra_rounds += 1;
     }
 
-    pub fn begin_round(&mut self) {
+    pub(crate) fn next_round_number(&self) -> i32 {
         if self.extra_rounds == 0 {
-            self.cur_round += 1;
+            self.cur_round.saturating_add(1)
         } else {
+            self.cur_round
+        }
+    }
+
+    pub fn begin_round(&mut self) {
+        self.cur_round = self.next_round_number();
+        if self.extra_rounds > 0 {
             self.extra_rounds -= 1;
         }
     }

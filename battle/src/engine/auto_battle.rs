@@ -1,4 +1,7 @@
-use std::{cmp::Reverse, collections::HashSet};
+use std::{
+    cmp::Reverse,
+    collections::{HashMap, HashSet},
+};
 
 use sonettobuf::{
     AutoRoundReply, AutoRoundRequest, BeginRoundOper, CardInfo, Fight, FightDeviceOper,
@@ -21,12 +24,11 @@ use crate::engine::{
 };
 
 mod conduit;
-mod simulation;
-mod workers;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug)]
 pub(crate) enum AutoBattleError {
     HedoneDevicePower(crate::engine::mechanic::hedone_device_power::HedoneDevicePowerError),
+    Execution(crate::engine::runtime::drain::DrainError),
     OscillatingConduitGroups,
 }
 
@@ -38,6 +40,12 @@ impl From<crate::engine::mechanic::hedone_device_power::HedoneDevicePowerError>
     }
 }
 
+impl From<crate::engine::runtime::drain::DrainError> for AutoBattleError {
+    fn from(error: crate::engine::runtime::drain::DrainError) -> Self {
+        Self::Execution(error)
+    }
+}
+
 const HEAL_BELOW_HP_PERCENT: i64 = 80;
 const URGENT_HEAL_BELOW_HP_PERCENT: i64 = 60;
 
@@ -45,6 +53,7 @@ const URGENT_HEAL_BELOW_HP_PERCENT: i64 = 60;
 struct Candidate {
     card_index: usize,
     source_uid: i64,
+    lineup_position: i32,
     skill_id: i32,
     target_uid: i64,
     normal_ap: i32,
@@ -62,6 +71,12 @@ struct Candidate {
     support: Support,
     damage_rate: i32,
     rank: i32,
+}
+
+struct CardPlan {
+    opers: Vec<BeginRoundOper>,
+    committed_switches: HashMap<i64, i32>,
+    unfed_switches: HashMap<i64, i32>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -128,82 +143,229 @@ pub(crate) fn plan(
         std::borrow::Cow::Owned(extended)
     };
     let catalog = catalog.as_ref();
-    let simulation =
-        simulation::Simulation::new(fight, managers, catalog, round_state, determinism);
+    let context = TargetContext {
+        battle_id: fight.battle_id.unwrap_or_default(),
+        current_round: round_state.next_round_number(),
+        ..Default::default()
+    };
+    let mut devices = devices_opers;
+    let Some(baseline) = plan_cards(
+        request,
+        fight,
+        managers,
+        catalog,
+        round_state,
+        determinism,
+        &pool,
+        preferred_target,
+        &[],
+        &[],
+    )?
+    else {
+        return Ok(reply(request, Vec::new(), devices));
+    };
+    if devices.is_empty() {
+        return Ok(reply(request, baseline.opers, devices));
+    }
+    let live_pool = pool.runtime_view(managers);
+    let mut seen_groups = HashSet::new();
+    loop {
+        if !seen_groups.insert(
+            devices
+                .iter()
+                .map(|operation| operation.index)
+                .collect::<Vec<_>>(),
+        ) {
+            return Err(AutoBattleError::OscillatingConduitGroups);
+        }
+        let mut changed = false;
+        for position in 0..devices.len() {
+            let Some(uid) = devices[position].uid else {
+                continue;
+            };
+            let Some(group_count) = managers
+                .conduit
+                .devices()
+                .find(|device| device.uid == uid)
+                .map(|device| device.skill_groups.len())
+            else {
+                continue;
+            };
+            let current_group = devices[position].index.unwrap_or(1);
+            let mut forced_group = None;
+            for group in 1..=group_count as i32 {
+                let mut candidate_devices = devices.clone();
+                candidate_devices[position].index = Some(group);
+                let Some(candidate_plan) = plan_cards(
+                    request,
+                    fight,
+                    managers,
+                    catalog,
+                    round_state,
+                    determinism,
+                    &pool,
+                    preferred_target,
+                    &[],
+                    &candidate_devices,
+                )?
+                else {
+                    continue;
+                };
+                if candidate_plan.committed_switches.get(&uid) == Some(&group) {
+                    forced_group = Some(group);
+                    break;
+                }
+            }
+            if let Some(group) = forced_group {
+                changed |= devices[position].index != Some(group);
+                devices[position].index = Some(group);
+                continue;
+            }
+            if baseline.unfed_switches.contains_key(&uid) {
+                continue;
+            }
+            let mut best = None;
+            for group in 1..=group_count as i32 {
+                let mut candidate_devices = devices.clone();
+                candidate_devices[position].index = Some(group);
+                if !conduit::operation_eligible(
+                    managers,
+                    &live_pool,
+                    catalog,
+                    candidate_devices[position],
+                ) {
+                    continue;
+                }
+                let Some(candidate_plan) = plan_cards(
+                    request,
+                    fight,
+                    managers,
+                    catalog,
+                    round_state,
+                    determinism,
+                    &pool,
+                    preferred_target,
+                    &candidate_devices,
+                    &candidate_devices,
+                )?
+                else {
+                    continue;
+                };
+                let commands = request
+                    .opers
+                    .iter()
+                    .chain(&candidate_plan.opers)
+                    .cloned()
+                    .collect::<Vec<_>>();
+                let prepared = conduit::prepare_plan(
+                    fight,
+                    managers,
+                    &pool,
+                    catalog,
+                    determinism,
+                    context,
+                    &commands,
+                    &candidate_devices,
+                )?;
+                let score =
+                    conduit::score_plan(&prepared, fight, &pool, context, &candidate_devices, uid)?;
+                if score == (0, 0, 0, 0, 0) {
+                    continue;
+                }
+                if best.as_ref().is_none_or(|(best_score, best_group)| {
+                    score > *best_score
+                        || (score == *best_score
+                            && *best_group != current_group
+                            && group == current_group)
+                }) {
+                    best = Some((score, group));
+                }
+            }
+            if let Some((_, group)) = best {
+                changed |= devices[position].index != Some(group);
+                devices[position].index = Some(group);
+            }
+        }
+        if !changed {
+            break;
+        }
+    }
+    let opers = plan_cards(
+        request,
+        fight,
+        managers,
+        catalog,
+        round_state,
+        determinism,
+        &pool,
+        preferred_target,
+        &devices,
+        &devices,
+    )?
+    .map(|plan| plan.opers)
+    .unwrap_or_default();
+    Ok(reply(request, opers, devices))
+}
+
+#[allow(clippy::too_many_arguments)]
+fn plan_cards(
+    request: &AutoRoundRequest,
+    fight: &Fight,
+    managers: &BattleManagers,
+    catalog: &SkillEffectCatalog,
+    round_state: &RoundState,
+    determinism: &RoundDeterminism,
+    pool: &TargetPool,
+    preferred_target: Option<i64>,
+    energy_devices: &[FightDeviceOper],
+    planned_devices: &[FightDeviceOper],
+) -> Result<Option<CardPlan>, AutoBattleError> {
     let mut cards = managers.card.clone();
-    let mut sim = simulation.managers.clone();
-    let mut sim_determinism = determinism.clone();
     let mut choice_determinism = determinism.clone();
     let mut normal_ap = round_state.act_point.max(0);
     let mut played_owners = HashSet::new();
-    let mut conduit_plan = conduit::SelectionPlan::new(managers);
+    let mut pending_switches = HashMap::new();
+    let mut committed_switches = HashMap::new();
     if !apply_prefix(
         &mut cards,
-        &mut sim,
         &mut normal_ap,
         &mut played_owners,
         &request.opers,
         managers,
         catalog,
-        &mut sim_determinism,
-        &simulation,
-        &devices_opers,
-        &mut conduit_plan,
+        pool,
+        determinism,
+        &mut pending_switches,
+        &mut committed_switches,
     )? {
-        return Ok(reply(request, Vec::new(), devices_opers));
+        return Ok(None);
     }
-
     let live_pool = pool.runtime_view(managers);
-    let mut commands = request.opers.clone();
-    let mut opers = Vec::new();
-    if let Some(operation) = assist_boss_operation(
+    let selected_power_types = conduit::selected_power_types(managers, energy_devices);
+    let mut opers = assist_boss_operation(
         fight,
-        &sim,
-        &pool.runtime_view(&sim),
+        managers,
+        &live_pool,
         catalog,
-        &sim_determinism,
+        determinism,
         preferred_target,
-        &commands,
-    ) {
-        commands.push(operation.clone());
-        let Some((after, after_determinism)) = simulation.player(&commands, &devices_opers) else {
-            return Ok(reply(request, Vec::new(), devices_opers));
-        };
-        sim = after;
-        sim_determinism = after_determinism;
-        opers.push(operation);
-    }
-    let potential = conduit::lookahead::operations(
-        &cards,
-        &simulation,
-        &sim,
-        &played_owners,
-        normal_ap,
-        preferred_target,
-        &sim_determinism,
-        &choice_determinism,
-        &commands,
-        &devices_opers,
-    )?;
-    let Some(planned_devices) = conduit::operations(&simulation, &potential)? else {
-        return Ok(reply(request, Vec::new(), devices_opers));
-    };
-    conduit_plan.set_planned(&planned_devices.requested);
-    let selected_power_types = conduit::selected_power_types(&sim, &planned_devices.effective);
+        &request.opers,
+    )
+    .into_iter()
+    .collect::<Vec<_>>();
     let mut reported_unsupported = HashSet::new();
     loop {
-        let choices: Vec<_> = cards
+        let choices = cards
             .hand()
             .iter()
             .chain(cards.team_cards())
             .map(|card| {
-                if cards.can_use_card(card) {
-                    random_card_choice(card, managers, &mut choice_determinism)
-                } else {
-                    None
-                }
+                cards
+                    .can_use_card(card)
+                    .then(|| random_card_choice(card, managers, &mut choice_determinism))
+                    .flatten()
             })
-            .collect();
+            .collect::<Vec<_>>();
         let Some(candidate) = best_candidate(
             &cards,
             &choices,
@@ -211,17 +373,14 @@ pub(crate) fn plan(
             normal_ap,
             preferred_target,
             managers,
-            &sim,
+            managers,
             &live_pool,
-            &pool.runtime_view(&sim),
+            &live_pool,
             catalog,
-            &sim_determinism,
+            determinism,
             &selected_power_types,
-            &planned_devices.requested,
+            planned_devices,
             &mut reported_unsupported,
-            &simulation,
-            &commands,
-            &devices_opers,
         )?
         else {
             break;
@@ -239,32 +398,38 @@ pub(crate) fn plan(
             candidate.target_uid,
             candidate.chosen_skill_id,
         );
-        commands.push(operation.clone());
-        let selected_group = sim.conduit.selected_group(candidate.source_uid);
-        let Some((after, after_determinism)) = simulation.player(&commands, &devices_opers) else {
-            commands.pop();
-            break;
-        };
         if !play_card(&mut cards, play) {
-            commands.pop();
             break;
         }
-        sim = after;
-        sim_determinism = after_determinism;
-        conduit_plan.observe_card(
+        if candidate.energy
+            && let Some(group) = pending_switches.get(&candidate.source_uid).copied()
+        {
+            committed_switches.insert(candidate.source_uid, group);
+        }
+        if let Some(group) = card_conduit_switch(
             candidate.source_uid,
-            selected_group,
-            sim.conduit.selected_group(candidate.source_uid),
-            candidate.energy,
-        );
+            candidate.skill_id,
+            managers,
+            &live_pool,
+            catalog,
+        ) {
+            pending_switches.insert(candidate.source_uid, group);
+            committed_switches.remove(&candidate.source_uid);
+        }
         normal_ap = normal_ap.saturating_sub(candidate.normal_ap);
         if candidate.normal_ap > 0 {
             played_owners.insert(candidate.source_uid);
         }
         opers.push(operation);
     }
-    let devices = conduit_plan.reconcile(&planned_devices.requested, &sim);
-    Ok(reply(request, opers, devices))
+    Ok(Some(CardPlan {
+        opers,
+        unfed_switches: pending_switches
+            .into_iter()
+            .filter(|(uid, _)| !committed_switches.contains_key(uid))
+            .collect(),
+        committed_switches,
+    }))
 }
 
 fn card_choice_options(card: &CardInfo, managers: &BattleManagers) -> Vec<i32> {
@@ -411,32 +576,25 @@ fn play_card(cards: &mut CardManager, play: CardPlay) -> bool {
 #[allow(clippy::too_many_arguments)]
 fn apply_prefix(
     cards: &mut CardManager,
-    sim: &mut BattleManagers,
     normal_ap: &mut i32,
     played_owners: &mut HashSet<i64>,
     opers: &[BeginRoundOper],
     managers: &BattleManagers,
     catalog: &SkillEffectCatalog,
-    determinism: &mut RoundDeterminism,
-    simulation: &simulation::Simulation<'_>,
-    devices: &[FightDeviceOper],
-    conduit_plan: &mut conduit::SelectionPlan,
-) -> Result<bool, crate::engine::mechanic::hedone_device_power::HedoneDevicePowerError> {
-    for (oper_index, oper) in opers.iter().enumerate() {
+    pool: &TargetPool,
+    determinism: &RoundDeterminism,
+    pending_switches: &mut HashMap<i64, i32>,
+    committed_switches: &mut HashMap<i64, i32>,
+) -> Result<bool, AutoBattleError> {
+    for oper in opers {
         let Some(command) = RoundCommand::from_oper(oper) else {
             return Ok(false);
         };
         if matches!(command, RoundCommand::UseAssistBoss { .. }) {
-            let Some((after, after_determinism)) =
-                simulation.player(&opers[..=oper_index], devices)
-            else {
-                return Ok(false);
-            };
-            *sim = after;
-            *determinism = after_determinism;
             continue;
         }
-        let mut played_source = None;
+        let mut played = None;
+        let mut conduit_observation = None;
         let (card_command, ap_cost) = match command {
             RoundCommand::MoveCard {
                 from_index,
@@ -484,15 +642,26 @@ fn apply_prefix(
                     source_uid,
                     skill_id,
                     target_uid,
-                    &simulation.managers,
-                    &simulation.pool.runtime_view(&simulation.managers),
+                    managers,
+                    &pool.runtime_view(managers),
                     catalog,
-                    &simulation.determinism,
+                    determinism,
                 );
                 if card_skill_is_blocked(managers, catalog, source_uid, skill_id) || !legal_target {
                     return Ok(false);
                 }
                 let ap_cost = action_point_cost(card, source_uid, skill_id, managers, catalog);
+                conduit_observation = Some((
+                    source_uid,
+                    conduit_power_gain(source_uid, skill_id, managers, catalog)?.is_some(),
+                    card_conduit_switch(
+                        source_uid,
+                        skill_id,
+                        managers,
+                        &pool.runtime_view(managers),
+                        catalog,
+                    ),
+                ));
                 let play = CardPlay {
                     origin: CARD_PLAY_ORIGIN,
                     hand_index: card_index,
@@ -501,8 +670,7 @@ fn apply_prefix(
                     choice: None,
                     recorded_skill,
                 };
-                let energy = conduit_power_gain(source_uid, skill_id, sim, catalog)?.is_some();
-                played_source = Some((source_uid, energy));
+                played = Some(source_uid);
                 (CardCommand::Play(play), ap_cost)
             }
         };
@@ -518,31 +686,20 @@ fn apply_prefix(
         {
             return Ok(false);
         }
-        let before_group = played_source.and_then(|(uid, _)| sim.conduit.selected_group(uid));
-        let Some((after, after_determinism)) = simulation.player(&opers[..=oper_index], devices)
-        else {
-            return Ok(false);
-        };
-        if let Some((source_uid, energy)) = played_source {
-            conduit_plan.observe_card(
-                source_uid,
-                before_group,
-                after.conduit.selected_group(source_uid),
-                energy,
-            );
-            if ap_cost > 0 {
-                played_owners.insert(source_uid);
+        if let Some((source_uid, energy, switched_group)) = conduit_observation {
+            if energy && let Some(group) = pending_switches.get(&source_uid).copied() {
+                committed_switches.insert(source_uid, group);
+            }
+            if let Some(group) = switched_group {
+                pending_switches.insert(source_uid, group);
+                committed_switches.remove(&source_uid);
             }
         }
-        *sim = after;
-        *determinism = after_determinism;
-    }
-    if opers.is_empty() {
-        let Some((after, after_determinism)) = simulation.player(opers, devices) else {
-            return Ok(false);
-        };
-        *sim = after;
-        *determinism = after_determinism;
+        if let Some(source_uid) = played
+            && ap_cost > 0
+        {
+            played_owners.insert(source_uid);
+        }
     }
     Ok(true)
 }
@@ -560,12 +717,9 @@ fn best_candidate(
     pool: &TargetPool,
     catalog: &SkillEffectCatalog,
     determinism: &RoundDeterminism,
-    selected_power_types: &HashSet<i32>,
+    selected_power_types: &HashSet<(i64, i32)>,
     planned_devices: &[FightDeviceOper],
     reported_unsupported: &mut HashSet<i32>,
-    simulation: &simulation::Simulation<'_>,
-    opers: &[BeginRoundOper],
-    devices: &[FightDeviceOper],
 ) -> Result<Option<Candidate>, crate::engine::mechanic::hedone_device_power::HedoneDevicePowerError>
 {
     let mut error = None;
@@ -701,6 +855,7 @@ fn best_candidate(
             Some(Candidate {
                 card_index,
                 source_uid,
+                lineup_position: source.position,
                 skill_id,
                 target_uid,
                 normal_ap: normal_ap_cost,
@@ -713,7 +868,7 @@ fn best_candidate(
                     && support != Support::Unneeded,
                 energy: device,
                 preferred_energy: energy_gain.is_some_and(|(power_type, _)| {
-                    power_type == 0 || selected_power_types.contains(&power_type)
+                    power_type == 0 || selected_power_types.contains(&(source_uid, power_type))
                 }),
                 energy_amount: energy_gain.map_or(0, |(_, amount)| amount),
                 flexible_energy: energy_gain.is_some_and(|(power_type, _)| power_type == 0),
@@ -729,58 +884,26 @@ fn best_candidate(
     if let Some(error) = error {
         return Err(error);
     }
-    let switch_jobs = candidates
-        .iter()
-        .enumerate()
-        .filter_map(|(index, candidate)| {
-            let group = planned_devices
-                .iter()
-                .find(|operation| {
-                    operation.uid == Some(candidate.source_uid)
-                        && operation.index != sim.conduit.selected_group(candidate.source_uid)
-                })?
-                .index;
-            Some((index, *candidate, group))
-        })
-        .collect::<Vec<_>>();
-    let switches = workers::run(switch_jobs.len(), |worker_count| {
-        let chunk_size = switch_jobs.len().div_ceil(worker_count);
-        std::thread::scope(|scope| {
-            switch_jobs
-                .chunks(chunk_size)
-                .map(|jobs| {
-                    scope.spawn(move || {
-                        jobs.iter()
-                            .map(|(index, candidate, group)| {
-                                (
-                                    *index,
-                                    card_selects_conduit_group(
-                                        candidate.card_index,
-                                        candidate.target_uid,
-                                        candidate.chosen_skill_id,
-                                        candidate.source_uid,
-                                        *group,
-                                        simulation,
-                                        opers,
-                                        devices,
-                                    ),
-                                )
-                            })
-                            .collect::<Vec<_>>()
-                    })
+    for candidate in &mut candidates {
+        candidate.planned_conduit_switch = planned_devices.iter().any(|operation| {
+            operation.uid == Some(candidate.source_uid)
+                && operation.index != sim.conduit.selected_group(candidate.source_uid)
+                && operation.index.is_some_and(|group| {
+                    card_sets_conduit_group(
+                        candidate.source_uid,
+                        candidate.skill_id,
+                        group,
+                        sim,
+                        pool,
+                        catalog,
+                    )
                 })
-                .collect::<Vec<_>>()
-                .into_iter()
-                .flat_map(|worker| worker.join().expect("auto-battle scoring worker panicked"))
-                .collect::<Vec<_>>()
-        })
-    });
-    for (index, switches_group) in switches {
-        candidates[index].planned_conduit_switch = switches_group;
+        });
     }
     Ok(candidates.into_iter().max_by_key(|candidate| {
         // Official auto casts ready ultimates left to right.
-        let strength = (!candidate.ultimate).then_some((candidate.damage_rate, candidate.rank));
+        let strength = (!candidate.ultimate && !candidate.energy)
+            .then_some((candidate.damage_rate, candidate.rank));
         (
             candidate.free,
             candidate.ultimate,
@@ -798,6 +921,7 @@ fn best_candidate(
             candidate.first_for_owner,
             candidate.support,
             strength,
+            Reverse(candidate.lineup_position),
             Reverse(candidate.card_index),
             Reverse(candidate.source_uid),
             Reverse(candidate.skill_id),
@@ -806,21 +930,42 @@ fn best_candidate(
 }
 
 #[allow(clippy::too_many_arguments)]
-fn card_selects_conduit_group(
-    card_index: usize,
-    target_uid: i64,
-    chosen_skill_id: Option<i32>,
+fn card_sets_conduit_group(
     source_uid: i64,
-    group: Option<i32>,
-    simulation: &simulation::Simulation<'_>,
-    opers: &[BeginRoundOper],
-    devices: &[FightDeviceOper],
+    skill_id: i32,
+    group: i32,
+    managers: &BattleManagers,
+    pool: &TargetPool,
+    catalog: &SkillEffectCatalog,
 ) -> bool {
-    let mut opers = opers.to_vec();
-    opers.push(play_operation(card_index, target_uid, chosen_skill_id));
-    simulation
-        .player(&opers, devices)
-        .is_some_and(|(managers, _)| managers.conduit.selected_group(source_uid) == group)
+    card_conduit_switch(source_uid, skill_id, managers, pool, catalog) == Some(group)
+}
+
+fn card_conduit_switch(
+    source_uid: i64,
+    skill_id: i32,
+    managers: &BattleManagers,
+    pool: &TargetPool,
+    catalog: &SkillEffectCatalog,
+) -> Option<i32> {
+    catalog
+        .get(skill_id)
+        .into_iter()
+        .flat_map(|effect| &effect.slots)
+        .find_map(|slot| {
+            (slot.behavior.spec.kind
+                == crate::engine::skill::behavior::classify::BehaviorKind::SetConduitSkillGroup
+                && crate::engine::skill::condition::conditions_match(
+                    &slot.conditions,
+                    source_uid,
+                    &[source_uid],
+                    Some(managers),
+                    pool,
+                    TargetContext::default(),
+                ))
+            .then(|| slot.behavior.args.first().copied())
+            .flatten()
+        })
 }
 
 fn conduit_power_gain(

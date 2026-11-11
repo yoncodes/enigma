@@ -3,6 +3,22 @@ use sonettobuf::{Fight, FightEntityInfo, FightTeam, HeroAttribute};
 use crate::engine::{manager::BattleManagers, skill::target::TargetPool};
 
 use super::outcome::{BattleOutcome, battle_outcome, defenders_defeated};
+use super::state::RoundState;
+
+#[test]
+fn extra_round_reuses_the_current_round_number() {
+    let mut state = RoundState {
+        cur_round: 4,
+        ..Default::default()
+    };
+
+    assert_eq!(state.next_round_number(), 5);
+    state.grant_extra_round();
+    assert_eq!(state.next_round_number(), 4);
+    state.begin_round();
+    assert_eq!(state.cur_round, 4);
+    assert_eq!(state.next_round_number(), 5);
+}
 
 #[test]
 fn live_reserve_keeps_the_battle_open_for_promotion() {

@@ -642,15 +642,6 @@ fn auto_round_selects_conduit_groups_from_round_utility() {
 
     assert_eq!(
         reply
-            .opers
-            .iter()
-            .map(|oper| oper.param1)
-            .collect::<Vec<_>>(),
-        vec![Some(3), Some(9), Some(7), Some(4), Some(6)]
-    );
-
-    assert_eq!(
-        reply
             .devices_opers
             .iter()
             .map(|oper| (oper.uid, oper.index))
@@ -661,6 +652,14 @@ fn auto_round_selects_conduit_groups_from_round_utility() {
             (Some(12), Some(1)),
             (Some(13), Some(1)),
         ]
+    );
+    assert_eq!(
+        reply
+            .opers
+            .iter()
+            .map(|oper| oper.param1)
+            .collect::<Vec<_>>(),
+        vec![Some(3), Some(9), Some(7), Some(4), Some(6)]
     );
 }
 
@@ -728,9 +727,9 @@ fn auto_round_feeds_a_devices_switch_with_its_own_later_energy() {
 
     let reply = runtime.plan_auto_round(&AutoRoundRequest::default());
 
+    assert_eq!(reply.devices_opers[0].index, Some(2));
     assert_eq!(reply.opers.len(), 2);
     assert_eq!(reply.opers[0].param1, Some(2));
-    assert_eq!(reply.devices_opers[0].index, Some(2));
 }
 
 #[test]
@@ -857,6 +856,7 @@ fn auto_round_selects_conduit_healing_only_for_urgent_hp() {
                 skill_id: 31450111,
             })
             .unwrap();
+        grant_buff(&mut runtime, 10, 10, 31450121);
 
         let reply = runtime.plan_auto_round(&AutoRoundRequest::default());
 
@@ -1210,7 +1210,7 @@ fn auto_round_prefers_hp_redistribution_setup_over_an_attack() {
 }
 
 #[test]
-fn auto_round_feeds_the_selected_conduit_group_first() {
+fn auto_round_feeds_the_selected_conduit_group_from_available_energy() {
     let mut runtime = twins_conduit_runtime(1_000, 0, false, 70);
     runtime
         .managers
@@ -1233,9 +1233,9 @@ fn auto_round_feeds_the_selected_conduit_group_first() {
             .iter()
             .map(|oper| oper.param1)
             .collect::<Vec<_>>(),
-        vec![Some(1), Some(2)]
+        vec![Some(5), Some(5)]
     );
-    assert_eq!(reply.devices_opers[0].index, Some(1));
+    assert_eq!(reply.devices_opers[0].index, Some(2));
 }
 
 #[test]
@@ -1308,7 +1308,7 @@ fn auto_round_prefers_an_owner_bound_temporary_skill() {
 }
 
 #[test]
-fn auto_round_keeps_equal_energy_cards_in_hand_order_after_an_owner_plays() {
+fn auto_round_keeps_equal_energy_cards_in_lineup_order_after_an_owner_plays() {
     let mut ally = team_hero(11, 3023, 1_000, [30230111, 30230121]);
     ally.ex_point = Some(5);
     ally.ex_point_max = Some(5);
@@ -1331,7 +1331,7 @@ fn auto_round_keeps_equal_energy_cards_in_hand_order_after_an_owner_plays() {
             .iter()
             .map(|oper| oper.param1)
             .collect::<Vec<_>>(),
-        vec![Some(1), Some(1)]
+        vec![Some(1), Some(2)]
     );
 }
 

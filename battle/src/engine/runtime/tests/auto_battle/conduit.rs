@@ -283,6 +283,26 @@ fn queued_hedone_energy_feeds_her_card_driven_group_switch() {
 }
 
 #[test]
+fn conduit_scoring_counts_every_mass_attack_target() {
+    let plan = |enemy_count| {
+        let runtime = team_runtime_against(
+            vec![team_hero(10, 3156, 1_000, [31560111, 31560121])],
+            (1..=enemy_count)
+                .map(|index| enemy(-i64::from(index), 1_000))
+                .collect(),
+            vec![hand_card(10, 31446012, false)],
+        );
+        runtime
+            .plan_auto_round(&AutoRoundRequest::default())
+            .devices_opers[0]
+            .index
+    };
+
+    assert_eq!(plan(1), Some(1));
+    assert_eq!(plan(4), Some(2));
+}
+
+#[test]
 fn auto_round_rejects_invalid_hedone_owned_state() {
     let mut hedone = team_hero(10, 3156, 1_000, [31560111, 31560121]);
     hedone.buffs.push(sonettobuf::BuffInfo {
@@ -350,6 +370,19 @@ fn auto_round_plans_a_full_conduit_roster() {
 
     assert_eq!(
         reply
+            .devices_opers
+            .iter()
+            .map(|oper| (oper.uid, oper.index))
+            .collect::<Vec<_>>(),
+        [
+            (Some(10), Some(2)),
+            (Some(11), Some(2)),
+            (Some(12), Some(2)),
+            (Some(13), Some(1))
+        ]
+    );
+    assert_eq!(
+        reply
             .opers
             .iter()
             .map(|oper| (
@@ -361,20 +394,7 @@ fn auto_round_plans_a_full_conduit_roster() {
                 oper.card_param1.clone(),
             ))
             .collect::<Vec<_>>(),
-        [2, 3, 5, 1, 1].map(|index| (Some(2), Some(index), None, Some(-1), None, None))
-    );
-    assert_eq!(
-        reply
-            .devices_opers
-            .iter()
-            .map(|oper| (oper.uid, oper.index))
-            .collect::<Vec<_>>(),
-        [
-            (Some(10), Some(1)),
-            (Some(11), Some(2)),
-            (Some(12), Some(1)),
-            (Some(13), Some(1))
-        ]
+        [1, 9, 4, 1, 4].map(|index| (Some(2), Some(index), None, Some(-1), None, None))
     );
 }
 
