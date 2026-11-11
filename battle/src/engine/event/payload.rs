@@ -217,6 +217,7 @@ pub enum BattleEvent {
         team: i32,
         emitter_uid: i64,
         cards: Vec<CardInfo>,
+        action_count: usize,
     },
     PlayerActionsResolved {
         team: i32,

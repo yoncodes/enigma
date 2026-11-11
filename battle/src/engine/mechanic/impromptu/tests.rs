@@ -416,6 +416,7 @@ fn queued_skill(managers: &BattleManagers) -> Option<i32> {
             energy: Some(1),
             ..Default::default()
         }],
+        1,
     )
     .into_iter()
     .find_map(|op| match op {

@@ -1,5 +1,26 @@
 use super::*;
 
+fn queue_from_played(
+    managers: &BattleManagers,
+    team: i32,
+    emitter_uid: i64,
+) -> crate::engine::round::command::PlayerActionQueue {
+    crate::engine::round::command::PlayerActionQueue {
+        team,
+        emitter_uid,
+        actions: managers
+            .card
+            .played()
+            .iter()
+            .map(|played| {
+                let mut card = played.card.clone();
+                card.skill_id = Some(played.skill_id);
+                crate::engine::round::command::PlayerQueuedAction::Card(Box::new(card))
+            })
+            .collect(),
+    }
+}
+
 #[test]
 fn action_queue_commit_selects_everecho_group_for_its_enabling_buff() {
     init_config();
@@ -64,6 +85,7 @@ fn action_queue_commit_selects_everecho_group_for_its_enabling_buff() {
             )
             .unwrap();
         let catalog = SkillEffectCatalog::from_fight(config::configs::get(), &fight);
+        let queue = queue_from_played(&managers, 1, 99_998);
 
         let result = run_action_queue_committed(
             &mut managers,
@@ -71,9 +93,7 @@ fn action_queue_commit_selects_everecho_group_for_its_enabling_buff() {
             &catalog,
             &mut RoundDeterminism::default(),
             TargetContext::default(),
-            1,
-            99_998,
-            false,
+            queue,
         )
         .unwrap();
 
@@ -82,7 +102,7 @@ fn action_queue_commit_selects_everecho_group_for_its_enabling_buff() {
             .iter()
             .filter_map(|outcome| match outcome {
                 RuleOutcome::Conduit(
-                    crate::engine::manager::conduit::ConduitChange::SkillGroupChanged {
+                    crate::engine::manager::conduit::ConduitChange::SelectionAdjusted {
                         origin,
                         source_uid,
                         group,
@@ -116,12 +136,7 @@ fn action_queue_commit_selects_everecho_group_for_its_enabling_buff() {
         for step in &steps {
             collect_group_changes(step, &mut projected);
         }
-        let [effect] = projected.as_slice() else {
-            panic!("expected one configured conduit group change")
-        };
-        assert_eq!(effect.target_id, Some(10));
-        assert_eq!(effect.effect_num, Some(expected_group));
-        assert_eq!(effect.team_type, Some(1));
+        assert!(projected.is_empty());
     }
 }
 
@@ -170,15 +185,14 @@ fn action_queue_commit_records_cards_in_an_independent_buff_act_frame() {
         }))
         .unwrap();
 
+    let queue = queue_from_played(&managers, 1, 99_998);
     let result = run_action_queue_committed(
         &mut managers,
         &pool,
         &SkillEffectCatalog::default(),
         &mut RoundDeterminism::default(),
         TargetContext::default(),
-        1,
-        99_998,
-        false,
+        queue,
     )
     .unwrap();
     let steps = crate::engine::packet::timeline::project(&result.frames).unwrap();
@@ -248,15 +262,14 @@ fn action_queue_commit_expires_the_committed_teams_before_ap_buffs() {
         }))
         .unwrap();
 
+    let queue = queue_from_played(&managers, 1, 99_998);
     let result = run_action_queue_committed(
         &mut managers,
         &pool,
         &SkillEffectCatalog::default(),
         &mut RoundDeterminism::default(),
         TargetContext::default(),
-        1,
-        99_998,
-        false,
+        queue,
     )
     .unwrap();
 
@@ -534,7 +547,7 @@ fn cards_without_a_living_current_enemy_resolve_support_effects_or_only_grant_mo
                 chosen_skill_id: None,
                 recorded_skill: None,
             }],
-            Vec::new(),
+            &[],
             1,
             0,
         )
@@ -663,7 +676,7 @@ fn terminal_player_action_stops_the_remaining_action_queue() {
                 recorded_skill: None,
             },
         ],
-        Vec::new(),
+        &[],
         1,
         0,
     )
@@ -755,7 +768,7 @@ fn side_owned_support_card_reports_defeated_opponents_during_wave_transition() {
             chosen_skill_id: None,
             recorded_skill: None,
         }],
-        Vec::new(),
+        &[],
         1,
         0,
     )
@@ -858,7 +871,7 @@ fn repeated_play_index_tracks_the_composed_mutating_hand() {
                 recorded_skill: None,
             },
         ],
-        Vec::new(),
+        &[],
         1,
         0,
     )

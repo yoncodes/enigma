@@ -60,6 +60,11 @@ pub enum ConduitCommand {
         source_uid: i64,
         group: i32,
     },
+    AdjustSelection {
+        origin: CommandOrigin,
+        source_uid: i64,
+        group: i32,
+    },
     BeginSkill {
         source_uid: i64,
         skill_id: i32,
@@ -157,12 +162,18 @@ pub struct ConduitCounterChange {
 pub enum ConduitChange {
     Initialized(ConduitArea),
     RosterRefreshed(ConduitArea),
-    GroupSelected {
+    SelectionCommitted {
         source_uid: i64,
         team: i32,
         group: i32,
     },
     SkillGroupChanged {
+        origin: CommandOrigin,
+        source_uid: i64,
+        team: i32,
+        group: i32,
+    },
+    SelectionAdjusted {
         origin: CommandOrigin,
         source_uid: i64,
         team: i32,

@@ -19,41 +19,6 @@ use super::{
     schedule,
 };
 
-fn append_client_conduit_selection_confirmations(
-    mut frames: Vec<SemanticFrame>,
-) -> Vec<SemanticFrame> {
-    let confirmations = frames
-        .iter()
-        .flat_map(|frame| &frame.items)
-        .filter_map(|item| match item {
-            FrameItem::Change(change) => match change.as_ref() {
-                crate::engine::runtime::change::BattleChange::Conduit(
-                    crate::engine::manager::conduit::ConduitChange::GroupSelected {
-                        source_uid,
-                        team,
-                        group,
-                    },
-                ) => Some(RoundCue::ClientConduitSelectionConfirmed {
-                    source_uid: *source_uid,
-                    team: *team,
-                    group: *group,
-                }),
-                _ => None,
-            },
-            _ => None,
-        })
-        .map(FrameItem::Cue)
-        .collect::<Vec<_>>();
-    if !confirmations.is_empty() {
-        frames.push(SemanticFrame {
-            owner: FrameOwner::Command,
-            trigger: FrameTrigger::Active,
-            items: confirmations,
-        });
-    }
-    frames
-}
-
 struct WaveTransition {
     pool: crate::engine::skill::target::TargetPool,
     entering_uids: Vec<i64>,
@@ -204,25 +169,6 @@ impl BattleRuntime {
                 == Some(crate::engine::fight::versions::RoundStartSetupLayout::Version7);
         let device_operations = &request.devices_opers;
 
-        let conduit_selection = drain::run_command_group(
-            &mut self.managers,
-            &pool,
-            catalog,
-            &mut self.determinism,
-            context,
-            device_operations.iter().filter_map(|operation| {
-                Some(crate::engine::skill::rule::output::RuleOp::Command(
-                    crate::engine::skill::rule::output::BattleCommand::Conduit(
-                        crate::engine::manager::conduit::ConduitCommand::SelectGroup {
-                            source_uid: operation.uid?,
-                            group: operation.index?,
-                        },
-                    ),
-                ))
-            }),
-        )
-        .map_err(|error| format!("{error:?}"))?;
-        ai_turn.observe(&conduit_selection);
         let player = schedule::run_player_phase(
             &self.fight,
             &mut self.managers,
@@ -231,7 +177,7 @@ impl BattleRuntime {
             &mut self.determinism,
             context,
             commands.iter().cloned(),
-            append_client_conduit_selection_confirmations(conduit_selection.frames),
+            device_operations,
             1,
             crate::engine::manager::emitter::UID,
         )

@@ -32,6 +32,10 @@ pub enum FrameOwner {
         device_index: i32,
         skill_position: i32,
     },
+    PlayerActionCommit,
+    ConduitSelectionCommit,
+    ConduitSelectionPublication,
+    ConduitSelectionConfirmation,
     BuffAct {
         owner_uid: i64,
         source_uid: i64,
@@ -145,11 +149,6 @@ pub enum RoundCue {
         round: i32,
     },
     ExtraRoundGranted,
-    ClientConduitSelectionConfirmed {
-        source_uid: i64,
-        team: i32,
-        group: i32,
-    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

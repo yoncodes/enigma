@@ -6,6 +6,12 @@ pub struct PlayerPhaseResult {
     pub card_energy_finalized: bool,
 }
 
+#[derive(Default)]
+struct CommittedConduitSelection {
+    selections: crate::engine::round::command::ConduitSelections,
+    queue_actions: Vec<crate::engine::round::command::PlayerQueuedAction>,
+}
+
 /// Allocates configured card energy before the owning action phase begins.
 pub fn run_card_energy_allocation(
     managers: &mut BattleManagers,
@@ -22,30 +28,149 @@ pub fn run_card_energy_allocation(
 }
 
 #[allow(clippy::too_many_arguments)]
+fn run_conduit_selection(
+    managers: &mut BattleManagers,
+    pool: &TargetPool,
+    catalog: &SkillEffectCatalog,
+    determinism: &mut RoundDeterminism,
+    context: TargetContext,
+    operations: &[sonettobuf::FightDeviceOper],
+) -> Result<(DrainResult, CommittedConduitSelection), DrainError> {
+    let commands = operations
+        .iter()
+        .filter_map(|operation| {
+            Some(RuleOp::Command(BattleCommand::Conduit(
+                crate::engine::manager::conduit::ConduitCommand::SelectGroup {
+                    source_uid: operation.uid?,
+                    group: operation.index?,
+                },
+            )))
+        })
+        .collect::<Vec<_>>();
+    if commands.is_empty() {
+        return Ok((DrainResult::default(), CommittedConduitSelection::default()));
+    }
+    let result = drain::run_command_group_as(
+        managers,
+        pool,
+        catalog,
+        determinism,
+        context,
+        FrameOwner::ConduitSelectionCommit,
+        commands,
+    )?;
+    let selections = result
+        .outcomes
+        .iter()
+        .filter_map(|outcome| match outcome {
+            RuleOutcome::Conduit(
+                crate::engine::manager::conduit::ConduitChange::SelectionCommitted {
+                    source_uid,
+                    team,
+                    group,
+                },
+            ) => Some(crate::engine::round::command::ConduitSelection {
+                source_uid: *source_uid,
+                team: *team,
+                group: *group,
+            }),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    let queue_actions = (!selections.is_empty())
+        .then_some(crate::engine::round::command::PlayerQueuedAction::Conduit)
+        .into_iter()
+        .collect();
+    Ok((
+        result,
+        CommittedConduitSelection {
+            selections: crate::engine::round::command::ConduitSelections { selections },
+            queue_actions,
+        },
+    ))
+}
+
+fn run_conduit_selection_publication(
+    selections: &crate::engine::round::command::ConduitSelections,
+) -> DrainResult {
+    DrainResult {
+        frames: vec![SemanticFrame {
+            owner: FrameOwner::ConduitSelectionPublication,
+            trigger: FrameTrigger::Active,
+            items: vec![FrameItem::Change(Box::new(
+                crate::engine::runtime::change::BattleChange::ConduitSelectionPublication(
+                    selections.clone(),
+                ),
+            ))],
+        }],
+        ..Default::default()
+    }
+}
+
+fn run_conduit_selection_confirmation(
+    selections: &crate::engine::round::command::ConduitSelections,
+) -> DrainResult {
+    if selections.selections.is_empty() {
+        return DrainResult::default();
+    }
+    DrainResult {
+        frames: vec![SemanticFrame {
+            owner: FrameOwner::ConduitSelectionConfirmation,
+            trigger: FrameTrigger::Active,
+            items: vec![FrameItem::Change(Box::new(
+                crate::engine::runtime::change::BattleChange::ConduitSelectionConfirmation(
+                    selections.clone(),
+                ),
+            ))],
+        }],
+        ..Default::default()
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
 pub fn run_action_queue_committed(
     managers: &mut BattleManagers,
     pool: &TargetPool,
     catalog: &SkillEffectCatalog,
     determinism: &mut RoundDeterminism,
     context: TargetContext,
-    team: i32,
-    emitter_uid: i64,
-    include_device_action: bool,
+    queue: crate::engine::round::command::PlayerActionQueue,
 ) -> Result<DrainResult, DrainError> {
-    drain::run(
-        managers,
-        pool,
-        catalog,
-        determinism,
-        context,
-        [RuleOp::Command(BattleCommand::Card(
-            CardCommand::CommitActionQueue {
-                team,
-                emitter_uid,
-                include_device_action,
-            },
-        ))],
-    )
+    let team = queue.team;
+    let committed_event = BattleEvent::ActionQueueCommitted {
+        team,
+        emitter_uid: queue.emitter_uid,
+        cards: queue.cards(),
+        action_count: queue.action_count(),
+    };
+    let card_state = managers.card.action_queue_state(team);
+    let mut result = DrainResult {
+        frames: vec![SemanticFrame {
+            owner: FrameOwner::PlayerActionCommit,
+            trigger: FrameTrigger::Active,
+            items: vec![
+                FrameItem::Change(Box::new(
+                    crate::engine::runtime::change::BattleChange::PlayerActionQueue(queue),
+                )),
+                FrameItem::Change(Box::new(
+                    crate::engine::runtime::change::BattleChange::ActionQueueCardState(card_state),
+                )),
+            ],
+        }],
+        ..Default::default()
+    };
+    append(
+        &mut result,
+        drain::run_event(
+            managers,
+            pool,
+            catalog,
+            determinism,
+            context,
+            committed_event,
+        )?,
+    );
+    Ok(result)
 }
 
 pub fn run_action_phase_start(
@@ -325,7 +450,7 @@ pub fn run_player_action_queue(
         team,
         emitter_uid,
         None,
-        Vec::new(),
+        &[],
     )
 }
 
@@ -398,7 +523,7 @@ pub fn run_player_commands(
         team,
         emitter_uid,
         None,
-        Vec::new(),
+        &[],
     )
 }
 
@@ -411,7 +536,7 @@ pub fn run_player_phase(
     determinism: &mut RoundDeterminism,
     context: TargetContext,
     commands: impl IntoIterator<Item = RoundCommand>,
-    before_actions: Vec<SemanticFrame>,
+    device_operations: &[sonettobuf::FightDeviceOper],
     team: i32,
     emitter_uid: i64,
 ) -> Result<PlayerPhaseResult, DrainError> {
@@ -430,7 +555,7 @@ pub fn run_player_phase(
         team,
         emitter_uid,
         Some(fight),
-        before_actions,
+        device_operations,
     )?;
     let impromptu = run_impromptu(
         managers,
@@ -547,10 +672,22 @@ fn run_player_card_ops(
     team: i32,
     emitter_uid: i64,
     fight: Option<&sonettobuf::Fight>,
-    before_actions: Vec<SemanticFrame>,
+    device_operations: &[sonettobuf::FightDeviceOper],
 ) -> Result<DrainResult, DrainError> {
-    let include_device_action = has_committed_client_conduit_selection(&before_actions);
     let mut result = DrainResult::default();
+    let (selection_commit, committed_selection) = run_conduit_selection(
+        managers,
+        pool,
+        catalog,
+        determinism,
+        context,
+        device_operations,
+    )?;
+    append(&mut result, selection_commit);
+    let CommittedConduitSelection {
+        selections,
+        queue_actions,
+    } = committed_selection;
     let mut skills = Vec::new();
     let mut pending_rewards = Vec::new();
     for op in ops {
@@ -800,8 +937,7 @@ fn run_player_card_ops(
                 std::mem::take(&mut pending_rewards),
             )?,
         );
-        if !include_device_action {
-            result.frames.extend(before_actions);
+        if queue_actions.is_empty() {
             return Ok(result);
         }
     }
@@ -812,15 +948,28 @@ fn run_player_card_ops(
             .before_rewards
             .extend(pending_rewards);
     }
+    let mut actions = managers
+        .card
+        .played()
+        .iter()
+        .map(|played| {
+            let mut card = played.card.clone();
+            card.skill_id = Some(played.skill_id);
+            crate::engine::round::command::PlayerQueuedAction::Card(Box::new(card))
+        })
+        .collect::<Vec<_>>();
+    actions.extend(queue_actions);
     let committed = run_action_queue_committed(
         managers,
         pool,
         catalog,
         determinism,
         context,
-        team,
-        emitter_uid,
-        include_device_action,
+        crate::engine::round::command::PlayerActionQueue {
+            team,
+            emitter_uid,
+            actions,
+        },
     )?;
     skills.extend(committed.outcomes.iter().filter_map(|outcome| {
         let RuleOutcome::Card(changes) = outcome else {
@@ -837,8 +986,33 @@ fn run_player_card_ops(
             prelude: Vec::new(),
         })
     }));
+    let final_selections = crate::engine::round::command::ConduitSelections {
+        selections: selections
+            .selections
+            .iter()
+            .map(
+                |selection| crate::engine::round::command::ConduitSelection {
+                    source_uid: selection.source_uid,
+                    team: selection.team,
+                    group: managers
+                        .conduit
+                        .selected_group(selection.source_uid)
+                        .unwrap_or(selection.group),
+                },
+            )
+            .collect(),
+    };
     append(&mut result, committed);
-    result.frames.extend(before_actions);
+    if !final_selections.selections.is_empty() {
+        append(
+            &mut result,
+            run_conduit_selection_publication(&final_selections),
+        );
+        append(
+            &mut result,
+            run_conduit_selection_confirmation(&final_selections),
+        );
+    }
     let queue_preparation = queue_preparation_ops(managers, pool, catalog, context, &skills);
     if !queue_preparation.is_empty() {
         append(
@@ -1063,27 +1237,6 @@ fn run_player_card_ops(
         );
     }
     Ok(result)
-}
-
-fn has_committed_client_conduit_selection(frames: &[SemanticFrame]) -> bool {
-    fn contains(frame: &SemanticFrame) -> bool {
-        frame.items.iter().any(|item| match item {
-            FrameItem::Change(change)
-                if matches!(
-                    change.as_ref(),
-                    BattleChange::Conduit(
-                        crate::engine::manager::conduit::ConduitChange::GroupSelected { .. }
-                    )
-                ) =>
-            {
-                true
-            }
-            FrameItem::Child(child) => contains(child),
-            FrameItem::Change(_) | FrameItem::Cue(_) => false,
-        })
-    }
-
-    frames.iter().any(contains)
 }
 
 fn queue_preparation_ops(

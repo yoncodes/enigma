@@ -282,8 +282,9 @@ fn queued_skill_card_ops(
     context: BehaviorOpContext<'_>,
     behavior: &ParsedBehavior,
 ) -> Option<Vec<RuleOp>> {
-    let crate::engine::event::payload::BattleEvent::ActionQueueCommitted { team, cards, .. } =
-        context.event?
+    let crate::engine::event::payload::BattleEvent::ActionQueueCommitted {
+        team, action_count, ..
+    } = context.event?
     else {
         return Some(Vec::new());
     };
@@ -302,8 +303,7 @@ fn queued_skill_card_ops(
         return Some(Vec::new());
     };
     let owner = context.pool.entity(context.source_uid)?;
-    let first_index = cards
-        .len()
+    let first_index = action_count
         .checked_add(context.managers.card.queued_use_cards().len())?
         .checked_add(1)?;
     (0..usize::try_from(count).ok()?)
@@ -1056,6 +1056,7 @@ mod tests {
                     ..Default::default()
                 },
             ],
+            action_count: 4,
         };
         let behavior = ParsedBehavior::from_spec(
             crate::engine::skill::behavior::classify::BehaviorSpec::new(60070, "AddUseSkillCard"),

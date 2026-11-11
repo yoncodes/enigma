@@ -25,7 +25,7 @@ pub mod types;
 
 pub use change::CardChange;
 pub use command::{
-    CARD_ENERGY_CLEAR_ORIGIN, CARD_PLAY_ORIGIN, CardActionQueue, CardAddCrystal, CardAddGenerated,
+    CARD_ENERGY_CLEAR_ORIGIN, CARD_PLAY_ORIGIN, CardAddCrystal, CardAddGenerated,
     CardAddHedone, CardAddPrecast, CardAddTemporary, CardAddUniversal, CardChangeKind,
     CardChangeToTemporary, CardChanges, CardCommand, CardCommandError, CardConsumeForEffect,
     CardConsumptionKind, CardDeckRankUpRange, CardDraw, CardEnchantHand, CardEnergyAllocation,
@@ -94,6 +94,13 @@ pub struct CardStateSnapshot {
     pub team_type: i32,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct ActionQueueCardState {
+    pub hand: Vec<CardInfo>,
+    pub deck_num: i32,
+    pub team_type: i32,
+}
+
 struct DeckRankUpStep {
     deck_index: usize,
     owner_uid: i64,
@@ -109,6 +116,16 @@ enum PlaySource {
 }
 
 impl CardManager {
+    pub fn action_queue_state(&self, team_type: i32) -> ActionQueueCardState {
+        let mut hand = self.hand().to_vec();
+        hand.extend_from_slice(self.team_cards());
+        ActionQueueCardState {
+            hand,
+            deck_num: self.deck_num(),
+            team_type,
+        }
+    }
+
     pub fn state_snapshot(&self, team_type: i32) -> CardStateSnapshot {
         CardStateSnapshot {
             hand: self.hand().to_vec(),

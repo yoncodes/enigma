@@ -457,28 +457,45 @@ fn action_queue_commit_collects_played_card_energy_as_inspiration() {
         }))
         .unwrap();
 
+    let queue = crate::engine::round::command::PlayerActionQueue {
+        team: 1,
+        emitter_uid: 99998,
+        actions: managers
+            .card
+            .played()
+            .iter()
+            .map(|played| {
+                let mut card = played.card.clone();
+                card.skill_id = Some(played.skill_id);
+                crate::engine::round::command::PlayerQueuedAction::Card(Box::new(card))
+            })
+            .collect(),
+    };
     let result = run_action_queue_committed(
         &mut managers,
         &pool,
         &SkillEffectCatalog::default(),
         &mut RoundDeterminism::default(),
         TargetContext::default(),
-        1,
-        99998,
-        false,
+        queue,
     )
     .unwrap();
 
     assert!(matches!(
         result.outcomes.as_slice(),
         [
-            RuleOutcome::Card(cards),
             RuleOutcome::Gauge(change),
             RuleOutcome::Card(queued)
         ]
-            if cards.kind == crate::engine::manager::card::CardChangeKind::ActionQueueCommitted
-                && change.applied_delta == 3
+            if change.applied_delta == 3
                 && queued.kind == crate::engine::manager::card::CardChangeKind::UseCardQueued
+    ));
+    assert!(matches!(
+        result.events.first(),
+        Some(BattleEvent::ActionQueueCommitted {
+            action_count: 1,
+            ..
+        })
     ));
     assert_eq!(
         result

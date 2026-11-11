@@ -1,6 +1,47 @@
-use sonettobuf::BeginRoundOper;
+use sonettobuf::{BeginRoundOper, CardInfo};
 
 use crate::engine::manager::card::CardOpType;
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum PlayerQueuedAction {
+    Card(Box<CardInfo>),
+    Conduit,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct PlayerActionQueue {
+    pub team: i32,
+    pub emitter_uid: i64,
+    pub actions: Vec<PlayerQueuedAction>,
+}
+
+impl PlayerActionQueue {
+    pub fn action_count(&self) -> usize {
+        self.actions.len()
+    }
+
+    pub fn cards(&self) -> Vec<CardInfo> {
+        self.actions
+            .iter()
+            .filter_map(|action| match action {
+                PlayerQueuedAction::Card(card) => Some(card.as_ref().clone()),
+                PlayerQueuedAction::Conduit => None,
+            })
+            .collect()
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ConduitSelection {
+    pub source_uid: i64,
+    pub team: i32,
+    pub group: i32,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ConduitSelections {
+    pub selections: Vec<ConduitSelection>,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RoundCommand {

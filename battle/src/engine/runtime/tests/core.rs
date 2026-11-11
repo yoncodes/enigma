@@ -224,7 +224,6 @@ fn committed_cards_grant_cloth_power_without_waiting_for_execution() {
             drawn: Vec::new(),
             composed_owners: Vec::new(),
             operation: None,
-            action_queue: None,
             queued_use_card: None,
             rank_results: Vec::new(),
             consumed_indices: Vec::new(),

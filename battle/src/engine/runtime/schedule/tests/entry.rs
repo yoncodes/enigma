@@ -113,7 +113,7 @@ fn player_and_marked_monster_reserves_promote_after_the_action() {
                 recorded_skill: None,
             },
         ],
-        Vec::new(),
+        &[],
         1,
         0,
     )

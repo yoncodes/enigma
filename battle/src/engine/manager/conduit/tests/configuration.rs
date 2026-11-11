@@ -225,7 +225,7 @@ fn selects_the_requested_group_on_the_owning_device() {
                 group: 2,
             })
             .unwrap(),
-        ConduitChange::GroupSelected {
+        ConduitChange::SelectionCommitted {
             source_uid: 10,
             team: 1,
             group: 2,

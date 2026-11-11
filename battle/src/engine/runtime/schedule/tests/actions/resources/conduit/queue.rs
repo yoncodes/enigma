@@ -1,4 +1,5 @@
 use super::*;
+use sonettobuf::FightDeviceOper;
 
 #[test]
 fn device_only_queue_runs_configured_group_switches() {
@@ -62,20 +63,6 @@ fn device_only_queue_runs_configured_group_switches() {
                 .unwrap();
             let catalog = SkillEffectCatalog::from_fight(config::configs::get(), &fight);
             let mut determinism = RoundDeterminism::default();
-            let selection = drain::run_command_group(
-                &mut managers,
-                &pool,
-                &catalog,
-                &mut determinism,
-                TargetContext::default(),
-                [RuleOp::Command(BattleCommand::Conduit(
-                    crate::engine::manager::conduit::ConduitCommand::SelectGroup {
-                        source_uid: 10,
-                        group: initial_group,
-                    },
-                ))],
-            )
-            .unwrap();
             let result = run_player_phase(
                 &fight,
                 &mut managers,
@@ -87,7 +74,10 @@ fn device_only_queue_runs_configured_group_switches() {
                     from_index: 0,
                     to_index: 1,
                 }),
-                selection.frames,
+                &[FightDeviceOper {
+                    uid: Some(10),
+                    index: Some(initial_group),
+                }],
                 1,
                 crate::engine::manager::emitter::UID,
             )
@@ -100,16 +90,69 @@ fn device_only_queue_runs_configured_group_switches() {
                 .events
                 .iter()
                 .filter_map(|event| match event {
-                    BattleEvent::ActionQueueCommitted { cards, .. } => Some(cards),
+                    BattleEvent::ActionQueueCommitted {
+                        cards,
+                        action_count,
+                        ..
+                    } => Some((cards, action_count)),
                     _ => None,
                 })
                 .collect::<Vec<_>>();
             assert_eq!(queues.len(), 1);
-            assert_eq!(queues[0].len(), 1);
+            assert!(queues[0].0.is_empty());
+            assert_eq!(*queues[0].1, 1);
+
+            let owner_index = |owner: FrameOwner| {
+                result
+                    .frames
+                    .iter()
+                    .position(|frame| frame.owner == owner)
+                    .unwrap()
+            };
+            assert!(
+                owner_index(FrameOwner::PlayerActionCommit)
+                    < owner_index(FrameOwner::ConduitSelectionPublication)
+            );
+            assert!(
+                owner_index(FrameOwner::ConduitSelectionPublication)
+                    < owner_index(FrameOwner::ConduitSelectionConfirmation)
+            );
+
+            let steps = crate::engine::packet::timeline::project(&result.frames).unwrap();
+            let effects = steps
+                .iter()
+                .flat_map(|step| &step.act_effect)
+                .collect::<Vec<_>>();
+            let use_cards = effects
+                .iter()
+                .find(|effect| {
+                    effect.effect_type
+                        == Some(sonettobuf::effect_type_enum::EffectType::Usecards as i32)
+                })
+                .unwrap();
+            assert_eq!(use_cards.card_info_list.len(), 1);
             assert_eq!(
-                queues[0][0].card_type,
+                use_cards.card_info_list[0].card_type,
                 Some(sonettobuf::card_info::CardType::Device as i32)
             );
+            let selection_steps = steps
+                .iter()
+                .filter(|step| {
+                    step.act_effect.first().is_some_and(|effect| {
+                        effect.effect_type
+                            == Some(
+                                sonettobuf::effect_type_enum::EffectType::Deviceskillindex as i32,
+                            )
+                    })
+                })
+                .collect::<Vec<_>>();
+            assert_eq!(selection_steps.len(), 2);
+            for step in selection_steps {
+                assert_eq!(step.act_effect.len(), 1);
+                assert_eq!(step.act_effect[0].target_id, Some(10));
+                assert_eq!(step.act_effect[0].effect_num, Some(expected_group));
+                assert_eq!(step.act_effect[0].config_effect, Some(0));
+            }
         }
     }
 }

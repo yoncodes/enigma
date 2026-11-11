@@ -296,6 +296,7 @@ pub fn action_queue_committed_rule_ops(
     team: i32,
     emitter_uid: i64,
     cards: &[CardInfo],
+    action_count: usize,
 ) -> Vec<RuleOp> {
     let features = managers.buff.active_features(&managers.hp);
     let Some(tag) = emitter_tags(&features)
@@ -327,7 +328,7 @@ pub fn action_queue_committed_rule_ops(
         ops.push(RuleOp::Command(BattleCommand::Card(
             CardCommand::QueueUseCard(CardQueueUse {
                 origin,
-                card_index: cards.len() as i32 + 1,
+                card_index: action_count as i32 + 1,
                 card: definition.card(emitter_uid),
                 team_type: team,
                 source_skill_id: 0,

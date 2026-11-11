@@ -221,6 +221,10 @@ fn project_frame(
         | FrameOwner::EventRule
         | FrameOwner::InitialSovereignBoost
         | FrameOwner::RoundPhase(_)
+        | FrameOwner::PlayerActionCommit
+        | FrameOwner::ConduitSelectionCommit
+        | FrameOwner::ConduitSelectionPublication
+        | FrameOwner::ConduitSelectionConfirmation
         | FrameOwner::SynchronizationCardState { .. }
         | FrameOwner::Command => Ok(StepPacket::effect(effects)),
     }
@@ -747,16 +751,12 @@ fn project_change(
         BattleChange::Conduit(crate::engine::manager::conduit::ConduitChange::RosterRefreshed(
             area,
         )) => vec![EffectPacket::conduit_initialized(area)],
-        BattleChange::Conduit(crate::engine::manager::conduit::ConduitChange::GroupSelected {
-            source_uid,
-            team,
-            group,
-        }) => vec![EffectPacket::conduit_group_selected(
-            *source_uid,
-            *team,
-            *group,
-            0,
-        )],
+        BattleChange::Conduit(
+            crate::engine::manager::conduit::ConduitChange::SelectionCommitted { .. },
+        ) => Vec::new(),
+        BattleChange::Conduit(
+            crate::engine::manager::conduit::ConduitChange::SelectionAdjusted { .. },
+        ) => Vec::new(),
         BattleChange::Conduit(
             crate::engine::manager::conduit::ConduitChange::SkillGroupChanged {
                 origin,
@@ -986,6 +986,10 @@ fn project_change(
             ));
             effects
         }
+        BattleChange::ActionQueueCardState(snapshot) => vec![
+            CardPacket::hand_after_use_cards(snapshot.hand.clone()),
+            CardPacket::card_deck_num(snapshot.deck_num, snapshot.team_type),
+        ],
         BattleChange::Card(changes)
             if matches!(
                 changes.kind,
@@ -1051,17 +1055,31 @@ fn project_change(
                 })
                 .collect()
         }
-        BattleChange::Card(changes) if changes.kind == CardChangeKind::ActionQueueCommitted => {
-            let queue = changes
-                .action_queue
-                .as_ref()
-                .expect("action-queue commits retain their historical snapshots");
-            vec![
-                CardPacket::use_cards(queue.cards.clone()),
-                CardPacket::hand_after_use_cards(changes.after.clone()),
-                CardPacket::card_deck_num(queue.deck_num, queue.team),
-            ]
-        }
+        BattleChange::PlayerActionQueue(queue) => vec![CardPacket::use_cards(&queue.actions)],
+        BattleChange::ConduitSelectionPublication(publication) => publication
+            .selections
+            .iter()
+            .map(|selection| {
+                EffectPacket::conduit_group_selected(
+                    selection.source_uid,
+                    selection.team,
+                    selection.group,
+                    0,
+                )
+            })
+            .collect(),
+        BattleChange::ConduitSelectionConfirmation(confirmation) => confirmation
+            .selections
+            .iter()
+            .map(|selection| {
+                EffectPacket::conduit_group_selected(
+                    selection.source_uid,
+                    selection.team,
+                    selection.group,
+                    0,
+                )
+            })
+            .collect(),
         BattleChange::Card(changes) if changes.kind == CardChangeKind::UseCardQueued => {
             let queued = changes
                 .queued_use_card
@@ -1595,16 +1613,6 @@ fn project_cue(
             })]
         }
         RoundCue::ExtraRoundGranted => vec![EffectPacket::fight_param_change(18, 1)],
-        RoundCue::ClientConduitSelectionConfirmed {
-            source_uid,
-            team,
-            group,
-        } => vec![EffectPacket::conduit_group_selected(
-            *source_uid,
-            *team,
-            *group,
-            0,
-        )],
     }
 }
 

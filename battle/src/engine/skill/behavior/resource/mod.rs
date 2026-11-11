@@ -636,13 +636,23 @@ pub fn rule_ops(context: BehaviorOpContext<'_>, behavior: &ParsedBehavior) -> Op
         }
         BehaviorKind::SetConduitSkillGroup => {
             let group = behavior.arg(0)?;
-            Some(vec![RuleOp::Command(BattleCommand::Conduit(
+            let command = if matches!(
+                context.event,
+                Some(crate::engine::event::payload::BattleEvent::ActionQueueCommitted { .. })
+            ) {
+                ConduitCommand::AdjustSelection {
+                    origin,
+                    source_uid: context.target_uid,
+                    group,
+                }
+            } else {
                 ConduitCommand::SetSkillGroup {
                     origin,
                     source_uid: context.target_uid,
                     group,
-                },
-            ))])
+                }
+            };
+            Some(vec![RuleOp::Command(BattleCommand::Conduit(command))])
         }
         BehaviorKind::StopConduitSkill => (context.active_skill_id > 0).then(|| {
             vec![RuleOp::Command(BattleCommand::Conduit(

@@ -303,14 +303,6 @@ pub struct CardInvalidatePlayed {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct CardActionQueue {
-    pub team: i32,
-    pub emitter_uid: i64,
-    pub cards: Vec<CardInfo>,
-    pub deck_num: i32,
-}
-
-#[derive(Debug, Clone, PartialEq)]
 pub struct CardRankChange {
     pub owner_uid: i64,
     pub card_index: i32,
@@ -505,11 +497,6 @@ pub enum CardCommand {
     },
     RankUpHand(HandCardRankUp),
     RankUpDeckRange(CardDeckRankUpRange),
-    CommitActionQueue {
-        team: i32,
-        emitter_uid: i64,
-        include_device_action: bool,
-    },
     CompleteActionPhase {
         origin: CommandOrigin,
     },
@@ -587,7 +574,6 @@ pub enum CardChangeKind {
     QueuedRanksChanged,
     HandRankChanged,
     DeckTopRanksChanged,
-    ActionQueueCommitted,
     ActionPhaseCompleted,
     PostActionRefillStarted,
     PlayedRanksResolved,
@@ -608,7 +594,6 @@ pub struct CardChanges {
     pub drawn: Vec<CardInfo>,
     pub composed_owners: Vec<i64>,
     pub operation: Option<CardChange>,
-    pub action_queue: Option<CardActionQueue>,
     pub queued_use_card: Option<QueuedUseCard>,
     pub rank_results: Vec<CardRankResult>,
     pub consumed_indices: Vec<usize>,
@@ -626,13 +611,6 @@ pub struct CardChanges {
 
 impl CardChanges {
     pub fn events(&self) -> Vec<BattleEvent> {
-        if let Some(queue) = &self.action_queue {
-            return vec![BattleEvent::ActionQueueCommitted {
-                team: queue.team,
-                emitter_uid: queue.emitter_uid,
-                cards: queue.cards.clone(),
-            }];
-        }
         let mut events: Vec<_> = self
             .origin
             .filter(|_| self.before != self.after)
@@ -686,7 +664,6 @@ pub(super) fn execute(
 ) -> Result<CardChanges, CardCommandError> {
     let before = manager.hand().to_vec();
     let mut operation = None;
-    let mut action_queue = None;
     let mut queued_use_card = None;
     let mut rank_results = Vec::new();
     let mut consumed_indices = Vec::new();
@@ -1587,53 +1564,6 @@ pub(super) fn execute(
                 Vec::new(),
             )
         }
-        CardCommand::CommitActionQueue {
-            team,
-            emitter_uid,
-            include_device_action,
-        } => {
-            let mut cards = manager
-                .played()
-                .iter()
-                .map(|played| {
-                    let mut card = played.card.clone();
-                    card.skill_id = Some(played.skill_id);
-                    card
-                })
-                .collect::<Vec<_>>();
-            if include_device_action {
-                cards.push(CardInfo {
-                    uid: Some(0),
-                    skill_id: Some(0),
-                    temp_card: Some(false),
-                    card_type: Some(sonettobuf::card_info::CardType::Device as i32),
-                    hero_id: Some(0),
-                    status: Some(0),
-                    target_uid: Some(0),
-                    energy: Some(0),
-                    area_red_or_blue: Some(0),
-                    heat_id: Some(0),
-                    ..Default::default()
-                });
-            }
-            if team == 0 || cards.is_empty() {
-                return Err(CardCommandError::InvalidCommand);
-            }
-            action_queue = Some(CardActionQueue {
-                team,
-                emitter_uid,
-                cards,
-                deck_num: manager.deck_num(),
-            });
-            (
-                None,
-                CardChangeKind::ActionQueueCommitted,
-                None,
-                None,
-                Vec::new(),
-                Vec::new(),
-            )
-        }
         CardCommand::CompleteActionPhase { origin } => {
             manager.complete_action_phase();
             (
@@ -1738,10 +1668,7 @@ pub(super) fn execute(
             )
         }
     };
-    let mut after = manager.hand().to_vec();
-    if kind == CardChangeKind::ActionQueueCommitted {
-        after.extend_from_slice(manager.team_cards());
-    }
+    let after = manager.hand().to_vec();
     manager.record_opening_deal_change(kind, &before, &after, added.as_ref(), &drawn);
     Ok(CardChanges {
         origin,
@@ -1753,7 +1680,6 @@ pub(super) fn execute(
         drawn,
         composed_owners,
         operation,
-        action_queue,
         queued_use_card,
         rank_results,
         consumed_indices,
