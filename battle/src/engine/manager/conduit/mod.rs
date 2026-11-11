@@ -286,7 +286,6 @@ pub struct ConduitManager {
     areas: BTreeMap<i32, ConduitArea>,
     initialization_errors: Vec<ConduitError>,
     initialized: Vec<i32>,
-    defeated_devices: HashSet<i64>,
     consumed_this_round: BTreeMap<(i32, i32), i32>,
     uses_this_round: BTreeMap<i64, i32>,
     counters_this_round: BTreeMap<(i32, ConduitCounterKind), i32>,
@@ -400,10 +399,6 @@ impl ConduitManager {
             .flat_map(|area| &area.devices)
             .find(|device| device.uid == source_uid)
             .map(|device| device.selected_group)
-    }
-
-    pub(crate) fn is_defeated_device(&self, source_uid: i64) -> bool {
-        self.defeated_devices.contains(&source_uid)
     }
 
     pub fn selections(&self) -> Vec<(i64, i32)> {

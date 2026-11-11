@@ -84,10 +84,11 @@ pub enum RoundPhase {
     RoundStartSync,
     RoundEndFinalSettlement,
     RoundEndAfterFinalSettlement,
+    TerminalConduitRosterRefresh,
+    PostSettlementConduitRosterRefresh,
     EntitySettlement,
     EntityBuffCleanup,
     EntityCardCleanup,
-    EntityConduitCleanup,
     EntityEntrySetup,
 }
 

@@ -112,6 +112,126 @@ fn side_round_end_schedules_keep_the_proven_lane_order() {
 }
 
 #[test]
+fn conduit_roster_refreshes_at_the_matching_round_end_boundary() {
+    init_config();
+    let entity = |uid, model_id, team_type| FightEntityInfo {
+        uid: Some(uid),
+        model_id: Some(model_id),
+        team_type: Some(team_type),
+        current_hp: Some(100),
+        attr: Some(HeroAttribute {
+            hp: Some(100),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![entity(10, 3144, 1), entity(11, 3156, 1)],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![entity(-1, 1001, 2)],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    managers.hp.lose(10, 100, -1);
+
+    let result = run_after_ai_round_end(
+        &mut managers,
+        &pool,
+        &SkillEffectCatalog::default(),
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+    )
+    .unwrap();
+
+    assert_eq!(managers.conduit.selected_group(10), None);
+    assert_eq!(managers.conduit.selected_group(11), Some(1));
+    assert!(result.frames.iter().any(|frame| {
+        frame.owner == FrameOwner::RoundPhase(RoundPhase::PostSettlementConduitRosterRefresh)
+    }));
+    assert!(!result.frames.iter().any(|frame| {
+        frame.owner == FrameOwner::RoundPhase(RoundPhase::TerminalConduitRosterRefresh)
+    }));
+    let steps = crate::engine::packet::timeline::project(&result.frames).unwrap();
+    let effects = steps
+        .iter()
+        .map(|step| &step.act_effect[0])
+        .collect::<Vec<_>>();
+    let clear = effects
+        .iter()
+        .position(|effect| {
+            effect.effect_type
+                == Some(sonettobuf::effect_type_enum::EffectType::Clearuniversalcard as i32)
+        })
+        .unwrap();
+    let refresh = effects
+        .iter()
+        .position(|effect| {
+            effect.effect_type == Some(sonettobuf::effect_type_enum::EffectType::Initdevice as i32)
+        })
+        .unwrap();
+    assert!(clear < refresh);
+    assert_eq!(
+        effects[refresh]
+            .device_area_info
+            .as_ref()
+            .unwrap()
+            .devices
+            .iter()
+            .map(|device| device.uid)
+            .collect::<Vec<_>>(),
+        vec![Some(11)]
+    );
+
+    let mut terminal_managers = BattleManagers::seeded(&fight);
+    terminal_managers.hp.lose(10, 100, -1);
+    assert!(
+        terminal_managers.commit_terminal(crate::engine::round::outcome::BattleOutcome::Defeat)
+    );
+    let terminal = run_after_ai_round_end(
+        &mut terminal_managers,
+        &pool,
+        &SkillEffectCatalog::default(),
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+    )
+    .unwrap();
+    let terminal_steps = crate::engine::packet::timeline::project(&terminal.frames).unwrap();
+    assert!(terminal.frames.iter().any(|frame| {
+        frame.owner == FrameOwner::RoundPhase(RoundPhase::TerminalConduitRosterRefresh)
+    }));
+    assert!(!terminal.frames.iter().any(|frame| {
+        frame.owner == FrameOwner::RoundPhase(RoundPhase::PostSettlementConduitRosterRefresh)
+    }));
+    let terminal_types = terminal_steps
+        .iter()
+        .map(|step| step.act_effect[0].effect_type.unwrap())
+        .collect::<Vec<_>>();
+    let small_round_end = terminal_types
+        .iter()
+        .position(|effect| {
+            *effect == sonettobuf::effect_type_enum::EffectType::Smallroundend as i32
+        })
+        .unwrap();
+    let refresh = terminal_types
+        .iter()
+        .position(|effect| *effect == sonettobuf::effect_type_enum::EffectType::Initdevice as i32)
+        .unwrap();
+    let clear = terminal_types
+        .iter()
+        .position(|effect| {
+            *effect == sonettobuf::effect_type_enum::EffectType::Clearuniversalcard as i32
+        })
+        .unwrap();
+    assert!(small_round_end < refresh && refresh < clear);
+}
+
+#[test]
 fn final_settlement_runs_side_expiry_reactions_before_entity_expiry() {
     init_config();
     let fight = Fight {

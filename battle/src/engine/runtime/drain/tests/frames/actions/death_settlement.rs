@@ -152,7 +152,7 @@ fn scheduled_defender_cleanup_policy_keeps_player_cleanup_in_the_death_frame() {
 }
 
 #[test]
-fn defeated_conduit_owner_refreshes_roster_at_death() {
+fn defeated_conduit_owner_waits_for_round_end_roster_refresh() {
     crate::test_support::init_config();
     let entity = |uid, model_id| FightEntityInfo {
         uid: Some(uid),
@@ -194,24 +194,27 @@ fn defeated_conduit_owner_refreshes_roster_at_death() {
     )
     .unwrap();
 
-    assert_eq!(managers.conduit.selected_group(10), None);
+    assert_eq!(managers.conduit.selected_group(10), Some(1));
     assert_eq!(managers.conduit.selected_group(11), Some(1));
     assert!(!managers.conduit.selected_skills(11).unwrap().is_empty());
-    assert_eq!(
-        result.outcomes.iter().find_map(|outcome| match outcome {
-            crate::engine::runtime::executor::RuleOutcome::Conduit(
-                crate::engine::manager::conduit::ConduitChange::RosterRefreshed(area),
-            ) => Some(
-                area.devices
-                    .iter()
-                    .map(|device| device.uid)
-                    .collect::<Vec<_>>()
-            ),
-            _ => None,
-        }),
-        Some(vec![11])
-    );
-    assert!(managers.conduit.roster_refresh_commands(&[10]).is_empty());
+    assert!(!result.outcomes.iter().any(|outcome| matches!(
+        outcome,
+        crate::engine::runtime::executor::RuleOutcome::Conduit(
+            crate::engine::manager::conduit::ConduitChange::RosterRefreshed(_)
+        )
+    )));
+
+    fn has_init_device(effects: &[sonettobuf::ActEffect]) -> bool {
+        effects.iter().any(|effect| {
+            effect.effect_type == Some(sonettobuf::effect_type_enum::EffectType::Initdevice as i32)
+                || effect
+                    .fight_step
+                    .as_ref()
+                    .is_some_and(|step| has_init_device(&step.act_effect))
+        })
+    }
+    let steps = crate::engine::packet::timeline::project(&result.frames).unwrap();
+    assert!(!steps.iter().any(|step| has_init_device(&step.act_effect)));
 }
 
 #[test]
@@ -492,8 +495,14 @@ fn subscriber_group_finishes_before_death_settlement() {
             target_uid: -1,
         }]
     );
-    assert_eq!(managers.conduit.selected_group(-1), None);
+    assert_eq!(managers.conduit.selected_group(-1), Some(1));
     assert_eq!(managers.conduit.selected_group(-2), Some(1));
+    assert!(!result.outcomes.iter().any(|outcome| matches!(
+        outcome,
+        crate::engine::runtime::executor::RuleOutcome::Conduit(
+            crate::engine::manager::conduit::ConduitChange::RosterRefreshed(_)
+        )
+    )));
 }
 
 #[test]

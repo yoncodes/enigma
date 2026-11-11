@@ -192,8 +192,7 @@ fn roster_refresh_removes_defeated_devices_and_preserves_live_state() {
             .value,
         4
     );
-    assert!(manager.is_defeated_device(11));
-    assert!(!manager.is_defeated_device(12));
+    assert_eq!(manager.selected_group(11), None);
     assert!(manager.roster_refresh_commands(&[11]).is_empty());
 }
 

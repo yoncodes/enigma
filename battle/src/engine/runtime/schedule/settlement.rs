@@ -342,6 +342,16 @@ fn run_round_end_transition(
 ) -> Result<DrainResult, DrainError> {
     let mut result = DrainResult::default();
     push_cue(&mut result.frames, RoundCue::SmallRoundEnd { team_type: 1 });
+    append(
+        &mut result,
+        run_committed_terminal_conduit_roster_refresh(
+            managers,
+            pool,
+            catalog,
+            determinism,
+            context,
+        )?,
+    );
     push_cue(&mut result.frames, RoundCue::ClearUniversalCard);
     append(
         &mut result,
@@ -354,7 +364,58 @@ fn run_round_end_transition(
             settled_buffs,
         )?,
     );
+    let refresh = run_conduit_roster_refresh(managers, pool, catalog, determinism, context)?;
+    if !refresh.frames.is_empty() {
+        let mut phase = begin_round_phase(RoundPhase::PostSettlementConduitRosterRefresh);
+        append_round_phase(&mut phase, refresh);
+        append(&mut result, phase);
+    }
     Ok(result)
+}
+
+fn run_committed_terminal_conduit_roster_refresh(
+    managers: &mut BattleManagers,
+    pool: &TargetPool,
+    catalog: &SkillEffectCatalog,
+    determinism: &mut RoundDeterminism,
+    context: TargetContext,
+) -> Result<DrainResult, DrainError> {
+    if managers.terminal_outcome().is_none() {
+        return Ok(DrainResult::default());
+    }
+    let refresh = run_conduit_roster_refresh(managers, pool, catalog, determinism, context)?;
+    if refresh.frames.is_empty() {
+        return Ok(refresh);
+    }
+    let mut result = begin_round_phase(RoundPhase::TerminalConduitRosterRefresh);
+    append_round_phase(&mut result, refresh);
+    Ok(result)
+}
+
+fn run_conduit_roster_refresh(
+    managers: &mut BattleManagers,
+    pool: &TargetPool,
+    catalog: &SkillEffectCatalog,
+    determinism: &mut RoundDeterminism,
+    context: TargetContext,
+) -> Result<DrainResult, DrainError> {
+    let defeated_uids = managers
+        .conduit
+        .selections()
+        .into_iter()
+        .map(|(uid, _)| uid)
+        .filter(|uid| managers.hp.current(*uid) == 0)
+        .collect::<Vec<_>>();
+    let commands = managers
+        .conduit
+        .roster_refresh_commands(&defeated_uids)
+        .into_iter()
+        .map(|command| RuleOp::Command(BattleCommand::Conduit(command)))
+        .collect::<Vec<_>>();
+    if commands.is_empty() {
+        return Ok(DrainResult::default());
+    }
+    drain::run_command_group(managers, pool, catalog, determinism, context, commands)
 }
 
 pub fn run_entity_settlement(

@@ -45,7 +45,7 @@ use model::{
     DefenderCardCleanupOwner, DrainBudget, MAX_DRAIN_DEPTH, MAX_DRAIN_OPERATIONS, QueuedOp,
     ReactionBatch, SubscriberContext, SubscriberDeathGroup, assign_subscriber_death_groups,
     queued_death_event_group_completion, queued_death_event_group_settlement,
-    queued_death_settlement, queued_defeated_conduit_cleanups, queued_defeated_entity_halo_cleanup,
+    queued_death_settlement, queued_defeated_entity_halo_cleanup,
     queued_defeated_owner_card_cleanup, queued_terminal_settlement, required_buff_act_definition,
 };
 pub use model::{DrainError, DrainResult, ReactionLane};
@@ -449,14 +449,6 @@ fn drain_queue_with_deferred(
                     .map(|(death, parent_path)| (death.transition(), parent_path))
                     .collect::<Vec<_>>();
                 let mut settlements = Vec::new();
-                if let Some((_, parent_path)) = deaths.first() {
-                    let transitions = deaths.iter().map(|(death, _)| *death).collect::<Vec<_>>();
-                    settlements.extend(queued_defeated_conduit_cleanups(
-                        managers,
-                        &transitions,
-                        parent_path,
-                    ));
-                }
                 for (death, parent_path) in &deaths {
                     if let Some(cleanup) =
                         queued_defeated_entity_halo_cleanup(managers, *death, parent_path)

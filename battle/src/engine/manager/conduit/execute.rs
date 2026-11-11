@@ -35,13 +35,6 @@ impl ConduitManager {
                 }
                 area.devices
                     .retain(|device| !defeated_uids.contains(&device.uid));
-                self.defeated_devices.extend(defeated_uids.iter().copied());
-                for uid in &defeated_uids {
-                    self.running.remove(uid);
-                    self.uses_this_round.remove(uid);
-                }
-                self.pending_activations
-                    .retain(|(source_uid, _), _| !defeated_uids.contains(source_uid));
                 Ok(ConduitChange::RosterRefreshed(area.clone()))
             }
             ConduitCommand::SelectGroup { source_uid, group } => {
