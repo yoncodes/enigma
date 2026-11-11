@@ -755,9 +755,6 @@ fn project_change(
             crate::engine::manager::conduit::ConduitChange::SelectionCommitted { .. },
         ) => Vec::new(),
         BattleChange::Conduit(
-            crate::engine::manager::conduit::ConduitChange::SelectionAdjusted { .. },
-        ) => Vec::new(),
-        BattleChange::Conduit(
             crate::engine::manager::conduit::ConduitChange::SkillGroupChanged {
                 origin,
                 source_uid,

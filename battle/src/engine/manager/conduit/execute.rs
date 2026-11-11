@@ -64,19 +64,6 @@ impl ConduitManager {
                     group,
                 })
             }
-            ConduitCommand::AdjustSelection {
-                origin,
-                source_uid,
-                group,
-            } => {
-                let team = self.select_group(source_uid, group)?;
-                Ok(ConduitChange::SelectionAdjusted {
-                    origin,
-                    source_uid,
-                    team,
-                    group,
-                })
-            }
             ConduitCommand::BeginSkill {
                 source_uid,
                 skill_id,

@@ -102,7 +102,7 @@ fn action_queue_commit_selects_everecho_group_for_its_enabling_buff() {
             .iter()
             .filter_map(|outcome| match outcome {
                 RuleOutcome::Conduit(
-                    crate::engine::manager::conduit::ConduitChange::SelectionAdjusted {
+                    crate::engine::manager::conduit::ConduitChange::SkillGroupChanged {
                         origin,
                         source_uid,
                         group,
@@ -136,7 +136,12 @@ fn action_queue_commit_selects_everecho_group_for_its_enabling_buff() {
         for step in &steps {
             collect_group_changes(step, &mut projected);
         }
-        assert!(projected.is_empty());
+        let [effect] = projected.as_slice() else {
+            panic!("expected one configured conduit group change")
+        };
+        assert_eq!(effect.target_id, Some(10));
+        assert_eq!(effect.effect_num, Some(expected_group));
+        assert_eq!(effect.team_type, Some(1));
     }
 }
 
