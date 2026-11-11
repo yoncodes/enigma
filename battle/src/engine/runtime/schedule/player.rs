@@ -292,7 +292,7 @@ pub fn run_conduit_phase(
             let mut stop_emitted_this_pass = false;
             for (position, skill) in skills.into_iter().enumerate() {
                 let current_pool = pool.runtime_view(managers);
-                let admission = super::conduit::admit_skill(
+                let admission = crate::engine::runtime::conduit::admit(
                     managers,
                     &current_pool,
                     catalog,
@@ -302,7 +302,9 @@ pub fn run_conduit_phase(
                     skill,
                     used_free_skills.contains(&(source_uid, skill.skill_id)),
                 );
-                let Some(admission) = admission else {
+                let Some(admission) =
+                    admission.filter(|admission| admission.runtime_ready && admission.funded)
+                else {
                     if !crate::engine::round::outcome::battle_ended(fight, pool, managers)
                         || !stop_emitted_this_pass
                     {

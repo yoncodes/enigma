@@ -4,7 +4,7 @@ use sonettobuf::FightDeviceOper;
 
 use crate::engine::{
     manager::BattleManagers,
-    runtime::determinism::RoundDeterminism,
+    runtime::{conduit::admit, determinism::RoundDeterminism},
     skill::{
         effect::SkillEffectCatalog,
         target::{TargetContext, TargetPool},
@@ -47,41 +47,30 @@ pub(in crate::engine::auto_battle) fn select_groups(
                 continue;
             };
             let score = skills.iter().fold((0, 0, 0, 0, 0), |total, skill| {
-                if skill.is_stopped
-                    || catalog.get(skill.skill_id).is_none()
+                if catalog.get(skill.skill_id).is_none()
                     || !catalog.issues(skill.skill_id).is_empty()
-                    || (catalog.is_big_skill(skill.skill_id)
-                        && pool.entity(source_uid).is_none_or(|source| {
-                            !crate::engine::mechanic::card::CardMechanic
-                                .ultimate_resource_ready(managers, source)
-                        }))
-                    || (catalog.is_attack(skill.skill_id)
-                        && super::target_options(
-                            source_uid,
-                            skill.skill_id,
-                            None,
-                            managers,
-                            &pool,
-                            catalog,
-                            determinism,
-                        )
-                        .is_empty())
                 {
                     return total;
                 }
-                let reduction = crate::engine::skill::buff_act::device_cost_reduce::modifier(
+                let Some(admission) = admit(
                     managers,
+                    &pool,
+                    catalog,
+                    determinism,
+                    context,
                     source_uid,
-                    skill.skill_id,
+                    *skill,
+                    false,
                 )
-                .map(|(reduction, _)| reduction)
-                .unwrap_or_default();
+                .filter(|admission| admission.selectable) else {
+                    return total;
+                };
                 add_score(
                     total,
                     skill_score(
                         source_uid,
                         skill.skill_id,
-                        skill.cost_after_reduction(reduction),
+                        admission.cost,
                         managers,
                         &pool,
                         catalog,

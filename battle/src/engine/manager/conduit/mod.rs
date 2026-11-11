@@ -423,19 +423,33 @@ impl ConduitManager {
     }
 
     pub fn can_begin_skill(&self, source_uid: i64, skill_id: i32, cost_reduction: i32) -> bool {
-        self.skill(source_uid, skill_id)
-            .is_some_and(|(team, skill)| {
-                let cost = skill.cost_after_reduction(cost_reduction);
-                let generic_available = if skill.cost_type > 0 && skill.cost_type != 999 {
-                    self.power(team, 0)
-                } else {
-                    0
-                };
-                let available = self
-                    .power(team, skill.cost_type)
-                    .saturating_add(generic_available);
-                !skill.is_stopped && (skill.cost_type == 999 || available >= cost)
-            })
+        self.skill(source_uid, skill_id).is_some_and(|(_, skill)| {
+            !skill.is_stopped && self.can_pay(source_uid, skill, cost_reduction)
+        })
+    }
+
+    pub(crate) fn can_pay(
+        &self,
+        source_uid: i64,
+        skill: ConduitSkill,
+        cost_reduction: i32,
+    ) -> bool {
+        let Some(team) = self.areas.iter().find_map(|(team, area)| {
+            area.devices
+                .iter()
+                .any(|device| device.uid == source_uid)
+                .then_some(*team)
+        }) else {
+            return false;
+        };
+        let cost = skill.cost_after_reduction(cost_reduction);
+        let generic = if skill.cost_type > 0 && skill.cost_type != 999 {
+            self.power(team, 0)
+        } else {
+            0
+        };
+        let available = self.power(team, skill.cost_type).saturating_add(generic);
+        skill.cost_type == 999 || available >= cost
     }
 
     pub fn owns_skill(&self, source_uid: i64, skill_id: i32) -> bool {
