@@ -6,7 +6,9 @@ use crate::engine::{
         },
     },
     skill::{
+        behavior::classify::BehaviorKind,
         buff_act::hedone_card::{HedoneCardError, owner_state},
+        effect::SkillEffectCatalog,
         rule::CommandOrigin,
     },
 };
@@ -72,6 +74,15 @@ pub(crate) fn available_gain(
         .map(|gain| gain.map(|gain| (gain.power_id, gain.delta)))
 }
 
+pub(crate) fn owns_skill(catalog: &SkillEffectCatalog, skill_id: i32) -> bool {
+    catalog.get(skill_id).is_some_and(|effect| {
+        effect
+            .slots
+            .iter()
+            .any(|slot| slot.behavior.spec.kind == BehaviorKind::HedoneAddDevicePower)
+    })
+}
+
 fn resolve_gain(
     managers: &BattleManagers,
     owner_uid: i64,
@@ -80,7 +91,9 @@ fn resolve_gain(
     if owner_uid == 0 || power_id <= 0 {
         return Err(HedoneDevicePowerError::InvalidCommand);
     }
-    let state = owner_state(managers, owner_uid)?.ok_or(HedoneDevicePowerError::InvalidCommand)?;
+    let Some(state) = owner_state(managers, owner_uid)? else {
+        return Ok(None);
+    };
     if !state.unlocked || state.stored <= 0 {
         return Ok(None);
     }

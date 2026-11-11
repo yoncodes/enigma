@@ -207,7 +207,7 @@ fn hedone_energy_card() -> sonettobuf::CardInfo {
 }
 
 #[test]
-fn auto_round_reserves_unneeded_hedone_energy() {
+fn auto_round_spends_available_hedone_energy() {
     let free = |skill_id| sonettobuf::CardInfo {
         extra_infos: vec![sonettobuf::CardExtraInfo {
             key: Some(8),
@@ -222,8 +222,9 @@ fn auto_round_reserves_unneeded_hedone_energy() {
 
     let reply = runtime.plan_auto_round(&AutoRoundRequest::default());
 
-    assert_eq!(reply.opers.len(), 1);
-    assert_eq!(reply.opers[0].param1, Some(1));
+    assert_eq!(reply.opers.len(), 2);
+    assert_eq!(reply.opers[0].param1, Some(2));
+    assert_eq!(reply.opers[1].param1, Some(1));
     assert!(
         reply
             .opers
@@ -241,7 +242,7 @@ fn auto_round_reserves_unneeded_hedone_energy() {
 }
 
 #[test]
-fn auto_round_keeps_stored_hedone_energy_for_a_selected_group() {
+fn auto_round_uses_stored_hedone_energy_for_a_selected_group() {
     let runtime = team_runtime_against(
         vec![hedone_with_stored_energy()],
         (1..=4).map(|index| enemy(-index, 1_000)).collect(),
@@ -250,12 +251,13 @@ fn auto_round_keeps_stored_hedone_energy_for_a_selected_group() {
 
     let reply = runtime.plan_auto_round(&AutoRoundRequest::default());
 
-    assert!(reply.opers.is_empty());
+    assert_eq!(reply.opers.len(), 1);
+    assert_eq!(reply.opers[0].param1, Some(1));
     assert_eq!(reply.devices_opers[0].index, Some(2));
 }
 
 #[test]
-fn auto_round_keeps_stored_hedone_energy_when_the_unique_is_selected() {
+fn auto_round_uses_stored_hedone_energy_when_the_unique_is_selected() {
     let mut hedone = hedone_with_stored_energy();
     hedone.ex_point = Some(100);
     hedone.ex_point_type = Some(4);
@@ -292,7 +294,40 @@ fn auto_round_keeps_stored_hedone_energy_when_the_unique_is_selected() {
     let reply = runtime.plan_auto_round(&AutoRoundRequest::default());
 
     assert_eq!(reply.devices_opers[0].index, Some(3));
+    assert_eq!(reply.opers.len(), 1);
+    assert_eq!(reply.opers[0].param1, Some(1));
+}
+
+#[test]
+fn auto_round_keeps_unstored_hedone_energy() {
+    let runtime = team_runtime_against(
+        vec![team_hero(10, 3156, 1_000, [31560111, 31560121])],
+        (1..=4).map(|index| enemy(-index, 1_000)).collect(),
+        vec![hedone_energy_card()],
+    );
+
+    let reply = runtime.plan_auto_round(&AutoRoundRequest::default());
+
     assert!(reply.opers.is_empty());
+    assert_eq!(reply.devices_opers[0].index, Some(2));
+}
+
+#[test]
+fn auto_round_rejects_malformed_hedone_energy_state() {
+    let mut hedone = hedone_with_stored_energy();
+    hedone.buffs[0].act_info[0].param = vec![2, 9, 1];
+    let runtime = team_runtime_against(
+        vec![hedone],
+        (1..=4).map(|index| enemy(-index, 1_000)).collect(),
+        vec![hedone_energy_card()],
+    );
+
+    let error = runtime
+        .try_plan_auto_round(&AutoRoundRequest::default())
+        .unwrap_err();
+
+    assert!(error.contains("HedoneDevicePower(State("));
+    assert!(error.contains("InvalidState"));
 }
 
 #[test]

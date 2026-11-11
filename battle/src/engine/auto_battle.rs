@@ -25,6 +25,7 @@ mod conduit;
 #[derive(Debug)]
 pub(crate) enum AutoBattleError {
     MissingSkill(i32),
+    HedoneDevicePower(crate::engine::mechanic::hedone_device_power::HedoneDevicePowerError),
 }
 
 const HEAL_BELOW_HP_PERCENT: i64 = 80;
@@ -233,7 +234,8 @@ fn plan_cards_inner(
             determinism,
             &selected_power_types,
             &mut reported_unsupported,
-        ) else {
+        )?
+        else {
             break;
         };
         let play = CardPlay {
@@ -513,7 +515,7 @@ fn best_candidate(
     determinism: &RoundDeterminism,
     selected_power_types: &HashSet<(i32, i32)>,
     reported_unsupported: &mut HashSet<i32>,
-) -> Option<Candidate> {
+) -> Result<Option<Candidate>, AutoBattleError> {
     let candidates = cards
         .hand()
         .iter()
@@ -568,15 +570,30 @@ fn best_candidate(
             let buffs = certain_buffs(skill_id, catalog);
             let effect_tag = catalog.effect_tag(skill_id);
             let energy = cards.conduit_skill_energy(skill_id);
-            if energy.is_some_and(|energy| energy.special && energy.amount <= 0) {
-                return None;
-            }
-            let energy_amount = energy.map_or(0, |energy| energy.amount);
+            let hedone_energy = energy.is_some_and(|energy| energy.special)
+                && crate::engine::mechanic::hedone_device_power::owns_skill(catalog, skill_id);
+            let energy_amount = match energy {
+                Some(energy) if hedone_energy => {
+                    match crate::engine::mechanic::hedone_device_power::available_gain(
+                        managers,
+                        source_uid,
+                        energy.power_id,
+                    ) {
+                        Ok(gain) => gain.map_or(0, |(_, amount)| amount),
+                        Err(error) => {
+                            return Some(Err(AutoBattleError::HedoneDevicePower(error)));
+                        }
+                    }
+                }
+                Some(energy) => energy.amount,
+                None => 0,
+            };
             let special_energy = energy.is_some_and(|energy| energy.special);
-            let preferred_energy = (temporary
-                && special_energy
-                && crate::engine::mechanic::card::CardMechanic
-                    .ultimate_resource_ready(managers, source))
+            let preferred_energy = (hedone_energy && energy_amount > 0)
+                || (temporary
+                    && special_energy
+                    && crate::engine::mechanic::card::CardMechanic
+                        .ultimate_resource_ready(managers, source))
                 || energy.is_some_and(|energy| {
                     if !energy.special && selected_power_types.is_empty() {
                         return true;
@@ -663,7 +680,7 @@ fn best_candidate(
                 })
                 .flatten()
                 .unwrap_or(resolved_target_uid);
-            Some(Candidate {
+            Some(Ok(Candidate {
                 card_index,
                 source_uid,
                 lineup_position: source.position,
@@ -685,10 +702,10 @@ fn best_candidate(
                 support,
                 damage_rate: catalog.damage_rate(skill_id),
                 rank: managers.catalog().card_skill_rank(card),
-            })
+            }))
         })
-        .collect::<Vec<_>>();
-    candidates.into_iter().max_by_key(|candidate| {
+        .collect::<Result<Vec<Candidate>, AutoBattleError>>()?;
+    Ok(candidates.into_iter().max_by_key(|candidate| {
         // Official auto casts ready ultimates left to right.
         let strength = (!candidate.ultimate && !candidate.energy)
             .then_some((candidate.damage_rate, candidate.rank));
@@ -715,7 +732,7 @@ fn best_candidate(
             Reverse(candidate.source_uid),
             Reverse(candidate.skill_id),
         )
-    })
+    }))
 }
 
 // Only unconditional `AddBuff` slots aimed at the card's own target count.
