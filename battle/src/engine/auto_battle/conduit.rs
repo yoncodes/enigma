@@ -16,7 +16,7 @@ use super::{Support, certain_buffs, is_shield_buff, support_need, target_options
 mod card_energy;
 mod selection;
 
-pub(super) use card_energy::{CardEnergyError, card_energy};
+pub(super) use card_energy::{CardEnergyError, Priority, card_energy};
 pub(super) use selection::select_groups;
 
 pub(super) type GroupScore = (i32, i32, i32, i32, i64);

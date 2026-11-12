@@ -43,16 +43,10 @@ struct Candidate {
     chosen_skill_id: Option<i32>,
     free: bool,
     ultimate: bool,
-    temporary: bool,
-    energy: bool,
-    preferred_energy: bool,
-    energy_amount: i32,
-    flexible_energy: bool,
-    special_energy: bool,
+    conduit_priority: conduit::Priority,
     first_for_owner: bool,
     support: Support,
-    damage_rate: i32,
-    rank: i32,
+    strength: Option<(i32, i32)>,
 }
 
 struct CardPlan {
@@ -582,9 +576,6 @@ fn best_candidate(
             if energy.is_some_and(|energy| !energy.selectable()) {
                 return None;
             }
-            let energy_amount = energy.map_or(0, |energy| energy.amount);
-            let special_energy = energy.is_some_and(|energy| energy.special);
-            let preferred_energy = energy.is_some_and(|energy| energy.preferred);
             // An enemy's debuff may come from a passive, so debuff cards never count as redundant.
             let may_be_redundant = !catalog.is_attack(skill_id)
                 && effect_tag
@@ -665,43 +656,36 @@ fn best_candidate(
                 chosen_skill_id,
                 free: normal_ap_cost == 0,
                 ultimate,
-                temporary,
+                conduit_priority: conduit::Priority::new(
+                    energy,
+                    device,
+                    temporary,
+                    source.position,
+                ),
                 first_for_owner: energy.is_none()
                     && !played_owners.contains(&source_uid)
                     && support != Support::Unneeded,
-                energy: device,
-                preferred_energy,
-                energy_amount,
-                flexible_energy: energy.is_some_and(|energy| energy.flexible),
-                special_energy,
                 support,
-                damage_rate: catalog.damage_rate(skill_id),
-                rank: managers.catalog().card_skill_rank(card),
+                strength: (!ultimate && !device).then(|| {
+                    (
+                        catalog.damage_rate(skill_id),
+                        managers.catalog().card_skill_rank(card),
+                    )
+                }),
             }))
         })
         .collect::<Result<Vec<Candidate>, AutoBattleError>>()?;
     Ok(candidates.into_iter().max_by_key(|candidate| {
         // Official auto casts ready ultimates left to right.
-        let strength = (!candidate.ultimate && !candidate.energy)
-            .then_some((candidate.damage_rate, candidate.rank));
         (
             candidate.free,
             candidate.ultimate,
             candidate.support == Support::Urgent,
-            (
-                candidate.preferred_energy,
-                candidate.energy,
-                candidate.temporary && candidate.special_energy,
-                candidate.energy_amount,
-                candidate.special_energy,
-                candidate.flexible_energy && !candidate.special_energy,
-                (candidate.energy && !candidate.special_energy)
-                    .then_some(candidate.lineup_position),
-            ),
+            candidate.conduit_priority,
             // Give every hero a card before any hero plays a second one when utility is equal.
             candidate.first_for_owner,
             candidate.support,
-            strength,
+            candidate.strength,
             Reverse(candidate.lineup_position),
             Reverse(candidate.card_index),
             Reverse(candidate.source_uid),

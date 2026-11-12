@@ -13,15 +13,41 @@ pub(crate) enum CardEnergyError {
 
 #[derive(Clone, Copy)]
 pub(in crate::engine::auto_battle) struct CardEnergy {
-    pub amount: i32,
-    pub special: bool,
-    pub flexible: bool,
-    pub preferred: bool,
+    amount: i32,
+    special: bool,
+    flexible: bool,
+    preferred: bool,
 }
 
 impl CardEnergy {
     pub fn selectable(self) -> bool {
         self.amount > 0 && self.preferred
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub(in crate::engine::auto_battle) struct Priority {
+    preferred: bool,
+    device: bool,
+    temporary_special: bool,
+    amount: i32,
+    special: bool,
+    flexible_basic: bool,
+    lineup: Option<i32>,
+}
+
+impl Priority {
+    pub fn new(energy: Option<CardEnergy>, device: bool, temporary: bool, position: i32) -> Self {
+        let special = energy.is_some_and(|energy| energy.special);
+        Self {
+            preferred: energy.is_some_and(|energy| energy.preferred),
+            device,
+            temporary_special: temporary && special,
+            amount: energy.map_or(0, |energy| energy.amount),
+            special,
+            flexible_basic: !special && energy.is_some_and(|energy| energy.flexible),
+            lineup: (device && !special).then_some(position),
+        }
     }
 }
 
