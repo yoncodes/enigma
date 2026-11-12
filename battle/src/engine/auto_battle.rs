@@ -24,6 +24,7 @@ mod conduit;
 
 #[derive(Debug)]
 pub(crate) enum AutoBattleError {
+    InvalidChoice,
     MissingSkill(i32),
     ConduitEnergy(conduit::CardEnergyError),
 }
@@ -103,13 +104,6 @@ pub(crate) fn plan(
                 .iter()
                 .chain(managers.card.team_cards())
                 .flat_map(|card| card_choice_options(card, managers)),
-        )
-        .chain(
-            request
-                .opers
-                .iter()
-                .filter_map(|oper| oper.param3)
-                .filter(|skill_id| *skill_id > 0),
         )
         .collect::<HashSet<_>>()
         .into_iter()
@@ -454,6 +448,16 @@ fn apply_prefix(
                 let Some((source_uid, skill_id)) = card_identity(card, chosen_skill_id) else {
                     return Ok(false);
                 };
+                if catalog.get(skill_id).is_none() {
+                    let configured = chosen_skill_id.is_none()
+                        || card.skill_id == Some(skill_id)
+                        || card_choice_options(card, managers).contains(&skill_id);
+                    return Err(if configured {
+                        AutoBattleError::MissingSkill(skill_id)
+                    } else {
+                        AutoBattleError::InvalidChoice
+                    });
+                }
                 let legal_target = legal_target(
                     source_uid,
                     skill_id,

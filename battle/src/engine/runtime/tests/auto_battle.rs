@@ -170,6 +170,52 @@ fn auto_round_honors_existing_operations_without_echoing_them() {
 }
 
 #[test]
+fn auto_round_ignores_unused_skill_choice_on_move() {
+    let mut runtime = auto_runtime();
+    runtime.round_state.act_point = 2;
+    let planner = runtime.auto_round_planner();
+    let mut request = AutoRoundRequest {
+        opers: vec![BeginRoundOper {
+            oper_type: Some(CardOpType::MoveCard.id()),
+            param1: Some(1),
+            param2: Some(2),
+            ..Default::default()
+        }],
+        ..Default::default()
+    };
+    let expected = planner.plan(&request).unwrap();
+    request.opers[0].param3 = Some(i32::MAX);
+
+    assert!(!expected.opers.is_empty());
+    assert_eq!(planner.plan(&request).unwrap(), expected);
+}
+
+#[test]
+fn auto_round_distinguishes_an_invalid_choice_from_missing_skill_data() {
+    let mut runtime = auto_runtime();
+    let request = AutoRoundRequest {
+        opers: vec![BeginRoundOper {
+            oper_type: Some(CardOpType::PlayCard.id()),
+            param1: Some(1),
+            param3: Some(i32::MAX),
+            to_id: Some(-1),
+            ..Default::default()
+        }],
+        ..Default::default()
+    };
+    assert!(matches!(
+        runtime.auto_round_planner().plan(&request),
+        Err(AutoRoundError::InvalidRequest)
+    ));
+
+    runtime.catalog = SkillEffectCatalog::default();
+    assert!(matches!(
+        runtime.auto_round_planner().plan(&AutoRoundRequest::default()),
+        Err(AutoRoundError::Engine(message)) if message.contains("MissingSkill(30230111)")
+    ));
+}
+
+#[test]
 fn auto_round_keeps_support_targets_on_the_casters_team() {
     let mut runtime = auto_runtime();
     runtime.round_state.act_point = 2;
@@ -512,6 +558,13 @@ fn auto_round_picks_one_of_a_choice_cards_options() {
     let mut runtime = runtime_with_seed(1);
     let reply = runtime.plan_auto_round(&AutoRoundRequest::default());
     assert_eq!(reply.opers.len(), 1);
+    runtime
+        .auto_round_planner()
+        .plan(&AutoRoundRequest {
+            opers: reply.opers.clone(),
+            ..Default::default()
+        })
+        .unwrap();
     runtime
         .advance_round(BeginRoundRequest {
             opers: reply.opers,

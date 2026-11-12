@@ -523,7 +523,10 @@ pub async fn on_auto_round(ctx: &mut ConnectionContext, req: ClientPacket) -> Re
     let reply = tokio::task::spawn_blocking(move || planner.plan(&msg))
         .await
         .map_err(|error| AppError::Custom(format!("auto-round planner failed: {error}")))?
-        .map_err(AppError::Custom)?;
+        .map_err(|error| match error {
+            ::battle::AutoRoundError::InvalidRequest => AppError::InvalidRequest,
+            ::battle::AutoRoundError::Engine(message) => AppError::Custom(message),
+        })?;
 
     ctx.send_reply(CmdId::AutoRoundCmd, reply, 0, req.up_tag)
         .await

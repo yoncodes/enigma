@@ -67,11 +67,17 @@ pub struct AutoRoundPlanner {
     devices: Vec<sonettobuf::FightDeviceOper>,
 }
 
+#[derive(Debug)]
+pub enum AutoRoundError {
+    InvalidRequest,
+    Engine(String),
+}
+
 impl AutoRoundPlanner {
     pub fn plan(
         &self,
         request: &sonettobuf::AutoRoundRequest,
-    ) -> Result<sonettobuf::AutoRoundReply, String> {
+    ) -> Result<sonettobuf::AutoRoundReply, AutoRoundError> {
         crate::engine::auto_battle::plan(
             request,
             &self.fight,
@@ -81,7 +87,12 @@ impl AutoRoundPlanner {
             &self.determinism,
             self.devices.clone(),
         )
-        .map_err(|error| format!("auto-battle planning failed: {error:?}"))
+        .map_err(|error| match error {
+            crate::engine::auto_battle::AutoBattleError::InvalidChoice => {
+                AutoRoundError::InvalidRequest
+            }
+            error => AutoRoundError::Engine(format!("auto-battle planning failed: {error:?}")),
+        })
     }
 }
 
