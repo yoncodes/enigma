@@ -382,6 +382,56 @@ fn queued_hedone_card_releases_energy_when_the_round_executes() {
 }
 
 #[test]
+fn auto_round_uses_the_upcoming_conduit_state() {
+    let mut runtime = team_runtime_against(
+        vec![hedone_with_stored_energy()],
+        (1..=4).map(|index| enemy(-index, 1_000)).collect(),
+        vec![hedone_energy_card()],
+    );
+    runtime
+        .managers
+        .conduit
+        .execute(ConduitCommand::StopSkill {
+            origin: CommandOrigin {
+                domain: RuleDomain::Behavior,
+                key: DefinitionKey::new(60294, "StopDeviceSkill"),
+            },
+            source_uid: 10,
+            team: 1,
+            skill_id: 31560121,
+        })
+        .unwrap();
+
+    let current = runtime.current_round();
+    let planner = runtime.auto_round_planner();
+    let request = AutoRoundRequest::default();
+    let reply = planner.plan(&request).unwrap();
+
+    assert_eq!(reply.devices_opers[0].index, Some(2));
+    assert_eq!(runtime.try_plan_auto_round(&request).unwrap(), reply);
+    assert_eq!(planner.round_state.cur_round, current + 1);
+    assert_eq!(runtime.current_round(), current);
+    assert!(
+        runtime
+            .managers
+            .conduit
+            .configured_skill(10, 31560121)
+            .unwrap()
+            .1
+            .is_stopped
+    );
+
+    runtime.round_state.grant_extra_round();
+    let extra = runtime.auto_round_planner();
+    assert_eq!(extra.round_state.cur_round, current);
+    assert_eq!(
+        extra.plan(&request).unwrap().devices_opers[0].index,
+        Some(2)
+    );
+    assert_eq!(runtime.round_state.extra_rounds, 1);
+}
+
+#[test]
 fn conduit_scoring_counts_every_mass_attack_target() {
     let plan = |enemy_count| {
         let runtime = team_runtime_against(

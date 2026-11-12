@@ -97,12 +97,21 @@ impl AutoRoundPlanner {
 }
 
 impl BattleRuntime {
+    fn auto_round_state(&self) -> (BattleManagers, RoundState) {
+        let mut round_state = self.round_state.clone();
+        round_state.begin_round();
+        let mut managers = self.managers.clone();
+        managers.begin_action_round();
+        (managers, round_state)
+    }
+
     pub(crate) fn auto_round_planner(&self) -> AutoRoundPlanner {
+        let (managers, round_state) = self.auto_round_state();
         AutoRoundPlanner {
             fight: self.fight.clone(),
-            managers: self.managers.clone(),
+            managers,
             catalog: self.catalog.clone(),
-            round_state: self.round_state.clone(),
+            round_state,
             determinism: self.determinism.clone(),
             devices: self.conduit_operations(),
         }
@@ -113,12 +122,13 @@ impl BattleRuntime {
         &self,
         request: &sonettobuf::AutoRoundRequest,
     ) -> Result<sonettobuf::AutoRoundReply, String> {
+        let (managers, round_state) = self.auto_round_state();
         crate::engine::auto_battle::plan(
             request,
             &self.fight,
-            &self.managers,
+            &managers,
             &self.catalog,
-            &self.round_state,
+            &round_state,
             &self.determinism,
             self.conduit_operations(),
         )
