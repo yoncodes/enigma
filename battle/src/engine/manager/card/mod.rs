@@ -116,10 +116,8 @@ enum PlaySource {
 
 impl CardManager {
     pub fn action_queue_state(&self, team_type: i32) -> ActionQueueCardState {
-        let mut hand = self.hand().to_vec();
-        hand.extend_from_slice(self.team_cards());
         ActionQueueCardState {
-            hand,
+            hand: self.visible_cards().cloned().collect(),
             deck_num: self.deck_num(),
             team_type,
         }
@@ -277,10 +275,12 @@ impl CardManager {
         &self.team_cards
     }
 
+    pub(crate) fn visible_cards(&self) -> impl Iterator<Item = &CardInfo> {
+        self.hand().iter().chain(self.team_cards())
+    }
+
     pub(crate) fn visible_card(&self, index: usize) -> Option<&CardInfo> {
-        self.hand()
-            .get(index)
-            .or_else(|| self.team_cards.get(index.checked_sub(self.hand().len())?))
+        self.visible_cards().nth(index)
     }
 
     fn set_team_cards(&mut self, cards: Vec<CardInfo>) {

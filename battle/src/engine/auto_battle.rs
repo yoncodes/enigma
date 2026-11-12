@@ -92,17 +92,13 @@ pub(crate) fn plan(
         });
     let mut missing_roots: Vec<i32> = managers
         .card
-        .hand()
-        .iter()
-        .chain(managers.card.team_cards())
+        .visible_cards()
         .filter_map(|card| card.skill_id)
         .filter(|skill_id| *skill_id > 0)
         .chain(
             managers
                 .card
-                .hand()
-                .iter()
-                .chain(managers.card.team_cards())
+                .visible_cards()
                 .flat_map(|card| card_choice_options(card, managers)),
         )
         .collect::<HashSet<_>>()
@@ -204,9 +200,7 @@ fn plan_cards_inner(
     let mut reported_unsupported = HashSet::new();
     loop {
         let choices = cards
-            .hand()
-            .iter()
-            .chain(cards.team_cards())
+            .visible_cards()
             .map(|card| {
                 cards
                     .can_use_card(card)
@@ -521,8 +515,7 @@ fn best_candidate(
     reported_unsupported: &mut HashSet<i32>,
 ) -> Result<Option<Candidate>, AutoBattleError> {
     let candidates = cards
-        .hand()
-        .iter()
+        .visible_cards()
         .enumerate()
         .filter_map(|(card_index, card)| {
             if !cards.can_use_card(card) {
