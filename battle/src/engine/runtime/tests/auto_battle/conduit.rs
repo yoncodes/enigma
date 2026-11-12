@@ -332,44 +332,53 @@ fn auto_round_rejects_malformed_hedone_energy_state() {
 }
 
 #[test]
-fn queued_hedone_energy_feeds_her_card_driven_group_switch() {
-    let mut hedone = team_hero(10, 3156, 1_000, [31560111, 31560121]);
-    hedone.buffs.push(sonettobuf::BuffInfo {
-        uid: Some(20),
-        buff_id: Some(31560185),
-        from_uid: Some(10),
-        act_info: vec![sonettobuf::BuffActInfo {
-            act_id: Some(1159),
-            param: vec![2, 10, 1],
-            str_param: Some(String::new()),
-        }],
-        ..Default::default()
-    });
-    let energy = sonettobuf::CardInfo {
-        extra_infos: vec![sonettobuf::CardExtraInfo {
-            key: Some(8),
-            values: vec!["HedoneCard".to_owned()],
-        }],
-        ..hand_card(10, 31560181, false)
-    };
-    let runtime = team_runtime(vec![hedone], vec![hand_card(10, 31560111, false), energy]);
-    assert_eq!(runtime.managers.conduit.selected_group(10), Some(1));
-    let play = |target_uid| BeginRoundOper {
+fn queued_hedone_card_releases_energy_when_the_round_executes() {
+    let mut hedone = hedone_with_stored_energy();
+    hedone.buffs[0].buff_id = Some(31560181);
+    hedone.buffs[0].act_info[0].param = vec![2, 7, 1];
+    let mut runtime = team_runtime(
+        vec![hedone],
+        vec![
+            hand_card(10, 31446011, false),
+            hedone_energy_card(),
+            hand_card(10, 31446012, false),
+        ],
+    );
+    runtime.round_state.act_point = 2;
+    let play = BeginRoundOper {
         oper_type: Some(CardOpType::PlayCard.id()),
         param1: Some(1),
-        to_id: Some(target_uid),
+        to_id: Some(-1),
         ..Default::default()
     };
+    let request = AutoRoundRequest {
+        opers: vec![play.clone(), play.clone()],
+        ..Default::default()
+    };
+    let reply = runtime.try_plan_auto_round(&request).unwrap();
 
-    let reply = runtime
-        .try_plan_auto_round(&AutoRoundRequest {
-            opers: vec![play(-1), play(-1)],
+    assert_eq!(reply.opers, [play]);
+    assert_eq!(runtime.managers.conduit.power(1, 1), 0);
+    assert!(runtime.managers.buff.has_buff_id(10, 31560181));
+
+    let round = runtime
+        .advance_round(BeginRoundRequest {
+            opers: request.opers.into_iter().chain(reply.opers).collect(),
+            devices_opers: reply.devices_opers,
             ..Default::default()
         })
         .unwrap();
-
-    assert!(reply.opers.is_empty());
-    assert_eq!(reply.devices_opers[0].index, Some(2));
+    let flame = round
+        .fight_step
+        .iter()
+        .find(|step| step.act_id == Some(31560181))
+        .expect("the queued Flame Undying was cast");
+    assert!(flame.act_effect.iter().any(|effect| {
+        effect.effect_type
+            == Some(sonettobuf::effect_type_enum::EffectType::Devicepowerchange as i32)
+            && effect.reserve_str.as_deref() == Some("1#2")
+    }));
+    assert!(!runtime.managers.buff.has_buff_id(10, 31560181));
 }
 
 #[test]
