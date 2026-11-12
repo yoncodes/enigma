@@ -31,18 +31,6 @@ impl PlayerActionQueue {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct ConduitSelection {
-    pub source_uid: i64,
-    pub team: i32,
-    pub group: i32,
-}
-
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct ConduitSelections {
-    pub selections: Vec<ConduitSelection>,
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RoundCommand {
     MoveCard {

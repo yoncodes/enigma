@@ -94,6 +94,7 @@ fn action_queue_commit_selects_everecho_group_for_its_enabling_buff() {
             &mut RoundDeterminism::default(),
             TargetContext::default(),
             queue,
+            &Default::default(),
         )
         .unwrap();
 
@@ -198,6 +199,7 @@ fn action_queue_commit_records_cards_in_an_independent_buff_act_frame() {
         &mut RoundDeterminism::default(),
         TargetContext::default(),
         queue,
+        &Default::default(),
     )
     .unwrap();
     let steps = crate::engine::packet::timeline::project(&result.frames).unwrap();
@@ -275,6 +277,7 @@ fn action_queue_commit_expires_the_committed_teams_before_ap_buffs() {
         &mut RoundDeterminism::default(),
         TargetContext::default(),
         queue,
+        &Default::default(),
     )
     .unwrap();
 

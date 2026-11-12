@@ -34,8 +34,6 @@ pub enum FrameOwner {
     },
     PlayerActionCommit,
     ConduitSelectionCommit,
-    ConduitSelectionPublication,
-    ConduitSelectionConfirmation,
     BuffAct {
         owner_uid: i64,
         source_uid: i64,
@@ -148,8 +146,6 @@ pub enum RoundCue {
     ChangeRound {
         round: i32,
     },
-    ConduitSelectionPublished(crate::engine::round::command::ConduitSelection),
-    ClientConduitSelectionConfirmed(crate::engine::round::command::ConduitSelection),
     ExtraRoundGranted,
 }
 

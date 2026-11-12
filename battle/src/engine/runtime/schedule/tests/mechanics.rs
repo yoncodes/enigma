@@ -478,6 +478,7 @@ fn action_queue_commit_collects_played_card_energy_as_inspiration() {
         &mut RoundDeterminism::default(),
         TargetContext::default(),
         queue,
+        &Default::default(),
     )
     .unwrap();
 

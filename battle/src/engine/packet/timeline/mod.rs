@@ -93,20 +93,23 @@ fn project_frames(
     redeal_layout: RedealWireLayout,
     change_round_layout: ChangeRoundWireLayout,
 ) -> Result<Vec<FightStep>, ProjectionError> {
-    let frames = frames
-        .iter()
-        .map(|frame| {
-            project_frame(
-                frame,
-                writes_reduce_hp,
-                hurt_info_layout,
-                absorb_map_layout,
-                redeal_layout,
-                change_round_layout,
-            )
-        })
-        .collect::<Result<Vec<_>, _>>()?;
-    Ok(frames.into_iter().flatten().collect())
+    let mut steps = Vec::new();
+    for frame in frames {
+        if let Some(step) = project_frame(
+            frame,
+            writes_reduce_hp,
+            hurt_info_layout,
+            absorb_map_layout,
+            redeal_layout,
+            change_round_layout,
+        )? {
+            if frame.owner == FrameOwner::ConduitSelectionCommit {
+                steps.push(step.clone());
+            }
+            steps.push(step);
+        }
+    }
+    Ok(steps)
 }
 
 fn project_frame(
@@ -223,8 +226,6 @@ fn project_frame(
         | FrameOwner::RoundPhase(_)
         | FrameOwner::PlayerActionCommit
         | FrameOwner::ConduitSelectionCommit
-        | FrameOwner::ConduitSelectionPublication
-        | FrameOwner::ConduitSelectionConfirmation
         | FrameOwner::SynchronizationCardState { .. }
         | FrameOwner::Command => Ok(StepPacket::effect(effects)),
     }
@@ -752,8 +753,17 @@ fn project_change(
             area,
         )) => vec![EffectPacket::conduit_initialized(area)],
         BattleChange::Conduit(
-            crate::engine::manager::conduit::ConduitChange::SelectionCommitted { .. },
-        ) => Vec::new(),
+            crate::engine::manager::conduit::ConduitChange::SelectionCommitted {
+                source_uid,
+                team,
+                group,
+            },
+        ) => vec![EffectPacket::conduit_group_selected(
+            *source_uid,
+            *team,
+            *group,
+            0,
+        )],
         BattleChange::Conduit(
             crate::engine::manager::conduit::ConduitChange::SkillGroupChanged {
                 origin,
@@ -1586,15 +1596,6 @@ fn project_cue(
             })]
         }
         RoundCue::ExtraRoundGranted => vec![EffectPacket::fight_param_change(18, 1)],
-        RoundCue::ConduitSelectionPublished(selection)
-        | RoundCue::ClientConduitSelectionConfirmed(selection) => {
-            vec![EffectPacket::conduit_group_selected(
-                selection.source_uid,
-                selection.team,
-                selection.group,
-                0,
-            )]
-        }
     }
 }
 

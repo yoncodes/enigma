@@ -111,11 +111,7 @@ fn device_only_queue_runs_configured_group_switches() {
             };
             assert!(
                 owner_index(FrameOwner::PlayerActionCommit)
-                    < owner_index(FrameOwner::ConduitSelectionPublication)
-            );
-            assert!(
-                owner_index(FrameOwner::ConduitSelectionPublication)
-                    < owner_index(FrameOwner::ConduitSelectionConfirmation)
+                    < owner_index(FrameOwner::ConduitSelectionCommit)
             );
 
             let steps = crate::engine::packet::timeline::project(&result.frames).unwrap();
@@ -135,24 +131,58 @@ fn device_only_queue_runs_configured_group_switches() {
                 use_cards.card_info_list[0].card_type,
                 Some(sonettobuf::card_info::CardType::Device as i32)
             );
-            let selection_steps = steps
+            const GROUP: Option<i32> =
+                Some(sonettobuf::effect_type_enum::EffectType::Deviceskillindex as i32);
+            type GroupChange = (usize, Option<i64>, Option<i32>, Option<i32>);
+            fn group_changes(
+                step: &sonettobuf::FightStep,
+                index: usize,
+                changes: &mut Vec<GroupChange>,
+            ) {
+                for effect in &step.act_effect {
+                    if effect.effect_type == GROUP {
+                        changes.push((
+                            index,
+                            effect.target_id,
+                            effect.effect_num,
+                            effect.config_effect,
+                        ));
+                    }
+                    if let Some(nested) = &effect.fight_step {
+                        group_changes(nested, index, changes);
+                    }
+                }
+            }
+            let commit = steps
                 .iter()
-                .filter(|step| {
-                    step.act_effect.first().is_some_and(|effect| {
+                .position(|step| {
+                    step.act_effect.iter().any(|effect| {
                         effect.effect_type
-                            == Some(
-                                sonettobuf::effect_type_enum::EffectType::Deviceskillindex as i32,
-                            )
+                            == Some(sonettobuf::effect_type_enum::EffectType::Usecards as i32)
                     })
                 })
-                .collect::<Vec<_>>();
-            assert_eq!(selection_steps.len(), 2);
-            for step in selection_steps {
+                .unwrap();
+            for step in &steps[commit + 1..=commit + 2] {
                 assert_eq!(step.act_effect.len(), 1);
-                assert_eq!(step.act_effect[0].target_id, Some(10));
-                assert_eq!(step.act_effect[0].effect_num, Some(expected_group));
-                assert_eq!(step.act_effect[0].config_effect, Some(0));
+                assert_eq!(step.act_effect[0].effect_type, GROUP);
             }
+            let mut changes = Vec::new();
+            for (index, step) in steps.iter().enumerate() {
+                group_changes(step, index, &mut changes);
+            }
+            let [first, second, configured] = changes.as_slice() else {
+                panic!("expected two request selections and one configured change: {changes:?}")
+            };
+            assert_eq!(*first, (commit + 1, Some(10), Some(initial_group), Some(0)));
+            assert_eq!(
+                *second,
+                (commit + 2, Some(10), Some(initial_group), Some(0))
+            );
+            assert!(configured.0 > commit + 2);
+            assert_eq!(
+                *configured,
+                (configured.0, Some(10), Some(expected_group), Some(60293))
+            );
         }
     }
 }

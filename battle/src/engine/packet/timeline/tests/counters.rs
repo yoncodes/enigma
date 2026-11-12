@@ -317,42 +317,20 @@ fn positive_cost_reduced_to_zero_suppresses_only_the_begin_marker() {
 
 #[test]
 fn client_conduit_group_selection_projects_two_top_level_confirmations() {
-    let selection = crate::engine::round::command::ConduitSelection {
-        source_uid: 263_811_366,
-        team: 1,
-        group: 3,
-    };
-    let frames = [
-        SemanticFrame {
-            owner: FrameOwner::ConduitSelectionCommit,
-            trigger: crate::engine::runtime::record::FrameTrigger::Active,
-            items: vec![FrameItem::Change(Box::new(BattleChange::Conduit(
-                crate::engine::manager::conduit::ConduitChange::SelectionCommitted {
-                    source_uid: 263_811_366,
-                    team: 1,
-                    group: 3,
-                },
-            )))],
-        },
-        SemanticFrame {
-            owner: FrameOwner::ConduitSelectionPublication,
-            trigger: crate::engine::runtime::record::FrameTrigger::Active,
-            items: vec![FrameItem::Cue(
-                crate::engine::runtime::record::RoundCue::ConduitSelectionPublished(selection),
-            )],
-        },
-        SemanticFrame {
-            owner: FrameOwner::ConduitSelectionConfirmation,
-            trigger: crate::engine::runtime::record::FrameTrigger::Active,
-            items: vec![FrameItem::Cue(
-                crate::engine::runtime::record::RoundCue::ClientConduitSelectionConfirmed(
-                    selection,
-                ),
-            )],
-        },
-    ];
+    let frames = [SemanticFrame {
+        owner: FrameOwner::ConduitSelectionCommit,
+        trigger: crate::engine::runtime::record::FrameTrigger::Active,
+        items: vec![FrameItem::Change(Box::new(BattleChange::Conduit(
+            crate::engine::manager::conduit::ConduitChange::SelectionCommitted {
+                source_uid: 263_811_366,
+                team: 1,
+                group: 3,
+            },
+        )))],
+    }];
 
-    let steps = project(&frames).unwrap();
+    let steps = project_for_version(&frames, 7).unwrap();
+    assert_eq!(steps, project_for_version(&frames, 6).unwrap());
     assert_eq!(steps.len(), 2);
     assert_eq!(steps[0], steps[1]);
     assert!(steps.iter().all(|step| step.act_effect.len() == 1));
