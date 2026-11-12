@@ -82,23 +82,9 @@ impl ConduitManager {
                     return Err(ConduitError::StoppedSkill(skill_id));
                 }
                 let spent = skill.cost_after_reduction(cost_reduction);
-                let specific_available = self.power(team, skill.cost_type);
-                let generic_available = if skill.cost_type > 0 && skill.cost_type != 999 {
-                    self.power(team, 0)
-                } else {
-                    0
-                };
-                let available = specific_available.saturating_add(generic_available);
-                if skill.cost_type != 999 && available < spent {
-                    return Err(ConduitError::InsufficientPower {
-                        power_id: skill.cost_type,
-                        available,
-                        required: spent,
-                    });
-                }
-                let specific_spent = spent.min(specific_available);
-                let generic_spent = spent.saturating_sub(specific_spent);
-                if skill.cost_type != 999 {
+                let payment = Payment::new(skill, spent);
+                let split = payment.split(|power_id| self.power(team, power_id))?;
+                if !payment.is_unique() {
                     let area = self
                         .areas
                         .get_mut(&team)
@@ -110,9 +96,7 @@ impl ConduitManager {
                         });
                         area.powers.sort_by_key(|power| power.id);
                     }
-                    for (power_id, amount) in
-                        [(skill.cost_type, specific_spent), (0, generic_spent)]
-                    {
+                    for (power_id, amount) in split {
                         if amount > 0 {
                             area.powers
                                 .iter_mut()
@@ -145,7 +129,7 @@ impl ConduitManager {
                     power_id: skill.cost_type,
                     activation_cost: skill.cost_value,
                     spent,
-                    generic_spent,
+                    generic_spent: split[1].1,
                 })
             }
             ConduitCommand::CommitSkillCost {

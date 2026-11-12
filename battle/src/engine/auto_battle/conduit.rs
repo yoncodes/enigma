@@ -14,6 +14,7 @@ use crate::engine::{
 use super::{Support, certain_buffs, is_shield_buff, support_need, target_options};
 
 mod card_energy;
+pub(super) mod demand;
 mod selection;
 
 pub(super) use card_energy::{CardEnergyError, Priority, card_energy};

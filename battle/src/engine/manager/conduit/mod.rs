@@ -3,7 +3,10 @@ use std::collections::{BTreeMap, HashSet};
 use crate::engine::skill::rule::CommandOrigin;
 
 mod execute;
+mod payment;
 mod projection;
+
+pub(crate) use payment::Payment;
 mod seed;
 #[cfg(test)]
 mod tests;
@@ -360,6 +363,14 @@ impl ConduitManager {
             .unwrap_or_default()
     }
 
+    pub(crate) fn powers(&self) -> impl Iterator<Item = ((i32, i32), i32)> + '_ {
+        self.areas.iter().flat_map(|(&team, area)| {
+            area.powers
+                .iter()
+                .map(move |power| ((team, power.id), power.value))
+        })
+    }
+
     pub fn begin_round(&mut self) {
         self.consumed_this_round.clear();
         self.uses_this_round.clear();
@@ -442,14 +453,9 @@ impl ConduitManager {
         }) else {
             return false;
         };
-        let cost = skill.cost_after_reduction(cost_reduction);
-        let generic = if skill.cost_type > 0 && skill.cost_type != 999 {
-            self.power(team, 0)
-        } else {
-            0
-        };
-        let available = self.power(team, skill.cost_type).saturating_add(generic);
-        skill.cost_type == 999 || available >= cost
+        Payment::new(skill, skill.cost_after_reduction(cost_reduction))
+            .split(|power_id| self.power(team, power_id))
+            .is_ok()
     }
 
     pub fn owns_skill(&self, source_uid: i64, skill_id: i32) -> bool {

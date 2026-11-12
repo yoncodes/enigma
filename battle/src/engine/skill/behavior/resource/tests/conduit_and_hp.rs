@@ -1,5 +1,6 @@
 use super::*;
 use crate::engine::event::kind::EventKind;
+use crate::engine::manager::conduit::ConduitPowerChangeKind;
 
 #[test]
 fn exact_conduit_counter_behavior_commits_typed_round_state() {

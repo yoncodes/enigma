@@ -166,7 +166,7 @@ fn plan_cards_inner(
     let mut choice_determinism = determinism.clone();
     let mut normal_ap = round_state.act_point.max(0);
     let mut played_owners = HashSet::new();
-    if !apply_prefix(
+    let prefix = apply_prefix(
         &mut cards,
         &mut normal_ap,
         &mut played_owners,
@@ -175,8 +175,10 @@ fn plan_cards_inner(
         catalog,
         pool,
         determinism,
-    )? {
-        return Ok(None);
+    );
+    if !matches!(prefix, Ok(true)) {
+        conduit::demand::unavailable(round_state.cur_round, planned_devices, "prefix rejected");
+        return prefix.map(|_| None);
     }
     let live_pool = pool.runtime_view(managers);
     let selected_power_types = conduit::selected_power_types(managers, planned_devices);
@@ -242,6 +244,20 @@ fn plan_cards_inner(
         }
         opers.push(operation);
     }
+    conduit::demand::trace(
+        managers,
+        &live_pool,
+        catalog,
+        determinism,
+        TargetContext {
+            battle_id: fight.battle_id.unwrap_or_default(),
+            current_round: round_state.cur_round,
+            ..Default::default()
+        },
+        planned_devices,
+        &request.opers,
+        cards.played(),
+    );
     Ok(Some(CardPlan { opers }))
 }
 
