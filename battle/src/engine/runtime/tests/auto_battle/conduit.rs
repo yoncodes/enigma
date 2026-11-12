@@ -132,7 +132,7 @@ fn prefix_targets_use_queue_admission_state() {
 }
 
 #[test]
-fn auto_conduit_plan_replays_the_enabling_buff_boundary() {
+fn auto_round_leaves_conduit_group_changes_to_queue_rules() {
     for enabled in [false, true] {
         let mut everecho = team_hero(10, 3145, 1_000, [31450111, 31450121]);
         everecho.passive_skill = vec![31450141];
@@ -147,9 +147,7 @@ fn auto_conduit_plan_replays_the_enabling_buff_boundary() {
 
         let reply = runtime.plan_auto_round(&AutoRoundRequest::default());
 
-        if !enabled {
-            assert_eq!(reply.devices_opers[0].index, Some(1));
-        }
+        assert_eq!(reply.devices_opers[0].index, Some(2));
         assert_eq!(runtime.managers.hp.current(11), 500);
         assert_eq!(runtime.managers.buff.has_buff_id(10, 31450121), enabled);
         runtime
@@ -160,6 +158,7 @@ fn auto_conduit_plan_replays_the_enabling_buff_boundary() {
             })
             .unwrap();
         assert_eq!(runtime.managers.hp.current(11) > 500, enabled);
+        assert_eq!(runtime.managers.conduit.selected_group(10), Some(1));
         assert!(!runtime.managers.buff.has_buff_id(10, 31450121));
     }
 }
