@@ -68,6 +68,13 @@ pub fn is_random_other_ally(target_code: i32) -> bool {
     )
 }
 
+pub(crate) fn is_fixed_ally(code: i32) -> bool {
+    matches!(
+        target_rule(code),
+        Some(TargetRule::Source | TargetRule::AllyPosition(_))
+    )
+}
+
 pub(crate) fn uses_rng(target_code: i32) -> bool {
     matches!(
         target_rule(target_code),

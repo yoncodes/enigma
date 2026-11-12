@@ -331,6 +331,67 @@ fn auto_round_rejects_malformed_hedone_energy_state() {
 }
 
 #[test]
+fn auto_round_reads_hedone_power_from_the_configured_carrier() {
+    use crate::engine::{
+        mechanic::hedone_device_power::available_gain,
+        skill::{
+            behavior::hedone_device_power::card_release,
+            target::{TargetPool, TargetRequest},
+        },
+    };
+
+    let caster = team_hero(10, 3156, 1_000, [31560111, 31560121]);
+    let mut carrier = hedone_with_stored_energy();
+    carrier.uid = Some(11);
+    carrier.position = Some(2);
+    carrier.buffs[0].from_uid = Some(11);
+    let mut runtime = team_runtime_against(
+        vec![caster, carrier],
+        vec![enemy(-1, 100_000)],
+        vec![hedone_energy_card()],
+    );
+    let mut effect = runtime.catalog.get(31560181).unwrap().clone();
+    effect.slots[0].target = TargetRequest {
+        code: 125,
+        raw: Vec::new(),
+    };
+    effect.slots[0].behavior.args = vec![2];
+    effect.slots[0].behavior.raw_args = vec!["2".to_owned()];
+    runtime.catalog.insert(effect);
+    let pool = TargetPool::from_fight_with_catalog(runtime.managers.catalog(), &runtime.fight);
+    let command = card_release(&runtime.managers, &pool, &runtime.catalog, 10, 31560181)
+        .unwrap()
+        .unwrap();
+    let gain = available_gain(&runtime.managers, command).unwrap().unwrap();
+    assert_eq!((gain.source_uid, gain.power_id, gain.delta), (11, 2, 2));
+
+    let reply = runtime
+        .try_plan_auto_round(&AutoRoundRequest::default())
+        .unwrap();
+
+    assert_eq!(reply.opers.len(), 1);
+    assert_eq!(reply.opers[0].param1, Some(1));
+    assert_eq!(runtime.managers.conduit.power(1, 2), 0);
+    let round = runtime
+        .advance_round(BeginRoundRequest {
+            opers: reply.opers,
+            devices_opers: reply.devices_opers,
+            ..Default::default()
+        })
+        .unwrap();
+    let release = round
+        .fight_step
+        .iter()
+        .find(|step| step.act_id == Some(31560181))
+        .unwrap();
+    assert!(release.act_effect.iter().any(|effect| {
+        effect.effect_type
+            == Some(sonettobuf::effect_type_enum::EffectType::Devicepowerchange as i32)
+            && effect.reserve_str.as_deref() == Some("2#2")
+    }));
+}
+
+#[test]
 fn queued_hedone_card_releases_energy_when_the_round_executes() {
     let mut hedone = hedone_with_stored_energy();
     hedone.buffs[0].buff_id = Some(31560181);

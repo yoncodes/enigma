@@ -3,11 +3,16 @@ use std::collections::HashSet;
 use crate::engine::{
     manager::{BattleManagers, card::CardManager},
     mechanic::{card::CardMechanic, hedone_device_power},
-    skill::{effect::SkillEffectCatalog, target::TargetPool},
+    skill::{
+        behavior::hedone_device_power::{CardReleaseError, card_release},
+        effect::SkillEffectCatalog,
+        target::TargetPool,
+    },
 };
 
 #[derive(Debug)]
 pub(crate) enum CardEnergyError {
+    HedoneRelease(CardReleaseError),
     Hedone(hedone_device_power::HedoneDevicePowerError),
 }
 
@@ -65,15 +70,21 @@ pub(in crate::engine::auto_battle) fn card_energy(
     let Some(energy) = cards.conduit_skill_energy(skill_id) else {
         return Ok(None);
     };
-    let hedone = energy.special && hedone_device_power::owns_skill(catalog, skill_id);
-    let amount = if hedone {
-        hedone_device_power::available_gain(managers, source_uid, energy.power_id)
-            .map_err(CardEnergyError::Hedone)?
-            .map_or(0, |(_, amount)| amount)
+    let release = if energy.special {
+        card_release(managers, pool, catalog, source_uid, skill_id)
+            .map_err(CardEnergyError::HedoneRelease)?
     } else {
-        energy.amount
+        None
     };
-    let preferred = (hedone && amount > 0)
+    let (power_id, amount) = if let Some(command) = release {
+        let amount = hedone_device_power::available_gain(managers, command)
+            .map_err(CardEnergyError::Hedone)?
+            .map_or(0, |gain| gain.delta);
+        (command.power_id, amount)
+    } else {
+        (energy.power_id, energy.amount)
+    };
+    let preferred = (release.is_some() && amount > 0)
         || (temporary
             && energy.special
             && pool
@@ -86,15 +97,14 @@ pub(in crate::engine::auto_battle) fn card_energy(
                 selected_power_types
                     .iter()
                     .any(|(selected_team, selected_power)| {
-                        *selected_team == team
-                            && (energy.power_id == 0 || *selected_power == energy.power_id)
+                        *selected_team == team && (power_id == 0 || *selected_power == power_id)
                     })
             })
         };
     Ok(Some(CardEnergy {
         amount,
         special: energy.special,
-        flexible: energy.power_id == 0,
+        flexible: power_id == 0,
         preferred,
     }))
 }

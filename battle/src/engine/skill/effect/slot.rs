@@ -249,6 +249,7 @@ pub struct ParsedBehavior {
     pub spec: BehaviorSpec,
     pub args: Vec<i32>,
     pub raw_args: Vec<String>,
+    pub raw_arity: usize,
     pub config_effect: i32,
     pub effect_id: i32,
     pub slot: u8,
@@ -259,6 +260,7 @@ impl ParsedBehavior {
     pub fn new(opcode: i32, type_name: &str, args: Vec<i32>) -> Self {
         Self {
             spec: BehaviorSpec::new(opcode, type_name),
+            raw_arity: args.len(),
             args,
             raw_args: Vec::new(),
             config_effect: 0,
@@ -272,6 +274,7 @@ impl ParsedBehavior {
             config_effect: spec.key.opcode,
             spec,
             args,
+            raw_arity: raw_args.len(),
             raw_args,
             effect_id: 0,
             slot: 0,

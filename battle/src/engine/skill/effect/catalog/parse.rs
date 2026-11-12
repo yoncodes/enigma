@@ -161,7 +161,9 @@ pub(super) fn parse_slot(db: &GameDB, raw: RawSlot<'_>) -> Result<SkillEffectSlo
         }
     }
 
-    let behavior = ParsedBehavior::from_spec(spec, behavior_args, behavior_values);
+    let raw_arity = behavior.matches('#').count();
+    let mut behavior = ParsedBehavior::from_spec(spec, behavior_args, behavior_values);
+    behavior.raw_arity = raw_arity;
     let target_error = |raw: &str| SlotParseError::Target {
         raw: raw.to_owned(),
         opcode: behavior.spec.key.opcode,
