@@ -1519,7 +1519,7 @@ impl BattleManagers {
         &mut self,
         fight: &mut Fight,
     ) -> crate::engine::fight::reserve::PromotionBatch {
-        let promotions = self.promote_reserves_matching(|_| true);
+        let promotions = crate::engine::mechanic::reserve_cycle::promote(self, |_| true);
         self.sync_entities(fight);
         promotions
     }
@@ -1531,44 +1531,19 @@ impl BattleManagers {
             .into_iter()
             .filter(|team_type| self.battle_rule.promotes_reserves_immediately(*team_type))
             .collect::<Vec<_>>();
-        self.promote_reserves_matching(|team_type| immediate.contains(&team_type))
+        crate::engine::mechanic::reserve_cycle::promote(self, |team_type| {
+            immediate.contains(&team_type)
+        })
     }
 
-    fn promote_reserves_matching(
+    pub(crate) fn queue_reserve_cycle(
         &mut self,
-        promotes: impl Fn(i32) -> bool + Copy,
-    ) -> crate::engine::fight::reserve::PromotionBatch {
-        let mut promotions = Vec::new();
-        loop {
-            let batch = self.entity.promote_immediate_reserves(&self.hp, promotes);
-            if batch.is_empty() {
-                break;
-            }
-            for mut promotion in batch {
-                if self.buff.has_buff_act_kind(
-                    promotion.defeated_uid,
-                    crate::engine::skill::buff_act::registry::BuffActKind::CycleToSub,
-                ) {
-                    let catalog = self.catalog();
-                    if let Some(cycle) = self.entity.cycle_defeated_to_reserve(catalog, &promotion)
-                    {
-                        self.register_entity_state(&cycle.reserve);
-                        promotion.cycle = Some(cycle);
-                    }
-                }
-                self.complete_promotions(std::slice::from_mut(&mut promotion));
-                promotions.push(promotion);
-            }
-        }
-        crate::engine::fight::reserve::PromotionBatch::new(promotions)
-    }
-
-    fn complete_promotions(&self, promotions: &mut [crate::engine::fight::reserve::Promotion]) {
-        for promotion in promotions {
-            if let Some(entering) = self.entity_snapshot(promotion.entering_uid) {
-                promotion.entering = entering;
-            }
-        }
+        command: crate::engine::fight::reserve::CycleCommand,
+    ) -> crate::engine::fight::reserve::ReserveQueued {
+        let catalog = self.catalog();
+        let queued = self.entity.queue_reserve_cycle(catalog, command);
+        self.register_entity_state(&queued.entity);
+        queued
     }
 
     pub(crate) fn advance_wave(

@@ -56,6 +56,7 @@ pub enum BattleChange {
     ToughnessRecovered(crate::engine::manager::toughness::ToughnessRecovery),
     UpgradeApplied(Box<crate::engine::manager::upgrade::UpgradeApplied>),
     EntityPromotion(Box<crate::engine::fight::reserve::Promotion>),
-    ReservePromotionBatchCompleted(crate::engine::fight::reserve::PromotionBatchCompletion),
+    ReserveQueued(Box<crate::engine::fight::reserve::ReserveQueued>),
+    ReserveRetired(crate::engine::fight::reserve::ReserveRetired),
     WaveAdvanced(Box<crate::engine::manager::wave::WaveAdvanced>),
 }

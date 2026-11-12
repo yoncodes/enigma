@@ -1,37 +1,41 @@
+use sonettobuf::FightEntityInfo;
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Promotion {
     pub defeated_uid: i64,
     pub entering_uid: i64,
     pub position: i32,
     pub team_type: i32,
-    pub entering: sonettobuf::FightEntityInfo,
-    pub cycle: Option<CycleSubstitution>,
+    pub entering: FightEntityInfo,
+    pub queued_reserve: Option<ReserveQueued>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct CycleCommand {
+    pub defeated_uid: i64,
+    pub team_type: i32,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct CycleSubstitution {
-    pub removed_uid: i64,
-    pub reserve: sonettobuf::FightEntityInfo,
+pub struct ReserveQueued {
+    pub team_type: i32,
+    pub entity: FightEntityInfo,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ReserveRetired {
+    pub uid: i64,
+    pub team_type: i32,
 }
 
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct PromotionBatch {
     promotions: Vec<Promotion>,
-    completion: PromotionBatchCompletion,
 }
 
 impl PromotionBatch {
     pub fn new(promotions: Vec<Promotion>) -> Self {
-        let completion = PromotionBatchCompletion {
-            cycles: promotions
-                .iter()
-                .filter_map(|promotion| promotion.cycle.clone())
-                .collect(),
-        };
-        Self {
-            promotions,
-            completion,
-        }
+        Self { promotions }
     }
 
     pub fn is_empty(&self) -> bool {
@@ -44,20 +48,5 @@ impl PromotionBatch {
 
     pub fn promotions(&self) -> &[Promotion] {
         &self.promotions
-    }
-
-    pub fn completion(&self) -> &PromotionBatchCompletion {
-        &self.completion
-    }
-}
-
-#[derive(Debug, Clone, Default, PartialEq)]
-pub struct PromotionBatchCompletion {
-    pub cycles: Vec<CycleSubstitution>,
-}
-
-impl PromotionBatchCompletion {
-    pub fn is_empty(&self) -> bool {
-        self.cycles.is_empty()
     }
 }

@@ -201,6 +201,25 @@ impl BuffManager {
         })
     }
 
+    pub(crate) fn active_act_definitions(
+        &self,
+        owner_uid: i64,
+    ) -> impl Iterator<Item = &'static crate::engine::skill::buff_act::registry::BuffActDefinition> + '_
+    {
+        self.buffs
+            .iter()
+            .filter(move |active| active.effective && active.owner_uid == owner_uid)
+            .filter_map(|active| active.definition.as_ref())
+            .flat_map(|definition| definition.features())
+            .filter(|feature| feature.arguments_supported)
+            .filter_map(|feature| {
+                crate::engine::skill::buff_act::registry::find(
+                    *feature.values.first()?,
+                    &feature.act_type,
+                )
+            })
+    }
+
     #[cfg(test)]
     pub(crate) fn replace_buff_features_for_test(&mut self, owner_uid: i64, raw: &str) {
         if let Some(definition) = self

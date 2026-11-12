@@ -405,19 +405,30 @@ fn cycle_substitution_replaces_the_defeated_reserve_with_a_fresh_copy() {
     hp.seed(&fight);
 
     let promotion = manager.promote_reserves(&hp).remove(0);
-    let cycle = manager
-        .cycle_defeated_to_reserve(catalog(), &promotion)
-        .unwrap();
+    let queued = manager.queue_reserve_cycle(
+        catalog(),
+        crate::engine::fight::reserve::CycleCommand {
+            defeated_uid: promotion.defeated_uid,
+            team_type: promotion.team_type,
+        },
+    );
     manager.sync_to_fight(&mut fight);
 
-    assert_eq!(cycle.removed_uid, -1);
-    assert_eq!(cycle.reserve.uid, Some(-4));
-    assert_eq!(cycle.reserve.current_hp, Some(100));
-    assert_eq!(cycle.reserve.position, Some(-2));
-    assert_eq!(cycle.reserve.ex_point, Some(3));
-    assert_eq!(cycle.reserve.shield_value, Some(20));
-    assert_eq!(cycle.reserve.buffs[0].buff_id, Some(99));
-    assert_eq!(cycle.reserve.power_infos[0].num, Some(2));
+    assert_eq!(queued.entity.uid, Some(-4));
+    assert_eq!(queued.entity.current_hp, Some(100));
+    assert_eq!(queued.entity.position, Some(-2));
+    assert_eq!(queued.entity.ex_point, Some(3));
+    assert_eq!(queued.entity.shield_value, Some(20));
+    assert_eq!(queued.entity.buffs[0].buff_id, Some(99));
+    assert_eq!(queued.entity.power_infos[0].num, Some(2));
+    assert_eq!(manager.snapshot(-3).unwrap().position, Some(-1));
+    assert_eq!(manager.roster_lane(-1), Some(RosterLane::RetiringReserve));
+    assert_eq!(manager.retire_reserve(-1).unwrap().uid, -1);
+    assert_eq!(manager.roster_lane(-1), Some(RosterLane::Replaced));
+    assert_eq!(
+        manager.retire_reserve(-1),
+        Err(EntityCommandError::InvalidCommand)
+    );
     let defender = fight.defender.unwrap();
     assert_eq!(defender.entitys[0].uid, Some(-2));
     assert_eq!(

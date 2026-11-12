@@ -125,9 +125,9 @@ fn cycle_substitution_projects_roster_changes_from_committed_state() {
         current_hp: Some(100),
         ..Default::default()
     };
-    let cycle = crate::engine::fight::reserve::CycleSubstitution {
-        removed_uid: -2,
-        reserve: reserve.clone(),
+    let queued = crate::engine::fight::reserve::ReserveQueued {
+        team_type: 2,
+        entity: reserve.clone(),
     };
     let promotion = crate::engine::fight::reserve::Promotion {
         defeated_uid: -2,
@@ -141,25 +141,27 @@ fn cycle_substitution_projects_roster_changes_from_committed_state() {
             current_hp: Some(100),
             ..Default::default()
         },
-        cycle: Some(cycle.clone()),
+        queued_reserve: None,
     };
 
     let promoted =
         project_change_for_test(&BattleChange::EntityPromotion(Box::new(promotion))).unwrap();
-    let cleanup = project_change_for_test(&BattleChange::ReservePromotionBatchCompleted(
-        crate::engine::fight::reserve::PromotionBatchCompletion {
-            cycles: vec![cycle],
+    let arrival = project_change_for_test(&BattleChange::ReserveQueued(Box::new(queued))).unwrap();
+    let cleanup = project_change_for_test(&BattleChange::ReserveRetired(
+        crate::engine::fight::reserve::ReserveRetired {
+            uid: -2,
+            team_type: 2,
         },
     ))
     .unwrap();
 
-    assert_eq!(promoted.len(), 2);
+    assert_eq!(promoted.len(), 1);
     assert_eq!(promoted[0].effect_type, Some(EffectType::Changehero as i32));
     assert_eq!(
-        promoted[1].effect_type,
+        arrival[0].effect_type,
         Some(EffectType::Callmonstertosub as i32)
     );
-    assert_eq!(promoted[1].entity, Some(reserve));
+    assert_eq!(arrival[0].entity, Some(reserve));
     assert_eq!(
         cleanup[0].effect_type,
         Some(EffectType::Removemonstersub as i32)

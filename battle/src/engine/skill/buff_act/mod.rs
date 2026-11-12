@@ -59,6 +59,7 @@ pub mod crit_rate_alter2;
 pub mod crit_rate_alter_by_other_buff;
 pub mod crystal_add_buff;
 pub mod cure;
+pub(crate) mod cycle_to_sub;
 pub mod damage_not_more_than;
 pub mod damage_over_time;
 pub mod deadly_poison;

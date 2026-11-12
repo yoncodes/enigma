@@ -81,6 +81,16 @@ fn cycle_to_sub_repeats_through_entering_reserves_in_capture_order() {
         }
         let promotions = managers.promote_immediate_reserves();
         assert_eq!(promotions.len(), 3);
+        for promotion in promotions.promotions() {
+            assert_eq!(
+                managers.entity.roster_lane(promotion.defeated_uid),
+                Some(RosterLane::RetiringReserve)
+            );
+            assert_eq!(
+                promotion.queued_reserve.as_ref().unwrap().entity.position,
+                Some(-2)
+            );
+        }
         let pool = TargetPool::from_fight_with_catalog(battle_catalog, &fight);
         let mut result = run_promotions(
             &pool,
@@ -91,6 +101,31 @@ fn cycle_to_sub_repeats_through_entering_reserves_in_capture_order() {
             &promotions,
         )
         .unwrap();
+        let entered: Vec<_> = result
+            .events
+            .iter()
+            .filter_map(|event| {
+                if let BattleEvent::EntityEntered { target_uid } = event {
+                    Some(*target_uid)
+                } else {
+                    None
+                }
+            })
+            .collect();
+        assert_eq!(
+            entered,
+            promotions
+                .promotions()
+                .iter()
+                .map(|promotion| promotion.entering_uid)
+                .collect::<Vec<_>>()
+        );
+        for promotion in promotions.promotions() {
+            assert_eq!(
+                managers.entity.roster_lane(promotion.defeated_uid),
+                Some(RosterLane::Replaced)
+            );
+        }
         frames.append(&mut result.frames);
         for uid in managers.entity.alive_combatants(2, &managers.hp) {
             assert!(managers.buff.has_buff_act_kind(
@@ -99,6 +134,17 @@ fn cycle_to_sub_repeats_through_entering_reserves_in_capture_order() {
             ));
         }
         managers.sync_entities(&mut fight);
+        assert_eq!(
+            fight
+                .defender
+                .as_ref()
+                .unwrap()
+                .sub_entitys
+                .iter()
+                .map(|entity| entity.position)
+                .collect::<Vec<_>>(),
+            [Some(-1), Some(-2)]
+        );
     }
 
     let mut effects = Vec::new();

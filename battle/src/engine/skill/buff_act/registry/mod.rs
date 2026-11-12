@@ -35,6 +35,8 @@ pub type FallibleScopedRuntimeHandler =
         &mut RuntimeContext<'a>,
     ) -> Result<Vec<super::BuffActRuleOp>, super::BuffActRuleError>;
 pub type TransactionHandler = fn(&BattleManagers, &BattleEvent) -> Vec<(ActiveBuffFeature, RuleOp)>;
+pub(crate) type ReservePromotionHandler =
+    fn(&crate::engine::fight::reserve::Promotion) -> crate::engine::fight::reserve::CycleCommand;
 
 pub struct SetupContext<'a> {
     pub managers: &'a BattleManagers,
@@ -462,6 +464,7 @@ pub struct BuffActStateDefinition {
     pub read_timing: StatReadTiming,
     pub attack_replacement: Option<AttackReplacementHandler>,
     pub hp_loss: Option<HpLossStateHandler>,
+    pub(crate) reserve_promotion: Option<ReservePromotionHandler>,
     pub consumer: bool,
     pub initial: Option<BuffActInitialStateRule>,
 }
@@ -565,7 +568,7 @@ impl BuffActDefinition {
             Some(BuffActDestination::AttackReplacement)
         } else if self.state.hp_loss.is_some() {
             Some(BuffActDestination::HpLossState)
-        } else if self.state.consumer {
+        } else if self.state.consumer || self.state.reserve_promotion.is_some() {
             Some(BuffActDestination::StateConsumer)
         } else {
             None
@@ -611,6 +614,7 @@ macro_rules! buff_act_definitions {
             $(, references: $references:expr)?
             $(, attack_replacement: $attack_replacement:expr)?
             $(, hp_loss_state: $hp_loss_state:expr)?
+            $(, reserve_promotion: $reserve_promotion:expr)?
             $(, state_consumer: $state_consumer:expr)?
             $(, initial_state: $initial_state:ident)?
             $(, description_required: $description_required:expr)?
@@ -660,6 +664,7 @@ macro_rules! buff_act_definitions {
                     read_timing: buff_act_definitions!(@stat_read $($stat_read)?),
                     attack_replacement: buff_act_definitions!(@attack_replacement $($attack_replacement)?),
                     hp_loss: buff_act_definitions!(@hp_loss_state $($hp_loss_state)?),
+                    reserve_promotion: buff_act_definitions!(@reserve_promotion $($reserve_promotion)?),
                     consumer: buff_act_definitions!(@state_consumer $($state_consumer)?),
                     initial: buff_act_definitions!(@initial_state $($initial_state)?),
                 },
@@ -738,6 +743,8 @@ macro_rules! buff_act_definitions {
     (@attack_replacement) => { None };
     (@hp_loss_state $handler:expr) => { Some($handler) };
     (@hp_loss_state) => { None };
+    (@reserve_promotion $handler:expr) => { Some($handler) };
+    (@reserve_promotion) => { None };
     (@state_consumer $value:expr) => { $value };
     (@state_consumer) => { false };
     (@initial_state $rule:ident) => { Some(BuffActInitialStateRule::$rule) };
@@ -965,7 +972,7 @@ buff_act_definitions! {
     (720, "MonsterLabel") => MonsterLabel,
         effect_time_subscription: false, supports: |_| true, state_consumer: true, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(720, "MonsterLabel"), &[EffectType::Monsterlabelbuff as i32]));
     (931, "CycleToSub") => CycleToSub,
-        effect_time_subscription: false, supports: |args| args.is_empty(), state_consumer: true,
+        effect_time_subscription: false, supports: super::cycle_to_sub::supports, reserve_promotion: super::cycle_to_sub::plan,
         wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(931, "CycleToSub"), &[]));
     (721, "DotNoLimit") => DotNoLimit,
         scoped_runtime: |context| super::dot_no_limit::rule_ops(context.managers, context.subscriber, context.event?),

@@ -15,5 +15,6 @@ pub mod magic_circle_level;
 pub mod monster_change;
 pub mod nuo_di_ka;
 pub mod pulsing_field;
+pub(crate) mod reserve_cycle;
 pub mod shadow_cloak;
 pub mod shell;

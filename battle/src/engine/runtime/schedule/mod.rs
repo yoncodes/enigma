@@ -571,7 +571,8 @@ pub fn run_promotions(
 ) -> Result<DrainResult, DrainError> {
     let pool = pool.runtime_view(managers);
     let mut result = DrainResult::default();
-    for promotion in promotions.promotions().iter().cloned() {
+    let mut retire = Vec::new();
+    for mut promotion in promotions.promotions().iter().cloned() {
         let entering_uid = promotion.entering_uid;
         let origin = CommandOrigin {
             domain: RuleDomain::Lifecycle,
@@ -632,9 +633,18 @@ pub fn run_promotions(
             .expect("a promotion command group owns one root frame");
         debug_assert!(promoted.frames.is_empty());
         let mut items = vec![FrameItem::Child(Box::new(command_frame))];
+        let queued = promotion.queued_reserve.take();
+        if queued.is_some() {
+            retire.push(promotion.defeated_uid);
+        }
         items.push(FrameItem::Change(Box::new(BattleChange::EntityPromotion(
             Box::new(promotion),
         ))));
+        if let Some(queued) = queued {
+            items.push(FrameItem::Change(Box::new(BattleChange::ReserveQueued(
+                Box::new(queued),
+            ))));
+        }
         let entered = drain::run_owner_event(
             managers,
             &pool,
@@ -661,15 +671,19 @@ pub fn run_promotions(
         promoted.events.extend(entered.events);
         append(&mut result, promoted);
     }
-    if !promotions.completion().is_empty() {
+    for uid in retire {
+        let retired = managers
+            .entity
+            .retire_reserve(uid)
+            .map_err(|error| DrainError::Command(error.into()))?;
         result
             .frames
             .last_mut()
-            .expect("reserve cycles follow at least one promotion")
+            .expect("reserve retirement follows a promotion")
             .items
-            .push(FrameItem::Change(Box::new(
-                BattleChange::ReservePromotionBatchCompleted(promotions.completion().clone()),
-            )));
+            .push(FrameItem::Change(Box::new(BattleChange::ReserveRetired(
+                retired,
+            ))));
     }
     Ok(result)
 }
