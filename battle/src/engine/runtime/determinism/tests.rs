@@ -143,7 +143,7 @@ fn card_draws_are_seeded_but_preview_can_supply_the_decision() {
 }
 
 #[test]
-fn captured_condition_roll_is_owned_by_source_skill_and_opcode() {
+fn injected_condition_roll_is_owned_by_source_skill_and_opcode() {
     let mut determinism = RoundDeterminism::default();
     determinism.enqueue_condition_random_choices(vec![ConditionRandomChoice {
         skill_id: 31260161,
@@ -152,10 +152,16 @@ fn captured_condition_roll_is_owned_by_source_skill_and_opcode() {
         roll: 499,
     }]);
 
-    assert_eq!(determinism.condition_random_roll(31260161, 6, 552210), 999);
+    let mut unseeded = RoundDeterminism::default();
+    assert_eq!(
+        determinism.condition_random_roll(31260161, 6, 552210),
+        unseeded.condition_random_roll(31260161, 6, 552210),
+    );
     assert_eq!(determinism.condition_random_roll(31260161, 7, 552210), 499);
-    assert_eq!(determinism.condition_random_roll(31260161, 7, 552210), 999);
-    assert!((0..1000).contains(&determinism.condition_random_roll(1, 7, 552210)));
+    assert_eq!(
+        determinism.condition_random_roll(31260161, 7, 552210),
+        unseeded.condition_random_roll(31260161, 7, 552210),
+    );
 }
 
 #[test]

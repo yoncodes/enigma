@@ -76,7 +76,6 @@ pub struct RoundDeterminism {
     crystal_reuse_choices: VecDeque<CrystalReuseChoice>,
     moxie_reduction_resistance_choices: VecDeque<MoxieReductionResistanceChoice>,
     additional_crit_choices: HashMap<(i32, i64, i64), VecDeque<bool>>,
-    scripted_condition_random: HashSet<(i32, i32)>,
     next_ai_card_snapshots: VecDeque<Vec<CardInfo>>,
     ai_skill_snapshots: VecDeque<Vec<AiSkillChoice>>,
     random_skill_choices: VecDeque<i32>,
@@ -181,26 +180,6 @@ impl RoundDeterminism {
     }
 
     pub fn enqueue_condition_random_choices(&mut self, choices: Vec<ConditionRandomChoice>) {
-        self.scripted_condition_random.extend(
-            choices
-                .iter()
-                .map(|choice| (choice.skill_id, choice.opcode)),
-        );
-        self.condition_random_choices.extend(choices);
-    }
-
-    pub fn script_condition_randoms(&mut self, keys: impl IntoIterator<Item = (i32, i32)>) {
-        self.scripted_condition_random.extend(keys);
-    }
-
-    pub fn replace_condition_random_choices(
-        &mut self,
-        keys: impl IntoIterator<Item = (i32, i32)>,
-        choices: impl IntoIterator<Item = ConditionRandomChoice>,
-    ) {
-        self.condition_random_choices.clear();
-        self.scripted_condition_random.clear();
-        self.scripted_condition_random.extend(keys);
         self.condition_random_choices.extend(choices);
     }
 
@@ -405,11 +384,6 @@ impl RoundDeterminism {
                 .remove(index)
                 .roll
                 .clamp(0, 999);
-        }
-        // captures only expose successful activations; exhausted captured streams fail
-        // closed. Record ordered failures too if a future fixture needs success-after-failure parity.
-        if self.scripted_condition_random.contains(&(skill_id, opcode)) {
-            return 999;
         }
         self.lua_random_index(1000).unwrap_or_default() as i32
     }

@@ -200,49 +200,6 @@ impl SkillEffectCatalog {
             .then_some(target_code)
     }
 
-    pub fn random_condition_keys(&self) -> Vec<(i32, i32)> {
-        fn append(
-            conditions: &[crate::engine::skill::condition::ParsedCondition],
-            skill_id: i32,
-            keys: &mut Vec<(i32, i32)>,
-        ) {
-            for condition in conditions {
-                match &condition.kind {
-                    ParsedConditionKind::Random { .. }
-                    | ParsedConditionKind::Rouge2AttributeRandom { .. } => {
-                        let key = (skill_id, condition.opcode);
-                        if !keys.contains(&key) {
-                            keys.push(key);
-                        }
-                    }
-                    ParsedConditionKind::Any(groups) => {
-                        for group in groups {
-                            append(group, skill_id, keys);
-                        }
-                    }
-                    ParsedConditionKind::Not(inner) => {
-                        let nested = crate::engine::skill::condition::ParsedCondition {
-                            opcode: condition.opcode,
-                            type_name: condition.type_name.clone(),
-                            kind: *inner.clone(),
-                            raw_args: condition.raw_args.clone(),
-                        };
-                        append(std::slice::from_ref(&nested), skill_id, keys);
-                    }
-                    _ => {}
-                }
-            }
-        }
-
-        let mut keys = Vec::new();
-        for effect in self.effects.values() {
-            for slot in &effect.slots {
-                append(&slot.conditions, effect.skill_id, &mut keys);
-            }
-        }
-        keys
-    }
-
     pub fn effect_tag(&self, skill_id: i32) -> i32 {
         let effect_id = self.aliases.get(&skill_id).copied().unwrap_or(skill_id);
         self.effect_tags
