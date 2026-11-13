@@ -294,6 +294,7 @@ pub struct ConduitManager {
     counters_this_round: BTreeMap<(i32, ConduitCounterKind), i32>,
     pending_activations: BTreeMap<(i64, i32), PendingActivation>,
     running: HashSet<i64>,
+    pending_retirements: BTreeMap<i64, super::hp::PendingDeath>,
 }
 
 impl ConduitManager {
@@ -306,7 +307,19 @@ impl ConduitManager {
             .collect()
     }
 
-    pub fn roster_refresh_commands(&self, defeated_uids: &[i64]) -> Vec<ConduitCommand> {
+    pub(crate) fn record_death(&mut self, death: super::hp::PendingDeath) {
+        let uid = death.transition().target_uid;
+        if self.devices().any(|device| device.uid == uid) {
+            self.pending_retirements.insert(uid, death);
+        }
+    }
+
+    pub(crate) fn roster_refresh_commands(
+        &mut self,
+        hp: &super::hp::HpManager,
+    ) -> Vec<ConduitCommand> {
+        self.pending_retirements
+            .retain(|_, death| hp.is_current_death(*death));
         self.areas
             .iter()
             .filter_map(|(team, area)| {
@@ -314,7 +327,7 @@ impl ConduitManager {
                     .devices
                     .iter()
                     .map(|device| device.uid)
-                    .filter(|uid| defeated_uids.contains(uid))
+                    .filter(|uid| self.pending_retirements.contains_key(uid))
                     .collect::<Vec<_>>();
                 (!defeated_uids.is_empty()).then_some(ConduitCommand::ReconcileDefeatedDevices {
                     team: *team,

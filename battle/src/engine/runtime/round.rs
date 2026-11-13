@@ -298,6 +298,21 @@ impl BattleRuntime {
             absorb_hurt_map_layout,
         )?);
         let ended_after_attacker_settlement = battle_ended(&self.fight, &pool, &self.managers);
+        if ended_after_attacker_settlement {
+            let transition = schedule::run_terminal_attacker_transition(
+                &mut self.managers,
+                &pool,
+                catalog,
+                &mut self.determinism,
+                settlement_context,
+            )
+            .map_err(|error| format!("{error:?}"))?;
+            fight_steps.extend(project_result(
+                transition,
+                fight_version,
+                absorb_hurt_map_layout,
+            )?);
+        }
         let wave_defeated_after_attacker_settlement =
             crate::engine::round::outcome::defenders_defeated(&pool, &self.managers);
         let runs_phase_two = !ended_after_attacker_settlement;

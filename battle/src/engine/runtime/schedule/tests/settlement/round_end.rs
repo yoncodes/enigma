@@ -137,8 +137,44 @@ fn conduit_roster_refreshes_at_the_matching_round_end_boundary() {
         ..Default::default()
     };
     let pool = TargetPool::from_fight(&fight);
+    let mut uncommitted = BattleManagers::seeded(&fight);
+    uncommitted.hp.lose(10, 100, -1);
+    run_after_ai_round_end(
+        &mut uncommitted,
+        &pool,
+        &SkillEffectCatalog::default(),
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+    )
+    .unwrap();
+    assert_eq!(uncommitted.conduit.selected_group(10), Some(1));
+
+    let commit_death = |managers: &mut BattleManagers| {
+        use crate::engine::manager::hp::{HpCommand, HpKill};
+
+        drain::run(
+            managers,
+            &pool,
+            &SkillEffectCatalog::default(),
+            &mut RoundDeterminism::default(),
+            TargetContext::default(),
+            [RuleOp::Command(BattleCommand::Hp(HpCommand::Kill(
+                HpKill {
+                    origin: CommandOrigin {
+                        domain: RuleDomain::Lifecycle,
+                        key: DefinitionKey::new(0, "TestDeath"),
+                    },
+                    source_uid: -1,
+                    target_uid: 10,
+                    config_effect: 1,
+                },
+            )))],
+        )
+        .unwrap();
+    };
     let mut managers = BattleManagers::seeded(&fight);
-    managers.hp.lose(10, 100, -1);
+    commit_death(&mut managers);
+    assert_eq!(managers.conduit.selected_group(10), Some(1));
 
     let result = run_after_ai_round_end(
         &mut managers,
@@ -151,6 +187,14 @@ fn conduit_roster_refreshes_at_the_matching_round_end_boundary() {
 
     assert_eq!(managers.conduit.selected_group(10), None);
     assert_eq!(managers.conduit.selected_group(11), Some(1));
+    use crate::engine::manager::conduit::{ConduitCommand, ConduitError};
+    assert_eq!(
+        managers.conduit.execute(ConduitCommand::SelectGroup {
+            source_uid: 10,
+            group: 2,
+        }),
+        Err(ConduitError::MissingDevice(10))
+    );
     assert!(result.frames.iter().any(|frame| {
         frame.owner == FrameOwner::RoundPhase(RoundPhase::PostSettlementConduitRosterRefresh)
     }));
@@ -189,7 +233,7 @@ fn conduit_roster_refreshes_at_the_matching_round_end_boundary() {
     );
 
     let mut terminal_managers = BattleManagers::seeded(&fight);
-    terminal_managers.hp.lose(10, 100, -1);
+    commit_death(&mut terminal_managers);
     assert!(
         terminal_managers.commit_terminal(crate::engine::round::outcome::BattleOutcome::Defeat)
     );
@@ -229,6 +273,26 @@ fn conduit_roster_refreshes_at_the_matching_round_end_boundary() {
         })
         .unwrap();
     assert!(small_round_end < refresh && refresh < clear);
+    assert!(
+        terminal_managers
+            .conduit
+            .roster_refresh_commands(&terminal_managers.hp)
+            .is_empty()
+    );
+
+    let mut revived = BattleManagers::seeded(&fight);
+    commit_death(&mut revived);
+    revived.hp.heal(10, 100, 0);
+    revived.hp.lose(10, 100, 0);
+    run_after_ai_round_end(
+        &mut revived,
+        &pool,
+        &SkillEffectCatalog::default(),
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+    )
+    .unwrap();
+    assert_eq!(revived.conduit.selected_group(10), Some(1));
 }
 
 #[test]

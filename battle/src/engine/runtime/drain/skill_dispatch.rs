@@ -132,10 +132,10 @@ pub(super) fn drain_skill(
         let deaths = deaths
             .into_iter()
             .filter(|death| managers.hp.is_current_death(*death))
-            .map(crate::engine::manager::hp::PendingDeath::transition)
             .collect::<Vec<_>>();
         for death in deaths {
-            let cleanup = queued_defeated_entity_halo_cleanup(managers, death, &frame_path);
+            let cleanup =
+                queued_defeated_entity_halo_cleanup(managers, death.transition(), &frame_path);
             drain_defeated_entity_halo_cleanup(
                 managers,
                 pool,
@@ -146,7 +146,7 @@ pub(super) fn drain_skill(
                 state,
             )?;
             push_death(&mut result.frames, &frame_path, managers, death);
-            defeated_owner_card_cleanups.push(death);
+            defeated_owner_card_cleanups.push(death.transition());
         }
     }
     let mut execution = skill_execution.unwrap_or_else(|| SkillExecution::new(context));

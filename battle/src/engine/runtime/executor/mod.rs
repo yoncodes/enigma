@@ -45,7 +45,7 @@ pub(crate) struct ActionHandSettlement {
 pub(crate) enum RuleOutcome {
     PublishedEvent,
     SkillLifecycle(crate::engine::skill::action::SkillLifecycle),
-    DeathSettlement(crate::engine::manager::hp::DeathTransition),
+    DeathSettlement(crate::engine::manager::hp::PendingDeath),
     SkillActionStarted {
         lifecycle: crate::engine::skill::action::SkillLifecycle,
         cost: ExPointChanges,

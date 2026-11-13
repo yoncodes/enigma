@@ -62,8 +62,13 @@ fn push_death(
     frames: &mut [SemanticFrame],
     path: &[usize],
     managers: &mut BattleManagers,
-    death: crate::engine::manager::hp::DeathTransition,
+    death: crate::engine::manager::hp::PendingDeath,
 ) {
+    if !managers.hp.is_current_death(death) {
+        return;
+    }
+    managers.conduit.record_death(death);
+    let death = death.transition();
     if let Some(change) = managers.fight_task.record_kill(death.target_uid, 1) {
         push_change(
             frames,
@@ -433,7 +438,7 @@ fn drain_queue_with_deferred(
                         queued_defeated_entity_halo_cleanup(managers, transition, parent_path)
                             .into_iter()
                             .collect::<Vec<_>>();
-                    settlements.push(queued_death_event_group_settlement(transition, parent_path));
+                    settlements.push(queued_death_event_group_settlement(death, parent_path));
                     prepend(queue, settlements);
                 }
             }
@@ -446,18 +451,20 @@ fn drain_queue_with_deferred(
                     .take_subscriber_deaths(group)
                     .into_iter()
                     .filter(|(death, _)| managers.hp.is_current_death(*death))
-                    .map(|(death, parent_path)| (death.transition(), parent_path))
                     .collect::<Vec<_>>();
                 let mut settlements = Vec::new();
                 for (death, parent_path) in &deaths {
-                    if let Some(cleanup) =
-                        queued_defeated_entity_halo_cleanup(managers, *death, parent_path)
-                    {
+                    if let Some(cleanup) = queued_defeated_entity_halo_cleanup(
+                        managers,
+                        death.transition(),
+                        parent_path,
+                    ) {
                         settlements.push(cleanup);
                     }
                     settlements.push(queued_death_settlement(*death, parent_path));
                 }
                 if let Some((death, parent_path)) = deaths.first() {
+                    let death = death.transition();
                     settlements.push(queued_terminal_settlement(
                         BattleEvent::EntityDied(crate::engine::event::payload::EntityDiedEvent {
                             source_uid: death.source_uid,

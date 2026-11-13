@@ -485,7 +485,7 @@ fn subscriber_group_finishes_before_death_settlement() {
             .iter()
             .filter_map(|outcome| match outcome {
                 crate::engine::runtime::executor::RuleOutcome::DeathSettlement(death) => {
-                    Some(*death)
+                    Some(death.transition())
                 }
                 _ => None,
             })

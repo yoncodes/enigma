@@ -36,6 +36,7 @@ impl ConduitManager {
                 area.devices
                     .retain(|device| !defeated_uids.contains(&device.uid));
                 for source_uid in &defeated_uids {
+                    self.pending_retirements.remove(source_uid);
                     self.uses_this_round.remove(source_uid);
                     self.running.remove(source_uid);
                 }

@@ -798,12 +798,7 @@ pub(super) fn drain_command(
                 result,
                 state,
             )?;
-            push_death(
-                &mut result.frames,
-                action_scope,
-                managers,
-                death.transition(),
-            );
+            push_death(&mut result.frames, action_scope, managers, *death);
         }
         cleanup_deaths.extend(settled_deaths.iter().map(|death| death.transition()));
     } else if let Some(action_scope) = active_action_scope {
@@ -817,7 +812,7 @@ pub(super) fn drain_command(
             state.record_subscriber_deaths(group, &event_scope, settled_deaths.iter().copied());
             terminal_death = None;
         } else {
-            non_action_deaths.extend(settled_deaths.iter().map(|death| death.transition()));
+            non_action_deaths.extend(settled_deaths.iter().copied());
         }
     }
     if releases_pending_hits && let Some(action_scope) = active_action_scope {
@@ -826,10 +821,10 @@ pub(super) fn drain_command(
             .unwrap_or_default()
             .into_iter()
             .filter(|death| managers.hp.is_current_death(*death))
-            .map(crate::engine::manager::hp::PendingDeath::transition)
             .collect::<Vec<_>>();
         for death in &deaths {
-            let cleanup = queued_defeated_entity_halo_cleanup(managers, *death, action_scope);
+            let cleanup =
+                queued_defeated_entity_halo_cleanup(managers, death.transition(), action_scope);
             drain_defeated_entity_halo_cleanup(
                 managers,
                 pool,
@@ -841,8 +836,8 @@ pub(super) fn drain_command(
             )?;
             push_death(&mut result.frames, action_scope, managers, *death);
         }
-        terminal_death = terminal_death.or_else(|| deaths.first().copied());
-        cleanup_deaths.extend(deaths);
+        terminal_death = terminal_death.or_else(|| deaths.first().map(|death| death.transition()));
+        cleanup_deaths.extend(deaths.into_iter().map(|death| death.transition()));
     }
     let death_count = settled_deaths.len() + event_grouped_deaths.len();
     if death_count != 0
@@ -870,7 +865,9 @@ pub(super) fn drain_command(
     }));
     let mut death_settlements = Vec::new();
     for death in non_action_deaths {
-        if let Some(cleanup) = queued_defeated_entity_halo_cleanup(managers, death, &event_scope) {
+        if let Some(cleanup) =
+            queued_defeated_entity_halo_cleanup(managers, death.transition(), &event_scope)
+        {
             death_settlements.push(cleanup);
         }
         death_settlements.push(queued_death_settlement(death, &event_scope));

@@ -239,6 +239,30 @@ pub fn run_finished_attacker_settlement(
     Ok(result)
 }
 
+pub(in crate::engine::runtime) fn run_terminal_attacker_transition(
+    managers: &mut BattleManagers,
+    pool: &TargetPool,
+    catalog: &SkillEffectCatalog,
+    determinism: &mut RoundDeterminism,
+    context: TargetContext,
+) -> Result<DrainResult, DrainError> {
+    let refresh = run_committed_terminal_conduit_roster_refresh(
+        managers,
+        pool,
+        catalog,
+        determinism,
+        context,
+    )?;
+    if refresh.frames.is_empty() {
+        return Ok(refresh);
+    }
+    let mut result = DrainResult::default();
+    push_cue(&mut result.frames, RoundCue::SmallRoundEnd { team_type: 1 });
+    append(&mut result, refresh);
+    push_cue(&mut result.frames, RoundCue::ClearUniversalCard);
+    Ok(result)
+}
+
 #[allow(clippy::too_many_arguments)]
 fn run_duration_advances_for_event(
     managers: &mut BattleManagers,
@@ -399,16 +423,9 @@ fn run_conduit_roster_refresh(
     determinism: &mut RoundDeterminism,
     context: TargetContext,
 ) -> Result<DrainResult, DrainError> {
-    let defeated_uids = managers
-        .conduit
-        .selections()
-        .into_iter()
-        .map(|(uid, _)| uid)
-        .filter(|uid| managers.hp.current(*uid) == 0)
-        .collect::<Vec<_>>();
     let commands = managers
         .conduit
-        .roster_refresh_commands(&defeated_uids)
+        .roster_refresh_commands(&managers.hp)
         .into_iter()
         .map(|command| RuleOp::Command(BattleCommand::Conduit(command)))
         .collect::<Vec<_>>();

@@ -126,7 +126,7 @@ pub enum RuleOp {
         origin: crate::engine::skill::rule::CommandOrigin,
     },
     ImmediateReservePromotion,
-    DeathSettlement(crate::engine::manager::hp::DeathTransition),
+    DeathSettlement(crate::engine::manager::hp::PendingDeath),
     DeathEventGroupComplete(crate::engine::manager::hp::PendingDeath),
     SubscriberGroupComplete,
     TerminalSettlement,

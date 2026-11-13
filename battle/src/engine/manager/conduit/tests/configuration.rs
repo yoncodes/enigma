@@ -134,6 +134,7 @@ fn roster_refresh_removes_defeated_devices_and_preserves_live_state() {
                 FightEntityInfo {
                     uid: Some(11),
                     model_id: Some(3144),
+                    current_hp: Some(100),
                     ..Default::default()
                 },
             ],
@@ -234,7 +235,21 @@ fn roster_refresh_removes_defeated_devices_and_preserves_live_state() {
         .unwrap();
     let powers_before = manager.areas.get(&1).unwrap().powers.clone();
 
-    let commands = manager.roster_refresh_commands(&[11]);
+    use crate::engine::manager::hp::{HpCommand, HpKill, HpManager};
+    let mut hp = HpManager::default();
+    hp.seed(&fight);
+    let death = hp
+        .execute_command(HpCommand::Kill(HpKill {
+            origin: ORIGIN,
+            source_uid: -1,
+            target_uid: 11,
+            config_effect: 1,
+        }))
+        .unwrap()
+        .death
+        .unwrap();
+    manager.record_death(death);
+    let commands = manager.roster_refresh_commands(&hp);
     assert_eq!(commands.len(), 1);
     let change = manager.execute(commands[0].clone()).unwrap();
     let ConduitChange::RosterRefreshed(area) = change else {
@@ -268,7 +283,7 @@ fn roster_refresh_removes_defeated_devices_and_preserves_live_state() {
             .contains_key(&(10, live_skill.skill_id))
     );
     assert_eq!(manager.counter(1, ConduitCounterKind::Activation), 2);
-    assert!(manager.roster_refresh_commands(&[11]).is_empty());
+    assert!(manager.roster_refresh_commands(&hp).is_empty());
 }
 
 #[test]

@@ -233,15 +233,15 @@ pub(super) fn queued_defeated_entity_halo_cleanup(
 }
 
 pub(super) fn queued_death_settlement(
-    death: crate::engine::manager::hp::DeathTransition,
+    death: crate::engine::manager::hp::PendingDeath,
     parent_path: &[usize],
 ) -> QueuedOp {
     QueuedOp {
         op: RuleOp::DeathSettlement(death),
         trigger: SkillOpTrigger::Event(BattleEvent::EntityDied(
             crate::engine::event::payload::EntityDiedEvent {
-                source_uid: death.source_uid,
-                target_uid: death.target_uid,
+                source_uid: death.transition().source_uid,
+                target_uid: death.transition().target_uid,
             },
         )),
         skill_execution: None,
@@ -256,7 +256,7 @@ pub(super) fn queued_death_settlement(
 }
 
 pub(super) fn queued_death_event_group_settlement(
-    death: crate::engine::manager::hp::DeathTransition,
+    death: crate::engine::manager::hp::PendingDeath,
     frame_path: &[usize],
 ) -> QueuedOp {
     let mut queued = queued_death_settlement(death, frame_path);
