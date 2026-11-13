@@ -97,10 +97,33 @@ fn entity_entry_reactions_are_siblings_of_the_causing_event_skill() {
 }
 
 #[test]
-fn battle_start_owner_setup_reactivates_for_entering_reserves() {
+fn battle_start_condition_has_distinct_reserve_and_wave_routes() {
+    use crate::engine::skill::{
+        condition::parse_conditions,
+        effect::{ParsedBehavior, SkillEffectSlot},
+        rule::route::ConditionRoute,
+        target::TargetRequest,
+    };
+
+    crate::test_support::init_config();
+    for (raw, transforms) in [("45101#3#3|5", false), ("5", true)] {
+        let mut slot = SkillEffectSlot::new(
+            ParsedBehavior::new(1, "AddBuff", vec![4130045]),
+            TargetRequest::self_only(),
+        );
+        slot.conditions = parse_conditions(config::configs::get(), raw);
+        slot.compiled_route = ConditionRoute::compile(&slot.conditions);
+        let keys = slot.compiled_subscriptions().unwrap();
+        assert!(keys.iter().any(|key| key.event == EventKind::EntityEntered));
+        assert_eq!(
+            keys.iter()
+                .any(|key| key.event == EventKind::EntityTransformed),
+            transforms
+        );
+    }
     assert_eq!(
         find_key(5021, "EnterFight").map(|definition| definition.reactivation_events),
-        Some(&[EventKind::EntityEntered][..])
+        Some(&[EventKind::ReserveEntry, EventKind::WaveEntry][..])
     );
 }
 

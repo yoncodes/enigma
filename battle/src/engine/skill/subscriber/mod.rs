@@ -455,10 +455,19 @@ fn push_skill_subscribers(
         }
         let keys = subscriptions(skill_id)
             .map_err(|route| SubscriberError::UncompiledRoute { skill_id, route })?;
+        let mut entry_slot = None;
         for (slot_index, mut key) in keys
             .into_iter()
             .filter(|(_, key)| events.contains(&key.event))
         {
+            if key.event.is_entry()
+                && let Some(slot_index) = slot_index
+            {
+                if entry_slot == Some(slot_index) {
+                    continue;
+                }
+                entry_slot = Some(slot_index);
+            }
             if let Some(definition) =
                 condition_registry::find_key(key.timing_policy.opcode, key.timing_policy.type_name)
             {

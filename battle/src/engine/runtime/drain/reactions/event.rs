@@ -10,7 +10,7 @@ pub(super) fn queued_entity_entry_halo_fanout(
     entry_scope: Option<&[usize]>,
     parent_path: Option<&[usize]>,
 ) -> Option<QueuedOp> {
-    let BattleEvent::EntityEntered { target_uid } = event else {
+    let BattleEvent::EntityEntered { target_uid, .. } = event else {
         return None;
     };
     let (frame_path, parent_path) = match entry_scope {

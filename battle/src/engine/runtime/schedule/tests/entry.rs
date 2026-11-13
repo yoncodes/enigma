@@ -312,12 +312,20 @@ fn wave_entry_event_and_setup_each_own_their_stage() {
     init_config();
     let fight = Fight {
         defender: Some(FightTeam {
-            entitys: vec![FightEntityInfo {
-                uid: Some(-3),
-                current_hp: Some(100),
-                passive_skill: vec![2531, 2370, 40, 50],
-                ..Default::default()
-            }],
+            entitys: vec![
+                FightEntityInfo {
+                    uid: Some(-3),
+                    current_hp: Some(100),
+                    passive_skill: vec![2531, 2370, 521300001, 6150040, 40, 50],
+                    ..Default::default()
+                },
+                FightEntityInfo {
+                    uid: Some(-4),
+                    current_hp: Some(100),
+                    passive_skill: vec![521300001],
+                    ..Default::default()
+                },
+            ],
             ..Default::default()
         }),
         ..Default::default()
@@ -336,9 +344,18 @@ fn wave_entry_event_and_setup_each_own_their_stage() {
         raw_args: Vec::new(),
     }];
     entry_slot.compiled_route = ConditionRoute::compile(&entry_slot.conditions);
+    let mut alternative = SkillEffectSlot::new(
+        ParsedBehavior::new(20002, "AddExPoint", vec![2]),
+        TargetRequest::self_only(),
+    );
+    alternative.conditions = crate::engine::skill::condition::parse_conditions(
+        config::configs::get(),
+        "5&19012#4130045|5021",
+    );
+    alternative.compiled_route = ConditionRoute::compile(&alternative.conditions);
     catalog.insert(ParsedSkillEffect {
         skill_id: 40,
-        slots: vec![entry_slot],
+        slots: vec![entry_slot, alternative],
     });
     let mut early_round_slot = SkillEffectSlot::new(
         ParsedBehavior::from_spec(BehaviorSpec::new(20002, "AddExPoint"), vec![1], Vec::new()),
@@ -402,8 +419,9 @@ fn wave_entry_event_and_setup_each_own_their_stage() {
         collect_act_ids(step, &mut act_ids);
     }
     assert_eq!(steps.len(), 1);
-    assert_eq!(act_ids, vec![2531, 2370, 40, 50]);
-    assert_eq!(managers.ex_point.get(-3), 2);
+    assert_eq!(act_ids, vec![2531, 2370, 521300001, 6150040, 40, 50]);
+    assert!(managers.buff.has_active_buff_id(-3, 4130045));
+    assert_eq!(managers.ex_point.get(-3), 4);
     let [phase] = result.frames.as_slice() else {
         panic!("entry setup owns one phase frame")
     };
@@ -426,7 +444,10 @@ fn wave_entry_event_and_setup_each_own_their_stage() {
     };
     assert!(matches!(
         event_frame.trigger,
-        FrameTrigger::Event(BattleEvent::EntityEntered { target_uid: -3 })
+        FrameTrigger::Event(BattleEvent::EntityEntered {
+            target_uid: -3,
+            entry: EntityEntry::Wave,
+        })
     ));
     let event_skills = event_frame
         .items
@@ -449,11 +470,35 @@ fn wave_entry_event_and_setup_each_own_their_stage() {
         vec![
             (-3, 2531, Some(-3)),
             (-3, 2370, Some(-3)),
+            (-3, 521300001, Some(-3)),
+            (-3, 6150040, Some(-3)),
             (-3, 40, Some(-3))
         ]
     );
     assert!(managers.buff.has_active_buff_id(-3, 25241));
     assert!(managers.buff.has_active_buff_id(-3, 2137001));
+    assert!(managers.buff.has_active_buff_id(-3, 521000611));
+    assert!(!managers.buff.has_active_buff_id(-4, 521000611));
+
+    let (slot_index, slot) = catalog
+        .get(521300001)
+        .unwrap()
+        .slots
+        .iter()
+        .enumerate()
+        .find(|(_, slot)| slot.behavior.slot == 9)
+        .unwrap();
+    assert_eq!(slot.behavior.args, [521000611]);
+    assert_eq!(
+        result.events.iter().filter(|event| {
+            matches!(event, BattleEvent::BuffAdded(change) if change.target_uid == -3 && change.buff_id == 521000611)
+        }).count(),
+        1,
+    );
+    assert_eq!(slot.limit, 1);
+    let limit_owner = catalog.rule_limit_owner(521300001, slot_index);
+    assert!(!managers.can_fire_rule(-3, 521300001, limit_owner, slot.limit, slot.round_limit));
+    assert!(managers.can_fire_rule(-4, 521300001, limit_owner, slot.limit, slot.round_limit));
 }
 
 #[test]
@@ -908,7 +953,10 @@ fn publish_entity_entries(
                 catalog,
                 determinism,
                 context,
-                BattleEvent::EntityEntered { target_uid },
+                BattleEvent::EntityEntered {
+                    target_uid,
+                    entry: EntityEntry::Summoned,
+                },
                 std::slice::from_ref(&target_uid),
             )?,
         );

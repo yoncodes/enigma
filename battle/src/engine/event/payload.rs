@@ -203,11 +203,29 @@ pub struct ShellChangeEvent {
     pub settles_transaction: bool,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EntityEntry {
+    Summoned,
+    Reserve,
+    Wave,
+}
+
+impl EntityEntry {
+    fn activation(self) -> Option<EventKind> {
+        match self {
+            Self::Summoned => None,
+            Self::Reserve => Some(EventKind::ReserveEntry),
+            Self::Wave => Some(EventKind::WaveEntry),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum BattleEvent {
     EnterFight,
     EntityEntered {
         target_uid: i64,
+        entry: EntityEntry,
     },
     EntityTransformed {
         target_uid: i64,
@@ -344,7 +362,7 @@ impl BattleEvent {
 
     pub fn target_uid(&self) -> Option<i64> {
         match self {
-            Self::EntityEntered { target_uid }
+            Self::EntityEntered { target_uid, .. }
             | Self::EntityTransformed { target_uid }
             | Self::HpLost { target_uid, .. }
             | Self::DamageShared { target_uid, .. }
@@ -441,6 +459,10 @@ impl BattleEvent {
             );
         [
             publishes_target_attacked.then_some(self.kind()),
+            match self {
+                Self::EntityEntered { entry, .. } => entry.activation(),
+                _ => None,
+            },
             matches!(self, Self::Hit(_)).then_some(EventKind::BeAttacked),
             matches!(self, Self::Hit(_)).then_some(EventKind::Riposte),
             matches!(

@@ -119,7 +119,10 @@ fn active_skill_events_keep_the_nested_skill_scope_during_setup() {
 
 #[test]
 fn entity_entry_halos_share_the_containing_event_rule() {
-    let event = BattleEvent::EntityEntered { target_uid: -4 };
+    let event = BattleEvent::EntityEntered {
+        target_uid: -4,
+        entry: crate::engine::event::payload::EntityEntry::Summoned,
+    };
     let mut frames = Vec::new();
     let event_rule = push_root(
         &mut frames,

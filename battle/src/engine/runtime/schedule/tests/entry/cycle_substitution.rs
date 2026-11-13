@@ -50,6 +50,23 @@ fn collect_roster_effects(
     }
 }
 
+fn collect_cycle_grants(frame: &SemanticFrame, owner: i64, grants: &mut Vec<()>) {
+    for item in &frame.items {
+        match item {
+            FrameItem::Change(change)
+                if matches!(change.as_ref(), BattleChange::Buff(change)
+                if change.change.added.as_ref().is_some_and(|added|
+                    added.source_uid == owner && added.target_uid == owner
+                    && added.buff.buff_id == Some(PASSIVE))) =>
+            {
+                grants.push(())
+            }
+            FrameItem::Child(child) => collect_cycle_grants(child, owner, grants),
+            _ => {}
+        }
+    }
+}
+
 #[test]
 fn cycle_to_sub_repeats_through_entering_reserves_in_capture_order() {
     init_config();
@@ -75,7 +92,7 @@ fn cycle_to_sub_repeats_through_entering_reserves_in_capture_order() {
     let mut determinism = RoundDeterminism::default();
     let mut frames = Vec::new();
 
-    for _ in 0..4 {
+    for batch_index in 0..4 {
         for uid in managers.entity.alive_combatants(2, &managers.hp) {
             managers.hp.lose(uid, 100, 0);
         }
@@ -91,6 +108,10 @@ fn cycle_to_sub_repeats_through_entering_reserves_in_capture_order() {
                 Some(-2)
             );
         }
+        let first_entry = promotions.promotions()[0].entering_uid;
+        if batch_index == 0 {
+            assert!(!managers.buff.has_active_buff_id(first_entry, PASSIVE));
+        }
         let pool = TargetPool::from_fight_with_catalog(battle_catalog, &fight);
         let mut result = run_promotions(
             &pool,
@@ -105,7 +126,11 @@ fn cycle_to_sub_repeats_through_entering_reserves_in_capture_order() {
             .events
             .iter()
             .filter_map(|event| {
-                if let BattleEvent::EntityEntered { target_uid } = event {
+                if let BattleEvent::EntityEntered {
+                    target_uid,
+                    entry: EntityEntry::Reserve,
+                } = event
+                {
                     Some(*target_uid)
                 } else {
                     None
@@ -120,6 +145,25 @@ fn cycle_to_sub_repeats_through_entering_reserves_in_capture_order() {
                 .map(|promotion| promotion.entering_uid)
                 .collect::<Vec<_>>()
         );
+        if batch_index == 0 {
+            let frame = &result.frames[0];
+            let promotion = frame
+                .items
+                .iter()
+                .position(|item| {
+                    matches!(item, FrameItem::Change(change)
+                    if matches!(change.as_ref(), BattleChange::EntityPromotion(record)
+                        if record.entering_uid == first_entry))
+                })
+                .unwrap();
+            let mut grants = Vec::new();
+            for item in &frame.items[promotion + 1..] {
+                if let FrameItem::Child(setup) = item {
+                    collect_cycle_grants(setup, first_entry, &mut grants);
+                }
+            }
+            assert_eq!(grants.len(), 1);
+        }
         for promotion in promotions.promotions() {
             assert_eq!(
                 managers.entity.roster_lane(promotion.defeated_uid),

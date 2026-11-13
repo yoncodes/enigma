@@ -76,7 +76,10 @@ impl EntityChanges {
             EntityOperation::SummonCombatant { .. } | EntityOperation::SummonSpecial { .. } => self
                 .entity
                 .uid
-                .map(|target_uid| BattleEvent::EntityEntered { target_uid })
+                .map(|target_uid| BattleEvent::EntityEntered {
+                    target_uid,
+                    entry: crate::engine::event::payload::EntityEntry::Summoned,
+                })
                 .into_iter()
                 .collect(),
             EntityOperation::Transform { .. } => {

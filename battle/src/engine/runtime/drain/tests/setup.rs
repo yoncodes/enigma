@@ -519,7 +519,17 @@ fn entry_halo_summon() -> SkillInvocation {
 
 #[test]
 fn combatant_entry_runs_its_enter_fight_passives() {
-    let (pool, mut managers, catalog) = entry_halo_summon_fixture();
+    let (pool, mut managers, mut catalog) = entry_halo_summon_fixture();
+    let mut passive = catalog.get(109330114).unwrap().clone();
+    let mut opening = SkillEffectSlot::new(
+        ParsedBehavior::new(20002, "AddExPoint", vec![2]),
+        TargetRequest::self_only(),
+    );
+    opening.conditions =
+        crate::engine::skill::condition::parse_conditions(config::configs::get(), "5021");
+    opening.compiled_route = ConditionRoute::compile(&opening.conditions);
+    passive.slots.push(opening);
+    catalog.insert(passive);
 
     let result = run_skill(
         &mut managers,
@@ -536,11 +546,12 @@ fn combatant_entry_runs_its_enter_fight_passives() {
         .events
         .iter()
         .find_map(|event| match event {
-            BattleEvent::EntityEntered { target_uid } => Some(*target_uid),
+            BattleEvent::EntityEntered { target_uid, .. } => Some(*target_uid),
             _ => None,
         })
         .expect("combatant entry event");
     assert!(managers.buff.has_buff_id(entered_uid, 109330114));
+    assert_eq!(managers.ex_point.get(entered_uid), 0);
     assert_eq!(managers.buff.buff_id_amount(entered_uid, 109320111), 2);
     let skill = result
         .frames
@@ -618,7 +629,7 @@ fn special_entry_runs_its_enter_fight_passives() {
         .events
         .iter()
         .find_map(|event| match event {
-            BattleEvent::EntityEntered { target_uid } => Some(*target_uid),
+            BattleEvent::EntityEntered { target_uid, .. } => Some(*target_uid),
             _ => None,
         })
         .expect("special entry event");

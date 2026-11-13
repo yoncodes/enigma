@@ -148,21 +148,75 @@ impl SkillEffectSlot {
                 })
             })
             .collect::<Vec<_>>();
-        for condition in &self.conditions {
-            let Some(definition) = registry::find_key(condition.opcode, &condition.type_name)
-            else {
-                continue;
-            };
-            for &event in definition.reactivation_events {
-                let key = SubscriptionKey::new(event, definition.key)
-                    .with_publication(definition.publication)
-                    .with_timing(definition.reaction_timing.resolve(Default::default()));
-                if !subscriptions.contains(&key) {
-                    subscriptions.push(key);
-                }
+        let entry = route
+            .branches
+            .iter()
+            .filter_map(|branch| branch.driver_key())
+            .filter_map(|key| registry::find_key(key.opcode, key.type_name))
+            .flat_map(|definition| {
+                definition
+                    .reactivation_events
+                    .iter()
+                    .copied()
+                    .filter(|event| event.is_entry())
+                    .map(move |event| (definition, event))
+            });
+        let other = self
+            .conditions
+            .iter()
+            .filter_map(|condition| registry::find_key(condition.opcode, &condition.type_name))
+            .flat_map(|definition| {
+                definition
+                    .reactivation_events
+                    .iter()
+                    .copied()
+                    .filter(|event| !event.is_entry())
+                    .map(move |event| (definition, event))
+            });
+        for (definition, event) in entry.chain(other) {
+            let key = SubscriptionKey::new(event, definition.key)
+                .with_publication(definition.publication)
+                .with_timing(definition.reaction_timing.resolve(Default::default()));
+            if !subscriptions.contains(&key) {
+                subscriptions.push(key);
             }
         }
         Ok(subscriptions)
+    }
+
+    pub(crate) fn entry_conditions(
+        &self,
+        subscriptions: &[SubscriptionKey],
+        event: &crate::engine::event::payload::BattleEvent,
+    ) -> Option<Vec<ParsedCondition>> {
+        use crate::engine::skill::condition::{ParsedConditionKind, satisfied_conditions};
+
+        let [condition] = self.conditions.as_slice() else {
+            return None;
+        };
+        let ParsedConditionKind::Any(groups) = &condition.kind else {
+            return None;
+        };
+        let route = self.compiled_route.as_ref().ok()?;
+        let alternatives = groups
+            .iter()
+            .zip(&route.branches)
+            .filter_map(|(conditions, branch)| {
+                let driver = branch.driver_key()?;
+                subscriptions
+                    .iter()
+                    .any(|key| {
+                        key.definition == driver
+                            && key.event.is_entry()
+                            && event.subscription_kinds().any(|kind| kind == key.event)
+                    })
+                    .then(|| satisfied_conditions(conditions, driver))
+            })
+            .collect();
+        Some(vec![ParsedCondition {
+            kind: ParsedConditionKind::Any(alternatives),
+            ..condition.clone()
+        }])
     }
 
     pub fn active_phases(&self) -> Result<Vec<SkillPhase>, RouteError> {

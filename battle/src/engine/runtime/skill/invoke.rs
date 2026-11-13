@@ -213,7 +213,7 @@ pub(super) fn apply_event_context(
             context.runtime_target_uid = change.owner_uid;
         }
         BattleEvent::EntityDied(death) => context.runtime_target_uid = death.target_uid,
-        BattleEvent::EntityEntered { target_uid }
+        BattleEvent::EntityEntered { target_uid, .. }
         | BattleEvent::EntityTransformed { target_uid } => context.runtime_target_uid = *target_uid,
         BattleEvent::ExPointChanged(change) | BattleEvent::ExPointOverflow(change) => {
             context.runtime_target_uid = change.target_uid;

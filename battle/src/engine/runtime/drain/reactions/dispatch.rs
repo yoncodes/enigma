@@ -30,7 +30,7 @@ pub(in crate::engine::runtime::drain) fn dispatch_reactions(
     .then(|| pool.runtime_view(managers));
     let pool = lifecycle_pool.as_ref().unwrap_or(pool);
     let lifecycle_owner = match event {
-        BattleEvent::EntityEntered { target_uid }
+        BattleEvent::EntityEntered { target_uid, .. }
         | BattleEvent::EntityTransformed { target_uid } => Some([*target_uid]),
         _ => None,
     };

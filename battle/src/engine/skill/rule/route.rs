@@ -37,6 +37,13 @@ pub struct ConditionBranchRoute {
 }
 
 impl ConditionBranchRoute {
+    pub fn driver_key(&self) -> Option<crate::engine::skill::rule::DefinitionKey> {
+        match self.driver? {
+            ConditionDriver::Trigger(trigger) => Some(trigger.key),
+            ConditionDriver::Setup(setup) => Some(setup.key),
+        }
+    }
+
     pub fn subscriptions(&self) -> Vec<ConditionTrigger> {
         match self.driver {
             Some(ConditionDriver::Trigger(trigger)) => vec![trigger],

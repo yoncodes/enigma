@@ -2,7 +2,10 @@
 //! Scheduling orders semantic work; it does not define rule meaning or mutate protobuf output.
 
 use crate::engine::{
-    event::{kind::EventKind, payload::BattleEvent},
+    event::{
+        kind::EventKind,
+        payload::{BattleEvent, EntityEntry},
+    },
     manager::{
         BattleManagers,
         buff::{BuffCommand, BuffDurationAdvance},
@@ -653,6 +656,7 @@ pub fn run_promotions(
             context,
             BattleEvent::EntityEntered {
                 target_uid: entering_uid,
+                entry: EntityEntry::Reserve,
             },
             std::slice::from_ref(&entering_uid),
         )?;
@@ -700,6 +704,7 @@ pub fn run_wave_entry_setup(
     for &entering_uid in owner_uids {
         let event = BattleEvent::EntityEntered {
             target_uid: entering_uid,
+            entry: EntityEntry::Wave,
         };
         append_entry_event(
             &mut result,

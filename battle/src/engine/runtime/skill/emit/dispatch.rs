@@ -558,25 +558,29 @@ pub(in crate::engine::runtime) fn emit_ops(
             }
             (None, SkillOpTrigger::Event(_)) => (slot.conditions.clone(), None, None),
             (Some(condition_key), SkillOpTrigger::Event(event)) => {
-                let matches = slot
-                    .compiled_subscriptions()
-                    .map_err(|route| SkillOpError::UncompiledRoute {
+                let subscriptions = slot.compiled_subscriptions().map_err(|route| {
+                    SkillOpError::UncompiledRoute {
                         skill_id: invocation.plan.skill_id,
                         route,
-                    })?
-                    .into_iter()
-                    .any(|key| {
-                        key.definition == condition_key
-                            && event
-                                .subscription_kinds()
-                                .any(|published| published == key.event)
-                            && key.phase == invocation.phase
-                    });
-                if !matches {
+                    }
+                })?;
+                let Some(subscription) = subscriptions.iter().find(|key| {
+                    key.definition == condition_key
+                        && event
+                            .subscription_kinds()
+                            .any(|published| published == key.event)
+                        && key.phase == invocation.phase
+                }) else {
                     continue;
-                }
+                };
+                let conditions = if subscription.event.is_entry() {
+                    slot.entry_conditions(&subscriptions, event)
+                } else {
+                    None
+                };
                 (
-                    satisfied_conditions(&slot.conditions, condition_key),
+                    conditions
+                        .unwrap_or_else(|| satisfied_conditions(&slot.conditions, condition_key)),
                     Some(event),
                     Some(condition_key),
                 )
