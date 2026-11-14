@@ -332,6 +332,7 @@ pub fn action_queue_committed_rule_ops(
                 card: definition.card(emitter_uid),
                 team_type: team,
                 source_skill_id: 0,
+                reserve_id: 0,
                 action: None,
             }),
         )));

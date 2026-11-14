@@ -55,6 +55,7 @@ pub enum BehaviorKind {
     AddPowerByCritCount,
     TotalSkillRankToPower,
     AddEnergyToCard,
+    UseCardCopy,
     EnchantHand,
     RemoveBuffToEnchant,
     ChangeHandToTemporary,

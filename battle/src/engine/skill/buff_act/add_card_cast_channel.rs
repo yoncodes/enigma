@@ -112,6 +112,7 @@ pub fn rule_ops(
                 card,
                 team_type: subscriber.team_type,
                 source_skill_id: *release_skill,
+                reserve_id: 0,
                 action: Some(action),
             }),
         )));

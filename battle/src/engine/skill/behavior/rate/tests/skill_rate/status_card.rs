@@ -189,6 +189,7 @@ fn card_rank_skill_rate_reads_the_selected_action_area_and_caps_the_total() {
         },
         team_type: 1,
         source_skill_id: 370001010,
+        reserve_id: 0,
         action: None,
     });
     let behavior = |cap| {

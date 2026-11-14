@@ -1068,11 +1068,7 @@ fn project_change(
                 .queued_use_card
                 .as_ref()
                 .expect("queued use-card changes retain their historical card");
-            vec![CardPacket::add_use_card(
-                queued.card_index,
-                queued.card.clone(),
-                queued.source_skill_id,
-            )]
+            vec![CardPacket::add_use_card(queued)]
         }
         BattleChange::Card(changes) if changes.kind == CardChangeKind::EnergyAllocated => {
             vec![CardPacket::allocate_card_energy(changes.after.clone(), 1)]

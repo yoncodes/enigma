@@ -700,6 +700,7 @@ behavior_definitions! {
     [60070] "AddUseSkillCard" => super::card::Handler, AddQueuedSkillCard, Immediate, destination, super::card::supports_queued_skill_card;
     [50031] "AddSpTempCard" => super::card::Handler, AddSpTempCard, Immediate, destination, @route(ConditionRouteOverride::Trigger { key: DefinitionKey::new(19106, "HasBuffId"), event: EventKind::RoundStartCard, phase: None }), super::card::supports_temporary_skill_card;
     [60300] "AddSpTempCard2" => super::card::Handler, AddSpTempCard2, Immediate, destination, super::card::supports_temporary_skill_card;
+    [100024] "UseCardCopy" => super::card_copy::Handler, UseCardCopy, Immediate, destination, super::card_copy::supports_arguments;
     [100018] "ConsumeBuffCreateTempCardOrder" => super::precast::Handler, ConsumeBuffCreatePrecast, Immediate, destination, super::precast::supports_arguments;
     [50036] "ConsumePowerDirectUseSkill" => super::use_skill::Handler, ConsumePowerDirectUseSkill, Immediate, destination, super::use_skill::supports_consume_power_direct_skill;
     [60262] "PerConsumeExPointDirectUseSkill" => super::use_skill::Handler, PerConsumeExPointDirectUseSkill, Immediate, destination, super::use_skill::supports_per_consume_ex_point_direct_use_skill;

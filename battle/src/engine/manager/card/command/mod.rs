@@ -359,6 +359,7 @@ pub struct CardQueueUse {
     pub card: CardInfo,
     pub team_type: i32,
     pub source_skill_id: i32,
+    pub reserve_id: i32,
     pub action: Option<crate::engine::skill::action::SkillInvocation>,
 }
 
@@ -368,6 +369,7 @@ pub struct QueuedUseCard {
     pub card: CardInfo,
     pub team_type: i32,
     pub source_skill_id: i32,
+    pub reserve_id: i32,
     pub action: Option<crate::engine::skill::action::SkillInvocation>,
 }
 
@@ -1654,6 +1656,7 @@ pub(super) fn execute(
                 card: queue.card,
                 team_type: queue.team_type,
                 source_skill_id: queue.source_skill_id,
+                reserve_id: queue.reserve_id,
                 action: queue.action,
             };
             manager.queue_use_card(queued.clone());

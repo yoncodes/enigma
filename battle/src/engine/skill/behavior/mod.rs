@@ -4,6 +4,7 @@ pub mod attr_fix_by_burn_layer;
 pub mod attr_fix_by_lost_hp;
 pub mod buff;
 pub mod card;
+pub mod card_copy;
 pub mod card_limit;
 pub mod career;
 pub mod classify;

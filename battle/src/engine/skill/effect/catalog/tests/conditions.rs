@@ -1,6 +1,19 @@
 use super::*;
 
 #[test]
+fn rouge2_card_copy_listens_for_the_committed_action_queue() {
+    init_config();
+    let catalog = SkillEffectCatalog::from_game_db(config::configs::get());
+    let slot = &catalog.get(103335020).unwrap().slots[0];
+
+    assert_eq!(
+        slot.compiled_subscriptions().unwrap()[0].event,
+        crate::engine::event::kind::EventKind::ActionQueueCommitted
+    );
+    assert_eq!(slot.behavior.spec.kind, BehaviorKind::UseCardCopy);
+}
+
+#[test]
 fn rouge2_round_resource_uses_the_configured_mode_attribute_and_round_boundaries() {
     init_config();
     let catalog = SkillEffectCatalog::from_game_db(config::configs::get());

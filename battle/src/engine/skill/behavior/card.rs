@@ -324,6 +324,7 @@ fn queued_skill_card_ops(
                     card,
                     team_type: *team,
                     source_skill_id: 0,
+                    reserve_id: 0,
                     action: Some(action),
                 }),
             )))

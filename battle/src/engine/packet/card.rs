@@ -433,17 +433,17 @@ impl CardPacket {
         }
     }
 
-    pub fn add_use_card(card_index: i32, card: CardInfo, source_skill_id: i32) -> ActEffect {
+    pub fn add_use_card(queued: &crate::engine::manager::card::QueuedUseCard) -> ActEffect {
         ActEffect {
             target_id: Some(0),
             effect_type: Some(EffectType::Addusecard as i32),
-            effect_num: Some(card_index),
+            effect_num: Some(queued.card_index),
             config_effect: Some(0),
             buff_act_id: Some(0),
-            reserve_id: Some(0),
-            card_info: Some(wire_card(card)),
+            reserve_id: Some(i64::from(queued.reserve_id)),
+            card_info: Some(wire_card(queued.card.clone())),
             team_type: Some(1),
-            effect_num1: Some(source_skill_id),
+            effect_num1: Some(queued.source_skill_id),
             ..Default::default()
         }
     }
