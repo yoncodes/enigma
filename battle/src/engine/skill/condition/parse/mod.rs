@@ -202,7 +202,6 @@ pub enum ParsedConditionKind {
     },
     Rouge2AttributeRandom {
         multiplier: i32,
-        attribute_tag: i32,
     },
     PowerCompare {
         compare_code: i32,
@@ -578,7 +577,6 @@ pub(super) fn rouge2_attribute_random(
 ) -> Option<ParsedConditionKind> {
     Some(ParsedConditionKind::Rouge2AttributeRandom {
         multiplier: first_i32(raw_args)?,
-        attribute_tag: 0,
     })
 }
 

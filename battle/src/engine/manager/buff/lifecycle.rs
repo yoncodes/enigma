@@ -204,7 +204,7 @@ impl BuffManager {
         self.act_values.clear();
         self.grant_values.clear();
         self.attr_snapshots.clear();
-        self.mode_attributes = rouge2_attributes(fight);
+        (self.mode_career, self.mode_attributes) = rouge2_mode(fight);
         self.transition_progress.clear();
         let fight_version = fight.version.unwrap_or_default();
         self.shared_uid_lane = uid::uses_shared_lane(fight_version);
@@ -224,6 +224,10 @@ impl BuffManager {
 
     pub(crate) fn mode_attribute(&self, id: i32) -> i32 {
         self.mode_attributes.get(&id).copied().unwrap_or_default()
+    }
+
+    pub(crate) fn mode_career(&self) -> i32 {
+        self.mode_career
     }
 
     fn seed_rouge2_hp_deltas(&mut self) {
@@ -583,10 +587,12 @@ impl BuffManager {
 #[path = "lifecycle/tests.rs"]
 mod tests;
 
-fn rouge2_attributes(fight: &Fight) -> HashMap<i32, i32> {
+fn rouge2_mode(fight: &Fight) -> (i32, HashMap<i32, i32>) {
     #[derive(serde::Deserialize)]
     #[serde(rename_all = "camelCase")]
     struct Rouge2Data {
+        #[serde(default)]
+        career: i32,
         #[serde(deserialize_with = "deserialize_rouge2_attributes")]
         attr_final_val: HashMap<i32, i32>,
     }
@@ -596,17 +602,17 @@ fn rouge2_attributes(fight: &Fight) -> HashMap<i32, i32> {
         .iter()
         .filter(|data| data.r#type == Some(sonettobuf::custom_data::CustomDataType::Rouge2 as i32));
     let (Some(entry), None) = (entries.next(), entries.next()) else {
-        return HashMap::new();
+        return (0, HashMap::new());
     };
     let Some(data) = entry
         .data
         .as_deref()
         .and_then(|data| serde_json::from_str::<Rouge2Data>(data).ok())
     else {
-        return HashMap::new();
+        return (0, HashMap::new());
     };
 
-    data.attr_final_val
+    (data.career, data.attr_final_val)
 }
 
 fn deserialize_rouge2_attributes<'de, D>(deserializer: D) -> Result<HashMap<i32, i32>, D::Error>

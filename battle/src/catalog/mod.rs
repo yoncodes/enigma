@@ -466,6 +466,20 @@ impl BattleCatalog {
             .is_some_and(|effect| effect.need_ex_point == 1)
     }
 
+    pub(crate) fn rouge2_recommended_attributes(self, career_id: i32) -> Vec<i32> {
+        self.game_data
+            .rouge2_career
+            .get(career_id)
+            .map(|career| {
+                career
+                    .recommend_attribute
+                    .split('|')
+                    .filter_map(|id| id.parse().ok())
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
     pub(crate) fn skill_is_big(self, skill_id: i32) -> bool {
         self.skill_effect(skill_id)
             .is_some_and(|effect| effect.is_big_skill != 0)

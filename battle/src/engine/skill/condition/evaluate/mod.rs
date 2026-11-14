@@ -901,18 +901,29 @@ fn condition_kind_matches(
         ParsedConditionKind::Random { threshold } => context
             .condition_random_roll
             .is_some_and(|roll| roll < *threshold),
-        ParsedConditionKind::Rouge2AttributeRandom {
-            multiplier,
-            attribute_tag,
-        } => managers.is_some_and(|managers| {
-            context.condition_random_roll.is_some_and(|roll| {
-                roll < managers
-                    .buff
-                    .mode_attribute(*attribute_tag)
-                    .saturating_mul(*multiplier)
-                    .clamp(0, 1000)
+        ParsedConditionKind::Rouge2AttributeRandom { multiplier } => {
+            managers.is_some_and(|managers| {
+                context.condition_random_roll.is_some_and(|roll| {
+                    // attr999 (rouge2_relics_attr type 3): the leader career's recommended attributes
+                    let career = managers.buff.mode_career();
+                    let attributes = managers
+                        .catalog()
+                        .rouge2_recommended_attributes(career)
+                        .into_iter()
+                        .map(|id| managers.buff.mode_attribute(id))
+                        .fold(0i32, i32::saturating_add);
+                    let threshold = attributes.saturating_mul(*multiplier).clamp(0, 1000);
+                    if crate::engine::diagnostics::enabled(
+                        crate::engine::diagnostics::TraceArea::Condition,
+                    ) {
+                        eprintln!(
+                            "rouge2 chance career={career} attributes={attributes} multiplier={multiplier} threshold={threshold} roll={roll}"
+                        );
+                    }
+                    roll < threshold
+                })
             })
-        }),
+        }
         ParsedConditionKind::ExPointDecrease { threshold } => {
             context.ex_point_changed_uid != 0
                 && context.ex_point_delta < 0

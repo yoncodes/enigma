@@ -933,14 +933,13 @@ fn twins_round_start_passive_adds_the_captured_precast_card() {
     );
 }
 
-#[test]
-fn rouge2_round_start_random_resource_uses_the_captured_roll() {
+fn harmonization_after_rouge2_chance(mode_data: &str, roll: i32) -> i32 {
     init_config();
     let fight = Fight {
         version: Some(7),
         custom_data: vec![sonettobuf::CustomData {
             r#type: Some(sonettobuf::custom_data::CustomDataType::Rouge2 as i32),
-            data: Some(r#"{"attrFinalVal":{"103":5}}"#.to_owned()),
+            data: Some(mode_data.to_owned()),
         }],
         attacker: Some(FightTeam {
             entitys: vec![FightEntityInfo {
@@ -959,14 +958,14 @@ fn rouge2_round_start_random_resource_uses_the_captured_roll() {
     };
     let pool = TargetPool::from_fight(&fight);
     let mut managers = BattleManagers::seeded(&fight);
-    let catalog = SkillEffectCatalog::from_roots(config::configs::get(), [103377010], []);
+    let catalog = SkillEffectCatalog::from_fight(config::configs::get(), &fight);
     let mut determinism = RoundDeterminism::default();
     determinism.enqueue_condition_random_choices(vec![
         crate::engine::runtime::determinism::ConditionRandomChoice {
             skill_id: 103377010,
             source_uid: 10,
             opcode: 1022101,
-            roll: 0,
+            roll,
         },
     ]);
 
@@ -984,7 +983,29 @@ fn rouge2_round_start_random_resource_uses_the_captured_roll() {
     )
     .unwrap();
 
-    assert_eq!(managers.ex_point.get(10), 100);
+    managers.ex_point.get(10)
+}
+
+#[test]
+fn rouge2_chance_scales_with_the_careers_recommended_attributes() {
+    // Recommended attributes 101..=105 sum to 49; multiplier 12 gives a 588 threshold.
+    const MODE_DATA: &str =
+        r#"{"career":4,"attrFinalVal":{"101":6,"102":16,"103":12,"104":4,"105":11,"106":4}}"#;
+
+    assert_eq!(harmonization_after_rouge2_chance(MODE_DATA, 500), 100);
+    assert_eq!(harmonization_after_rouge2_chance(MODE_DATA, 600), 70);
+}
+
+#[test]
+fn rouge2_chance_fails_closed_without_a_known_career() {
+    const ATTRIBUTES: &str = r#""attrFinalVal":{"101":6,"102":16,"103":12,"104":4,"105":11}"#;
+
+    for mode_data in [
+        format!("{{{ATTRIBUTES}}}"),
+        format!(r#"{{"career":99,{ATTRIBUTES}}}"#),
+    ] {
+        assert_eq!(harmonization_after_rouge2_chance(&mode_data, 0), 70);
+    }
 }
 
 #[test]
