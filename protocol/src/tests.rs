@@ -38,6 +38,19 @@ fn card_data_enum_names_preserve_string_payloads() {
 }
 
 #[test]
+fn hurt_immunity_enum_names_decode_as_numbers() {
+    for (name, kind) in [
+        ("None", fight_hurt_info::ImmunityFromType::None),
+        ("Narcissus", fight_hurt_info::ImmunityFromType::Narcissus),
+    ] {
+        let mut value = serde_json::json!({ "damage": 5, "immunityFromType": name });
+        normalize::normalize_live_json(&mut value);
+        let hurt: FightHurtInfo = serde_json::from_value(value).unwrap();
+        assert_eq!(hurt.immunity_from_type, Some(kind as i32));
+    }
+}
+
+#[test]
 fn friend_list_reply_decodes_the_friend_module_friend_info() {
     // info { userId: 7, name: "Sonetto" }; field 2 is a string in FriendModule's FriendInfo.
     let mut bytes = vec![0x0a, 0x0b, 0x08, 0x07, 0x12, 0x07];
