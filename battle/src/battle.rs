@@ -1,6 +1,6 @@
 use sonettobuf::{
-    AutoRoundReply, AutoRoundRequest, CardInfo, CardInfoPush, Fight, FightRound, FightStatistics,
-    RedealCardInfoPush, UseClothSkillReply, UseClothSkillRequest,
+    CardInfo, CardInfoPush, Fight, FightRound, FightStatistics, RedealCardInfoPush,
+    UseClothSkillReply, UseClothSkillRequest,
 };
 
 use crate::{
@@ -72,10 +72,6 @@ impl Battle {
 
     pub fn attack_statistics(&self) -> Vec<FightStatistics> {
         self.runtime.attack_statistics()
-    }
-
-    pub fn plan_auto_round(&self, request: &AutoRoundRequest) -> Result<AutoRoundReply, String> {
-        self.runtime.try_plan_auto_round(request)
     }
 
     pub fn auto_round_planner(&self) -> AutoRoundPlanner {
@@ -174,10 +170,5 @@ mod tests {
 
         assert_eq!(actual.reconnect_state(), expected.reconnect_state());
         assert_eq!(actual.outcome(), expected.outcome());
-        let request = AutoRoundRequest::default();
-        assert_eq!(
-            actual.plan_auto_round(&request).unwrap(),
-            actual.auto_round_planner().plan(&request).unwrap()
-        );
     }
 }
