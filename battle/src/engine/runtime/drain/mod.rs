@@ -49,12 +49,14 @@ use model::{
     queued_defeated_owner_card_cleanup, queued_terminal_settlement, required_buff_act_definition,
 };
 pub use model::{DrainError, DrainResult, ReactionLane};
+use reactions::{
+    ReactionDispatch, dispatch_event_groups, dispatch_owner_reactions, dispatch_reactions,
+};
 #[cfg(test)]
 use reactions::{
     dispatch_event_batch, ordered_hit_entities, queued_reactions, reaction_counterparty,
     reaction_skill_target,
 };
-use reactions::{dispatch_event_groups, dispatch_owner_reactions, dispatch_reactions};
 use skill_dispatch::drain_skill;
 use state::DrainState;
 

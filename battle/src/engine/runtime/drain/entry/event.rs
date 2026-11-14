@@ -14,17 +14,10 @@ pub fn run_event(
         managers,
         catalog,
         determinism,
-        &event,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        context.current_round > 0,
-        None,
+        ReactionDispatch {
+            execute_unscoped_after_action: context.current_round > 0,
+            ..ReactionDispatch::for_event(&event)
+        },
         None,
     )?;
     initial.assign_subscriber_death_groups(None);
@@ -237,17 +230,13 @@ fn drain_group_event_lane(
         managers,
         catalog,
         determinism,
-        event,
-        Some(scope),
-        None,
-        None,
-        None,
-        None,
-        None,
-        Some(lane),
-        owner_uids,
-        context.current_round > 0,
-        None,
+        ReactionDispatch {
+            parent_path: Some(scope),
+            lane: Some(lane),
+            owner_uids,
+            execute_unscoped_after_action: context.current_round > 0,
+            ..ReactionDispatch::for_event(event)
+        },
         None,
     )?;
     reactions.assign_subscriber_death_groups(None);
@@ -322,17 +311,13 @@ pub fn run_grouped_owner_event_lanes(
                     managers,
                     catalog,
                     determinism,
-                    &event,
-                    Some(&scope),
-                    None,
-                    None,
-                    None,
-                    None,
-                    None,
-                    Some(lane),
-                    Some(std::slice::from_ref(owner_uid)),
-                    context.current_round > 0,
-                    None,
+                    ReactionDispatch {
+                        parent_path: Some(&scope),
+                        lane: Some(lane),
+                        owner_uids: Some(std::slice::from_ref(owner_uid)),
+                        execute_unscoped_after_action: context.current_round > 0,
+                        ..ReactionDispatch::for_event(&event)
+                    },
                     None,
                 )?;
                 reactions.assign_subscriber_death_groups(None);
