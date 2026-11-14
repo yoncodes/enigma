@@ -1672,7 +1672,7 @@ buff_act_definitions! {
         fallible_scoped_runtime: super::create_sovereign_card::scoped_rule_ops,
         supports: super::create_sovereign_card::supports,
         references: references_for_feature,
-        completion_gap: "only player-hand zero-resource generation is captured; positive-resource consumption and enhancement tie selection remain unproven",
+        completion_gap: "only player-hand zero-resource generation is captured; stack consumption follows the description, while its step order, enhancement tie selection, and the stacks spent when the card cannot move the full distance remain unproven",
         wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(1133, "UnnamedAddSpCard"), &[EffectType::None as i32]));
     (1134, "UnnamedUnlockSpCard") => SovereignCardUnlock,
         event: EventKind::SovereignUnlock, source: Owner,

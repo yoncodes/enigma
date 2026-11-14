@@ -425,6 +425,12 @@ pub enum CardCommand {
     AddHedone(CardAddHedone),
     InsertSovereign(CardInsertSovereign),
     InitialSovereignBoost(CardInitialSovereignBoost),
+    ShiftSovereign {
+        origin: CommandOrigin,
+        owner_uid: i64,
+        distance: usize,
+        team_type: i32,
+    },
     UnlockSovereign {
         origin: CommandOrigin,
         owner_uid: i64,
@@ -532,6 +538,7 @@ pub enum CardChangeKind {
     SovereignUnlocked,
     HedoneUnlocked,
     InitialSovereignBoost,
+    SovereignShifted,
     SovereignInserted,
     Setup,
     ConsumedForEffect,
@@ -794,6 +801,22 @@ pub(super) fn execute(
             (
                 Some(boost.origin),
                 CardChangeKind::InitialSovereignBoost,
+                None,
+                None,
+                Vec::new(),
+                Vec::new(),
+            )
+        }
+        CardCommand::ShiftSovereign {
+            origin,
+            owner_uid,
+            distance,
+            team_type,
+        } => {
+            sovereign_boost = Some(manager.shift_owner_sovereign(owner_uid, distance, team_type)?);
+            (
+                Some(origin),
+                CardChangeKind::SovereignShifted,
                 None,
                 None,
                 Vec::new(),

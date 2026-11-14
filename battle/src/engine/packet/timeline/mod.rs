@@ -937,6 +937,13 @@ fn project_change(
                 .ok_or(ProjectionError::Card(changes.kind))?;
             super::card::sovereign::initial_boost(boost)
         }
+        BattleChange::Card(changes) if changes.kind == CardChangeKind::SovereignShifted => {
+            let boost = changes
+                .sovereign_boost
+                .as_ref()
+                .ok_or(ProjectionError::Card(changes.kind))?;
+            super::card::sovereign::initial_boost(boost)
+        }
         BattleChange::Card(changes) if changes.kind == CardChangeKind::Moved => Vec::new(),
         BattleChange::Card(changes) if changes.kind == CardChangeKind::SovereignUnlocked => {
             let change = changes
