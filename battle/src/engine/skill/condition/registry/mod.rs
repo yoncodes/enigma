@@ -763,7 +763,7 @@ condition_definitions! {
     [572081] "NoBuffId" => buff::buff_absent, filters_behavior_targets(predicate(&[]));
     [57002] "NoBuffId" => buff::buff_absent, filters_behavior_targets(setup_route(SetupStage::EnterFight, 0, &[]));
     [57012] "NoBuffId" => buff::buff_absent, filters_behavior_targets(predicate(&[]));
-    [57100] "NoBuffId" => buff::buff_absent, filters_behavior_targets(predicate(&[EventKind::RoundStart]));
+    [57100] "NoBuffId" => buff::buff_absent, filters_behavior_targets(setup_route(SetupStage::RoundStart, -1, &[]));
     [57101] "NoBuffId" => buff::buff_absent, filters_behavior_targets(setup_route(SetupStage::RoundStartCondition, 101, &[]));
     [57102] "NoBuffId" => buff::single_buff_absent, filters_behavior_targets(setup_route(SetupStage::RoundStartCondition, 102, &[]));
     [57104] "NoBuffId" => buff::buff_absent, filters_behavior_targets(predicate(&[EventKind::RoundStart]));

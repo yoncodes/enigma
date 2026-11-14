@@ -456,6 +456,7 @@ fn round_start_card_buff_gate_is_a_pure_exact_predicate() {
 
 #[test]
 fn mirror_rule_buff_gates_keep_their_exact_phases() {
+    crate::test_support::init_config();
     assert_eq!(
         parse(57100, "NoBuffId", &["11790011".into()]),
         Some(ParsedConditionKind::BuffId {
@@ -465,11 +466,39 @@ fn mirror_rule_buff_gates_keep_their_exact_phases() {
     );
     assert_eq!(
         find_key(57100, "NoBuffId").map(|definition| definition.role),
-        Some(ConditionRole::Predicate)
+        Some(ConditionRole::Setup {
+            stage: SetupStage::RoundStart,
+            priority: -1,
+        })
     );
+    // Paired with the round interval condition, the interval stays the driver.
+    let paired = crate::engine::skill::rule::route::ConditionRoute::compile(
+        &crate::engine::skill::condition::parse_conditions(
+            config::configs::get(),
+            "45100#2#1&57100#11790011",
+        ),
+    )
+    .unwrap();
     assert_eq!(
-        find_key(57100, "NoBuffId").map(|definition| definition.dependencies),
-        Some(&[EventKind::RoundStart][..])
+        paired.branches[0].driver_key(),
+        Some(crate::engine::skill::rule::DefinitionKey::new(
+            45100,
+            "HeroRoundInterval"
+        ))
+    );
+    // Alone, it schedules its slot at round start, including for side-owned skills.
+    let alone = crate::engine::skill::rule::route::ConditionRoute::compile(
+        &crate::engine::skill::condition::parse_conditions(
+            config::configs::get(),
+            "57100#108300000",
+        ),
+    )
+    .unwrap();
+    assert_eq!(
+        alone.branches[0].driver_key(),
+        Some(crate::engine::skill::rule::DefinitionKey::new(
+            57100, "NoBuffId"
+        ))
     );
 
     assert_eq!(
