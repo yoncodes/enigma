@@ -697,6 +697,18 @@ mod tests {
                         ],
                     ),
                     entity(11, vec![burn(22)]),
+                    entity(
+                        12,
+                        vec![
+                            burn(23),
+                            BuffInfo {
+                                uid: Some(24),
+                                buff_id: Some(123100181),
+                                from_uid: Some(10),
+                                ..Default::default()
+                            },
+                        ],
+                    ),
                 ],
                 ..Default::default()
             }),
@@ -728,6 +740,12 @@ mod tests {
             damage_rule_ops(&managers, &pool, &mut determinism, &subscriber(10, 20)).is_empty()
         );
         assert!(settlement_rule_op(&managers, &subscriber(10, 20)).is_none());
+
+        // A holder with only the stack lock still takes Burn damage.
+        assert!(
+            !damage_rule_ops(&managers, &pool, &mut determinism, &subscriber(12, 23)).is_empty()
+        );
+        assert!(settlement_rule_op(&managers, &subscriber(12, 23)).is_none());
 
         assert!(
             !damage_rule_ops(&managers, &pool, &mut determinism, &subscriber(11, 22)).is_empty()
