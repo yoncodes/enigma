@@ -857,11 +857,15 @@ pub async fn reset_turnback_return_daily_tasks(
     turnback_id: i32,
     tables: &config::GameDB,
 ) -> sqlx::Result<Vec<i32>> {
+    const DAILY_RESET_TASK: i32 = 1;
+
     let ids = tables
         .turnback_task
         .iter()
         .filter(|task| {
-            task.turnback_id == turnback_id && task.is_online != 0 && task.turnback_task_type == 1
+            task.turnback_id == turnback_id
+                && task.is_online != 0
+                && task.turnback_task_type == DAILY_RESET_TASK
         })
         .map(|task| task.id)
         .collect();

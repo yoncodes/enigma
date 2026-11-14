@@ -12,6 +12,8 @@ use sqlx::SqlitePool;
 use std::collections::{BTreeSet, HashMap, HashSet};
 
 const DAY_SECONDS: i32 = 24 * 60 * 60;
+const DAILY_RESET_TASK: i32 = 1;
+const DAILY_REFRESH_TASK: i32 = 2;
 
 #[derive(Clone, Copy)]
 enum RewardState {
@@ -81,7 +83,7 @@ pub(super) async fn info(
         .iter()
         .filter(|row| {
             row.turnback_id == state.turnback_id
-                && row.turnback_task_type == 1
+                && row.turnback_task_type == DAILY_RESET_TASK
                 && row.is_online != 0
         })
         .map(|row| row.id)
@@ -136,10 +138,13 @@ pub(super) async fn validate_tasks(
             .get(*task_id)
             .filter(|task| task.turnback_id == state.turnback_id && task.is_online != 0)
             .ok_or(AppError::InvalidRequest)?;
-        if matches!(task.turnback_task_type, 1 | 2)
-            && (!event_open(&state)
-                || context(&state, tables)?.is_none()
-                || task.turnback_task_type == 2 && state.return_random_task_id != *task_id)
+        if matches!(
+            task.turnback_task_type,
+            DAILY_RESET_TASK | DAILY_REFRESH_TASK
+        ) && (!event_open(&state)
+            || context(&state, tables)?.is_none()
+            || task.turnback_task_type == DAILY_REFRESH_TASK
+                && state.return_random_task_id != *task_id)
         {
             return Err(AppError::InvalidRequest);
         }
@@ -310,7 +315,7 @@ async fn rotate(
         .iter()
         .filter(|row| {
             row.turnback_id == state.turnback_id
-                && row.turnback_task_type == 2
+                && row.turnback_task_type == DAILY_REFRESH_TASK
                 && row.is_online != 0
         })
         .collect::<Vec<_>>();

@@ -1,5 +1,7 @@
 use super::*;
 
+const RANK_SKIN_GAIN_APPROACH: i32 = 1;
+
 impl UserHeroModel {
     pub async fn update_destiny_stone(&self, hero_id: i32, stone_id: i32) -> Result<()> {
         HeroModel::<HeroData>::destiny_stone(self, hero_id, stone_id).await
@@ -56,7 +58,7 @@ impl UserHeroModel {
                 .skin
                 .iter()
                 .find(|skin| {
-                    skin.character_id == hero_id && skin.id % 100 == 2 && skin.gain_approach == 1
+                    skin.character_id == hero_id && skin.gain_approach == RANK_SKIN_GAIN_APPROACH
                 })
                 .map(|skin| skin.id)
         {
@@ -106,8 +108,7 @@ impl UserHeroModel {
                 .iter()
                 .find(|skin| {
                     skin.character_id == upgrade.hero_id
-                        && skin.id % 100 == 2
-                        && skin.gain_approach == 1
+                        && skin.gain_approach == RANK_SKIN_GAIN_APPROACH
                 })
                 .map(|skin| skin.id)
         {

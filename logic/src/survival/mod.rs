@@ -4,6 +4,8 @@ use sonettobuf::{
     SurvivalRoleBox,
 };
 
+const ACTIVITY_TYPE_ID: i32 = 200;
+
 pub fn outside_info(tables: &config::GameDB) -> SurvivalOutSideGetInfoReply {
     let default_mod = tables
         .survival_hardness_mod
@@ -24,7 +26,7 @@ pub fn outside_info(tables: &config::GameDB) -> SurvivalOutSideGetInfoReply {
             season: tables
                 .activity
                 .iter()
-                .filter(|row| row.type_id == 200)
+                .filter(|row| row.type_id == ACTIVITY_TYPE_ID)
                 .map(|row| row.id)
                 .max(),
             score: Some(0),

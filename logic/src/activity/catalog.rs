@@ -3,6 +3,7 @@ use chrono::{NaiveDateTime, TimeZone, Utc};
 use sonettobuf::ActivityInfo;
 
 const PERMANENT_END_MS: u64 = 2_145_934_800_000;
+const PERMANENT_RETRO_TYPE: i32 = 2;
 
 pub(super) fn catalog_infos() -> Vec<ActivityInfo> {
     config::configs::get()
@@ -188,7 +189,7 @@ fn activity_time_range(activity_id: i32) -> (u64, u64) {
     let is_permanent = config::configs::get()
         .activity
         .get(activity_id)
-        .is_some_and(|activity| activity.is_retro_acitivity == 2);
+        .is_some_and(|activity| activity.is_retro_acitivity == PERMANENT_RETRO_TYPE);
     if is_permanent {
         return (0, PERMANENT_END_MS);
     }
@@ -225,8 +226,6 @@ fn parse_config_time_millis(value: &str) -> Option<u64> {
 }
 
 pub(super) fn is_unlocked_by_default(activity_id: i32) -> bool {
-    const PERMANENT_RETRO_TYPE: i32 = 2;
-
     if let Some(schedule) = super::schedule::get(activity_id) {
         return schedule.is_unlock;
     }

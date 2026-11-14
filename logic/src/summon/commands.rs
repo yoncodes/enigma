@@ -161,10 +161,12 @@ pub(super) async fn query_token(
     player_id: i64,
 ) -> Result<(SummonQueryTokenReply, EndActivityPush), AppError> {
     let token = account::get_user_token(db, player_id).await?;
+    const ACT172_TYPE_ID: i32 = 172;
+
     let activity_id = config::configs::get()
         .activity
         .iter()
-        .filter(|activity| activity.type_id == 172)
+        .filter(|activity| activity.type_id == ACT172_TYPE_ID)
         .map(|activity| activity.id)
         .max()
         .ok_or(AppError::InvalidRequest)?;

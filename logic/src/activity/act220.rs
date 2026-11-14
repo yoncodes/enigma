@@ -1,6 +1,7 @@
 use super::*;
 
 const ACTIVITY_TYPE_ID: i32 = 220;
+const EPISODE_FINISHED: i32 = 1;
 
 pub struct Act220Finish {
     pub reply: Act220FinishEpisodeReply,
@@ -29,7 +30,7 @@ pub async fn act220_info(
                     || (episode.pre_episode_branch_id == 0
                         && states
                             .get(&episode.pre_episode_id)
-                            .is_some_and(|(state, _, _)| *state == 1)))
+                            .is_some_and(|(state, _, _)| *state == EPISODE_FINISHED)))
         })
         .map(|episode| episode_record(episode.episode_id, states.get(&episode.episode_id)))
         .collect::<Vec<_>>();
@@ -65,12 +66,12 @@ pub async fn finish_act220_episode(
         activity_state::get(db, player_id, activity_id, ActivityStateKind::Act220Episode).await?;
     if states
         .get(&episode_id)
-        .is_some_and(|(state, _, _)| *state == 1)
+        .is_some_and(|(state, _, _)| *state == EPISODE_FINISHED)
         || (episode.pre_episode_id != 0
             && (episode.pre_episode_branch_id != 0
                 || states
                     .get(&episode.pre_episode_id)
-                    .is_none_or(|(state, _, _)| *state != 1)))
+                    .is_none_or(|(state, _, _)| *state != EPISODE_FINISHED)))
     {
         return Err(AppError::InvalidRequest);
     }
@@ -83,7 +84,7 @@ pub async fn finish_act220_episode(
         ActivityStateSet {
             kind: ActivityStateKind::Act220Episode,
             entry_id: episode_id,
-            state: 1,
+            state: EPISODE_FINISHED,
             progress: 0,
             ext: &progress,
         },
@@ -141,7 +142,7 @@ fn validate_activity(activity_id: i32) -> Result<(), AppError> {
 fn episode_record(episode_id: i32, state: Option<&(i32, i32, String)>) -> Act220EpisodeRecord {
     Act220EpisodeRecord {
         episode_id: Some(episode_id),
-        is_finished: Some(state.is_some_and(|(state, _, _)| *state == 1)),
+        is_finished: Some(state.is_some_and(|(state, _, _)| *state == EPISODE_FINISHED)),
         unlock_branch_ids: Vec::new(),
         progress: Some(
             state

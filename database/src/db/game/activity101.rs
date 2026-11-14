@@ -4,6 +4,9 @@ use sqlx::SqlitePool;
 use super::activity_state::{self, ActivityStateKind, ActivityStateSet};
 
 const LOGIN_PROGRESS_ENTRY_ID: i32 = 0;
+pub const DAY_LOCKED: i32 = 0;
+pub const DAY_CLAIMABLE: i32 = 1;
+pub const DAY_CLAIMED: i32 = 2;
 
 async fn login_count(pool: &SqlitePool, user_id: i64, activity_id: i32) -> Result<i32> {
     Ok(activity_state::get(
@@ -96,12 +99,12 @@ pub async fn get_activity101_info(
         .into_iter()
         .map(|day| {
             let stored = states.get(&day).map(|(state, _, _)| *state).unwrap_or(0);
-            let state = if stored == 2 {
-                2
+            let state = if stored == DAY_CLAIMED {
+                DAY_CLAIMED
             } else if day <= login_count {
-                1
+                DAY_CLAIMABLE
             } else {
-                0
+                DAY_LOCKED
             };
 
             (day, state)
@@ -123,7 +126,7 @@ pub async fn claim_activity101_day(
         return Ok(false);
     };
 
-    if state != 1 {
+    if state != DAY_CLAIMABLE {
         return Ok(false);
     }
 
@@ -134,7 +137,7 @@ pub async fn claim_activity101_day(
         ActivityStateSet {
             kind: ActivityStateKind::Act101Day,
             entry_id: day_id,
-            state: 2,
+            state: DAY_CLAIMED,
             progress: 0,
             ext: "",
         },
@@ -165,7 +168,7 @@ pub async fn claim_activity101_day_in_transaction(
     .fetch_optional(&mut **tx)
     .await?
     .unwrap_or_default();
-    if stored_state == 2 {
+    if stored_state == DAY_CLAIMED {
         return Ok(false);
     }
 
@@ -177,7 +180,7 @@ pub async fn claim_activity101_day_in_transaction(
         ActivityStateSet {
             kind: ActivityStateKind::Act101Day,
             entry_id: day_id,
-            state: 2,
+            state: DAY_CLAIMED,
             progress: 0,
             ext: "",
         },

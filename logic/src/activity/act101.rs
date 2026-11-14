@@ -76,7 +76,7 @@ pub async fn get101_bonus(
         .await?
         .0
         .iter()
-        .any(|(_, state)| *state == 1);
+        .any(|(_, state)| *state == activity101::DAY_CLAIMABLE);
 
     Ok(Activity101Claim {
         reply: Get101BonusReply {
@@ -140,7 +140,7 @@ pub async fn get101_bonus_list(
         .await?
         .0
         .iter()
-        .any(|(_, state)| *state == 1);
+        .any(|(_, state)| *state == activity101::DAY_CLAIMABLE);
 
     Ok(Activity101ListClaim {
         reply: Get101BonusListReply {

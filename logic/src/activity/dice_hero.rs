@@ -279,7 +279,9 @@ fn dice_hero_reward_items(
         return Vec::new();
     }
 
-    if level.mode == 2 {
+    const INFINITE_MODE: i32 = 2;
+
+    if level.mode == INFINITE_MODE {
         return tables
             .dice_character
             .iter()

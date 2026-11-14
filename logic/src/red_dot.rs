@@ -489,7 +489,10 @@ async fn apply_activity101_red_dot(
         let (infos, _, _) = activity101::get_activity101_info(db, player_id, activity_id).await?;
         group.infos.push(RedDotInfo {
             id: activity_id as i64,
-            value: if infos.iter().any(|(_, state)| *state == 1) {
+            value: if infos
+                .iter()
+                .any(|(_, state)| *state == activity101::DAY_CLAIMABLE)
+            {
                 1
             } else {
                 0

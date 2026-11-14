@@ -1,5 +1,8 @@
 use super::*;
 
+const MISSION_CLAIMABLE: i32 = 1;
+const MISSION_CLAIMED: i32 = 2;
+
 pub struct Act160Claim {
     pub reply: Act160FinishMissionReply,
     pub rewards: reward::AppliedRewards,
@@ -49,7 +52,7 @@ pub async fn finish_act160_mission(
         .ok_or(AppError::InvalidRequest)?;
     let states =
         activity_state::get(db, player_id, activity_id, ActivityStateKind::Act160Mission).await?;
-    if states.get(&id).map(|(state, _, _)| *state).unwrap_or(0) != 1 {
+    if states.get(&id).map(|(state, _, _)| *state).unwrap_or(0) != MISSION_CLAIMABLE {
         return Err(AppError::InvalidRequest);
     }
 
@@ -60,7 +63,7 @@ pub async fn finish_act160_mission(
         ActivityStateSet {
             kind: ActivityStateKind::Act160Mission,
             entry_id: id,
-            state: 2,
+            state: MISSION_CLAIMED,
             progress: 0,
             ext: "",
         },
@@ -82,7 +85,7 @@ pub async fn finish_act160_mission(
             ActivityStateSet {
                 kind: ActivityStateKind::Act160Mission,
                 entry_id: next.id,
-                state: 1,
+                state: MISSION_CLAIMABLE,
                 progress: 0,
                 ext: "",
             },

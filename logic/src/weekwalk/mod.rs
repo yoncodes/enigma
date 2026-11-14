@@ -15,6 +15,9 @@ use sonettobuf::{
 use sqlx::SqlitePool;
 
 const CYCLE_SECONDS: i32 = 30 * 24 * 60 * 60;
+const BATTLE_ELEMENT: i32 = 1;
+const DIALOG_ELEMENT: i32 = 4;
+const WEEKWALK_EPISODE_TYPE: i32 = 9;
 
 mod cycle;
 
@@ -95,7 +98,7 @@ impl WeekwalkManager {
         let index = self.element_index(db, map_id, element_id).await?;
         let (kind, configured_battle_id, _) =
             element_step(config::configs::get(), element_id, index)?;
-        if kind != 1
+        if kind != BATTLE_ELEMENT
             || encounter.battle_id != selection.battle_id
             || (!map.is_deep && configured_battle_id != selection.battle_id)
         {
@@ -195,7 +198,7 @@ impl WeekwalkManager {
             .await?;
         let (kind, configured_battle_id, step_count) =
             element_step(config::configs::get(), context.element_id, current_index)?;
-        if kind != 1 || (!map.is_deep && configured_battle_id != encounter.battle_id) {
+        if kind != BATTLE_ELEMENT || (!map.is_deep && configured_battle_id != encounter.battle_id) {
             return Err(AppError::InvalidRequest);
         }
         let next_index = current_index + 1;
@@ -244,7 +247,8 @@ impl WeekwalkManager {
         self.ensure_cycle(db).await?;
         let current_index = self.element_index(db, map_id, element_id).await?;
         let (kind, dialog_id, _) = element_step(config::configs::get(), element_id, current_index)?;
-        if kind != 4 || !dialog_option_valid(config::configs::get(), dialog_id, option) {
+        if kind != DIALOG_ELEMENT || !dialog_option_valid(config::configs::get(), dialog_id, option)
+        {
             return Err(AppError::InvalidRequest);
         }
         self.advance_element(db, map_id, element_id, 4).await?;
@@ -357,7 +361,7 @@ impl WeekwalkManager {
 }
 
 pub fn is_weekwalk_episode(episode: &Episode) -> bool {
-    episode.r#type == 9
+    episode.r#type == WEEKWALK_EPISODE_TYPE
 }
 
 fn project_info(

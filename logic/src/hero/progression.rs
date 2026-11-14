@@ -1,5 +1,8 @@
 use super::*;
 
+const RANK_SKIN_GAIN_APPROACH: i32 = 1;
+const EX_SKILL_TYPE: i32 = 3;
+
 impl HeroManager {
     pub async fn upgrade_materials(
         self,
@@ -238,7 +241,7 @@ impl HeroManager {
         skill_type: i32,
         levels: i32,
     ) -> Result<(HeroUpgradeSkillReply, HeroInfo, u32), AppError> {
-        if skill_type != 3 {
+        if skill_type != EX_SKILL_TYPE {
             return Err(AppError::InvalidRequest);
         }
 
@@ -312,8 +315,7 @@ impl HeroManager {
             .find(|skin| {
                 target_rank >= 3
                     && skin.character_id == hero_id
-                    && skin.id % 100 == 2
-                    && skin.gain_approach == 1
+                    && skin.gain_approach == RANK_SKIN_GAIN_APPROACH
             })
             .map(|skin| skin.id);
         let mut tx = db.begin().await?;
