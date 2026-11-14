@@ -855,6 +855,7 @@ pub fn dispatch_compiled_setup(
 }
 
 pub fn dispatch_buff_act_setup(
+    pool: &TargetPool,
     managers: &BattleManagers,
     catalog: &SkillEffectCatalog,
     stage: SetupStage,
@@ -863,7 +864,7 @@ pub fn dispatch_buff_act_setup(
     subscriber::buff_acts_for_setup_stage(managers, stage, priority)
         .into_iter()
         .map(|subscriber| {
-            let ops = buff_act::setup_rule_ops(managers, catalog, &subscriber);
+            let ops = buff_act::setup_rule_ops(pool, managers, catalog, &subscriber);
             (subscriber, ops)
         })
         .collect()

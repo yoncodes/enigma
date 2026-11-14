@@ -96,6 +96,7 @@ fn compiled_team_tag_setup_enables_impromptu_and_single_owner_bloodtithe_reactio
         attacker: Some(FightTeam {
             entitys: vec![FightEntityInfo {
                 uid: Some(10),
+                model_id: Some(3120),
                 team_type: Some(1),
                 current_hp: Some(20_000),
                 attr: Some(HeroAttribute {

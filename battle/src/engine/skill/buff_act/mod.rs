@@ -959,12 +959,14 @@ fn scoped_rule_ops(
 }
 
 pub fn setup_rule_ops(
+    pool: &crate::engine::skill::target::TargetPool,
     managers: &BattleManagers,
     catalog: &crate::engine::skill::effect::SkillEffectCatalog,
     subscriber: &crate::engine::skill::subscriber::BuffActSetupSubscriber,
 ) -> Option<Vec<RuleOp>> {
     let definition = registry::find(subscriber.key.opcode, subscriber.key.type_name)?;
     definition.setup.handler?(&registry::SetupContext {
+        pool,
         managers,
         catalog,
         subscriber,

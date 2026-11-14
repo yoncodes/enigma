@@ -12,7 +12,7 @@ pub fn run_buff_act_setup_stage_for_owners(
     owner_uids: &[i64],
 ) -> Result<DrainResult, DrainError> {
     let trigger = FrameTrigger::Setup { stage, priority };
-    let operations = dispatcher::dispatch_buff_act_setup(managers, catalog, stage, priority)
+    let operations = dispatcher::dispatch_buff_act_setup(pool, managers, catalog, stage, priority)
         .into_iter()
         .filter(|(subscriber, _)| owner_uids.contains(&subscriber.feature.owner_uid))
         .map(|(subscriber, operations)| {

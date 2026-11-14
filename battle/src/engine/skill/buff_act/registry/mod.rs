@@ -39,6 +39,7 @@ pub(crate) type ReservePromotionHandler =
     fn(&crate::engine::fight::reserve::Promotion) -> crate::engine::fight::reserve::CycleCommand;
 
 pub struct SetupContext<'a> {
+    pub pool: &'a crate::engine::skill::target::TargetPool,
     pub managers: &'a BattleManagers,
     pub catalog: &'a SkillEffectCatalog,
     pub subscriber: &'a BuffActSetupSubscriber,
@@ -1374,7 +1375,7 @@ buff_act_definitions! {
         publications: [EventKind::GaugeChanged => BeforePublish],
         frame: CausingFrame,
         scoped_runtime: |context| super::blood_pool::tag::rule_ops(context.managers, context.subscriber, context.event?),
-        setup_handler: |context| super::blood_pool::tag::setup_rule_ops(context.managers, context.catalog, &context.subscriber.feature, context.subscriber.stage),
+        setup_handler: |context| super::blood_pool::tag::setup_rule_ops(context.pool, context.managers, context.catalog, &context.subscriber.feature, context.subscriber.stage),
         supports: |_| true, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(953, "BloodPoolTag"), &[EffectType::None as i32]));
     (955, "AttrByShield") => AttrByShield,
         supports: super::attr_by_shield::supports, state_consumer: true,
