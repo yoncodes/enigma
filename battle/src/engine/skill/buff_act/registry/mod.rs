@@ -1446,16 +1446,16 @@ buff_act_definitions! {
     (1146, "FoundationShield") => FoundationShield, effect_time_subscription: false,
         supports: super::foundation::supports_shield, state_consumer: true,
         initial_state: SourceAttack, description_required: true,
-        wire: (super::wire::BuffActWireDefinition::all(
+        wire: (super::wire::BuffActWireDefinition::add(
             DefinitionKey::new(1146, "FoundationShield"),
-            &[],
+            &[EffectType::None as i32],
         ).without_initial_state_marker());
     (1147, "FoundationCounter") => FoundationCounter, effect_time_subscription: false,
         supports: super::foundation_counter::supports, state_consumer: true,
         initial_state: FoundationCounter, description_required: true,
-        wire: (super::wire::BuffActWireDefinition::all(
+        wire: (super::wire::BuffActWireDefinition::add(
             DefinitionKey::new(1147, "FoundationCounter"),
-            &[],
+            &[EffectType::None as i32],
         ).without_initial_state_marker());
     (1158, "HedoneHurtCounter") => HedoneHurtCounter, effect_time_subscription: false,
         events: [EventKind::TargetAttacked, EventKind::RoundEndAfterFinalSettlement],
@@ -1698,7 +1698,7 @@ buff_act_definitions! {
             if *trigger > 0 && *limit >= *trigger && *linked_skill > 0),
         references: references_for_feature,
         state_consumer: true, initial_state: ZeroInteger,
-        wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(1139, "MeiLeiErCharge"), &[]));
+        wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(1139, "MeiLeiErCharge"), &[EffectType::None as i32]));
     (1138, "ReplaceEntitySkillGroup") => ReplaceEntitySkillGroup,
         transactions: [EventKind::BuffAdded, EventKind::BuffRemoved],
         publication: BeforePublish, frame: CausingFrame,

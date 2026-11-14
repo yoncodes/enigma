@@ -21,6 +21,23 @@ fn field_replacement_record_keeps_its_round_end_runtime_and_add_only_wire_contra
 }
 
 #[test]
+fn state_carrying_buffs_mark_their_add_only() {
+    use super::super::super::wire::WirePhase;
+    use sonettobuf::effect_type_enum::EffectType;
+
+    for (opcode, type_name) in [
+        (1139, "MeiLeiErCharge"),
+        (1146, "FoundationShield"),
+        (1147, "FoundationCounter"),
+    ] {
+        let wire = find(opcode, type_name).unwrap().wire.unwrap();
+        assert_eq!(wire.markers(WirePhase::Add), &[EffectType::None as i32]);
+        assert!(wire.markers(WirePhase::Static).is_empty());
+        assert!(wire.markers(WirePhase::Refresh).is_empty());
+    }
+}
+
+#[test]
 fn runtime_capability_lives_on_the_exact_registry_entry() {
     let definition = find(889, "BeAttackByEmitterDamage").unwrap();
 
