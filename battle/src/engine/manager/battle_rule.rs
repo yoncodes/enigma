@@ -41,6 +41,11 @@ impl BattleRuleManager {
                     .iter()
                     .map(move |owner_uid| (*owner_uid, rule.skill_id))
             })
+            .chain(
+                crate::catalog::rouge2_entry_rule_skills(catalog.game_data(), fight)
+                    .into_iter()
+                    .map(|skill| (skill.owner_uid, skill.skill_id)),
+            )
             .collect::<Vec<_>>();
         Self {
             owned_skills,

@@ -1310,6 +1310,80 @@ pub(crate) fn configured_wave_start_actions(
     Ok(actions)
 }
 
+pub(crate) fn rouge2_entry_rule_skills(
+    game_data: &config::GameDB,
+    fight: &sonettobuf::Fight,
+) -> Vec<crate::engine::fight::rules::OwnedBattleSkill> {
+    let (career_id, _) = crate::engine::manager::buff::rouge2_mode(fight);
+    let Some(career) = game_data.rouge2_career.get(career_id) else {
+        return Vec::new();
+    };
+    career
+        .initial_effects
+        .split('#')
+        .filter_map(|id| game_data.rouge2_relics.get(id.parse().ok()?))
+        .flat_map(rouge2_battle_start_side_skills)
+        .filter(|skill_id| game_data.skill.get(*skill_id).is_some())
+        .map(|skill_id| crate::engine::fight::rules::OwnedBattleSkill {
+            owner_uid: crate::engine::fight::rules::ATTACKER_SIDE_UID,
+            skill_id,
+        })
+        .collect()
+}
+
+fn rouge2_battle_start_side_skills(relic: &config::rouge2_relics::Rouge2Relics) -> Vec<i32> {
+    const BATTLE_START: &str = "none#battleStart";
+    const ADD_SIDE_SKILL: &str = "addSkill#4#0#0#";
+
+    let slots = [
+        (&relic.condition1, &relic.effect1),
+        (&relic.condition2, &relic.effect2),
+        (&relic.condition3, &relic.effect3),
+        (&relic.condition4, &relic.effect4),
+        (&relic.condition5, &relic.effect5),
+        (&relic.condition6, &relic.effect6),
+        (&relic.condition7, &relic.effect7),
+        (&relic.condition8, &relic.effect8),
+        (&relic.condition9, &relic.effect9),
+        (&relic.condition10, &relic.effect10),
+        (&relic.condition11, &relic.effect11),
+        (&relic.condition12, &relic.effect12),
+        (&relic.condition13, &relic.effect13),
+        (&relic.condition14, &relic.effect14),
+        (&relic.condition15, &relic.effect15),
+        (&relic.condition16, &relic.effect16),
+        (&relic.condition17, &relic.effect17),
+        (&relic.condition18, &relic.effect18),
+        (&relic.condition19, &relic.effect19),
+        (&relic.condition20, &relic.effect20),
+        (&relic.condition21, &relic.effect21),
+        (&relic.condition22, &relic.effect22),
+        (&relic.condition23, &relic.effect23),
+        (&relic.condition24, &relic.effect24),
+        (&relic.condition25, &relic.effect25),
+    ];
+    let mut skills = Vec::new();
+    for (condition, effects) in slots {
+        if !condition.contains("battleStart") {
+            continue;
+        }
+        for effect in effects.split('|') {
+            match effect.strip_prefix(ADD_SIDE_SKILL) {
+                Some(skill_ids) if condition.as_str() == BATTLE_START => {
+                    skills.extend(skill_ids.split(',').filter_map(|id| id.parse::<i32>().ok()));
+                }
+                _ => tracing::warn!(
+                    relic_id = relic.id,
+                    condition,
+                    effect,
+                    "unsupported roguelike battle-start effect"
+                ),
+            }
+        }
+    }
+    skills
+}
+
 pub(crate) fn configured_teaching_cards(
     game_data: &config::GameDB,
     episode_id: i32,

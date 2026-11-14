@@ -77,6 +77,11 @@ impl SkillEffectCatalog {
             }
         }
         skills.extend(
+            crate::catalog::rouge2_entry_rule_skills(db, fight)
+                .into_iter()
+                .map(|skill| skill.skill_id),
+        );
+        skills.extend(
             crate::engine::manager::conduit::ConduitManager::seed_with_game_data(db, fight)
                 .skill_ids(),
         );

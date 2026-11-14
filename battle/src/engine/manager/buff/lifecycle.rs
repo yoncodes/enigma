@@ -587,7 +587,7 @@ impl BuffManager {
 #[path = "lifecycle/tests.rs"]
 mod tests;
 
-fn rouge2_mode(fight: &Fight) -> (i32, HashMap<i32, i32>) {
+pub(crate) fn rouge2_mode(fight: &Fight) -> (i32, HashMap<i32, i32>) {
     #[derive(serde::Deserialize)]
     #[serde(rename_all = "camelCase")]
     struct Rouge2Data {

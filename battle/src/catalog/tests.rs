@@ -1016,3 +1016,35 @@ fn rejects_unsupported_lingering_glow_attribute_buff() {
     );
     assert!(lingering_glow_attribute_origin(game_data, "1053#201#5#1000000#10000").is_some());
 }
+
+#[test]
+fn roguelike_career_owns_its_battle_start_side_skills() {
+    crate::test_support::init_config();
+    let game_data = crate::test_support::game_data();
+    let fight = |data: &str| sonettobuf::Fight {
+        custom_data: vec![sonettobuf::CustomData {
+            r#type: Some(sonettobuf::custom_data::CustomDataType::Rouge2 as i32),
+            data: Some(data.to_owned()),
+        }],
+        ..Default::default()
+    };
+
+    assert_eq!(
+        rouge2_entry_rule_skills(
+            game_data,
+            &fight(r#"{"career":4,"attrFinalVal":{"101":5}}"#)
+        )
+        .into_iter()
+        .map(|skill| (skill.owner_uid, skill.skill_id))
+        .collect::<Vec<_>>(),
+        [(0, 108300001), (0, 108300002), (0, 108300003)]
+    );
+    assert!(
+        rouge2_entry_rule_skills(
+            game_data,
+            &fight(r#"{"career":99,"attrFinalVal":{"101":5}}"#)
+        )
+        .is_empty()
+    );
+    assert!(rouge2_entry_rule_skills(game_data, &sonettobuf::Fight::default()).is_empty());
+}
