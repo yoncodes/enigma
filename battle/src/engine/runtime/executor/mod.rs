@@ -230,7 +230,7 @@ impl RuleOutcome {
 
     pub(crate) fn injured_targets(&self) -> Vec<i64> {
         let injured =
-            |change: &HpChanges| change.hp.filter(|hp| hp.delta < 0).map(|hp| hp.target_uid);
+            |change: &HpChanges| change.hp.filter(|hp| hp.is_loss()).map(|hp| hp.target_uid);
         match self {
             Self::Hp(execution) => execution
                 .changes
@@ -305,6 +305,13 @@ impl RuleOutcome {
                 .chain(std::iter::once(BattleChange::Hp(Box::new(
                     execution.changes.clone(),
                 ))))
+                .chain(
+                    execution
+                        .after_hp_markers
+                        .iter()
+                        .cloned()
+                        .map(BattleChange::BuffActInfoMarker),
+                )
                 .chain(execution.indicator.clone().map(BattleChange::EffectMarker))
                 .collect(),
             Self::HpBatch(changes) => changes
@@ -318,6 +325,13 @@ impl RuleOutcome {
                         .chain(std::iter::once(BattleChange::Hp(Box::new(
                             execution.changes.clone(),
                         ))))
+                        .chain(
+                            execution
+                                .after_hp_markers
+                                .iter()
+                                .cloned()
+                                .map(BattleChange::BuffActInfoMarker),
+                        )
                         .chain(execution.indicator.clone().map(BattleChange::EffectMarker))
                 })
                 .collect(),

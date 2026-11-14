@@ -91,6 +91,7 @@ pub mod ex_point_del;
 pub mod ex_point_fix;
 pub mod ex_point_overflow_bank;
 pub mod fantasy;
+pub mod fiction_hp;
 pub mod fix_attr_by_sub_buff_layer;
 pub mod fix_attr_by_teammate_injury_count;
 pub mod fix_attr_team_energy;
@@ -1152,6 +1153,7 @@ pub fn target_attack_attribute_delta(
 pub struct HpLossStateUpdate {
     pub command: crate::engine::manager::buff::BuffCommand,
     pub marker: crate::engine::manager::buff::BuffActInfoMarkerResult,
+    pub after_hp: bool,
 }
 
 pub fn hp_loss_state_updates(

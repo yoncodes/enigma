@@ -126,6 +126,12 @@ impl HpManager {
                 if let Some(change) = &mut changes.hp {
                     change.effect_type = value.effect_type;
                     change.display_amount = Some(change.after);
+                    if change.delta < 0
+                        && !change.is_loss()
+                        && let Some(taken) = self.damage_taken.get_mut(&target_uid)
+                    {
+                        *taken += change.delta;
+                    }
                 }
             }
             HpCommand::GrantShield(value) => {

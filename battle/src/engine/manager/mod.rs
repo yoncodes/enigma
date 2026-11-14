@@ -110,6 +110,7 @@ struct ShareHurtPlan {
 struct HpLossStatePlan {
     buff: BuffPlan,
     marker: buff::BuffActInfoMarkerResult,
+    after_hp: bool,
 }
 
 struct FoundationCounterPlan {
@@ -184,19 +185,21 @@ pub(crate) fn snapshotted_attribute_delta(
 pub(crate) struct HpExecution {
     pub changes: hp::HpChanges,
     pub before_hp_markers: Vec<buff::BuffActInfoMarkerResult>,
+    pub after_hp_markers: Vec<buff::BuffActInfoMarkerResult>,
     pub indicator: Option<crate::engine::skill::rule::output::EffectMarker>,
 }
 
 struct HpCommit {
     changes: hp::HpChanges,
     before_hp_markers: Vec<buff::BuffActInfoMarkerResult>,
+    after_hp_markers: Vec<buff::BuffActInfoMarkerResult>,
 }
 
 fn hp_loss(changes: &hp::HpChanges) -> Option<(i64, i32)> {
     if changes.kill.is_some() {
         return None;
     }
-    let change = changes.hp.filter(|change| change.delta < 0)?;
+    let change = changes.hp.filter(hp::HpChange::is_loss)?;
     Some((change.target_uid, change.delta.saturating_abs()))
 }
 
@@ -493,6 +496,7 @@ impl BattleManagers {
         Ok(HpExecution {
             changes: commit.changes,
             before_hp_markers: commit.before_hp_markers,
+            after_hp_markers: commit.after_hp_markers,
             indicator,
         })
     }
@@ -566,6 +570,7 @@ impl BattleManagers {
                 HpExecution {
                     changes: commit.changes,
                     before_hp_markers: commit.before_hp_markers,
+                    after_hp_markers: commit.after_hp_markers,
                     indicator,
                 }
             })
@@ -808,6 +813,7 @@ impl BattleManagers {
                 plan.hp_loss_state.push(HpLossStatePlan {
                     buff,
                     marker: update.marker,
+                    after_hp: update.after_hp,
                 });
             }
         }
@@ -832,10 +838,15 @@ impl BattleManagers {
             self.commit_buff(state.buff);
             before_hp_markers.push(state.marker);
         }
-        before_hp_markers.extend(plan.hp_loss_state.into_iter().map(|state| {
+        let mut after_hp_markers = Vec::new();
+        for state in plan.hp_loss_state {
             self.commit_buff(state.buff);
-            state.marker
-        }));
+            if state.after_hp {
+                after_hp_markers.push(state.marker);
+            } else {
+                before_hp_markers.push(state.marker);
+            }
+        }
         let shared_hurt = plan.share.map(|share| {
             let consumed = self.commit_buff(share.consume);
             let shares = share
@@ -878,6 +889,7 @@ impl BattleManagers {
         HpCommit {
             changes,
             before_hp_markers,
+            after_hp_markers,
         }
     }
 

@@ -239,6 +239,7 @@ pub enum BuffActKind {
     SpExPointMaxAdd,
     ExPointOverflowBank,
     DeviceExPointOverflowBank,
+    FictionHp,
     FixAttrBySubBuffLayer,
     FixAttrByTeammateInjuryCountNotReset,
     FixAttrTeamEnergy,
@@ -1137,6 +1138,12 @@ buff_act_definitions! {
         initial_state: ZeroInteger,
         wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(1149, "DeviceExPointOverflowBank"), &[EffectType::None as i32])
             .without_initial_state_marker());
+    (1059, "FictionHp") => FictionHp,
+        event: EventKind::RoundStart,
+        scoped_runtime: |context| super::fiction_hp::rule_ops(context.managers, context.subscriber, context.event?),
+        supports: super::fiction_hp::supports,
+        hp_loss_state: super::fiction_hp::hp_loss_state_update,
+        wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(1059, "FictionHp"), &[EffectType::None as i32]));
     (1150, "LostHpToFakeHp") => LostHpToFakeHp, effect_time_subscription: false,
         supports: super::lost_hp_to_fake_hp::supports,
         hp_loss_state: super::lost_hp_to_fake_hp::hp_loss_state_update,

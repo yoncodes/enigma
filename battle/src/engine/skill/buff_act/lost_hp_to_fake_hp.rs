@@ -156,6 +156,7 @@ pub fn hp_loss_state_update(
             act_info: Some(buff.act_info),
         }),
         marker,
+        after_hp: false,
     }])
 }
 
@@ -296,7 +297,8 @@ mod tests {
                     act_id: 1150,
                     params,
                     ..
-                }
+                },
+                after_hp: false,
             }] if info[0].param == [2_071, 8_108] && params == &[2_071, 8_108]
         ));
 
