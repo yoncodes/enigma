@@ -281,6 +281,39 @@ pub async fn transition_in_transaction(
     Ok(inserted.rows_affected() == 1)
 }
 
+pub async fn advance_progress_in_transaction(
+    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    user_id: i64,
+    activity_id: i32,
+    expected_progress: i32,
+    state: ActivityStateSet<'_>,
+) -> Result<bool> {
+    let now = common::time::ServerTime::now_ms();
+    let updated = sqlx::query(
+        "UPDATE user_activity_state
+         SET state = ?, progress = ?, ext = ?, updated_at = ?
+         WHERE user_id = ? AND activity_id = ? AND kind = ? AND entry_id = ? AND progress = ?",
+    )
+    .bind(state.state)
+    .bind(state.progress)
+    .bind(state.ext)
+    .bind(now)
+    .bind(user_id)
+    .bind(activity_id)
+    .bind(state.kind.id())
+    .bind(state.entry_id)
+    .bind(expected_progress)
+    .execute(&mut **tx)
+    .await?;
+    if updated.rows_affected() == 1 {
+        return Ok(true);
+    }
+    if expected_progress != 0 {
+        return Ok(false);
+    }
+    insert_in_transaction(tx, user_id, activity_id, state).await
+}
+
 pub async fn get_activity_flags(
     db: &SqlitePool,
     user_id: i64,

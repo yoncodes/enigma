@@ -33,7 +33,7 @@ use sonettobuf::{
 };
 use sonettobuf::{
     Act107GoodsInfo, Act220EpisodePush, Act220EpisodeRecord, Act220FinishEpisodeReply,
-    Get107GoodsInfoReply, GetAct220InfoReply,
+    Buy107GoodsReply, Get107GoodsInfoReply, GetAct220InfoReply,
 };
 use sqlx::SqlitePool;
 use std::collections::{HashMap, HashSet};
@@ -88,7 +88,8 @@ pub use act243::total_stars as activity243_total_stars;
 
 use act101::{get101_bonus, get101_bonus_list, get101_infos, get101_sp_bonus};
 use act104::{act104_infos, mark_activity104_story, mark_episode_after_story, mark_pop_summary};
-use act107::act107_goods_info;
+pub use act107::Act107Purchase;
+use act107::{act107_goods_info, buy_act107_goods};
 use act116::{build_trap, info as act116_info, put_trap, upgrade_element};
 use act123::{act123_infos, act153_infos};
 use act125::{act125_infos, finish_act125_episode};

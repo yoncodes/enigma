@@ -27,6 +27,16 @@ impl ActivityManager {
         act107_goods_info(db, self.player_id, activity_id).await
     }
 
+    pub async fn buy_act107_goods(
+        &self,
+        db: &SqlitePool,
+        activity_id: Option<i32>,
+        id: Option<i32>,
+        num: Option<i32>,
+    ) -> Result<Act107Purchase, AppError> {
+        buy_act107_goods(db, self.player_id, activity_id, id, num).await
+    }
+
     pub async fn infos(&mut self, db: &SqlitePool) -> Result<GetActivityInfosReply, AppError> {
         let mut infos = catalog_infos();
         apply_bp_activity(&mut infos);
@@ -391,6 +401,7 @@ impl ActivityManager {
         act243_info_push(db, self.player_id, activity_id).await
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub async fn report_act243_episode(
         &self,
         db: &SqlitePool,
