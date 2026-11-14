@@ -11,7 +11,7 @@ use crate::engine::{
         rule::output::{BattleCommand, RuleOp},
     },
 };
-use sonettobuf::{BuffActInfo, effect_type_enum::EffectType};
+use sonettobuf::BuffActInfo;
 
 pub fn supports(args: &[i32]) -> bool {
     matches!(
@@ -138,26 +138,13 @@ pub fn transaction_rule_ops(
                 continue;
             };
             ops.push((
-                feature.clone(),
+                feature,
                 RuleOp::Command(BattleCommand::Hp(HpCommand::AdjustMax(MaxHpAdjust {
                     origin,
                     source_uid: change.source_uid,
                     target_uid: change.target_uid,
                     delta: value,
                 }))),
-            ));
-            // The source's own Max HP is published again after the share is granted.
-            ops.push((
-                feature,
-                RuleOp::EffectMarker {
-                    target_uid: change.source_uid,
-                    effect_type: EffectType::Maxhpchange as i32,
-                    effect_num: managers.hp.max(change.source_uid),
-                    effect_num1: None,
-                    config_effect: 0,
-                    reserve_id: None,
-                    reserve_str: None,
-                },
             ));
         }
     }
@@ -499,40 +486,5 @@ mod tests {
             RuleOp::Command(BattleCommand::Hp(HpCommand::AdjustMax(change)))
                 if change.delta == -1_550
         )));
-        assert!(
-            !ops.iter()
-                .any(|(_, op)| matches!(op, RuleOp::EffectMarker { .. }))
-        );
-    }
-
-    #[test]
-    fn granting_the_hp_share_publishes_the_sources_max_hp_after_the_targets() {
-        let mut managers = managers(4_000, 20_000, 2_000);
-        let added = grant(&mut managers, 31460139);
-        let ops = transaction_rule_ops(&managers, &added);
-        let adjusted = ops
-            .iter()
-            .position(|(_, op)| {
-                matches!(
-                    op,
-                    RuleOp::Command(BattleCommand::Hp(HpCommand::AdjustMax(_)))
-                )
-            })
-            .expect("the share raises the target's Max HP");
-        assert!(matches!(
-            &ops[adjusted + 1].1,
-            RuleOp::EffectMarker {
-                target_uid: 10,
-                effect_type,
-                effect_num: 20_000,
-                ..
-            } if *effect_type == EffectType::Maxhpchange as i32
-        ));
-        assert_eq!(
-            ops.iter()
-                .filter(|(_, op)| matches!(op, RuleOp::EffectMarker { .. }))
-                .count(),
-            1
-        );
     }
 }
