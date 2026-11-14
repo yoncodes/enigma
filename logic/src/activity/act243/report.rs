@@ -7,16 +7,28 @@ pub struct Act243Report {
     pub material_changes: Vec<(u32, u32, i32)>,
 }
 
+pub struct Act243EpisodeReport {
+    pub activity_id: i32,
+    pub episode_id: i32,
+    pub score: i32,
+    pub star: i32,
+    pub time_ms: i32,
+    pub record: String,
+}
+
 pub async fn report_episode(
     db: &SqlitePool,
     player_id: i64,
-    activity_id: i32,
-    episode_id: i32,
-    score: i32,
-    star: i32,
-    time_ms: i32,
-    record: String,
+    report: Act243EpisodeReport,
 ) -> Result<Act243Report, AppError> {
+    let Act243EpisodeReport {
+        activity_id,
+        episode_id,
+        score,
+        star,
+        time_ms,
+        record,
+    } = report;
     validate_activity(activity_id)?;
     if score < 0 || star < 0 || time_ms < 0 {
         return Err(AppError::InvalidRequest);

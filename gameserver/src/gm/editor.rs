@@ -236,7 +236,7 @@ pub(super) async fn psychube(
         player_id,
         CmdId::EquipUpdatePushCmd,
         EquipUpdatePush {
-            equips: vec![equip.clone()],
+            equips: vec![equip],
         },
     )
     .await?;

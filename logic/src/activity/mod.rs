@@ -84,6 +84,7 @@ mod act243;
 mod dice_hero;
 mod party_game;
 
+pub use act243::Act243EpisodeReport;
 pub use act243::total_stars as activity243_total_stars;
 
 use act101::{get101_bonus, get101_bonus_list, get101_infos, get101_sp_bonus};

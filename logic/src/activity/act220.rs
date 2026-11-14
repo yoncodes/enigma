@@ -68,9 +68,9 @@ pub async fn finish_act220_episode(
         .is_some_and(|(state, _, _)| *state == 1)
         || (episode.pre_episode_id != 0
             && (episode.pre_episode_branch_id != 0
-                || !states
+                || states
                     .get(&episode.pre_episode_id)
-                    .is_some_and(|(state, _, _)| *state == 1)))
+                    .is_none_or(|(state, _, _)| *state != 1)))
     {
         return Err(AppError::InvalidRequest);
     }

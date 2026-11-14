@@ -401,28 +401,12 @@ impl ActivityManager {
         act243_info_push(db, self.player_id, activity_id).await
     }
 
-    #[allow(clippy::too_many_arguments)]
     pub async fn report_act243_episode(
         &self,
         db: &SqlitePool,
-        activity_id: i32,
-        episode_id: i32,
-        score: i32,
-        star: i32,
-        time_ms: i32,
-        record: String,
+        report: Act243EpisodeReport,
     ) -> Result<act243::Act243Report, AppError> {
-        act243::report_episode(
-            db,
-            self.player_id,
-            activity_id,
-            episode_id,
-            score,
-            star,
-            time_ms,
-            record,
-        )
-        .await
+        act243::report_episode(db, self.player_id, report).await
     }
 
     pub async fn upgrade_act243_gift(

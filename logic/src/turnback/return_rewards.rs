@@ -47,30 +47,30 @@ pub(super) async fn info(
         .into_iter()
         .collect::<HashSet<_>>();
     let open = range_id != 0 && event_open(state);
-    let rewards = open
-        .then(|| {
-            tables
-                .turnback_return_reward
-                .iter()
-                .filter(|row| {
-                    row.turnback_id == state.turnback_id
-                        && row.loss_days_range == range_id
-                        && row.is_online != 0
-                })
-                .map(|row| TurnbackReturnRewardInfo {
-                    reward_id: Some(row.id),
-                    need_vitality: Some(row.need_vitality),
-                    state: Some(if claimed.contains(&row.id) {
-                        RewardState::HasGet as i32
-                    } else if vitality >= row.need_vitality {
-                        RewardState::CanGet as i32
-                    } else {
-                        RewardState::NotFinish as i32
-                    }),
-                })
-                .collect()
-        })
-        .unwrap_or_default();
+    let rewards = if open {
+        tables
+            .turnback_return_reward
+            .iter()
+            .filter(|row| {
+                row.turnback_id == state.turnback_id
+                    && row.loss_days_range == range_id
+                    && row.is_online != 0
+            })
+            .map(|row| TurnbackReturnRewardInfo {
+                reward_id: Some(row.id),
+                need_vitality: Some(row.need_vitality),
+                state: Some(if claimed.contains(&row.id) {
+                    RewardState::HasGet as i32
+                } else if vitality >= row.need_vitality {
+                    RewardState::CanGet as i32
+                } else {
+                    RewardState::NotFinish as i32
+                }),
+            })
+            .collect()
+    } else {
+        Default::default()
+    };
     let rotation = if open {
         rotation(state)?
     } else {
@@ -328,8 +328,9 @@ async fn rotate(
         rotation.left = ids.collect();
         rotation.refresh_day = today;
     }
-    if (rotation.active != 0 && !candidate_ids.contains(&rotation.active))
-        || (rotation.active != 0 && !task_states.contains_key(&rotation.active))
+    if (rotation.active != 0
+        && (!candidate_ids.contains(&rotation.active)
+            || !task_states.contains_key(&rotation.active)))
         || rotation.left.iter().any(|id| !candidate_ids.contains(id))
         || rotation.left.iter().copied().collect::<HashSet<_>>().len() != rotation.left.len()
         || rotation.left.contains(&rotation.active)
@@ -365,14 +366,18 @@ async fn rotate(
             db,
             player_id,
             state.turnback_id,
-            state.return_random_task_id,
-            &state.return_left_task_ids,
-            state.return_last_random_task_id,
-            state.return_random_refresh_day,
-            rotation.active,
-            &rotation.left,
-            rotation.last,
-            rotation.refresh_day,
+            turnback::ReturnTaskRotation {
+                active: state.return_random_task_id,
+                left: &state.return_left_task_ids,
+                last: state.return_last_random_task_id,
+                refresh_day: state.return_random_refresh_day,
+            },
+            turnback::ReturnTaskRotation {
+                active: rotation.active,
+                left: &rotation.left,
+                last: rotation.last,
+                refresh_day: rotation.refresh_day,
+            },
         )
         .await?
     {
