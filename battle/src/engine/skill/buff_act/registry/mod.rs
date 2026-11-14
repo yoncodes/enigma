@@ -235,6 +235,8 @@ pub enum BuffActKind {
     ExPointCardMove,
     ExPointCantAdd,
     ExSkillPointChange,
+    ImmunityBurn,
+    LockBurn,
     ExPointMaxAdd,
     SpExPointMaxAdd,
     ExPointOverflowBank,
@@ -1172,6 +1174,10 @@ buff_act_definitions! {
     (702, "BuffReplace") => BuffReplace, effect_time_subscription: false, references: references_for_feature, state_consumer: true, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(702, "BuffReplace"), &[EffectType::Buffreplace as i32]));
     (713, "ExSkillPointChange") => ExSkillPointChange, effect_time_subscription: false,
         supports: |args| matches!(args, [_]), state_consumer: true, wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(713, "ExSkillPointChange"), &[EffectType::Exskillpointchange as i32]));
+    (1151, "ImmunityBurn") => ImmunityBurn, effect_time_subscription: false,
+        supports: |args| args.is_empty(), state_consumer: true, wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(1151, "ImmunityBurn"), &[EffectType::None as i32]));
+    (858, "LockBurn") => LockBurn, effect_time_subscription: false,
+        supports: |args| matches!(args, [buff_id] if *buff_id > 0), state_consumer: true, wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(858, "LockBurn"), &[EffectType::Lockburn as i32]));
     (405, "Disarm") => Disarm, effect_time_subscription: false,
         supports: |args| args.is_empty(), state_consumer: true, wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(405, "Disarm"), &[EffectType::Disarm as i32]));
     (406, "Forbid") => Forbid, effect_time_subscription: false,

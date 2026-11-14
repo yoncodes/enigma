@@ -72,6 +72,20 @@ pub fn supports_round_end_dot(args: &[i32]) -> bool {
         )
 }
 
+/// Arguments of every active act of `kind` held by `owner_uid`.
+fn holder_acts(
+    managers: &BattleManagers,
+    owner_uid: i64,
+    kind: BuffActKind,
+) -> impl Iterator<Item = Vec<i32>> {
+    managers
+        .buff
+        .active_features(&managers.hp)
+        .into_iter()
+        .filter(move |feature| feature.owner_uid == owner_uid && buff_act::is_kind(feature, kind))
+        .map(|feature| feature.values.into_iter().skip(1).collect())
+}
+
 pub fn matches(subscriber: &BuffActSubscriber) -> bool {
     DamageOverTimeKind::from_subscriber(subscriber).is_some()
 }
@@ -147,6 +161,13 @@ fn damage_rule_op_with_duration(
     remaining_duration: bool,
 ) -> Option<RuleOp> {
     let kind = DamageOverTimeKind::from_subscriber(subscriber)?;
+    if matches!(kind, DamageOverTimeKind::Burn)
+        && holder_acts(managers, subscriber.owner_uid, BuffActKind::ImmunityBurn)
+            .next()
+            .is_some()
+    {
+        return None;
+    }
     let origin = super::command_origin(subscriber)?;
     let source_uid = if subscriber.source_uid != 0 {
         subscriber.source_uid
@@ -323,6 +344,12 @@ pub fn settlement_rule_op(
     subscriber: &BuffActSubscriber,
 ) -> Option<RuleOp> {
     let kind = DamageOverTimeKind::from_subscriber(subscriber)?;
+    if matches!(kind, DamageOverTimeKind::Burn)
+        && holder_acts(managers, subscriber.owner_uid, BuffActKind::LockBurn)
+            .any(|args| args == [subscriber.buff_id])
+    {
+        return None;
+    }
     let buff = managers
         .buff
         .snapshot(subscriber.owner_uid, subscriber.buff_uid)?;
@@ -628,6 +655,91 @@ mod tests {
             Some(RuleOp::Command(BattleCommand::Hp(HpCommand::Lose(
                 HpLoss { amount: 150, .. }
             ))))
+        ));
+    }
+
+    #[test]
+    fn a_burn_immune_holder_takes_no_burn_damage_and_keeps_locked_stacks() {
+        crate::test_support::init_config();
+        let burn = |uid: i64| BuffInfo {
+            uid: Some(uid),
+            buff_id: Some(4150001),
+            from_uid: Some(10),
+            layer: Some(4),
+            ..Default::default()
+        };
+        let entity = |uid: i64, buffs: Vec<BuffInfo>| FightEntityInfo {
+            uid: Some(uid),
+            team_type: Some(1),
+            current_hp: Some(1_000),
+            attr: Some(sonettobuf::HeroAttribute {
+                hp: Some(1_000),
+                attack: Some(500),
+                ..Default::default()
+            }),
+            buffs,
+            ..Default::default()
+        };
+        let fight = Fight {
+            version: Some(7),
+            attacker: Some(FightTeam {
+                entitys: vec![
+                    entity(
+                        10,
+                        vec![
+                            burn(20),
+                            BuffInfo {
+                                uid: Some(21),
+                                buff_id: Some(30940001),
+                                from_uid: Some(10),
+                                ..Default::default()
+                            },
+                        ],
+                    ),
+                    entity(11, vec![burn(22)]),
+                ],
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let pool = TargetPool::from_fight(&fight);
+        let managers = BattleManagers::seeded(&fight);
+        let subscriber = |owner_uid: i64, buff_uid: i64| BuffActSubscriber {
+            owner_uid,
+            source_uid: 10,
+            buff_uid,
+            buff_id: 4150001,
+            team_type: 1,
+            owner_alive: true,
+            amount: 4,
+            key: SubscriptionKey::new(
+                EventKind::RoundEnd,
+                crate::engine::skill::rule::DefinitionKey::new(726, "Burn"),
+            ),
+            act_type: "Burn".to_owned(),
+            effect_time: 302,
+            effect_condition: 0,
+            args: vec![150, 102, 40],
+            raw: "726#150#102#40".to_owned(),
+        };
+        let mut determinism = RoundDeterminism::default();
+
+        assert!(
+            damage_rule_ops(&managers, &pool, &mut determinism, &subscriber(10, 20)).is_empty()
+        );
+        assert!(settlement_rule_op(&managers, &subscriber(10, 20)).is_none());
+
+        assert!(
+            !damage_rule_ops(&managers, &pool, &mut determinism, &subscriber(11, 22)).is_empty()
+        );
+        assert!(matches!(
+            settlement_rule_op(&managers, &subscriber(11, 22)),
+            Some(RuleOp::Command(BattleCommand::Buff(
+                BuffCommand::SetAmount(BuffSetAmount {
+                    amount: BuffAmount::Layer(2),
+                    ..
+                })
+            )))
         ));
     }
 
