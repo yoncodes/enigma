@@ -18,6 +18,7 @@ mod resync;
 mod rules;
 mod state;
 mod status;
+mod type_rule;
 mod uid;
 mod uid_policy;
 mod update;

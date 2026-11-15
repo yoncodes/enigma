@@ -458,7 +458,11 @@ impl BuffManager {
             let incoming_blocks_resident = definition.blocks_type(resident.effective_type_id())
                 || definition.blocks_status_id(resident.status_id);
             let resident_blocks_incoming = resident.blocks_type(definition.effective_type_id())
-                || resident.blocks_status_id(definition.status_id);
+                || resident.blocks_status_id(definition.status_id)
+                || super::type_rule::refuses(
+                    resident.effective_type_id(),
+                    definition.effective_type_id(),
+                );
             (active.owner_uid == target_uid
                 && !incoming_blocks_resident
                 && resident_blocks_incoming)
