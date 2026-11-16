@@ -807,17 +807,23 @@ impl BuffManager {
             .sum()
     }
 
+    pub(crate) fn id_or_type_layer(&self, uid: i64, id: i32) -> i32 {
+        self.id_or_type_layers(uid, id).sum()
+    }
+
     pub fn max_id_or_type_layer(&self, uid: i64, id: i32) -> i32 {
+        self.id_or_type_layers(uid, id).max().unwrap_or_default()
+    }
+
+    fn id_or_type_layers(&self, uid: i64, id: i32) -> impl Iterator<Item = i32> + '_ {
         self.buffs
             .iter()
-            .filter(|active| {
+            .filter(move |active| {
                 active.effective
                     && active.owner_uid == uid
                     && (active.type_id == id || active.buff.buff_id == Some(id))
             })
             .map(|active| active.buff.layer.unwrap_or_default())
-            .max()
-            .unwrap_or_default()
     }
 
     pub fn attribute_delta(&self, uid: i64, attr_id: AttrId) -> i32 {

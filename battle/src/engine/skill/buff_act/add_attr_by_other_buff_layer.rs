@@ -40,11 +40,11 @@ pub fn attribute_delta(
     else {
         return 0;
     };
-    let source_layer = buffs.max_id_or_type_layer(feature.source_uid, *other_buff_id);
+    let source_layer = buffs.id_or_type_layer(feature.source_uid, *other_buff_id);
     let layer = match scope {
         LayerScope::Source => source_layer,
         LayerScope::SourceOrOwner => {
-            source_layer.max(buffs.max_id_or_type_layer(feature.owner_uid, *other_buff_id))
+            source_layer.max(buffs.id_or_type_layer(feature.owner_uid, *other_buff_id))
         }
     }
     .min((*layer_limit).max(0));
@@ -129,13 +129,13 @@ mod tests {
 
     fn rhiannon_managers(
         rapport_buff_id: i32,
-        rapport_layer: i32,
-        debuff_id: i32,
+        rapport_layers: &[i32],
+        modifier_id: i32,
         target_rapport_layer: Option<i32>,
     ) -> BattleManagers {
         let mut target_buffs = vec![BuffInfo {
             uid: Some(-1),
-            buff_id: Some(debuff_id),
+            buff_id: Some(modifier_id),
             from_uid: Some(10),
             ..Default::default()
         }];
@@ -152,12 +152,17 @@ mod tests {
             attacker: Some(FightTeam {
                 entitys: vec![FightEntityInfo {
                     uid: Some(10),
-                    buffs: vec![BuffInfo {
-                        uid: Some(1),
-                        buff_id: Some(rapport_buff_id),
-                        layer: Some(rapport_layer),
-                        ..Default::default()
-                    }],
+                    buffs: rapport_layers
+                        .iter()
+                        .enumerate()
+                        .map(|(index, &layer)| BuffInfo {
+                            uid: Some(index as i64 + 1),
+                            buff_id: Some(rapport_buff_id),
+                            from_uid: Some(10),
+                            layer: Some(layer),
+                            ..Default::default()
+                        })
+                        .collect(),
                     ..Default::default()
                 }],
                 ..Default::default()
@@ -179,8 +184,14 @@ mod tests {
     fn rhiannon_critical_defense_reads_source_rapport_and_caps_layers() {
         crate::test_support::init_config();
 
-        for (rapport_layer, expected) in [(0, -150), (3, -240), (8, -300)] {
-            let managers = rhiannon_managers(31460003, rapport_layer, 31460212, None);
+        for (layers, expected) in [
+            (&[][..], -150),
+            (&[3][..], -240),
+            (&[2, 2][..], -270),
+            (&[3, 4][..], -300),
+            (&[8][..], -300),
+        ] {
+            let managers = rhiannon_managers(31460003, layers, 31460212, None);
             let feature = managers
                 .buff
                 .active_features(&managers.hp)
@@ -203,13 +214,16 @@ mod tests {
             );
         }
 
-        let managers = rhiannon_managers(31460004, 8, 31460214, None);
+        let managers = rhiannon_managers(31460004, &[8], 31460214, None);
         assert_eq!(
             managers.persistent_attribute_delta(-1, AttrId::CriticalDef),
             -410
         );
 
-        let managers = rhiannon_managers(31460003, 3, 31460212, Some(8));
+        let bonus = rhiannon_managers(31460003, &[3, 4], 31460222, None);
+        assert_eq!(bonus.persistent_attribute_delta(-1, AttrId::DmgBonus), 300);
+
+        let managers = rhiannon_managers(31460003, &[3], 31460212, Some(8));
         assert_eq!(
             managers.persistent_attribute_delta(-1, AttrId::CriticalDef),
             -240
