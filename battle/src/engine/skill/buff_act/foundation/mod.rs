@@ -46,7 +46,7 @@ pub fn mitigate(
     };
     let rate = if managers
         .buff
-        .has_active_buff_id_or_type(feature.source_uid, *enhanced_buff)
+        .has_active_buff_id(feature.source_uid, *enhanced_buff)
     {
         *enhanced_rate
     } else {
