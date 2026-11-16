@@ -1,6 +1,6 @@
 use crate::engine::{
     manager::{
-        buff::{BuffCommand, BuffConsume, BuffSelector, BuffSetState, DepletedBuff},
+        buff::{BuffCommand, BuffConsume, BuffSelector, DepletedBuff},
         card::{
             CardAddTemporary, CardAddUniversal, CardCommand, CardEnchantHand, CardEnergyChange,
             CardMarkTemporary, CardQueueUse, EnchantedType, HandCardRankUp, QueuedCardRankUp,
@@ -155,49 +155,13 @@ impl BehaviorHandler for Handler {
             ))]);
         }
         if behavior.spec.kind == BehaviorKind::BufferflyRecordSkill {
-            if !behavior.raw_args.is_empty()
-                || context.target.recorded_skill_id <= 0
-                || context.target.recorded_skill_source_uid == 0
-            {
-                return Some(Vec::new());
+            if !behavior.raw_args.is_empty() {
+                return None;
             }
-            let feature = context
-                .managers
-                .buff
-                .active_features(&context.managers.hp)
-                .into_iter()
-                .find(|feature| {
-                    feature.owner_uid == context.source_uid
-                        && crate::engine::skill::buff_act::is_kind(
-                            feature,
-                            crate::engine::skill::buff_act::registry::BuffActKind::ButterflyRecordSkill,
-                        )
-                });
-            let Some(feature) = feature.filter(|feature| {
-                allows_recorded_skill(
-                    context.managers.catalog(),
-                    feature,
-                    context.target.recorded_skill_id,
-                )
-            }) else {
-                return Some(Vec::new());
-            };
-            let count = *feature.values.get(1)?;
-            let act_id = feature.act_id()?;
-            return Some(vec![RuleOp::Command(BattleCommand::Buff(
-                BuffCommand::SetState(BuffSetState {
-                    origin: super::command_origin(behavior)?,
-                    target_uid: context.source_uid,
-                    buff_uid: feature.buff_uid,
-                    ex_info: None,
-                    params: None,
-                    act_info: Some(vec![sonettobuf::BuffActInfo {
-                        act_id: Some(act_id),
-                        param: vec![count, context.target.recorded_skill_id],
-                        str_param: Some(format!("{count},{}", context.target.recorded_skill_id)),
-                    }]),
-                }),
-            ))]);
+            return crate::engine::skill::buff_act::butterfly_record_skill::record(
+                context,
+                super::command_origin(behavior)?,
+            );
         }
         if behavior.spec.kind == BehaviorKind::AddCardRankByEffectTag {
             let effect_tags = behavior.arg_list(0)?;
@@ -727,21 +691,6 @@ pub(super) fn supports_queued_skill_card(behavior: &ParsedBehavior) -> bool {
 
 pub(super) fn supports_temporary_skill_card(behavior: &ParsedBehavior) -> bool {
     matches!(behavior.args.as_slice(), [skill_id] if *skill_id > 0)
-}
-
-fn allows_recorded_skill(
-    catalog: crate::catalog::BattleCatalog,
-    feature: &crate::engine::manager::buff::ActiveBuffFeature,
-    skill_id: i32,
-) -> bool {
-    if catalog.skill_is_big(skill_id) {
-        return false;
-    }
-    let effect_tag = catalog.skill_effect_tag(skill_id);
-    feature
-        .values
-        .get(3..)
-        .is_some_and(|allowed| allowed.contains(&effect_tag))
 }
 
 pub(super) fn supports_rank_by_effect_tag(behavior: &ParsedBehavior) -> bool {
@@ -1503,103 +1452,5 @@ mod tests {
             assert!(!supports_deck_top_rank_correct(&behavior));
             assert!(!crate::engine::skill::behavior::is_supported(&behavior));
         }
-    }
-
-    #[test]
-    fn butterfly_records_basic_incantations_by_effect_tag() {
-        crate::test_support::init_config();
-        let catalog = crate::catalog::BattleCatalog::new(crate::test_support::game_data());
-        let feature = crate::engine::manager::buff::ActiveBuffFeature {
-            owner_uid: 10,
-            source_uid: 10,
-            buff_uid: 20,
-            buff_id: 235002,
-            amount: 1,
-            team_type: 1,
-            owner_alive: true,
-            act_type: "ButterflyRecordSkill".to_owned(),
-            effect_time: 105,
-            effect_condition: 0,
-            raw: "1104#3#10010#1,2,3,4,5,6,9,13".to_owned(),
-            values: vec![1104, 3, 10010, 1, 2, 3, 4, 5, 6, 9, 13],
-        };
-
-        assert_eq!(
-            crate::engine::skill::effect::catalog::configured_skill_type(31390111),
-            0
-        );
-        assert_eq!(
-            crate::engine::skill::effect::catalog::configured_effect_tag(31390111),
-            3
-        );
-        assert!(allows_recorded_skill(catalog, &feature, 31390111));
-        assert!(allows_recorded_skill(catalog, &feature, 31390121));
-        assert!(!allows_recorded_skill(catalog, &feature, 31390131));
-    }
-
-    #[test]
-    fn butterfly_records_the_queue_validated_skill_after_hand_removal() {
-        use sonettobuf::{BuffInfo, Fight, FightEntityInfo, FightTeam};
-
-        crate::test_support::init_config();
-        let fight = Fight {
-            attacker: Some(FightTeam {
-                entitys: vec![FightEntityInfo {
-                    uid: Some(10),
-                    team_type: Some(1),
-                    current_hp: Some(100),
-                    buffs: vec![BuffInfo {
-                        uid: Some(20),
-                        buff_id: Some(235002),
-                        ..Default::default()
-                    }],
-                    ..Default::default()
-                }],
-                ..Default::default()
-            }),
-            ..Default::default()
-        };
-        let managers = crate::engine::manager::BattleManagers::seeded(&fight);
-        let pool = crate::engine::skill::target::TargetPool::from_fight(&fight);
-        let behavior = ParsedBehavior::from_spec(
-            crate::engine::skill::behavior::classify::BehaviorSpec::new(
-                60283,
-                "BufferflyRecordSkill",
-            ),
-            Vec::new(),
-            Vec::new(),
-        );
-        let mut determinism = crate::engine::runtime::determinism::RoundDeterminism::default();
-        let mut modifiers = crate::engine::skill::action::SkillModifiers::default();
-        let mut target = crate::engine::skill::target::TargetContext {
-            recorded_skill_id: 31390111,
-            recorded_skill_source_uid: 10,
-            ..Default::default()
-        };
-
-        let ops = Handler::emit_ops(
-            BehaviorOpContext {
-                source_uid: 10,
-                source_team: 1,
-                target_uid: 10,
-                active_skill_id: 31390131,
-                transfer_count: 1,
-                event: None,
-                managers: &managers,
-                pool: &pool,
-                determinism: &mut determinism,
-                modifiers: &mut modifiers,
-                target: &mut target,
-            },
-            &behavior,
-        )
-        .unwrap();
-
-        assert!(matches!(
-            ops.as_slice(),
-            [RuleOp::Command(BattleCommand::Buff(BuffCommand::SetState(state)))]
-                if state.act_info.as_ref().and_then(|info| info.first())
-                    .and_then(|info| info.str_param.as_deref()) == Some("3,31390111")
-        ));
     }
 }
