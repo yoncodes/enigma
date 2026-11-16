@@ -222,7 +222,9 @@ fn run_card_refill(
         } else {
             Vec::new()
         };
-        let ready_special = if stage == CardRefillStage::AfterActions {
+        let ready_special = if stage == CardRefillStage::AfterActions
+            || (stage == CardRefillStage::RoundStart && needs_normal_card)
+        {
             crate::engine::mechanic::card::CardMechanic
                 .special_team_cards(pool, managers, managers.card.hand())
                 .into_iter()

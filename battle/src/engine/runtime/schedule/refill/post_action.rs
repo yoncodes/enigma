@@ -32,6 +32,7 @@ pub fn target_hand_len(
         .refill_hand_len(managers, pool)
         .saturating_add(replacement_count(managers))
         .saturating_add(opening_deficit)
+        .max(base_hand_size)
 }
 
 #[allow(clippy::too_many_arguments)]
