@@ -415,36 +415,71 @@ fn follow_up_and_riposte_are_also_extra_actions() {
 }
 
 #[test]
-fn other_ally_extra_action_rejects_the_passive_owner() {
+fn completed_extra_action_uses_its_configured_actor_group() {
+    use crate::engine::skill::target::{TargetRequest, TargetResolver};
+
     init_config();
-    let condition = ParsedCondition {
-        opcode: 403212,
-        type_name: "SkillExtraType".into(),
-        kind: ParsedConditionKind::ExtraAction {
-            mode: crate::engine::skill::condition::extra::ExtraActionConditionMode::OtherAllyAction,
-            kinds: vec![1],
-        },
-        raw_args: vec!["1".into()],
+    let team = |uids: &[i64]| FightTeam {
+        entitys: uids
+            .iter()
+            .map(|uid| FightEntityInfo {
+                uid: Some(*uid),
+                current_hp: Some(100),
+                ..Default::default()
+            })
+            .collect(),
+        ..Default::default()
     };
-    let matches = |active_skill_source_uid, extra_skill_kind| {
-        conditions_match(
-            std::slice::from_ref(&condition),
-            10,
-            &[11],
-            None,
-            &TargetPool::default(),
-            TargetContext {
+    let pool = TargetPool::from_fight(&Fight {
+        attacker: Some(team(&[10, 11])),
+        defender: Some(team(&[20])),
+        ..Default::default()
+    });
+    for (opcode, name) in [(626212, "ActionSkillExtraType"), (403212, "SkillExtraType")] {
+        let condition = exact_condition(opcode, name, &["3"]);
+        let matches = |code, active_skill_source_uid, extra_skill_kind| {
+            let context = TargetContext {
                 active_skill_source_uid,
                 extra_skill_kind,
+                ..Default::default()
+            };
+            let targets = TargetResolver::resolve_with_context(
+                &TargetRequest { code, raw: vec![] },
+                1,
+                10,
+                &pool,
+                &mut Default::default(),
+                context,
+            );
+            condition_matches(&condition, 10, &targets, None, &pool, context)
+        };
+
+        assert!(matches(101, 10, 3), "{name}: owner on team");
+        assert!(matches(101, 11, 3), "{name}: ally on team");
+        assert!(!matches(101, 20, 3), "{name}: enemy");
+        assert!(!matches(101, 10, 2), "{name}: wrong kind");
+        assert!(!matches(101, 10, 0), "{name}: ordinary action");
+        assert!(!matches(102, 10, 3), "{name}: owner outside group");
+        assert!(matches(102, 11, 3), "{name}: other ally");
+    }
+
+    let legacy = exact_condition(403212, "SkillExtraType", &["1"]);
+    let matches = |active_skill_source_uid| {
+        conditions_match(
+            std::slice::from_ref(&legacy),
+            10,
+            &[10, 11],
+            None,
+            &pool,
+            TargetContext {
+                active_skill_source_uid,
+                extra_skill_kind: 1,
                 ..Default::default()
             },
         )
     };
-
-    assert!(!matches(10, 1));
-    assert!(!matches(11, 0));
-    assert!(matches(11, 1));
-    assert!(matches(11, 2));
+    assert!(!matches(10));
+    assert!(matches(11));
 }
 
 #[test]

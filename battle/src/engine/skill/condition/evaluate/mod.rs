@@ -1384,6 +1384,10 @@ fn condition_kind_matches(
                             && context.active_skill_source_uid != source_uid
                             && condition_targets.contains(&context.active_skill_source_uid)
                     }
+                    super::extra::ExtraActionConditionMode::TargetedActor => {
+                        context.active_skill_source_uid != 0
+                            && condition_targets.contains(&context.active_skill_source_uid)
+                    }
                     _ => true,
                 }
         }

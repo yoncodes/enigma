@@ -76,7 +76,7 @@ fn effect_entity_keeps_its_exact_actor_predicate() {
 }
 
 #[test]
-fn other_ally_extra_action_keeps_its_exact_route() {
+fn skill_extra_type_keeps_its_exact_route() {
     assert_eq!(
         parse(403212, "SkillExtraType", &["1".into()]),
         Some(ParsedConditionKind::ExtraAction {
@@ -92,14 +92,23 @@ fn other_ally_extra_action_keeps_its_exact_route() {
         })
     );
     assert!(find_key(403212, "UseSkill").is_none());
+    assert!(parse(403212, "SkillExtraType", &["3".into()]).is_some());
+    for invalid in [
+        vec![],
+        vec!["0".into()],
+        vec!["1,2".into()],
+        vec!["3".into(), "junk".into()],
+    ] {
+        assert!(parse(403212, "SkillExtraType", &invalid).is_none());
+    }
 }
 
 #[test]
-fn other_ally_action_kind_keeps_its_exact_route() {
+fn action_skill_extra_type_keeps_its_exact_route() {
     assert_eq!(
         parse(626212, "ActionSkillExtraType", &["1,2,3".into()]),
         Some(ParsedConditionKind::ExtraAction {
-            mode: super::super::super::extra::ExtraActionConditionMode::OtherAllyAction,
+            mode: super::super::super::extra::ExtraActionConditionMode::TargetedActor,
             kinds: vec![1, 2, 3],
         })
     );
@@ -111,6 +120,16 @@ fn other_ally_action_kind_keeps_its_exact_route() {
         })
     );
     assert!(find_key(626212, "SkillExtraType").is_none());
+    assert!(parse(626212, "ActionSkillExtraType", &["1,2".into()]).is_some());
+    assert!(parse(626212, "ActionSkillExtraType", &["3".into()]).is_some());
+    for invalid in [
+        vec![],
+        vec!["0".into()],
+        vec!["1".into()],
+        vec!["3".into(), "junk".into()],
+    ] {
+        assert!(parse(626212, "ActionSkillExtraType", &invalid).is_none());
+    }
 }
 
 #[test]
