@@ -883,7 +883,7 @@ fn target_owned_riposte_damage_bonus_applies_to_main_and_linked_damage() {
 }
 
 #[test]
-fn linked_attack_attributes_keep_temporary_critical_damage_source_owned() {
+fn linked_attack_inputs_keep_the_caster_bonus_source_owned() {
     let local = vec![
         (AttrId::DmgBonus, 200),
         (AttrId::CriticalRate, 1_000),
@@ -894,25 +894,35 @@ fn linked_attack_attributes_keep_temporary_critical_damage_source_owned() {
     let shared = vec![
         (AttrId::CriticalResistRate, 300),
         (AttrId::CriticalDmg, -700),
+        (AttrId::Penetration, 100),
     ];
 
     assert_eq!(
-        plan::LinkedDamagePlan::attack_attributes(&local, &shared, 10, 10),
-        vec![
-            (AttrId::DmgBonus, 200),
-            (AttrId::CriticalRate, 1_000),
-            (AttrId::CriticalDmg, 500),
-            (AttrId::CriticalResistRate, 300),
-            (AttrId::CriticalDmg, -700)
-        ]
+        plan::LinkedDamagePlan::attack_inputs(&local, &shared, 80, 300, 10, 10, 10),
+        (
+            vec![
+                (AttrId::DmgBonus, 200),
+                (AttrId::CriticalRate, 1_000),
+                (AttrId::CriticalDmg, 500),
+                (AttrId::CriticalResistRate, 300),
+                (AttrId::CriticalDmg, -700),
+                (AttrId::Penetration, 100),
+                (AttrId::Penetration, 300),
+            ],
+            80
+        )
     );
     assert_eq!(
-        plan::LinkedDamagePlan::attack_attributes(&local, &shared, 10, 11),
-        vec![
-            (AttrId::DmgBonus, 200),
-            (AttrId::CriticalResistRate, 300),
-            (AttrId::CriticalDmg, -700)
-        ]
+        plan::LinkedDamagePlan::attack_inputs(&local, &shared, 80, 300, 10, 10, 11),
+        (
+            vec![
+                (AttrId::DmgBonus, 200),
+                (AttrId::CriticalResistRate, 300),
+                (AttrId::CriticalDmg, -700),
+                (AttrId::Penetration, 100),
+            ],
+            0
+        )
     );
 }
 

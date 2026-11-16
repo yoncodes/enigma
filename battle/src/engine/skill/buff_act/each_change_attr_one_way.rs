@@ -382,6 +382,7 @@ mod tests {
                         skill_id: 1,
                         rate: 1_000,
                         rate_terms: Vec::new(),
+                        attack_bonus: 0,
                         attack_attributes: Vec::new(),
                         career_ratio_bonus: 0,
                         attack_career: None,

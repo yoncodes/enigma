@@ -202,6 +202,7 @@ fn converted_type_drives_defense_dodge_mitigation_consumption_and_critical_attri
                 skill_id: 2240001,
                 rate: 1_000,
                 rate_terms: Vec::new(),
+                attack_bonus: 0,
                 attack_attributes: Vec::new(),
                 career_ratio_bonus: 0,
                 attack_career: None,

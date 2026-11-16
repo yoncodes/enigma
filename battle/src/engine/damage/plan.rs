@@ -23,6 +23,7 @@ pub struct AttackPlan {
     pub rate: i32,
     pub rate_terms: Vec<DamageRateTerm>,
     pub attack_attributes: Vec<(AttrId, i32)>,
+    pub attack_bonus: i32,
     pub career_ratio_bonus: i32,
     pub attack_career: Option<i32>,
     pub additional_attack_career: Option<i32>,

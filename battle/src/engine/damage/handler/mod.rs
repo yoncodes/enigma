@@ -537,7 +537,7 @@ impl BehaviorHandler for Handler {
                 let mut source = context.pool.entity(source_uid)?.clone();
                 source.damage_type = crate::engine::skill::target::EntityDamageType::Reality;
                 let target = context.pool.entity(target_uid)?;
-                let mut attack_attributes = context.modifiers.attack_attributes.clone();
+                let mut attack_attributes = context.modifiers.primary_attack_attributes();
                 attack_attributes.extend(
                     crate::engine::skill::buff_act::incoming_target_attack_attributes(
                         context.managers,
@@ -570,6 +570,7 @@ impl BehaviorHandler for Handler {
                         skill_id: context.active_skill_id,
                         rate,
                         rate_terms: &[],
+                        attack_bonus: context.modifiers.caster_attack_bonus,
                         attack_attributes: &attack_attributes,
                         career_ratio_bonus: context.modifiers.career_ratio_bonus,
                         attack_career: context.modifiers.attack_career,

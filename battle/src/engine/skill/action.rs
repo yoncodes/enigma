@@ -410,6 +410,8 @@ pub struct PostImmediateTargetBuffModifier {
 pub struct SkillModifiers {
     pub rates: Vec<SkillRateModifier>,
     pub attack_attributes: Vec<(AttrId, i32)>,
+    pub caster_attack_bonus: i32,
+    pub caster_penetration: i32,
     pub shared_attack_attributes: Vec<(AttrId, i32)>,
     pub redirected_damage_targets: Vec<i64>,
     pub force_critical: bool,
@@ -425,9 +427,21 @@ pub struct SkillModifiers {
 }
 
 impl SkillModifiers {
+    pub(crate) fn primary_attack_attributes(&self) -> Vec<(AttrId, i32)> {
+        let mut attributes = self.attack_attributes.clone();
+        if self.caster_penetration != 0 {
+            attributes.push((AttrId::Penetration, self.caster_penetration));
+        }
+        attributes
+    }
+
     pub(crate) fn merge(&mut self, mut other: Self) {
         self.rates.append(&mut other.rates);
         self.attack_attributes.append(&mut other.attack_attributes);
+        self.caster_attack_bonus = self
+            .caster_attack_bonus
+            .saturating_add(other.caster_attack_bonus);
+        self.caster_penetration += other.caster_penetration;
         self.shared_attack_attributes
             .append(&mut other.shared_attack_attributes);
         for target_uid in other.redirected_damage_targets {

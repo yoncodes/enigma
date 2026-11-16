@@ -211,7 +211,7 @@ fn damage_rule_ops(
         target_context.active_skill_mode,
         target_context.extra_skill_kind,
     );
-    let mut attack_attributes = modifiers.attack_attributes.clone();
+    let mut attack_attributes = modifiers.primary_attack_attributes();
     let target_count_damage_bonus =
         crate::engine::skill::buff_act::attr_by_skill_target_count::owner_attribute_delta(
             context.managers,
@@ -330,6 +330,7 @@ fn damage_rule_ops(
             rate,
             rate_terms,
             attack_attributes,
+            attack_bonus: modifiers.caster_attack_bonus,
             career_ratio_bonus: modifiers.career_ratio_bonus,
             attack_career: modifiers.attack_career,
             additional_attack_career: modifiers.additional_attack_career,

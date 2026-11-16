@@ -533,13 +533,16 @@ fn additional_damage_main_target(
 }
 
 impl LinkedDamagePlan {
-    pub(super) fn attack_attributes(
+    pub(super) fn attack_inputs(
         local: &[(crate::engine::entity::attr::AttrId, i32)],
         shared: &[(crate::engine::entity::attr::AttrId, i32)],
-        action_source_uid: i64,
+        caster_attack_bonus: i32,
+        caster_penetration: i32,
+        action_owner_uid: i64,
+        caster_uid: i64,
         credited_source_uid: i64,
-    ) -> Vec<(crate::engine::entity::attr::AttrId, i32)> {
-        local
+    ) -> (Vec<(crate::engine::entity::attr::AttrId, i32)>, i32) {
+        let mut attributes: Vec<_> = local
             .iter()
             .copied()
             .filter(|(attr, _)| {
@@ -547,7 +550,7 @@ impl LinkedDamagePlan {
                     attr,
                     crate::engine::entity::attr::AttrId::CriticalRate
                         | crate::engine::entity::attr::AttrId::CriticalDmg
-                ) || credited_source_uid == action_source_uid
+                ) || credited_source_uid == action_owner_uid
             })
             .chain(shared.iter().copied())
             .filter(|(attr, _)| {
@@ -561,7 +564,19 @@ impl LinkedDamagePlan {
                         | crate::engine::entity::attr::AttrId::UltimateIncantationMightMultiplier
                 )
             })
-            .collect()
+            .collect();
+        let attack_bonus = if credited_source_uid == caster_uid {
+            if caster_penetration != 0 {
+                attributes.push((
+                    crate::engine::entity::attr::AttrId::Penetration,
+                    caster_penetration,
+                ));
+            }
+            caster_attack_bonus
+        } else {
+            0
+        };
+        (attributes, attack_bonus)
     }
 
     pub(super) fn activations(
@@ -830,7 +845,7 @@ pub(super) fn damage_ops(
                 &managers.buff,
                 &managers.hp,
             );
-        let mut attack_attributes = target_modifiers.attack_attributes.clone();
+        let mut attack_attributes = target_modifiers.primary_attack_attributes();
         if target_count_damage_bonus != 0 {
             attack_attributes.push((
                 crate::engine::entity::attr::AttrId::DmgBonus,
@@ -979,6 +994,7 @@ pub(super) fn damage_ops(
             rate: catalog.damage_rate(effect_skill_id),
             rate_terms,
             attack_attributes: attack_attributes.clone(),
+            attack_bonus: target_modifiers.caster_attack_bonus,
             career_ratio_bonus: target_modifiers.career_ratio_bonus,
             attack_career: target_modifiers.attack_career,
             additional_attack_career: target_modifiers.additional_attack_career,
@@ -1094,10 +1110,13 @@ pub(super) fn damage_ops(
                     )
                 })
             } else {
-                let mut additional_attributes = LinkedDamagePlan::attack_attributes(
+                let (mut additional_attributes, attack_bonus) = LinkedDamagePlan::attack_inputs(
                     &linked_attack_attributes,
                     &shared_linked_attack_attributes,
+                    linked_modifiers.caster_attack_bonus,
+                    linked_modifiers.caster_penetration,
                     action_owner_uid,
+                    source_uid,
                     additional.credited_source_uid,
                 );
                 let additional_damage_type =
@@ -1184,6 +1203,7 @@ pub(super) fn damage_ops(
                         // hit inherits the triggering attack's regular damage lane, but not its
                         // incantation/ultimate-specific might lane.
                         attack_attributes: &additional_attributes,
+                        attack_bonus,
                         career_ratio_bonus: linked_modifiers.career_ratio_bonus,
                         attack_career: linked_modifiers.attack_career,
                         additional_attack_career: linked_modifiers.additional_attack_career,
