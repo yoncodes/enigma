@@ -238,7 +238,11 @@ impl BehaviorHandler for Handler {
                     is_crit,
                     career_restraint: false,
                     reduce_hp: 0,
-                    effect_id: context.active_skill_id,
+                    effect_id: if behavior.spec.kind == BehaviorKind::OriginDamage {
+                        behavior.effect_id
+                    } else {
+                        context.active_skill_id
+                    },
                     skill_id: context.target.active_skill_id,
                     damage_from: HurtDamageFromType::SkillEffect,
                     buff_act_id: 0,

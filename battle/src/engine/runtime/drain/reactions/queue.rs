@@ -174,6 +174,14 @@ fn queued_reaction_pass(
                     .or_default()
                     .clone()
             });
+            let frame_target = if behavior.is_some_and(|behavior| {
+                behavior.condition_route_override
+                    == Some(ConditionRouteOverride::OwnerFrame(definition.key))
+            }) {
+                crate::engine::skill::condition::registry::ReactionFrameTarget::Owner
+            } else {
+                definition.reaction_frame_target
+            };
             Ok(QueuedOp {
                 op,
                 trigger: SkillOpTrigger::Event(event.clone()),
@@ -197,7 +205,7 @@ fn queued_reaction_pass(
                         pool,
                         event,
                         subscriber.owner_uid,
-                        definition.reaction_frame_target,
+                        frame_target,
                         current_skill_target,
                     )
                     .or(reentry_target),

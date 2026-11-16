@@ -46,14 +46,18 @@ fn origin_damage_routes_exact_max_hp_basis_through_the_behavior_registry() {
     };
     let pool = TargetPool::from_fight(&fight);
     let mut managers = BattleManagers::seeded(&fight);
-    let behavior = ParsedBehavior::from_spec(
+    let mut behavior = ParsedBehavior::from_spec(
         BehaviorSpec::new(30014, "OriginDamage"),
         vec![0, AttrId::Hp.id(), 200],
         Vec::new(),
     );
     let mut determinism = crate::engine::runtime::determinism::RoundDeterminism::default();
     let mut modifiers = crate::engine::skill::action::SkillModifiers::default();
-    let mut target = TargetContext::default();
+    behavior.effect_id = 23;
+    let mut target = TargetContext {
+        active_skill_id: 1,
+        ..Default::default()
+    };
 
     let ops = crate::engine::skill::behavior::rule_ops(
         BehaviorOpContext {
@@ -81,6 +85,11 @@ fn origin_damage_routes_exact_max_hp_basis_through_the_behavior_registry() {
         HpCommand::Damage(HpDamage {
             amount: 400,
             effect_kind: DamageEffectKind::Genesis,
+            hurt: HurtInfoData {
+                effect_id: 23,
+                skill_id: 1,
+                ..
+            },
             ..
         })
     ));

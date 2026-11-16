@@ -883,7 +883,7 @@ fn shell_necklace_cast_does_not_rebind_to_the_following_riposte() {
     }));
 }
 
-fn direct_use_passive(
+pub(super) fn direct_use_passive(
     skill_id: i32,
     condition: i32,
     condition_target: i32,
