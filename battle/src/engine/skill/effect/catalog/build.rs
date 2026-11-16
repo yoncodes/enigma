@@ -363,9 +363,14 @@ impl SkillEffectCatalog {
             slots,
         });
         self.insert_effect_tag(row.id, row.effect_tag);
-        if let Some(target) = parse_target(&row.logic_target)
-            .filter(|target| crate::engine::skill::target::is_mapped_target_code(target.code))
-        {
+        if let Some(target) = parse_target(&row.logic_target).filter(|target| {
+            crate::engine::skill::target::is_supported_target(
+                &crate::engine::skill::target::TargetRequest {
+                    code: target.code,
+                    raw: Vec::new(),
+                },
+            )
+        }) {
             self.insert_logic_target(row.id, target.code);
         } else {
             self.issues.entry(row.id).or_default().push(target_issue(

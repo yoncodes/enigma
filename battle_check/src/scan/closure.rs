@@ -188,7 +188,7 @@ fn scan_skill(
         for target in [&slot.target, &slot.condition_target] {
             let key = CapabilityKey::new("target", target.code, "Target");
             report.capability(key.clone());
-            if !is_mapped_target_code(target.code) {
+            if !is_supported_target(target) {
                 report.gap(key, "unsupported target");
                 report.error(format!(
                     "UnsupportedTarget path={slot_path} code={} raw={:?}",

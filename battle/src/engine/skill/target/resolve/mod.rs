@@ -55,6 +55,7 @@ enum TargetRule {
     Enemies,
     EnemyWithBuffAct,
     EnemiesWithMonsterLabel(i32),
+    AlliesWithBuff,
     AlliesWithStatus,
     AlliesWithoutStatus,
     SelectedTarget,
@@ -368,6 +369,15 @@ impl TargetResolver {
             TargetRule::PriorityEnemyWithMonsterLabel(label) => {
                 priority_enemy_with_monster_label(pool.enemies(source_uid, false), label, context)
             }
+            TargetRule::AlliesWithBuff => match request.raw.as_slice() {
+                &[buff_id] if buff_id > 0 => pool
+                    .main_allies(source_uid)
+                    .iter()
+                    .filter(|ally| ally.has_buff_id(buff_id))
+                    .map(|ally| ally.uid)
+                    .collect(),
+                _ => Vec::new(),
+            },
             TargetRule::AlliesWithStatus => allies_by_status(pool, source_uid, request, true),
             TargetRule::AlliesWithoutStatus => allies_by_status(pool, source_uid, request, false),
         };
@@ -566,6 +576,12 @@ pub fn is_mapped_target_code(code: i32) -> bool {
     target_rule(code).is_some()
 }
 
+pub fn is_supported_target(request: &TargetRequest) -> bool {
+    target_rule(request.code).is_some_and(|rule| {
+        rule != TargetRule::AlliesWithBuff || matches!(request.raw.as_slice(), [buff] if *buff > 0)
+    })
+}
+
 pub(crate) fn preserves_selected_frame_target(
     code: i32,
     source_uid: i64,
@@ -610,6 +626,7 @@ pub fn targets_enemy(code: i32) -> Option<bool> {
         | TargetRule::AlliesWithBattleTag
         | TargetRule::AlliesWithMonsterLabel(_)
         | TargetRule::AlliesWithCareer(_)
+        | TargetRule::AlliesWithBuff
         | TargetRule::AlliesWithStatus
         | TargetRule::AlliesWithoutStatus => Some(false),
         TargetRule::SingleOrRandomEnemy
@@ -653,6 +670,7 @@ fn target_rule(code: i32) -> Option<TargetRule> {
         101 => TargetRule::MainAllies,
         102 => TargetRule::OtherAllies,
         309 => TargetRule::BoundAlly,
+        310 => TargetRule::AlliesWithBuff,
         106 => TargetRule::RandomAllyByRng,
         131 => TargetRule::RandomOtherAllyByRng,
         107 | 109 => TargetRule::LowestHpPercentageAlly,

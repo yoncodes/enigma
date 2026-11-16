@@ -37,7 +37,7 @@ pub mod scan {
             condition::{ConditionTiming, ParsedCondition, ParsedConditionKind, parse_conditions},
             effect::{ParsedBehavior, ParsedSkillEffect, SkillEffectCatalog, SkillEffectSlot},
             rule::route::{ConditionDriver, ConditionRoute, RouteError},
-            target::{TargetRequest, is_mapped_target_code},
+            target::{TargetRequest, is_supported_target},
         },
     };
 

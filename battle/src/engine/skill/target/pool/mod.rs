@@ -702,6 +702,10 @@ impl TargetEntity {
         })
     }
 
+    pub(super) fn has_buff_id(&self, id: i32) -> bool {
+        self.buffs.iter().any(|buff| buff.id == id)
+    }
+
     pub(super) fn has_buff_type(&self, type_id: i32) -> bool {
         self.buffs
             .iter()

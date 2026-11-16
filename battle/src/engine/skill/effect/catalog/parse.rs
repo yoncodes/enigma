@@ -194,12 +194,12 @@ pub(super) fn parse_slot(db: &GameDB, raw: RawSlot<'_>) -> Result<SkillEffectSlo
     );
     let parsed_condition_target =
         parse_target(condition_target).ok_or_else(|| target_error(condition_target))?;
-    if !crate::engine::skill::target::is_mapped_target_code(parsed_condition_target.code) {
+    if !crate::engine::skill::target::is_supported_target(&parsed_condition_target) {
         return Err(target_error(condition_target));
     }
     let parsed_target = parse_target(target).ok_or_else(|| target_error(target))?;
     if parsed_target.code != 999
-        && !crate::engine::skill::target::is_mapped_target_code(parsed_target.code)
+        && !crate::engine::skill::target::is_supported_target(&parsed_target)
     {
         return Err(target_error(target));
     }
@@ -210,7 +210,7 @@ pub(super) fn parse_slot(db: &GameDB, raw: RawSlot<'_>) -> Result<SkillEffectSlo
         }
         target if target.code == 999 => {
             let target = parse_target(logic_target).ok_or_else(|| target_error(logic_target))?;
-            if !crate::engine::skill::target::is_mapped_target_code(target.code) {
+            if !crate::engine::skill::target::is_supported_target(&target) {
                 return Err(target_error(logic_target));
             }
             target
