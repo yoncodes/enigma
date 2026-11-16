@@ -452,6 +452,23 @@ impl SkillEffectCatalog {
         Ok(lanes)
     }
 
+    pub(crate) fn completion_lanes(
+        &self,
+        skill_id: i32,
+    ) -> Result<Vec<(usize, SubscriptionKey)>, crate::engine::skill::rule::route::RouteError> {
+        let mut lanes = Vec::new();
+        if let Some(effect) = self.get(skill_id) {
+            for (index, slot) in effect.slots.iter().enumerate() {
+                if crate::engine::skill::behavior::is_slot_supported(slot)
+                    && let Some(key) = slot.completion()?
+                {
+                    lanes.push((index, key));
+                }
+            }
+        }
+        Ok(lanes)
+    }
+
     pub fn issues(&self, skill_id: i32) -> &[RuleIssue] {
         let effect_id = self.aliases.get(&skill_id).copied().unwrap_or(skill_id);
         self.issues

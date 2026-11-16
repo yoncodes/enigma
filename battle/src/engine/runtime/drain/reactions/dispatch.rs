@@ -423,6 +423,15 @@ fn queued_selected_timing(
             multiplicity.action_path.map(|path| path.to_vec()),
         )
     });
+    let selected_completion = match (event, reentry_skill) {
+        (BattleEvent::AllyAction(action), Some((owner_uid, skill_id, _)))
+            if (owner_uid, skill_id) == (action.source_uid, action.skill_id)
+                && action.mode.completes_action() =>
+        {
+            Some((owner_uid, skill_id))
+        }
+        _ => None,
+    };
     let mut dispatched = dispatcher::dispatch_selected_event(
         pool,
         managers,
@@ -432,19 +441,14 @@ fn queued_selected_timing(
         dispatcher::DispatchSelection {
             owner_uids,
             publication: Some(publication),
+            completing_skill: selected_completion,
             lane,
             timing,
         },
         multiplicity,
     )?;
-    if !matches!(
-        lane,
-        Some(
-            ReactionLane::BuffActs
-                | ReactionLane::BuffActsBeforeSettlement
-                | ReactionLane::BuffActsAfterSettlement
-        )
-    ) && event.kind() == crate::engine::event::kind::EventKind::BuffRejected
+    if matches!(lane, None | Some(ReactionLane::Skills))
+        && event.kind() == crate::engine::event::kind::EventKind::BuffRejected
         && let Some((owner_uid, skill_id, _)) = reentry_skill
     {
         let current = dispatcher::dispatch_selected_skill_event(
@@ -465,7 +469,7 @@ fn queued_selected_timing(
             }
         }
     }
-    queued_reactions(
+    let mut queued = queued_reactions(
         pool,
         catalog,
         dispatched,
@@ -473,10 +477,41 @@ fn queued_selected_timing(
         parent_path,
         reuse_path,
         action_path,
-        reentry_skill,
+        reentry_skill.filter(|_| !matches!(event, BattleEvent::AllyAction(_))),
         current_skill_target,
         reaction_scope,
-    )
+    )?;
+    if matches!(lane, None | Some(ReactionLane::Skills))
+        && publication == PublicationPhase::BeforePublish
+        && timing == ReactionTiming::Immediate
+        && let Some(owner_skill) = selected_completion
+    {
+        let selected = dispatcher::dispatch_selected_skill_event(
+            pool,
+            managers,
+            catalog,
+            determinism,
+            event,
+            dispatcher::DispatchSkillSelection {
+                owner_skill,
+                publication,
+                timing,
+            },
+        )?;
+        queued.extend(queued_reactions(
+            pool,
+            catalog,
+            selected,
+            event,
+            parent_path,
+            reuse_path,
+            action_path,
+            reentry_skill,
+            current_skill_target,
+            None,
+        )?);
+    }
+    Ok(queued)
 }
 
 pub(in crate::engine::runtime::drain) fn dispatch_owner_reactions(

@@ -49,6 +49,7 @@ pub enum ReactionLane {
 pub(crate) struct DispatchSelection<'a> {
     pub owner_uids: Option<&'a [i64]>,
     pub publication: Option<crate::engine::event::subscription::PublicationPhase>,
+    pub completing_skill: Option<(i64, i32)>,
     pub lane: Option<ReactionLane>,
     pub timing: crate::engine::event::subscription::ReactionTiming,
 }
@@ -289,6 +290,22 @@ pub(crate) fn dispatch_selected_event(
     if let Some(publication) = selection.publication {
         retain_publication(&mut subscribers, publication);
     }
+    if let Some((owner_uid, skill_id)) = selection.completing_skill
+        && subscribers
+            .skills
+            .iter()
+            .any(|subscriber| (subscriber.owner_uid, subscriber.skill_id) == (owner_uid, skill_id))
+    {
+        let owned = catalog
+            .completion_lanes(skill_id)
+            .map_err(|route| SubscriberError::UncompiledRoute { skill_id, route })?;
+        subscribers.skills.retain(|subscriber| {
+            (subscriber.owner_uid, subscriber.skill_id) != (owner_uid, skill_id)
+                || !owned
+                    .iter()
+                    .any(|(index, _)| subscriber.slot_index == Some(*index))
+        });
+    }
     retain_reaction_lane(&mut subscribers, selection.lane);
     retain_reaction_timing(
         &mut subscribers,
@@ -375,7 +392,14 @@ pub(crate) fn dispatch_selected_skill_event(
         skills,
         buff_acts: Vec::new(),
     };
-    retain_publication(&mut subscribers, selection.publication);
+    if let BattleEvent::AllyAction(action) = event {
+        subscribers.skills.retain(|subscriber| {
+            (subscriber.owner_uid, subscriber.skill_id) == (action.source_uid, action.skill_id)
+                && action.mode.completes_action()
+        });
+    } else {
+        retain_publication(&mut subscribers, selection.publication);
+    }
     retain_reaction_timing(&mut subscribers, selection.timing, event, false);
     Ok(dispatch_subscribers(
         subscribers,

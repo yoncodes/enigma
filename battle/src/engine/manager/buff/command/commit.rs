@@ -10,9 +10,16 @@ impl BuffManager {
         let changes = match plan.action {
             BuffPlanAction::Grant(plan) => {
                 let markers = plan.refresh_initial_state_markers();
+                let burn = plan.burn_application();
+                let refresh = plan.layer_refresh.is_some();
                 let change = self.commit_grant_plan(hp, *plan);
-                BuffChanges::new(catalog, origin, change)
-                    .with_refresh_initial_state_markers(markers)
+                let mut changes = BuffChanges::new(catalog, origin, change)
+                    .with_refresh_initial_state_markers(markers);
+                if changes.change.rejected.is_none() && (refresh || changes.change.added.is_some())
+                {
+                    changes.burn_application = burn;
+                }
+                changes
             }
             BuffPlanAction::GrantInternalChild(plan) => {
                 let change = self.commit_grant_plan(hp, *plan);

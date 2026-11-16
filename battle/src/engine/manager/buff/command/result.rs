@@ -6,6 +6,7 @@ use super::*;
 #[derive(Debug, Clone, PartialEq)]
 pub struct BuffChanges {
     pub origin: CommandOrigin,
+    pub(crate) burn_application: Option<BurnApplication>,
     pub change: BuffReplaceResult,
     pub lifecycle_transitions: Vec<BuffLifecycleTransition>,
     pub pre_add_refreshes: usize,
@@ -163,6 +164,7 @@ impl BuffChanges {
         );
         Self {
             origin,
+            burn_application: None,
             change,
             lifecycle_transitions: Vec::new(),
             pre_add_refreshes: 0,

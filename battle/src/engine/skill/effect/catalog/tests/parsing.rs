@@ -7,6 +7,31 @@ fn parses_hash_cells_as_opcode_and_args() {
 }
 
 #[test]
+fn burn_return_keeps_exact_argument_arity() {
+    init_config();
+    let parse = |behavior| {
+        parse_slot(
+            config::configs::get(),
+            RawSlot {
+                behavior,
+                target: "103",
+                condition: "210",
+                condition_target: "103",
+                logic_target: "103",
+                limit: 0,
+                round_limit: 0,
+            },
+        )
+    };
+    for raw in ["60059#4150001", "60059#4150001#1"] {
+        assert!(parse(raw).is_ok(), "{raw}");
+    }
+    for raw in ["60059#4150001#", "60059#4150001##1", "60059#4150001#2"] {
+        assert_eq!(parse(raw), Err(SlotParseError::Behavior), "{raw}");
+    }
+}
+
+#[test]
 fn parses_target_code_and_raw_args() {
     let target = parse_target("103#7").unwrap();
 

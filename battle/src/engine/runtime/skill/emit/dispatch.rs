@@ -525,6 +525,14 @@ pub(in crate::engine::runtime) fn emit_ops(
                     })?;
             if if routed_phases.is_empty() {
                 definition.phase != phase
+                    || invocation.mode.completes_action()
+                        && slot
+                            .completion()
+                            .map_err(|route| SkillOpError::UncompiledRoute {
+                                skill_id: invocation.plan.skill_id,
+                                route,
+                            })?
+                            .is_some()
             } else {
                 !routed_phases.contains(&phase)
             } {
@@ -1113,7 +1121,7 @@ pub(in crate::engine::runtime) fn emit_ops(
             effect_skill_id,
             determinism,
             execution,
-        );
+        )?;
         let damage_buff_act_frame_owner = damage.buff_act_frame_owner;
         execution.pending_additional_damage = damage.additional_damage;
         execution.set_after_damage_ops(damage.after_damage, damage_buff_act_frame_owner.clone());

@@ -502,12 +502,15 @@ pub(crate) fn for_compiled_skill_event(
         catalog,
         &[event],
         &|skill_id| {
-            catalog.compiled_subscription_lanes(skill_id).map(|lanes| {
-                lanes
-                    .into_iter()
-                    .map(|(slot, key)| (Some(slot), key))
-                    .collect()
-            })
+            let lanes = if event == EventKind::AllyAction {
+                catalog.completion_lanes(skill_id)
+            } else {
+                catalog.compiled_subscription_lanes(skill_id)
+            }?;
+            Ok(lanes
+                .into_iter()
+                .map(|(slot, key)| (Some(slot), key))
+                .collect())
         },
         managers.entity.passive_source(owner_uid, skill_id),
     )?;

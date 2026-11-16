@@ -26,6 +26,7 @@ use crate::engine::{
     skill::rule::{CommandOrigin, DefinitionKey, RuleDomain},
 };
 
+mod buff_rejection;
 mod cards;
 mod counters;
 mod entities;

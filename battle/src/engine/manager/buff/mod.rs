@@ -24,7 +24,6 @@ mod uid_policy;
 mod update;
 
 pub use crate::engine::skill::rule::CommandOrigin;
-pub(crate) use command::BuffPlan;
 pub use command::{
     BuffAccumulateActValue, BuffAccumulateCappedActState, BuffAmount, BuffChangeDuration,
     BuffChanges, BuffChildUidReservation, BuffCommand, BuffCommandError, BuffConsume, BuffConvert,
@@ -34,6 +33,7 @@ pub use command::{
     BuffRoundStartDurationSync, BuffSelector, BuffSetAmount, BuffSetState, BuffSpecialCount,
     BuffStateSnapshotWire, DepletedBuff, RelatedBuffGrant, SourceRelativeBuffGrant,
 };
+pub(crate) use command::{BuffPlan, BurnApplication};
 use definition::BuffDefinition;
 pub use feature::BuffPassiveSkillLink;
 pub use feature::{ActiveBuffFeature, BuffHpMaxAddRate, BuffPowerMaxAdd};

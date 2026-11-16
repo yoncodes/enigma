@@ -77,6 +77,12 @@ pub enum CardPlayRole {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ConditionRouteOverride {
+    ActiveCompletion(DefinitionKey),
+    OwnerFrame(DefinitionKey),
+    ActiveBuffPresence {
+        key: DefinitionKey,
+        phase: SkillPhase,
+    },
     Trigger {
         key: DefinitionKey,
         event: EventKind,
@@ -727,7 +733,7 @@ behavior_definitions! {
     [60112] "AddTargetBuffByPoison" => super::buff::Handler, AddTargetBuffByPoison, AfterDamage, destination, super::buff::supports_add_target_buff_by_poison;
     [60142] "ConsumePowerAddBuff" => super::buff::Handler, ConsumePowerAddBuff, Immediate, destination, super::buff::supports_consume_power_add_buff;
     [60150] "ConsumePowerAddMultiBuff1" => super::buff::Handler, ConsumePowerAddMultiBuff1, Immediate, destination, super::buff::supports_consume_power_add_multi_buff;
-    [1] "AddBuff" => super::buff::Handler, AddBuff, Immediate, aggregated_modifier, arguments::at_least_one;
+    [1] "AddBuff" => super::buff::Handler, AddBuff, Immediate, aggregated_modifier, @route(ConditionRouteOverride::ActiveBuffPresence { key: DefinitionKey::new(19210, "HasBuffId"), phase: SkillPhase::AfterHit }), arguments::at_least_one;
     [2] "AddBuffPowerUse" => super::buff::Handler, AddBuffPowerUse, AfterDamage, aggregated_destination, arguments::at_least_one;
     [1210001] "AddBuff" => super::buff::Handler, AddBuff, AfterDamage, aggregated_destination;
     [1210002] "AddBuff" => super::buff::Handler, AddBuff, AfterDamage, aggregated_destination;
@@ -748,7 +754,7 @@ behavior_definitions! {
     [30009] "Disperse2" => super::buff::Handler, Disperse2, Immediate, destination, super::buff::supports_exact_buff_dispel;
     [90002] "Disperse2" => super::buff::Handler, DisperseTypeId, Immediate, destination, super::buff::supports_type_family_dispel;
     [60060] "DisperseExclude" => super::buff::Handler, DisperseExclude, Immediate, destination, super::buff::supports_excluded_dispel;
-    [60010] "DisperseForce2" => super::buff::Handler, DisperseForce2, Immediate, destination, super::buff::supports_disperse_force;
+    [60010] "DisperseForce2" => super::buff::Handler, DisperseForce2, Immediate, destination, @route(ConditionRouteOverride::ActiveCompletion(DefinitionKey::new(212, "None"))), super::buff::supports_disperse_force;
     [60252] "DisperseForce3" => super::buff::Handler, DisperseForce3, Immediate, destination, super::buff::supports_disperse_force3;
     [20003] "Purify1" => super::buff::Handler, Purify1, Immediate, destination, super::buff::supports_dispel;
     [20004] "Purify2" => super::buff::Handler, Purify2, Immediate, destination, super::buff::supports_exact_buff_dispel;
@@ -762,7 +768,7 @@ behavior_definitions! {
     [50032] "ReplaceBuff" => super::buff::Handler, ReplaceBuff, Immediate, destination, arguments::exactly_four;
     [60176] "ReplaceBuff2" => super::buff::Handler, ReplaceBuff2, Immediate, destination;
     [50035] "AddBuffBasedOnEnemyBurnUseCount" => super::buff::Handler, AddBuffBasedOnEnemyBurnUseCount, Immediate, destination, arguments::exactly_two;
-    [60059] "AddBurnBySkillAddBurnCount" => super::buff::Handler, AddBuffBySkillBuffAdditions, Immediate, destination, arguments::at_least_one;
+    [60059] "AddBurnBySkillAddBurnCount" => super::buff::Handler, AddBuffBySkillBuffAdditions, Immediate, destination, super::buff::supports_burn_return;
     [60068] "AddBuffByBuffLayer" => super::buff::Handler, AddBuffByBuffLayer, Immediate, destination, arguments::exactly_three;
     [60124] "AddBuffByBuffLayerRange" => super::buff::Handler, AddBuffByBuffLayerRange, Immediate, destination, super::buff::supports_layer_range;
     [60261] "PerBuffTypeIdAddRateBuffId" => super::buff::Handler, PerBuffTypeIdAddRateBuffId, Immediate, destination, super::buff::supports_team_layer;

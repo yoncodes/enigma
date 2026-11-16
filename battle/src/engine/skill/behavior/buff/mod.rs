@@ -42,6 +42,8 @@ pub(super) fn supports_random_pool(behavior: &ParsedBehavior) -> bool {
 mod layer;
 mod poison;
 mod replace;
+mod return_layers;
+pub(super) use return_layers::supports as supports_burn_return;
 
 pub(super) use super::{command_origin, registry};
 use application::*;
@@ -198,7 +200,7 @@ impl BehaviorHandler for Handler {
                 add_buff_from_enemy_burn_ops(&context, behavior)
             }
             BehaviorKind::AddBuffBySkillBuffAdditions => {
-                add_buff_from_skill_additions_ops(&context, behavior)
+                return_layers::rule_ops(&context, behavior)
             }
             BehaviorKind::AddBuffByBuffLayer => add_buff_by_layer_ops(&mut context, behavior),
             BehaviorKind::PerBuffTypeIdAddRateBuffId => {
@@ -333,32 +335,6 @@ fn references(behavior: &ParsedBehavior) -> RuleReferences {
         models: Vec::new(),
         summons: Vec::new(),
     }
-}
-
-fn add_buff_from_skill_additions_ops(
-    context: &BehaviorOpContext<'_>,
-    behavior: &ParsedBehavior,
-) -> Option<Vec<RuleOp>> {
-    let buff_id = behavior.arg(0)?;
-    let count = match context.event? {
-        crate::engine::event::payload::BattleEvent::SkillAction(action) => action
-            .buff_additions
-            .iter()
-            .find_map(|(added_id, amount)| (*added_id == buff_id).then_some(*amount))
-            .unwrap_or_default(),
-        _ => 0,
-    };
-    if count <= 0 {
-        return Some(Vec::new());
-    }
-    grant_command(
-        context.source_uid,
-        context.target_uid,
-        count as u32,
-        context.event,
-        behavior,
-    )
-    .map(|command| vec![RuleOp::Command(BattleCommand::Buff(command))])
 }
 
 fn reduce_channel_count_command(

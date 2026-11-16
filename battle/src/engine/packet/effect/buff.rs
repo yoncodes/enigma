@@ -1,4 +1,5 @@
 use super::*;
+use crate::engine::skill::rule::RuleDomain;
 
 impl EffectPacket {
     pub fn buff_add(change: &BuffApplyResult) -> Vec<ActEffect> {
@@ -13,7 +14,7 @@ impl EffectPacket {
         change: &crate::engine::manager::buff::BuffReplaceResult,
     ) -> Vec<ActEffect> {
         if let Some(rejected) = &change.rejected {
-            return std::iter::once(Self::buff_reject(rejected))
+            return std::iter::once(Self::buff_reject(rejected, 1))
                 .chain(change.removed.iter().flat_map(Self::buff_delete_effects))
                 .chain(change.refreshed.iter().map(Self::buff_update))
                 .collect();
@@ -88,7 +89,11 @@ impl EffectPacket {
         }
         let change = &changes.change;
         if let Some(rejected) = &change.rejected {
-            return std::iter::once(Self::buff_reject(rejected))
+            let config_effect = match changes.origin.domain {
+                RuleDomain::Behavior if !rejected.resisted => changes.origin.key.opcode,
+                _ => 1,
+            };
+            return std::iter::once(Self::buff_reject(rejected, config_effect))
                 .chain(change.removed.iter().flat_map(Self::buff_delete_effects))
                 .chain(change.refreshed.iter().map(Self::buff_update))
                 .collect();
@@ -258,7 +263,7 @@ impl EffectPacket {
         }
     }
 
-    pub fn buff_reject(change: &BuffRejectResult) -> ActEffect {
+    fn buff_reject(change: &BuffRejectResult, config_effect: i32) -> ActEffect {
         ActEffect {
             target_id: Some(change.target_uid),
             effect_type: Some(if change.resisted {
@@ -268,7 +273,7 @@ impl EffectPacket {
             }),
             effect_num: Some(change.blocker_buff_id),
             buff: Some(change.buff.clone()),
-            config_effect: Some(1),
+            config_effect: Some(config_effect),
             buff_act_id: Some(0),
             reserve_id: Some(0),
             team_type: Some(0),

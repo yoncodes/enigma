@@ -220,10 +220,13 @@ impl SkillEffectSlot {
     }
 
     pub fn active_phases(&self) -> Result<Vec<SkillPhase>, RouteError> {
+        let fallback = self.active_presence_phase();
         let mut phases = Vec::new();
         for subscription in self.compiled_subscriptions()? {
             let phase = match subscription.event {
-                crate::engine::event::kind::EventKind::SkillAction => subscription.phase,
+                crate::engine::event::kind::EventKind::SkillAction => {
+                    subscription.phase.or(fallback)
+                }
                 // The action-start trigger runs with the action's own Immediate slots.
                 crate::engine::event::kind::EventKind::SkillEffectStarted => subscription
                     .phase
@@ -237,6 +240,58 @@ impl SkillEffectSlot {
             }
         }
         Ok(phases)
+    }
+
+    fn active_presence_phase(&self) -> Option<SkillPhase> {
+        use crate::engine::skill::{
+            behavior::registry::{ConditionRouteOverride, find},
+            condition::{ParsedConditionKind, buff::BuffConditionMode},
+        };
+
+        let ConditionRouteOverride::ActiveBuffPresence { key, phase } =
+            find(&self.behavior)?.condition_route_override?
+        else {
+            return None;
+        };
+        let [condition] = self.conditions.as_slice() else {
+            return None;
+        };
+        (key.matches(condition.opcode, &condition.type_name)
+            && matches!(
+                condition.kind,
+                ParsedConditionKind::BuffId {
+                    mode: BuffConditionMode::Present,
+                    ..
+                }
+            ))
+        .then_some(phase)
+    }
+
+    pub(crate) fn completion(&self) -> Result<Option<SubscriptionKey>, RouteError> {
+        use crate::engine::skill::behavior::registry::{ConditionRouteOverride, find};
+
+        let Some(ConditionRouteOverride::ActiveCompletion(trigger)) =
+            find(&self.behavior).and_then(|definition| definition.condition_route_override)
+        else {
+            return Ok(None);
+        };
+        let [condition] = self.conditions.as_slice() else {
+            return Ok(None);
+        };
+        if !matches!(
+            condition.kind,
+            crate::engine::skill::condition::ParsedConditionKind::None(_)
+        ) || !condition.raw_args.is_empty()
+            || condition.opcode != trigger.opcode
+            || condition.type_name != trigger.type_name
+        {
+            return Ok(None);
+        }
+        let subscriptions = self.compiled_subscriptions()?;
+        let [key] = subscriptions.as_slice() else {
+            return Ok(None);
+        };
+        Ok((key.definition == trigger).then_some(*key))
     }
 
     pub fn setup_keys(
@@ -477,6 +532,40 @@ mod tests {
             )]
         );
         assert_eq!(slot.active_phases().unwrap(), vec![SkillPhase::AfterDamage]);
+    }
+
+    #[test]
+    fn active_buff_presence_routes_only_the_declared_grant() {
+        crate::test_support::init_config();
+        let slot = |raw, behavior: ParsedBehavior| {
+            let mut slot = SkillEffectSlot::new(behavior, TargetRequest::self_only());
+            slot.conditions =
+                crate::engine::skill::condition::parse_conditions(config::configs::get(), raw);
+            slot.compiled_route =
+                ConditionRoute::compile_for_behavior(&slot.conditions, &slot.behavior.spec);
+            slot
+        };
+        let grant = |raw| slot(raw, ParsedBehavior::new(1, "AddBuff", vec![302]));
+
+        let standalone = grant("19210#4150001");
+        assert_eq!(standalone.active_phases().unwrap(), [SkillPhase::AfterHit]);
+        assert_eq!(standalone.compiled_subscriptions().unwrap()[0].phase, None);
+        assert_eq!(
+            grant("19210#4150001&208").active_phases().unwrap(),
+            [SkillPhase::AfterDamage]
+        );
+        assert!(grant("19210#4150001!").active_phases().unwrap().is_empty());
+        let consume = slot(
+            "19210#4150001",
+            ParsedBehavior::new(50014, "ConsumeBuffByTypeId", vec![4150001, 1]),
+        );
+        assert!(consume.active_phases().unwrap().is_empty());
+        assert!(
+            crate::engine::skill::behavior::registry::find(&consume.behavior)
+                .unwrap()
+                .phase
+                == SkillPhase::AfterDamage
+        );
     }
 
     #[test]

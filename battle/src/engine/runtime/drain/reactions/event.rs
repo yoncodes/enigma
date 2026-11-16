@@ -405,6 +405,7 @@ fn dispatch_event_batch_inner(
                 event.kind(),
                 crate::engine::event::kind::EventKind::BuffAdded
                     | crate::engine::event::kind::EventKind::BuffRejected
+                    | crate::engine::event::kind::EventKind::AllyAction
             )
         });
         let mut multiplicity = crate::engine::event::dispatcher::DispatchMultiplicity {

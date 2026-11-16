@@ -855,9 +855,11 @@ pub enum BuffCommandError {
     UnsupportedOccurrences(u32),
 }
 
+mod burn;
 mod commit;
 mod plan;
 mod result;
+pub(crate) use burn::BurnApplication;
 
 pub use result::{BuffChanges, BuffLifecycleTransition, BuffRefreshWire, BuffStateSnapshotWire};
 

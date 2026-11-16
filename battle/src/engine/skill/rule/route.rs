@@ -106,19 +106,26 @@ impl ConditionRoute {
         );
         let driver = definition
             .and_then(|definition| definition.condition_route_override)
-            .map(|route| match route {
+            .and_then(|route| match route {
+                ConditionRouteOverride::ActiveCompletion(_)
+                | ConditionRouteOverride::OwnerFrame(_)
+                | ConditionRouteOverride::ActiveBuffPresence { .. } => None,
                 ConditionRouteOverride::Trigger { key, event, phase } => {
-                    ConditionDriver::Trigger(ConditionTrigger { key, event, phase })
+                    Some(ConditionDriver::Trigger(ConditionTrigger {
+                        key,
+                        event,
+                        phase,
+                    }))
                 }
                 ConditionRouteOverride::Setup {
                     key,
                     stage,
                     priority,
-                } => ConditionDriver::Setup(ConditionSetup {
+                } => Some(ConditionDriver::Setup(ConditionSetup {
                     key,
                     stage,
                     priority,
-                }),
+                })),
             });
         let predicate_only = driver.is_none()
             && definition.is_some_and(|definition| definition.attack_modifier_only)
