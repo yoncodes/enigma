@@ -788,7 +788,7 @@ fn dispel_plans_matching_statuses_and_preserves_behavior_provenance() {
     assert_eq!(changes.change.removed[0].config_effect, 30003);
     assert!(matches!(
         changes.events().as_slice(),
-        [BattleEvent::BuffRemoved(change)] if !change.duration_expired
+        [BattleEvent::BuffRemoved(change)] if !change.expiry.expired()
     ));
     assert!(manager.has_buff_id(-1, 530000112));
 }

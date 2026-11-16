@@ -138,9 +138,12 @@ impl HpManager {
                 let gain = self.add_shield(target_uid, value.amount, value.max);
                 changes.shield_granted = (gain.added != 0).then_some(gain);
             }
-            HpCommand::AdjustMax(value) => {
+            HpCommand::AdjustMax(value) | HpCommand::AdjustCapacity(value) => {
                 let before = self.get(target_uid);
-                let after = self.add_max_snapshot(target_uid, value.delta);
+                let after = match command {
+                    HpCommand::AdjustCapacity(_) => self.adjust_capacity(target_uid, value.delta),
+                    _ => self.add_max_snapshot(target_uid, value.delta),
+                };
                 if crate::engine::diagnostics::enabled(
                     crate::engine::diagnostics::TraceArea::Damage,
                 ) {
@@ -231,7 +234,7 @@ impl HpManager {
                 value.target_uid,
                 value.amount > 0 && value.max > 0,
             ),
-            HpCommand::AdjustMax(value) => (
+            HpCommand::AdjustMax(value) | HpCommand::AdjustCapacity(value) => (
                 value.origin,
                 value.source_uid,
                 value.target_uid,

@@ -46,7 +46,21 @@ pub struct BuffChangeEvent {
     pub after_amount: i32,
     pub act_id: i32,
     pub act_value: i32,
-    pub duration_expired: bool,
+    pub expiry: BuffExpiry,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum BuffExpiry {
+    #[default]
+    None,
+    Forced,
+    Duration(i32),
+}
+
+impl BuffExpiry {
+    pub fn expired(self) -> bool {
+        self != Self::None
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -588,7 +602,7 @@ mod tests {
             after_amount: 2,
             act_id: 0,
             act_value: 0,
-            duration_expired: false,
+            expiry: BuffExpiry::None,
         };
 
         assert_eq!(BattleEvent::BuffAdded(change).kind(), EventKind::BuffAdded);

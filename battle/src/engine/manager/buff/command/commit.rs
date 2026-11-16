@@ -1,4 +1,5 @@
 use super::*;
+use crate::engine::event::payload::BuffExpiry;
 
 impl BuffManager {
     /// Applies a validated `BuffPlan` exactly once without re-resolving its policies.
@@ -66,52 +67,47 @@ impl BuffManager {
             BuffPlanAction::Replace(plan) => {
                 BuffChanges::new(catalog, origin, self.commit_replace_plan(hp, *plan))
             }
-            BuffPlanAction::Remove(plan) => {
-                let duration_expired = plan.duration_expired;
-                let changes = BuffChanges::new(
-                    catalog,
-                    origin,
-                    BuffReplaceResult {
-                        removed: plan
-                            .buff_uids
-                            .into_iter()
-                            .flat_map(|buff_uid| {
-                                let Some(index) = self.buffs.iter().position(|active| {
-                                    active.owner_uid == plan.target_uid
-                                        && active.buff.uid == Some(buff_uid)
-                                }) else {
-                                    return Vec::new();
-                                };
-                                let mut removed = self.remove_at(index, plan.config_effect);
-                                for result in &mut removed {
-                                    match plan.snapshot {
-                                        RemoveSnapshot::Preserve => {}
-                                        RemoveSnapshot::ClearAmount => {
-                                            result.buff.layer = Some(0);
-                                        }
-                                        RemoveSnapshot::ClearCount => {
-                                            result.buff.count = Some(0);
-                                        }
-                                        RemoveSnapshot::ClearDuration => {
-                                            result.buff.duration = Some(0);
-                                        }
+            BuffPlanAction::Remove(plan) => BuffChanges::new(
+                catalog,
+                origin,
+                BuffReplaceResult {
+                    removed: plan
+                        .buff_uids
+                        .into_iter()
+                        .flat_map(|buff_uid| {
+                            let Some(index) = self.buffs.iter().position(|active| {
+                                active.owner_uid == plan.target_uid
+                                    && active.buff.uid == Some(buff_uid)
+                            }) else {
+                                return Vec::new();
+                            };
+                            let mut removed = self.remove_at(index, plan.config_effect);
+                            for result in &mut removed {
+                                if plan.duration_expired {
+                                    result.expiry = BuffExpiry::Forced;
+                                }
+                                match plan.snapshot {
+                                    RemoveSnapshot::Preserve => {}
+                                    RemoveSnapshot::ClearAmount => {
+                                        result.buff.layer = Some(0);
+                                    }
+                                    RemoveSnapshot::ClearCount => {
+                                        result.buff.count = Some(0);
+                                    }
+                                    RemoveSnapshot::ClearDuration => {
+                                        result.buff.duration = Some(0);
                                     }
                                 }
-                                removed
-                            })
-                            .collect(),
-                        added: None,
-                        refreshed: Vec::new(),
-                        rejected: None,
-                        fanout: Vec::new(),
-                    },
-                );
-                if duration_expired {
-                    changes.with_duration_expiry()
-                } else {
-                    changes
-                }
-            }
+                            }
+                            removed
+                        })
+                        .collect(),
+                    added: None,
+                    refreshed: Vec::new(),
+                    rejected: None,
+                    fanout: Vec::new(),
+                },
+            ),
             BuffPlanAction::SetAmount(plan) => BuffChanges::set_amount(
                 catalog,
                 origin,
@@ -334,7 +330,6 @@ impl BuffManager {
                         });
                 BuffChanges::without_refresh_echo(catalog, origin, change)
                     .with_lifecycle_transitions(transitions)
-                    .with_duration_expiry()
             }
             BuffPlanAction::SyncRoundStartDuration(plans) => BuffChanges::new(
                 catalog,

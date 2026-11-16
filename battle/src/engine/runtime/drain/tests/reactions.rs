@@ -8,4 +8,5 @@ mod modifiers_and_contracts;
 mod projection_order;
 mod shared_damage_and_state;
 mod shared_damage_counts;
+mod stat_share;
 mod target_and_conduit;

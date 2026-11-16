@@ -507,6 +507,12 @@ impl BuffManager {
             .sum()
     }
 
+    pub(crate) fn is_effective(&self, owner_uid: i64, buff_uid: i64) -> bool {
+        self.buffs.iter().any(|active| {
+            active.effective && active.owner_uid == owner_uid && active.buff.uid == Some(buff_uid)
+        })
+    }
+
     pub fn active_for(&self, uid: i64) -> impl Iterator<Item = &BuffInfo> {
         self.buffs
             .iter()

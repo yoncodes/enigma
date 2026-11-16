@@ -287,7 +287,7 @@ mod tests {
                 after_amount: 1,
                 act_id: 0,
                 act_value: 0,
-                duration_expired: false,
+                expiry: crate::engine::event::payload::BuffExpiry::None,
             }),
         );
 

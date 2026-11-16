@@ -718,36 +718,6 @@ pub fn run_round_end_final_settlement(
     Ok(result)
 }
 
-#[allow(clippy::too_many_arguments)]
-fn run_owned_duration_advances(
-    managers: &mut BattleManagers,
-    pool: &TargetPool,
-    catalog: &SkillEffectCatalog,
-    determinism: &mut RoundDeterminism,
-    context: TargetContext,
-    take_stage: i32,
-    targets: Vec<crate::engine::manager::buff::BuffDurationTarget>,
-) -> Result<DrainResult, DrainError> {
-    let operations = targets.into_iter().map(|target| {
-        let owner = FrameOwner::BuffDuration {
-            owner_uid: target.owner_uid,
-            buff_uid: target.buff_uid,
-            take_stage,
-        };
-        let advance = BuffDurationAdvance::new(
-            take_stage,
-            vec![target.owner_uid],
-            Some(vec![target.buff_uid]),
-        )
-        .expect("final settlement duration stage is registered");
-        (
-            owner,
-            RuleOp::Command(BattleCommand::Buff(BuffCommand::AdvanceDuration(advance))),
-        )
-    });
-    drain::run_owned_command_group(managers, pool, catalog, determinism, context, operations)
-}
-
 fn final_settlement_owner_order(pool: &TargetPool, managers: &BattleManagers) -> Vec<i64> {
     let mut owners = pool
         .entities()

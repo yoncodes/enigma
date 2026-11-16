@@ -46,9 +46,12 @@ pub(crate) fn definition_snapshot(
                 return None;
             };
             let attr = AttrId::from_raw(*raw_attr)?;
-            let value = (i64::from(managers.origin_attribute(source_uid, attr)) * i64::from(*rate)
-                / 1000)
-                .clamp(0, i64::from(*cap)) as i32;
+            let basis = match attr {
+                AttrId::Hp => managers.hp.max_without_capacity(source_uid),
+                _ => managers.origin_attribute(source_uid, attr),
+            };
+            let value =
+                (i64::from(basis) * i64::from(*rate) / 1000).clamp(0, i64::from(*cap)) as i32;
             Some(BuffActInfo {
                 act_id: Some(*act_id),
                 param: Vec::new(),

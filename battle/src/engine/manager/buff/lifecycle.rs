@@ -391,6 +391,40 @@ impl BuffManager {
             .collect()
     }
 
+    pub(crate) fn settling_expiries(
+        &self,
+        take_stage: i32,
+        fight_version: i32,
+    ) -> HashSet<(i64, i64)> {
+        use crate::engine::skill::buff_act::registry;
+        self.buffs
+            .iter()
+            .filter_map(|active| {
+                let definition = active.definition.as_ref()?;
+                if !active.effective
+                    || active.buff.duration != Some(1)
+                    || definition.take_stage != take_stage
+                {
+                    return None;
+                }
+                definition
+                    .features()
+                    .iter()
+                    .any(|feature| {
+                        feature.arguments_supported
+                            && registry::expiry_publication(
+                                &feature.values,
+                                &feature.act_type,
+                                take_stage,
+                                fight_version,
+                            )
+                            .is_some()
+                    })
+                    .then_some((active.owner_uid, active.buff.uid?))
+            })
+            .collect()
+    }
+
     pub(crate) fn plan_duration_advances_for_snapshot(
         &self,
         take_stage: i32,
@@ -475,11 +509,15 @@ impl BuffManager {
         let after = self.buffs[index].buff.clone();
         if duration == 1 {
             let mut removed = self.delete(plan.target_uid, plan.buff_uid);
-            if let Some(expired) = removed
-                .iter_mut()
-                .find(|removed| removed.buff.uid == Some(plan.buff_uid))
-            {
-                expired.buff.count = before.count;
+            use crate::engine::event::payload::BuffExpiry;
+            for removed in &mut removed {
+                if removed.target_uid == plan.target_uid && removed.buff.uid == Some(plan.buff_uid)
+                {
+                    removed.buff.count = before.count;
+                    removed.expiry = BuffExpiry::Duration(plan.take_stage);
+                } else {
+                    removed.expiry = BuffExpiry::Forced;
+                }
             }
             Some(BuffReplaceResult {
                 removed,

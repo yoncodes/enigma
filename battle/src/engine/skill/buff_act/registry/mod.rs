@@ -1,4 +1,5 @@
 use crate::engine::{
+    entity::attr::AttrId,
     event::{
         kind::EventKind,
         subscription::{PublicationPhase, ReactionTiming},
@@ -461,6 +462,29 @@ pub struct BuffActTransactionDefinition {
     pub events: &'static [EventKind],
     pub wire_marker_events: &'static [EventKind],
     pub handler: Option<TransactionHandler>,
+    pub expiry_publications: &'static [(i32, AttrId, PublicationPhase)],
+}
+
+pub(crate) fn expiry_publication(
+    feature: &[i32],
+    act_type: &str,
+    stage: i32,
+    fight_version: i32,
+) -> Option<PublicationPhase> {
+    use crate::engine::fight::versions::{RoundStartSetupLayout, round_start_setup_layout};
+    if round_start_setup_layout(fight_version) != Some(RoundStartSetupLayout::Version7) {
+        return None;
+    }
+    let [opcode, attribute, ..] = feature else {
+        return None;
+    };
+    find(*opcode, act_type)?
+        .transaction
+        .expiry_publications
+        .iter()
+        .find_map(|(take_stage, attr, phase)| {
+            (*take_stage == stage && attr.id() == *attribute).then_some(*phase)
+        })
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -611,6 +635,7 @@ macro_rules! buff_act_definitions {
             $(, scoped_runtime: $scoped_runtime:expr)?
             $(, fallible_scoped_runtime: $fallible_scoped_runtime:expr)?
             $(, transaction: $transaction:expr)?
+            $(, expiry_publications: [$(($expiry_stage:expr, $expiry_attr:ident) => $expiry_phase:ident),*])?
             $(, setup_handler: $setup_handler:expr)?
             $(, supports: $supports:expr)?
             $(, raw_supports: $raw_supports:expr)?
@@ -1235,6 +1260,7 @@ buff_act_definitions! {
         transactions: [EventKind::BuffAdded, EventKind::BuffRemoved],
         publication: BeforePublish, frame: CausingFrame,
         transaction: super::each_change_attr_one_way::transaction_rule_ops,
+        expiry_publications: [(super::effect_time::ROUND_START_DURATION, Hp) => AfterPublish],
         supports: super::each_change_attr_one_way::supports,
         wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(1131, "EachChangeAttrOneWay"), &[EffectType::None as i32]).with_one_way_attr_max_hp());
     (1162, "EachChangeAttrOneWayAfterAdd") => EachChangeAttrOneWayAfterAdd,

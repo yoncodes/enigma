@@ -305,6 +305,7 @@ impl BuffManager {
             delete_reason: None,
             depleted: false,
             fixed_max_hp_delta,
+            expiry: crate::engine::event::payload::BuffExpiry::None,
         });
         removed
     }

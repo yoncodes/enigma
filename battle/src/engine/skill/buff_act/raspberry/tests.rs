@@ -356,7 +356,7 @@ fn primary_team_raspberry_removes_temporary_capacity_with_the_feast() {
             after_amount: 0,
             act_id: 1041,
             act_value: 525,
-            duration_expired: false,
+            expiry: crate::engine::event::payload::BuffExpiry::None,
         }),
     )
     .unwrap();

@@ -239,6 +239,7 @@ pub enum HpCommand {
     SetCurrent(CurrentHpSet),
     GrantShield(ShieldGrant),
     AdjustMax(MaxHpAdjust),
+    AdjustCapacity(MaxHpAdjust),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -486,6 +487,7 @@ pub enum HpCommandError {
 #[derive(Debug, Clone, Default)]
 pub struct HpManager {
     states: HashMap<i64, HpState>,
+    stat_max: HashMap<i64, i32>,
     revisions: HashMap<i64, u64>,
     action_start: HashMap<(i64, i32), HpState>,
     shields: HashMap<i64, i32>,

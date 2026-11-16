@@ -16,7 +16,6 @@ pub struct BuffChanges {
     pub refresh_initial_state_markers: Vec<BuffActInfoMarkerResult>,
     pub shield_removed: Vec<BuffShieldRemoveResult>,
     pub act_info_markers: Vec<BuffActInfoMarkerResult>,
-    duration_expired: bool,
     wire_visible: bool,
 }
 
@@ -174,7 +173,6 @@ impl BuffChanges {
             refresh_initial_state_markers: Vec::new(),
             shield_removed: Vec::new(),
             act_info_markers: Vec::new(),
-            duration_expired: false,
             wire_visible: true,
         }
     }
@@ -189,11 +187,6 @@ impl BuffChanges {
 
     pub(super) fn with_pre_add_refreshes(mut self, count: usize) -> Self {
         self.pre_add_refreshes = count.min(self.change.refreshed.len());
-        self
-    }
-
-    pub(super) fn with_duration_expiry(mut self) -> Self {
-        self.duration_expired = true;
         self
     }
 
@@ -278,13 +271,6 @@ impl BuffChanges {
                 })
                 .collect()
         };
-        if self.duration_expired {
-            for event in &mut events {
-                if let BattleEvent::BuffRemoved(change) = event {
-                    change.duration_expired = true;
-                }
-            }
-        }
         for fanout in &self.fanout {
             for added in &fanout.added {
                 events.extend(

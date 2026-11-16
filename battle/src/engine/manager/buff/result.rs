@@ -1,7 +1,9 @@
 use sonettobuf::BuffInfo;
 
 use crate::engine::{
-    event::payload::{BattleEvent, BuffChangeEvent, BuffRejectedEvent, BuffStateChangeEvent},
+    event::payload::{
+        BattleEvent, BuffChangeEvent, BuffExpiry, BuffRejectedEvent, BuffStateChangeEvent,
+    },
     skill::rule::DefinitionKey,
 };
 
@@ -91,6 +93,7 @@ pub struct BuffRemoveResult {
     pub delete_reason: Option<BuffDeleteReason>,
     pub depleted: bool,
     pub fixed_max_hp_delta: i32,
+    pub expiry: BuffExpiry,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -144,7 +147,7 @@ impl BuffReplaceResult {
                     .and_then(|info| info.param.first())
                     .copied()
                     .unwrap_or_default(),
-                duration_expired: false,
+                expiry: BuffExpiry::None,
             }));
             for fanout in &applied.fanout {
                 push_added(events, fanout);
@@ -176,7 +179,7 @@ impl BuffReplaceResult {
                             .and_then(|info| info.param.first())
                             .copied()
                             .unwrap_or_default(),
-                        duration_expired: false,
+                        expiry: BuffExpiry::None,
                     },
                 ))
             }));
@@ -226,7 +229,7 @@ impl BuffReplaceResult {
                             .copied()
                             .unwrap_or_default()
                     },
-                    duration_expired: false,
+                    expiry: removed.expiry,
                 })
             })
             .collect::<Vec<_>>();

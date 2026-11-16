@@ -179,7 +179,7 @@ mod tests {
             after_amount: 1,
             act_id: 0,
             act_value: 0,
-            duration_expired: false,
+            expiry: crate::engine::event::payload::BuffExpiry::None,
         });
 
         assert!(transaction_rule_ops(&managers, &event).is_empty());
@@ -198,7 +198,7 @@ mod tests {
             after_amount: 2,
             act_id: 0,
             act_value: 0,
-            duration_expired: false,
+            expiry: crate::engine::event::payload::BuffExpiry::None,
         });
 
         assert!(transaction_rule_ops(&managers, &event).is_empty());

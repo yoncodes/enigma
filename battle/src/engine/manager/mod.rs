@@ -1727,6 +1727,19 @@ impl BattleManagers {
         managers.eureka.seed(fight);
         managers.buff.set_catalog(catalog);
         managers.buff.seed(fight);
+        for uid in entities(fight)
+            .chain(
+                fight
+                    .attacker
+                    .iter()
+                    .chain(fight.defender.iter())
+                    .filter_map(|team| team.assist_boss.as_ref()),
+            )
+            .filter_map(|entity| entity.uid)
+        {
+            let capacity = crate::engine::skill::buff_act::raspberry::cloak_hp(&managers, uid);
+            managers.hp.seed_capacity(uid, capacity);
+        }
         crate::engine::skill::buff_act::each_change_attr::seed(&mut managers);
         managers.card.set_catalog(catalog);
         managers.card.seed(fight);

@@ -254,7 +254,7 @@ fn enemy_burn_conversion_uses_the_settlement_transaction() {
             after_amount: 5,
             act_id: 0,
             act_value: 0,
-            duration_expired: false,
+            expiry: crate::engine::event::payload::BuffExpiry::None,
         },
     ]);
     let behavior = ParsedBehavior::from_spec(

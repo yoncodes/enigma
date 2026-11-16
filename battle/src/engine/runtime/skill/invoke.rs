@@ -141,7 +141,7 @@ pub(super) fn apply_event_context(
             context.runtime_target_uid = change.target_uid;
             context.removed_buff_id = change.buff_id;
             context.removed_buff_target_uid = change.target_uid;
-            context.removed_buff_duration_expired = change.duration_expired;
+            context.removed_buff_duration_expired = change.expiry.expired();
         }
         BattleEvent::BuffRejected(change) => {
             context.runtime_target_uid = change.target_uid;

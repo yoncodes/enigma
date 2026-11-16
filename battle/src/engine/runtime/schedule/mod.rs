@@ -96,6 +96,7 @@ const ROUND_START_VERSION6_SYNC_SETUP: &[(SetupStage, i32)] =
 
 mod ai;
 mod card_rewards;
+mod duration;
 mod player;
 mod refill;
 mod resolution;
@@ -104,6 +105,7 @@ mod sovereign;
 mod start;
 
 use ai::run_ai_preparation;
+use duration::*;
 pub(crate) use player::card_skill_is_blocked;
 pub use player::*;
 use player::{

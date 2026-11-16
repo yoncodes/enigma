@@ -43,7 +43,7 @@ fn attacker_side_buffs_can_be_granted_and_removed() {
     assert!(!manager.has_active_buff_id(side_uid, 109320001));
     assert!(matches!(
         changes.events().as_slice(),
-        [BattleEvent::BuffRemoved(change)] if !change.duration_expired
+        [BattleEvent::BuffRemoved(change)] if !change.expiry.expired()
     ));
 }
 
@@ -75,7 +75,7 @@ fn forced_expiry_publishes_an_expired_removal_with_its_behavior_identity() {
     assert!(matches!(
         changes.events().as_slice(),
         [BattleEvent::BuffRemoved(change)]
-            if change.buff_id == 109320001 && change.duration_expired
+            if change.buff_id == 109320001 && change.expiry.expired()
     ));
 }
 
