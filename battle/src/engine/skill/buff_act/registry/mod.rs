@@ -1165,7 +1165,9 @@ buff_act_definitions! {
     (772, "SlaveHalo") => SlaveHalo, effect_time_subscription: false, state_consumer: true, wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(772, "SlaveHalo"), &[EffectType::Slavehalo as i32]));
     (781, "MockTaunt") => MockTaunt, effect_time_subscription: false, supports: |_| true, state_consumer: true, wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(781, "MockTaunt"), &[EffectType::Mocktaunt as i32]));
     (790, "ModifyAttrByBuffLayer") => ModifyAttrByBuffLayer, effect_time_subscription: false,
-        supports: super::modify_attr_by_buff_layer::supports, state_consumer: true;
+        stat_read: OnGrant,
+        supports: super::modify_attr_by_buff_layer::supports, state_consumer: true,
+        wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(790, "ModifyAttrByBuffLayer"), &[EffectType::None as i32]));
     (791, "ShieldByBuffLayer") => ShieldByBuffLayer, effect_time_subscription: false,
         supports: super::shield::supports_by_buff_layer, state_consumer: true,
         wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(791, "ShieldByBuffLayer"), &[EffectType::Shield as i32]));

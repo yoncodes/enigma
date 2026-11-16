@@ -78,15 +78,19 @@ impl BuffManager {
             })
     }
 
-    pub fn act_common_value(&self, owner_uid: i64, buff_uid: i64, act_id: i32) -> Option<i32> {
-        let raw = self
-            .buffs
+    pub(crate) fn act_common_params(&self, owner_uid: i64, buff_uid: i64) -> Option<&str> {
+        self.buffs
             .iter()
             .find(|active| active.owner_uid == owner_uid && active.buff.uid == Some(buff_uid))?
             .buff
             .act_common_params
-            .as_deref()?;
-        let (actual_act_id, value) = raw.split_once('#')?;
+            .as_deref()
+    }
+
+    pub fn act_common_value(&self, owner_uid: i64, buff_uid: i64, act_id: i32) -> Option<i32> {
+        let (actual_act_id, value) = self
+            .act_common_params(owner_uid, buff_uid)?
+            .split_once('#')?;
         (actual_act_id.parse::<i32>().ok()? == act_id)
             .then(|| value.parse::<i32>().ok())
             .flatten()
