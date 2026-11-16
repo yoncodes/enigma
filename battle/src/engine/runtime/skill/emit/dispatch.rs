@@ -1181,10 +1181,10 @@ pub(in crate::engine::runtime) fn emit_ops(
         }
     }
     if active_phase == Some(crate::engine::skill::action::SkillPhase::AdditionalDamage) {
-        let additional_damage_commands = execution.take_live_additional_damage(managers);
+        let additional_damage_commands = execution.take_additional_damage();
         if !additional_damage_commands.is_empty() {
             outputs.push(SkillEmissionOp {
-                op: RuleOp::Command(BattleCommand::HpBatch(additional_damage_commands)),
+                op: RuleOp::Command(BattleCommand::LinkedDamage(additional_damage_commands)),
                 owner: behavior::registry::OutputOwner::Skill,
                 consequence: ConsequencePolicy::Default,
                 frame_owner: None,

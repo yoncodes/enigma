@@ -317,19 +317,34 @@ impl SkillExecution {
         additions: impl IntoIterator<Item = (i32, i32)>,
     ) {
         for (buff_id, amount) in additions {
-            if amount <= 0 {
-                continue;
-            }
-            if let Some((_, total)) = self
-                .buff_additions
-                .iter_mut()
-                .find(|(active_id, _)| *active_id == buff_id)
-            {
-                *total = total.saturating_add(amount);
-            } else {
-                self.buff_additions.push((buff_id, amount));
+            if amount > 0 {
+                let total = self.buff_addition(buff_id);
+                total.stored = total.stored.saturating_add(amount);
             }
         }
+    }
+
+    pub(in crate::engine::runtime) fn record_burn(
+        &mut self,
+        application: crate::engine::manager::buff::BurnApplication,
+    ) {
+        let total = self.buff_addition(application.buff_id);
+        total.admitted = total.admitted.saturating_add(application.layers);
+    }
+
+    fn buff_addition(&mut self, buff_id: i32) -> &mut BuffAddition {
+        let index = self
+            .buff_additions
+            .iter()
+            .position(|total| total.buff_id == buff_id)
+            .unwrap_or_else(|| {
+                self.buff_additions.push(BuffAddition {
+                    buff_id,
+                    ..Default::default()
+                });
+                self.buff_additions.len() - 1
+            });
+        &mut self.buff_additions[index]
     }
 
     pub(in crate::engine::runtime) fn sync_lifecycle_event(
@@ -347,14 +362,8 @@ impl SkillExecution {
         event.buff_additions.clone_from(&self.buff_additions);
     }
 
-    pub(super) fn take_live_additional_damage(
-        &mut self,
-        managers: &BattleManagers,
-    ) -> Vec<HpCommand> {
+    pub(super) fn take_additional_damage(&mut self) -> Vec<LinkedHit> {
         std::mem::take(&mut self.pending_additional_damage)
-            .into_iter()
-            .filter(|command| managers.hp.current(hp_command_target(*command)) > 0)
-            .collect()
     }
 
     pub(super) fn set_after_damage_ops(
@@ -443,23 +452,11 @@ pub(super) fn snapshot_action_start_damage_state(
     Ok(())
 }
 
-fn hp_command_target(command: HpCommand) -> i64 {
-    match command {
-        HpCommand::Damage(value) | HpCommand::SettleAccumulatedDamage(value) => value.target_uid,
-        HpCommand::Lose(value) => value.target_uid,
-        HpCommand::Kill(value) => value.target_uid,
-        HpCommand::Heal(value) => value.target_uid,
-        HpCommand::SetCurrent(value) => value.target_uid,
-        HpCommand::GrantShield(value) => value.target_uid,
-        HpCommand::AdjustMax(value) => value.target_uid,
-    }
-}
-
 pub(super) struct DamageOps {
     pub(super) buff_act_frame_owner: Option<crate::engine::runtime::record::FrameOwner>,
     pub(super) before_damage: Vec<RuleOp>,
     pub(super) damage: Vec<HpCommand>,
-    pub(super) additional_damage: Vec<HpCommand>,
+    pub(super) additional_damage: Vec<LinkedHit>,
     pub(super) after_damage: Vec<RuleOp>,
     pub(super) main_target: Option<i64>,
     pub(super) avoided: Vec<ActiveBuffFeature>,
@@ -657,9 +654,16 @@ pub(super) fn damage_ops(
     effect_skill_id: i32,
     determinism: &mut RoundDeterminism,
     execution: &mut SkillExecution,
-) -> DamageOps {
+) -> Result<DamageOps, super::SkillOpError> {
     let source_uid = invocation.plan.source_uid;
     let skill_id = invocation.plan.skill_id;
+    let riposte_damage = RiposteDamage::for_action(
+        managers,
+        pool,
+        source_uid,
+        execution.context.extra_skill_kind,
+    )
+    .map_err(super::SkillOpError::FoundationCounter)?;
     let skill_model_id = managers.catalog().skill_hero_id(skill_id);
     let action_owner_uid = pool
         .allies(source_uid)
@@ -1011,6 +1015,23 @@ pub(super) fn damage_ops(
             if let HpCommand::Damage(damage) = &mut resolved.command {
                 damage.ignore_riposte = target_modifiers.ignore_riposte;
                 resolved_main_damage = Some((*damage, resolved.fraction));
+                if let Some(command) = riposte_damage.as_ref().and_then(|producer| {
+                    producer.hit(
+                        *damage,
+                        skill_id,
+                        &shared_linked_attack_attributes,
+                        managers,
+                        damage_runtime,
+                        determinism,
+                    )
+                }) {
+                    additional_damage_commands.push(LinkedHit {
+                        target_uid,
+                        commands: crate::engine::skill::buff_act::absorb_hurt::route(
+                            managers, pool, command,
+                        ),
+                    });
+                }
             }
             crit_count += i32::from(is_crit);
             damage_commands.extend(crate::engine::skill::buff_act::absorb_hurt::route(
@@ -1195,10 +1216,12 @@ pub(super) fn damage_ops(
                 if let HpCommand::Damage(damage) = &mut command {
                     damage.ignore_riposte = target_modifiers.ignore_riposte;
                 }
-                additional_damage_commands.push((
+                additional_damage_commands.push(LinkedHit {
                     target_uid,
-                    crate::engine::skill::buff_act::absorb_hurt::route(managers, pool, command),
-                ));
+                    commands: crate::engine::skill::buff_act::absorb_hurt::route(
+                        managers, pool, command,
+                    ),
+                });
             }
         }
     }
@@ -1206,9 +1229,9 @@ pub(super) fn damage_ops(
     for target_uid in additional_target_order {
         while let Some(index) = additional_damage_commands
             .iter()
-            .position(|(uid, _)| *uid == target_uid)
+            .position(|hit| hit.target_uid == target_uid)
         {
-            ordered_additional_damage.extend(additional_damage_commands.remove(index).1);
+            ordered_additional_damage.push(additional_damage_commands.remove(index));
         }
     }
     if execution.planned_crits.is_none() {
@@ -1218,7 +1241,7 @@ pub(super) fn damage_ops(
         .as_ref()
         .map(|rend| rend.after_damage_rule_ops())
         .unwrap_or_default();
-    DamageOps {
+    Ok(DamageOps {
         buff_act_frame_owner: rend.as_ref().and_then(|rend| rend.frame_owner()),
         before_damage: rend
             .as_ref()
@@ -1229,7 +1252,7 @@ pub(super) fn damage_ops(
         after_damage,
         main_target,
         avoided,
-    }
+    })
 }
 
 #[allow(clippy::too_many_arguments)]

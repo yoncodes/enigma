@@ -89,6 +89,12 @@ pub enum DamageEffectKind {
     Avoided,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LinkedHit {
+    pub(crate) target_uid: i64,
+    pub(crate) commands: Vec<HpCommand>,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct HpDamage {
     pub origin: CommandOrigin,

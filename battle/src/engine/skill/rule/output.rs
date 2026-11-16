@@ -14,7 +14,7 @@ use crate::engine::{
         fight_progress::{FightProgressCommand, FightProgressValueCommand},
         gauge::{GaugeBatchId, GaugeCommand},
         hedone_counter::{HedoneCounterClearCommand, HedoneCounterCommand, HedoneDamageCommand},
-        hp::HpCommand,
+        hp::{HpCommand, LinkedHit},
         indicator::{IndicatorClearCommand, IndicatorCommand},
         injury::InjuryCommand,
         revive::ReviveCommand,
@@ -66,6 +66,7 @@ pub enum BattleCommand {
     BuffBatch(Vec<BuffCommand>),
     Hp(HpCommand),
     HpBatch(Vec<HpCommand>),
+    LinkedDamage(Vec<LinkedHit>),
     ImmediateReservePromotion(
         crate::engine::manager::battle_rule::ImmediateReservePromotionCommand,
     ),

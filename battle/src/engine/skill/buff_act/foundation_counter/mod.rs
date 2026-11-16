@@ -11,6 +11,8 @@ use crate::engine::{
 
 use super::registry::BuffActKind;
 
+pub(crate) mod riposte_damage;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CounterError {
     InvalidState,
@@ -92,10 +94,17 @@ fn state(managers: &BattleManagers, owner_uid: i64) -> Result<CounterState, Coun
     if features.next().is_some() {
         return Err(CounterError::MultipleCarriers);
     }
+    read(managers, feature)
+}
+
+fn read(
+    managers: &BattleManagers,
+    feature: ActiveBuffFeature,
+) -> Result<CounterState, CounterError> {
     let act_id = feature.act_id().ok_or(CounterError::InvalidState)?;
     let buff = managers
         .buff
-        .snapshot(owner_uid, feature.buff_uid)
+        .snapshot(feature.owner_uid, feature.buff_uid)
         .ok_or(CounterError::InvalidState)?;
     let mut matching = buff
         .act_info

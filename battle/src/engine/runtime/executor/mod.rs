@@ -742,6 +742,24 @@ pub(crate) fn execute_rule_op_with(
             }
             Ok(RuleOutcome::HpBatch(batch))
         }
+        RuleOp::Command(BattleCommand::LinkedDamage(mut hits)) => {
+            for hit in &mut hits {
+                for command in &mut hit.commands {
+                    *command = crate::engine::skill::buff_act::fixed_hurt::resolve_command(
+                        &managers.buff,
+                        &managers.hp,
+                        *command,
+                    );
+                }
+            }
+            let batch = managers.execute_linked_damage(hits)?;
+            for execution in &batch {
+                for event in execution.changes.events() {
+                    events.push(event);
+                }
+            }
+            Ok(RuleOutcome::HpBatch(batch))
+        }
         RuleOp::Command(BattleCommand::ImmediateReservePromotion(command)) => {
             managers
                 .battle_rule

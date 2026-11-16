@@ -1524,7 +1524,7 @@ buff_act_definitions! {
             &[EffectType::None as i32],
         ).without_initial_state_marker());
     (1147, "FoundationCounter") => FoundationCounter, effect_time_subscription: false,
-        supports: super::foundation_counter::supports, state_consumer: true,
+        supports: super::foundation_counter::supports, riposte_damage: (203, 0), state_consumer: true,
         initial_state: FoundationCounter, description_required: true,
         wire: (super::wire::BuffActWireDefinition::add(
             DefinitionKey::new(1147, "FoundationCounter"),

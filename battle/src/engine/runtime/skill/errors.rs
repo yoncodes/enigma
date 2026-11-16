@@ -11,6 +11,7 @@ pub enum SkillOpError {
         issues: Vec<RuleIssue>,
     },
     MissingSourceEntity(i64),
+    FoundationCounter(crate::engine::skill::buff_act::foundation_counter::CounterError),
     MissingTriggerContext(i32),
     UncompiledRoute {
         skill_id: i32,

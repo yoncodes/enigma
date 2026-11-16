@@ -561,8 +561,15 @@ fn an_assassination_adds_the_holders_force_field_damage_only_on_marked_targets()
             100,
             &mut RoundDeterminism::default(),
             &mut execution,
-        );
-        (ops.damage, ops.additional_damage)
+        )
+        .unwrap();
+        (
+            ops.damage,
+            ops.additional_damage
+                .into_iter()
+                .flat_map(|hit| hit.commands)
+                .collect::<Vec<_>>(),
+        )
     };
 
     // Way of Ares: "When an allied [Assassination] is triggered, deal an additional 125% DMG of
