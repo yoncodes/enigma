@@ -142,6 +142,7 @@ pub mod team_per_power_add_buff;
 pub mod team_share_shield;
 pub mod toughness;
 pub mod transfer_energy_buff;
+mod ultimate_cost;
 pub mod unlock_sovereign_card;
 pub mod use_damage_skill_add_to_target;
 pub mod use_skill;
@@ -272,17 +273,25 @@ pub fn feature_reaction_timing(
 pub fn transaction_publication(
     feature: &ActiveBuffFeature,
     op: &RuleOp,
-    event: crate::engine::event::kind::EventKind,
+    event: &BattleEvent,
+    fight_version: i32,
 ) -> Option<crate::engine::event::subscription::PublicationPhase> {
-    use crate::engine::event::subscription::PublicationPhase;
+    use crate::engine::event::{payload::BuffExpiry, subscription::PublicationPhase};
 
     if matches!(op, RuleOp::BuffFeatureMarker { .. }) {
         return Some(PublicationPhase::AfterPublish);
     }
+    if let BattleEvent::BuffRemoved(change) = event
+        && let BuffExpiry::Duration(stage) = change.expiry
+        && let Some(phase) =
+            registry::expiry_publication(&feature.values, &feature.act_type, stage, fight_version)
+    {
+        return Some(phase);
+    }
     Some(registry::runtime_publication(
         feature.act_id()?,
         &feature.act_type,
-        event,
+        event.kind(),
     ))
 }
 
@@ -299,15 +308,22 @@ pub fn transaction_rule_ops_for(
     accepts: impl Fn(&registry::BuffActDefinition) -> bool,
 ) -> Vec<(ActiveBuffFeature, RuleOp)> {
     let mut ops = Vec::new();
-    for definition in
-        registry::transaction_definitions(event.kind()).filter(|definition| accepts(definition))
-    {
+    let definitions =
+        registry::transaction_definitions(event.kind()).filter(|definition| accepts(definition));
+    let mut emit = |definition: &registry::BuffActDefinition| {
         ops.extend(definition
             .transaction
             .handler
             .expect("a transaction route has a handler")(
             managers, event
         ));
+    };
+    if ultimate_cost::cost_precedes_cap(managers, event) {
+        let mut definitions = definitions.collect::<Vec<_>>();
+        ultimate_cost::order_grant(&mut definitions);
+        definitions.into_iter().for_each(emit);
+    } else {
+        definitions.for_each(&mut emit);
     }
     with_feature_runtime_markers(ops)
 }

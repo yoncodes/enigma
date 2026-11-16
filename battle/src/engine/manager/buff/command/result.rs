@@ -109,7 +109,6 @@ impl BuffChanges {
                                     target_uid: refresh.target_uid,
                                     effect_type,
                                     effect_num: definition.marker_effect_num(
-                                        catalog.game_data(),
                                         effect_type,
                                         refresh.after.act_common_params.as_deref(),
                                     ),

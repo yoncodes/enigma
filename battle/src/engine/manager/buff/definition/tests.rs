@@ -37,6 +37,19 @@ fn halo_fanout_keeps_add_markers_from_non_halo_features() {
 }
 
 #[test]
+fn halo_cost_marker_stays_with_the_child_grant() {
+    use crate::engine::skill::buff_act::wire::WirePhase;
+    use sonettobuf::effect_type_enum::EffectType;
+
+    crate::test_support::init_config();
+    let definition = BuffDefinition::get(2220012).unwrap();
+    let cost = EffectType::Exskillpointchange as i32;
+    assert!(definition.command_add_wire_markers().is_empty());
+    assert_eq!(definition.fanout_wire_markers(WirePhase::Add), [cost]);
+    assert_eq!(definition.marker_effect_num(cost, None), -4);
+}
+
+#[test]
 fn layer_master_halo_refresh_repeats_its_wire_marker() {
     crate::test_support::init_config();
 

@@ -276,6 +276,21 @@ impl BuffDefinition {
         &self,
         phase: crate::engine::skill::buff_act::wire::WirePhase,
     ) -> Vec<i32> {
+        self.wire_markers_for(phase, None)
+    }
+
+    pub(super) fn command_add_wire_markers(&self) -> Vec<i32> {
+        self.wire_markers_for(
+            crate::engine::skill::buff_act::wire::WirePhase::Add,
+            Some(crate::engine::event::kind::EventKind::BuffAdded),
+        )
+    }
+
+    fn wire_markers_for(
+        &self,
+        phase: crate::engine::skill::buff_act::wire::WirePhase,
+        transaction_event: Option<crate::engine::event::kind::EventKind>,
+    ) -> Vec<i32> {
         if phase == crate::engine::skill::buff_act::wire::WirePhase::Refresh
             && self.has_initial_state_refresh_projection()
         {
@@ -284,8 +299,9 @@ impl BuffDefinition {
         self.features
             .iter()
             .filter(|feature| {
-                phase == crate::engine::skill::buff_act::wire::WirePhase::Static
-                    || !mutates_max_hp(feature)
+                (phase == crate::engine::skill::buff_act::wire::WirePhase::Static
+                    || !mutates_max_hp(feature))
+                    && !transaction_owns_marker(feature, transaction_event)
             })
             .flat_map(|feature| {
                 feature
@@ -309,28 +325,9 @@ impl BuffDefinition {
             .iter()
             .filter(|feature| {
                 !mutates_max_hp(feature)
-                    && (!transaction_event.is_some_and(|event| {
-                        feature.values.first().copied().is_some_and(|act_id| {
-                            crate::engine::skill::buff_act::registry::find(
-                                act_id,
-                                &feature.act_type,
-                            )
-                            .is_some_and(|definition| {
-                                definition.transaction.handler.is_some()
-                                    && definition.transaction.wire_marker_events.contains(&event)
-                                    && definition
-                                        .runtime
-                                        .publications
-                                        .iter()
-                                        .find_map(|(registered, phase)| {
-                                            (*registered == event).then_some(*phase)
-                                        })
-                                        .unwrap_or(definition.runtime.publication)
-                                        == crate::engine::event::subscription::PublicationPhase::AfterPublish
-                            })
-                        })
-                    }) || (command_owns_attribute_markers
-                        && feature.kind == Some(BuffActKind::Attr)))
+                    && (!transaction_owns_marker(feature, transaction_event)
+                        || (command_owns_attribute_markers
+                            && feature.kind == Some(BuffActKind::Attr)))
             })
             .flat_map(|feature| {
                 feature
@@ -373,46 +370,21 @@ impl BuffDefinition {
 
     pub(super) fn marker_effect_num(
         &self,
-        game: &config::GameDB,
         effect_type: i32,
         act_common_params: Option<&str>,
     ) -> i32 {
-        use sonettobuf::effect_type_enum::EffectType;
-
-        if effect_type == EffectType::Exskillpointchange as i32 {
-            return super::active_feature(
-                Some(game),
-                0,
-                0,
-                true,
-                &sonettobuf::BuffInfo {
-                    buff_id: Some(self.id),
-                    count: Some(1),
-                    layer: Some(1),
-                    ..Default::default()
-                },
-                Some(self),
-            )
-            .iter()
-            .filter(|feature| {
-                crate::engine::skill::buff_act::is_kind(feature, BuffActKind::ExSkillPointChange)
-            })
-            .filter_map(|feature| feature.values.get(1))
-            .copied()
-            .sum();
+        if effect_type == sonettobuf::effect_type_enum::EffectType::Exskillpointchange as i32 {
+            return self
+                .features
+                .iter()
+                .filter(|feature| {
+                    feature.kind == Some(BuffActKind::ExSkillPointChange)
+                        && feature.arguments_supported
+                })
+                .filter_map(|feature| feature.values.get(1))
+                .sum();
         }
-        if ![
-            EffectType::Fixattrteamenergy as i32,
-            EffectType::Fixattrteamenergyandbuff as i32,
-        ]
-        .contains(&effect_type)
-        {
-            return 0;
-        }
-        act_common_params
-            .and_then(|raw| raw.split('#').nth(1))
-            .and_then(|value| value.parse().ok())
-            .unwrap_or_default()
+        crate::engine::buff::marker::effect_num(effect_type, act_common_params)
     }
 
     pub(super) fn state_snapshot_wire(&self, params: Option<&str>) -> Vec<(i32, Option<String>)> {
@@ -1088,6 +1060,23 @@ impl BuffDefinition {
             .iter()
             .any(|(actual, _)| *actual == include_type.id())
     }
+}
+
+fn transaction_owns_marker(
+    feature: &super::feature::ResolvedBuffFeature,
+    event: Option<crate::engine::event::kind::EventKind>,
+) -> bool {
+    use crate::engine::{event::subscription::PublicationPhase, skill::buff_act::registry};
+
+    let (Some(event), Some(act_id)) = (event, feature.values.first().copied()) else {
+        return false;
+    };
+    registry::find(act_id, &feature.act_type).is_some_and(|definition| {
+        definition.transaction.handler.is_some()
+            && definition.transaction.wire_marker_events.contains(&event)
+            && registry::runtime_publication(act_id, &feature.act_type, event)
+                == PublicationPhase::AfterPublish
+    })
 }
 
 fn mutates_max_hp(feature: &super::feature::ResolvedBuffFeature) -> bool {

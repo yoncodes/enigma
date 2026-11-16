@@ -86,17 +86,18 @@ impl CardMechanic {
     }
 
     pub fn required_ultimate_cost(&self, managers: &BattleManagers, entity: &TargetEntity) -> i32 {
-        let configured = managers.catalog().skill_big_skill_point(entity.ex_skill);
         if ExPointKind::from_wire(managers.ex_point.kind(entity.uid)) != ExPointKind::Common {
-            return configured.max(0);
+            return managers
+                .catalog()
+                .skill_big_skill_point(entity.ex_skill)
+                .max(0);
         }
-        (if configured > 0 {
-            configured
-        } else {
-            ExPointKind::Common.default_max()
-        })
-        .saturating_add(self.ultimate_cost_offset(managers, entity.uid))
-        .max(0)
+        managers
+            .ex_point
+            .base_maximum(entity.uid)
+            .unwrap_or_else(|| ExPointKind::Common.default_max())
+            .saturating_add(self.ultimate_cost_offset(managers, entity.uid))
+            .max(0)
     }
 
     pub fn ultimate_ready(&self, managers: &BattleManagers, entity: &TargetEntity) -> bool {
@@ -285,6 +286,8 @@ impl CardMechanic {
 
 #[cfg(test)]
 mod tests {
+    mod cost;
+
     use sonettobuf::{BuffInfo, Fight, FightEntityInfo, FightTeam};
 
     use super::*;

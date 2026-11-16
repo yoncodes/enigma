@@ -198,16 +198,13 @@ impl BuffManager {
                 .filter(|marker| definition.projects_initial_wire_state(marker.act_id))
                 .collect();
             let markers = definition
-                .wire_markers(crate::engine::skill::buff_act::wire::WirePhase::Add)
+                .command_add_wire_markers()
                 .into_iter()
                 .map(|effect_type| BuffMarkerResult {
                     target_uid,
                     effect_type,
-                    effect_num: definition.marker_effect_num(
-                        self.catalog().game_data(),
-                        effect_type,
-                        buff.act_common_params.as_deref(),
-                    ),
+                    effect_num: definition
+                        .marker_effect_num(effect_type, buff.act_common_params.as_deref()),
                     buff_act_id: 0,
                 })
                 .collect();
@@ -758,7 +755,6 @@ impl BuffManager {
                     target_uid: spec.route.target_uid,
                     effect_type: marker.effect_type as i32,
                     effect_num: spec.definition.marker_effect_num(
-                        self.catalog().game_data(),
                         marker.effect_type as i32,
                         child.buff.act_common_params.as_deref(),
                     ),
@@ -773,7 +769,6 @@ impl BuffManager {
                         target_uid: spec.route.target_uid,
                         effect_type,
                         effect_num: spec.definition.marker_effect_num(
-                            self.catalog().game_data(),
                             effect_type,
                             child.buff.act_common_params.as_deref(),
                         ),
@@ -809,7 +804,6 @@ impl BuffManager {
                     target_uid: plan.spec.route.target_uid,
                     effect_type: marker.effect_type as i32,
                     effect_num: plan.spec.definition.marker_effect_num(
-                        self.catalog().game_data(),
                         marker.effect_type as i32,
                         update.after.act_common_params.as_deref(),
                     ),
@@ -825,7 +819,6 @@ impl BuffManager {
                         target_uid: plan.spec.route.target_uid,
                         effect_type,
                         effect_num: plan.spec.definition.marker_effect_num(
-                            self.catalog().game_data(),
                             effect_type,
                             update.after.act_common_params.as_deref(),
                         ),

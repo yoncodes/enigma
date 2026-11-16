@@ -18,20 +18,7 @@ pub fn refresh_markers(buff_id: i32) -> Vec<BuffMarker> {
     markers_for(buff_id, WirePhase::Refresh)
 }
 
-pub fn effect_num(effect_type: i32, buff_id: i32, act_common_params: Option<&str>) -> i32 {
-    if effect_type == EffectType::Exskillpointchange as i32 {
-        return crate::engine::manager::buff::BuffManager::configured_features(buff_id)
-            .iter()
-            .filter(|feature| {
-                crate::engine::skill::buff_act::is_kind(
-                    feature,
-                    crate::engine::skill::buff_act::registry::BuffActKind::ExSkillPointChange,
-                )
-            })
-            .filter_map(|feature| feature.values.get(1))
-            .copied()
-            .sum();
-    }
+pub fn effect_num(effect_type: i32, act_common_params: Option<&str>) -> i32 {
     if ![
         EffectType::Fixattrteamenergy as i32,
         EffectType::Fixattrteamenergyandbuff as i32,
@@ -61,26 +48,12 @@ mod tests {
     #[test]
     fn team_energy_attribute_markers_use_the_committed_snapshot() {
         assert_eq!(
-            effect_num(EffectType::Fixattrteamenergy as i32, 0, Some("882#15")),
+            effect_num(EffectType::Fixattrteamenergy as i32, Some("882#15")),
             15
         );
         assert_eq!(
-            effect_num(
-                EffectType::Fixattrteamenergyandbuff as i32,
-                0,
-                Some("883#300"),
-            ),
+            effect_num(EffectType::Fixattrteamenergyandbuff as i32, Some("883#300"),),
             300
-        );
-    }
-
-    #[test]
-    fn ultimate_cost_marker_uses_the_registered_buff_feature_value() {
-        crate::test_support::init_config();
-
-        assert_eq!(
-            effect_num(EffectType::Exskillpointchange as i32, 2220012, None),
-            -4
         );
     }
 

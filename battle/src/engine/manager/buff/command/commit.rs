@@ -482,11 +482,9 @@ impl BuffManager {
         {
             added.buff = update.after;
             for marker in &mut added.markers {
-                marker.effect_num = plan.definition.marker_effect_num(
-                    self.catalog().game_data(),
-                    marker.effect_type,
-                    added.buff.act_common_params.as_deref(),
-                );
+                marker.effect_num = plan
+                    .definition
+                    .marker_effect_num(marker.effect_type, added.buff.act_common_params.as_deref());
             }
         }
         if let (Some(added), Some(act_info)) = (change.added.as_mut(), initial_act_info_markers) {
