@@ -232,6 +232,7 @@ pub enum BehaviorKind {
     RandomUseSkill,
     Drive,
     DirectUseBigSkill,
+    FreeUltimate,
     DirectUseGroupAndStarSkill,
     UseExtraSkill,
     CrystalAddCard,

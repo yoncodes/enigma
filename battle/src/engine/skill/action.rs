@@ -174,12 +174,19 @@ pub enum SkillTrigger {
     Explicit(i32),
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct PaidUltimate {
+    pub cost: crate::engine::manager::ex_point::ExPointChange,
+    pub priority_buff: i32,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SkillInvocation {
     pub plan: SkillRequest,
     pub card_index: i32,
     pub additional_moxie: i32,
     pub moxie_spent: i32,
+    pub(crate) paid_ultimate: Option<PaidUltimate>,
     pub condition_key: Option<DefinitionKey>,
     pub(crate) reaction_multiplicity_key: Option<DefinitionKey>,
     pub condition_slot: Option<usize>,
@@ -211,6 +218,7 @@ impl From<SkillRequest> for SkillInvocation {
             card_index: 0,
             additional_moxie: 0,
             moxie_spent: 0,
+            paid_ultimate: None,
             condition_key: None,
             reaction_multiplicity_key: None,
             condition_slot: None,
@@ -248,6 +256,7 @@ mod invocation_tests {
             card_index: 4,
             additional_moxie: 0,
             moxie_spent: 0,
+            paid_ultimate: None,
             condition_key: Some(DefinitionKey::new(30, "TestCondition")),
             reaction_multiplicity_key: None,
             condition_slot: Some(2),

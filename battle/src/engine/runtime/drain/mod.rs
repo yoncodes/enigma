@@ -34,7 +34,9 @@ mod command_dispatch;
 mod command_prepare;
 mod entry;
 mod model;
+mod paid_ultimate;
 mod reactions;
+mod shield_counter;
 mod skill_dispatch;
 mod state;
 

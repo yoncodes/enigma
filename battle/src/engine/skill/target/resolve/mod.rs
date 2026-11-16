@@ -89,6 +89,18 @@ pub(crate) fn uses_rng(target_code: i32) -> bool {
 }
 
 impl TargetResolver {
+    pub(crate) fn preferred_enemy(
+        source: i64,
+        marker: i32,
+        pool: &TargetPool,
+        managers: &BattleManagers,
+    ) -> Option<i64> {
+        pool.enemies(source, true)
+            .iter()
+            .find(|enemy| managers.buff.has_active_buff_id(enemy.uid, marker))
+            .map(|enemy| enemy.uid)
+    }
+
     pub fn order_behavior_candidates(
         targets: &mut [i64],
         order: BehaviorTargetOrder,

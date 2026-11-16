@@ -27,6 +27,7 @@ pub enum DrainError {
     OperationLimitExceeded,
     RecursionLimitExceeded,
     MissingActiveSkillContext,
+    MissingRoundEndPaymentFrame,
     MissingReactionSide(i64),
     MissingCardStateTeam(i64),
 }

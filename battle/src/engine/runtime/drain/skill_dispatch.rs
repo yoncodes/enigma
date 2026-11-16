@@ -11,7 +11,7 @@ pub(super) fn drain_skill(
     queue: &mut VecDeque<QueuedOp>,
     result: &mut DrainResult,
     state: &mut DrainState,
-    invocation: crate::engine::skill::action::SkillInvocation,
+    mut invocation: crate::engine::skill::action::SkillInvocation,
     trigger: SkillOpTrigger,
     skill_execution: Option<SkillExecution>,
     frame_path: Option<FramePath>,
@@ -41,6 +41,19 @@ pub(super) fn drain_skill(
     {
         cancel_invocation_progress(managers, state, None, &invocation);
         return Ok(());
+    }
+    let paid_ultimate = invocation.paid_ultimate.take();
+    if let Some(paid) = paid_ultimate {
+        if managers.ex_point.get(paid.cost.target_uid) < -paid.cost.delta {
+            return Ok(());
+        }
+        invocation.target = TargetResolver::preferred_enemy(
+            invocation.plan.source_uid,
+            paid.priority_buff,
+            pool,
+            managers,
+        )
+        .map_or(SkillTarget::Configured, SkillTarget::Explicit);
     }
     let attack_has_no_target = active_cast
         && attack_has_no_target(&invocation, catalog, pool, managers, determinism, context);
@@ -115,6 +128,26 @@ pub(super) fn drain_skill(
     }
     if !skill_from_buff_act && let Some(group) = &frame_group {
         *group.borrow_mut() = Some(frame_path.clone());
+    }
+    if let Some(paid) = paid_ultimate {
+        invocation.moxie_spent = -paid.cost.delta;
+        return paid_ultimate::start(
+            queue,
+            &result.frames,
+            paid,
+            QueuedOp {
+                op: RuleOp::Skill(invocation),
+                trigger,
+                skill_execution,
+                frame_path: Some(frame_path),
+                parent_path: None,
+                frame_group: None,
+                independent_parent_group: None,
+                frame_owner: None,
+                subscriber,
+                caster_frame: None,
+            },
+        );
     }
     if invocation.phase.is_none()
         && matches!(trigger, SkillOpTrigger::Active)

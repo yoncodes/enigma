@@ -281,7 +281,7 @@ fn setup_entity_scope_path(frames: &[SemanticFrame], path: &[usize]) -> Option<F
     setup_entity
 }
 
-fn frame_at<'a>(frames: &'a [SemanticFrame], path: &[usize]) -> &'a SemanticFrame {
+pub(crate) fn frame_at<'a>(frames: &'a [SemanticFrame], path: &[usize]) -> &'a SemanticFrame {
     let (&root, children) = path.split_first().expect("a frame path has a root");
     let mut frame = frames.get(root).expect("frame root exists");
     for &child in children {

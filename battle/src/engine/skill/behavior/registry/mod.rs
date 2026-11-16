@@ -726,6 +726,7 @@ behavior_definitions! {
     [60225] "RandomUseSkill" => super::use_skill::Handler, RandomUseSkill, Immediate, destination, super::use_skill::supports_random_skill;
     [60172] "Drive" => super::use_skill::Handler, Drive, Immediate, destination, super::use_skill::supports_drive;
     [60175] "DirectUseBigSkill" => super::use_skill::Handler, DirectUseBigSkill, Immediate, parent_destination, arguments::none;
+    [60196] "DirectUseExSkillNoConsumeExPoint" => super::use_skill::Handler, FreeUltimate, Immediate, destination, arguments::none;
     [50010] "DirectUseGroupAndStarSkill" => super::use_skill::Handler, DirectUseGroupAndStarSkill, Immediate, destination, super::use_skill::supports_group_and_star_skill;
     [50015] "UseExtraSkill" => super::prepare_skill::Handler, UseExtraSkill, Immediate, destination;
     [60242] "CrystalReuse" => super::use_skill::Handler, CrystalReuse, Immediate, destination, super::use_skill::supports_crystal_reuse;
