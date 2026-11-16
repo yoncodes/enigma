@@ -1,11 +1,27 @@
 use sonettobuf::CardInfo;
 use std::collections::HashMap;
 
-use super::input::HeroBuildInput;
+use super::{destiny::Destiny, input::HeroBuildInput};
 
 pub struct Skill;
 
 impl Skill {
+    pub(crate) fn trial(
+        game: &config::GameDB,
+        trial: &config::hero_trial::HeroTrial,
+        rank: i32,
+    ) -> (Vec<i32>, Vec<i32>, i32) {
+        let (mut group1, mut group2, mut ultimate) =
+            Self::active_skills(game, trial.hero_id, rank, trial.ex_skill_lv);
+        if let Some(exchanges) = Destiny::trial_exchanges(game, trial.facets_id, trial.facetslevel)
+        {
+            Self::apply_exchange(&mut group1, &exchanges);
+            Self::apply_exchange(&mut group2, &exchanges);
+            Self::apply_exchange(std::slice::from_mut(&mut ultimate), &exchanges);
+        }
+        (group1, group2, ultimate)
+    }
+
     pub fn get(
         hero: &HeroBuildInput,
         is_sub: bool,
