@@ -366,6 +366,48 @@ fn shared_type_family_replaces_the_resident_variant() {
 }
 
 #[test]
+fn replace_rank_type_rule_replaces_only_the_held_rank_of_its_type() {
+    use crate::engine::entity::attr::AttrId;
+
+    init_config();
+    let hp = HpManager::default();
+    let mut manager = BuffManager::default();
+    let low_atk = 31460111;
+    let high_atk = 31460113;
+    let hp_up = 31460121;
+    manager.add_replacing_excluded(&hp, 10, 10, hp_up, 0);
+    manager.add_replacing_excluded(&hp, 11, 11, high_atk, 0);
+    let low_uid = manager
+        .add_replacing_excluded(&hp, 10, 10, low_atk, 0)
+        .added
+        .unwrap()
+        .buff
+        .uid;
+    let raised = manager.add_replacing_excluded(&hp, 10, 10, high_atk, 0);
+    assert_eq!(raised.removed.len(), 1);
+    assert_eq!(raised.removed[0].buff.uid, low_uid);
+    assert_eq!(raised.added.as_ref().unwrap().buff.duration, Some(3));
+    assert_eq!(manager.attribute_delta(10, AttrId::Attack), 140);
+    let lowered = manager.add_replacing_excluded(&hp, 10, 10, low_atk, 0);
+    assert_eq!(lowered.removed.len(), 1);
+    assert_eq!(lowered.removed[0].buff.uid, raised.added.unwrap().buff.uid);
+    assert_eq!(manager.attribute_delta(10, AttrId::Attack), 120);
+    assert!(!manager.has_buff_id(10, high_atk));
+    assert!(manager.has_buff_id(10, hp_up));
+    assert!(manager.has_buff_id(11, high_atk));
+    let raised_hp = manager.add_replacing_excluded(&hp, 10, 10, 31460122, 0);
+    assert_eq!(raised_hp.removed.len(), 1);
+    assert!(!manager.has_buff_id(10, hp_up));
+    assert!(manager.has_buff_id(10, 31460122));
+
+    manager.add_replacing_excluded(&hp, 10, 10, 215033301, 0);
+    let plumage = manager.add_replacing_excluded(&hp, 10, 10, 8290506, 0);
+    assert!(plumage.removed.is_empty());
+    assert!(manager.has_buff_id(10, 215033301));
+    assert!(manager.has_buff_id(10, 8290506));
+}
+
+#[test]
 fn include_type_seventeen_stores_capped_separate_counter_instances() {
     init_config();
     let policy = BuffPolicy::for_buff_id(23390015).expect("Manifest Dream counter definition");

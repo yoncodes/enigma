@@ -38,6 +38,9 @@ impl BuffManager {
                                         .as_ref()
                                         .is_some_and(BuffDefinition::matches_type_family)
                             }
+                            ExistingBuffMatch::SameType => {
+                                active.type_id == policy.effective_type_id
+                            }
                         }
                 })
                 .filter_map(|active| active.buff.uid)

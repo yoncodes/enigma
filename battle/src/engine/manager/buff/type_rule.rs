@@ -2,6 +2,8 @@
 pub(super) enum BuffTypeRule {
     /// Rejects grants of these buff types while held.
     Refuse(&'static [i32]),
+    /// A grant replaces a held buff of the same type, whichever rank it is.
+    ReplaceRank,
 }
 
 macro_rules! buff_type_rules {
@@ -25,10 +27,18 @@ buff_type_rules! {
     8092 => BuffTypeRule::Refuse(&[1026, 1027]);
     /// Refuse Chorus.
     8304 => BuffTypeRule::Refuse(&[8111]);
+    /// Rhiannon Babble-Gabble: ATK +12/13/14% for 3 rounds, one copy across ranks.
+    31460111 => BuffTypeRule::ReplaceRank;
+    /// Rhiannon Sneaky-Peeky: Max HP +12/13/14% for 3 rounds, one copy across ranks.
+    31460121 => BuffTypeRule::ReplaceRank;
 }
 
 pub(super) fn refuses(holder_type: i32, incoming_type: i32) -> bool {
     matches!(rule(holder_type), Some(BuffTypeRule::Refuse(types)) if types.contains(&incoming_type))
+}
+
+pub(super) fn replaces_rank(type_id: i32) -> bool {
+    rule(type_id) == Some(BuffTypeRule::ReplaceRank)
 }
 
 #[cfg(test)]
@@ -41,8 +51,11 @@ mod tests {
         let types = &crate::test_support::game_data().skill_bufftype;
         for &type_id in TYPE_IDS {
             assert!(types.get(type_id).is_some(), "rule key {type_id}");
-            let Some(BuffTypeRule::Refuse(refused)) = rule(type_id) else {
+            let Some(rule) = rule(type_id) else {
                 panic!("rule key {type_id} has no rule");
+            };
+            let BuffTypeRule::Refuse(refused) = rule else {
+                continue;
             };
             for &refused in refused {
                 assert!(types.get(refused).is_some(), "{type_id} refuses {refused}");

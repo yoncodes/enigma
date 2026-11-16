@@ -18,6 +18,7 @@ pub enum ExistingBuffMatch {
     SameId,
     SameIdAndDuration,
     SharedTypeFamily,
+    SameType,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -159,6 +160,10 @@ impl BuffPolicy {
         };
         let match_existing = if type_family_match {
             ExistingBuffMatch::SharedTypeFamily
+        } else if storage == BuffStorage::Single
+            && super::type_rule::replaces_rank(definition.effective_type_id())
+        {
+            ExistingBuffMatch::SameType
         } else if storage == BuffStorage::SeparateCopies
             || (storage == BuffStorage::Layered
                 && definition.duration > 0
@@ -237,6 +242,7 @@ impl BuffPolicy {
                             .as_ref()
                             .is_some_and(BuffDefinition::matches_type_family)
                 }
+                ExistingBuffMatch::SameType => active.type_id == self.effective_type_id,
             }
     }
 }
