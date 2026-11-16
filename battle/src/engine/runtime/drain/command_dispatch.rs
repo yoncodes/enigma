@@ -138,6 +138,32 @@ pub(super) fn drain_command(
     // This is the single durable commit point for non-skill RuleOps.
     // The returned outcome describes committed changes and follow-ups.
     let mut outcome = execute_rule_op_with(managers, bus, determinism, command)?;
+    let damage = match &mut outcome {
+        RuleOutcome::Hp(hit) => std::slice::from_mut(hit.as_mut()),
+        RuleOutcome::HpBatch(hits) => hits.as_mut_slice(),
+        _ => &mut [],
+    };
+    if let Some(chain) = state.action_chain(&frame_path) {
+        state.shield_counter.earn(
+            chain,
+            damage
+                .iter_mut()
+                .flat_map(|hit| std::mem::take(&mut hit.shield_counter_credits)),
+        );
+    }
+    let claimed_counters =
+        match &outcome {
+            RuleOutcome::SkillLifecycle(
+                crate::engine::skill::action::SkillLifecycle::ActionCompleted(action),
+            ) if state.action_in_progress(&frame_path) => state
+                .action_chain(&frame_path)
+                .map_or_else(Vec::new, |chain| {
+                    state
+                        .shield_counter
+                        .claim(&chain, &frame_path, action, managers)
+                }),
+            _ => Vec::new(),
+        };
     let transformed = match &outcome {
         RuleOutcome::Entity(changes)
             if matches!(
@@ -268,6 +294,19 @@ pub(super) fn drain_command(
             .then_some(hit.target_uid)
         }));
         let source_uid = current_skill.map(|skill| skill.0).unwrap_or_default();
+        let results = match &outcome {
+            RuleOutcome::Buff(changes) => std::slice::from_ref(changes.as_ref()),
+            RuleOutcome::BuffBatch(changes) => changes.as_slice(),
+            _ => &[],
+        };
+        for burn in results
+            .iter()
+            .filter_map(|changes| changes.burn_application)
+        {
+            if burn.source_uid == source_uid {
+                execution.record_burn(burn);
+            }
+        }
         execution.record_buff_additions(events.iter().filter_map(|event| {
             let (BattleEvent::BuffAdded(change) | BattleEvent::BuffChanged(change)) = event else {
                 return None;
@@ -967,6 +1006,7 @@ pub(super) fn drain_command(
     }
     // Buff acts waiting on the action, then held casts, follow its own reactions.
     insert_after_frame(queue, &frame_path, after_action);
+    insert_after_frame(queue, &frame_path, claimed_counters);
     insert_after_frame(queue, &frame_path, held_casts);
     prepend(queue, after_publish);
 

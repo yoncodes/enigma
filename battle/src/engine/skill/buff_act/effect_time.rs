@@ -53,6 +53,8 @@ macro_rules! effect_time_definitions {
     (@phase $phase:expr) => { Some($phase) };
 }
 
+pub(super) const RIPOSTE: i32 = 401;
+
 effect_time_definitions! {
     0 => BuffActEvent::StaticRead,
     12 => BuffActEvent::Runtime(EventKind::EntityDied),
@@ -82,7 +84,7 @@ effect_time_definitions! {
     ROUND_END_ENTITY_SETTLEMENT => BuffActEvent::Runtime(EventKind::RoundEndEntitySettlement),
     ROUND_END_FINAL_SETTLEMENT => BuffActEvent::Runtime(EventKind::RoundEndFinalSettlement),
     ROUND_END_AFTER_SETTLEMENT => BuffActEvent::Runtime(EventKind::RoundEndAfterSettlement),
-    401 => BuffActEvent::Runtime(EventKind::Riposte),
+    RIPOSTE => BuffActEvent::Runtime(EventKind::Riposte),
     202 => BuffActEvent::DamageCalculation,
     203 => BuffActEvent::DamageCalculation,
     204 => BuffActEvent::DamageCalculation,

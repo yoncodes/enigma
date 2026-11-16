@@ -740,3 +740,16 @@ fn structured_features_keep_semantic_values_and_references() {
     assert!(raspberry.arguments_supported);
     assert_eq!(raspberry.values.last(), Some(&264));
 }
+
+#[test]
+fn shield_counter_requires_the_configured_riposte_timing() {
+    let game = crate::test_support::game_data();
+    let mut feature = resolve_feature(Some(game), "802#30940171").unwrap();
+    assert!(feature.arguments_supported);
+    assert_eq!(
+        destination_for_feature(Some(game), &feature),
+        Some(BuffActDestination::StateConsumer)
+    );
+    feature.effect_time = 0;
+    assert_eq!(destination_for_feature(Some(game), &feature), None);
+}

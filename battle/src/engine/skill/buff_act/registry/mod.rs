@@ -36,6 +36,19 @@ pub type FallibleScopedRuntimeHandler =
         &mut RuntimeContext<'a>,
     ) -> Result<Vec<super::BuffActRuleOp>, super::BuffActRuleError>;
 pub type TransactionHandler = fn(&BattleManagers, &BattleEvent) -> Vec<(ActiveBuffFeature, RuleOp)>;
+type ShieldHitHandler = fn(
+    &BattleManagers,
+    &ActiveBuffFeature,
+    &crate::engine::manager::hp::HpChanges,
+    DefinitionKey,
+) -> Option<super::shield_counter::Credit>;
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct ShieldHitRoute {
+    pub(crate) effect_time: i32,
+    pub(crate) handler: ShieldHitHandler,
+    pub(crate) admits_cast: fn(&BattleManagers, i64) -> bool,
+}
+
 pub(crate) type ReservePromotionHandler =
     fn(&crate::engine::fight::reserve::Promotion) -> crate::engine::fight::reserve::CycleCommand;
 
@@ -492,6 +505,8 @@ pub struct BuffActStateDefinition {
     pub read_timing: StatReadTiming,
     pub attack_replacement: Option<AttackReplacementHandler>,
     pub hp_loss: Option<HpLossStateHandler>,
+    pub(crate) shield_hit: Option<ShieldHitRoute>,
+    pub(crate) riposte_damage: Option<(i32, i32)>,
     pub(crate) reserve_promotion: Option<ReservePromotionHandler>,
     pub consumer: bool,
     pub initial: Option<BuffActInitialStateRule>,
@@ -546,6 +561,16 @@ pub enum BuffActDestination {
 }
 
 impl BuffActDefinition {
+    pub(crate) fn accepts_route(&self, effect_time: i32, effect_condition: i32) -> bool {
+        self.state
+            .shield_hit
+            .is_none_or(|route| route.effect_time == effect_time)
+            && self
+                .state
+                .riposte_damage
+                .is_none_or(|route| route == (effect_time, effect_condition))
+    }
+
     pub fn validate_arguments(
         &self,
         game: Option<&config::GameDB>,
@@ -596,7 +621,10 @@ impl BuffActDefinition {
             Some(BuffActDestination::AttackReplacement)
         } else if self.state.hp_loss.is_some() {
             Some(BuffActDestination::HpLossState)
-        } else if self.state.consumer || self.state.reserve_promotion.is_some() {
+        } else if self.state.consumer
+            || self.state.reserve_promotion.is_some()
+            || self.state.shield_hit.is_some()
+        {
             Some(BuffActDestination::StateConsumer)
         } else {
             None
@@ -643,6 +671,8 @@ macro_rules! buff_act_definitions {
             $(, references: $references:expr)?
             $(, attack_replacement: $attack_replacement:expr)?
             $(, hp_loss_state: $hp_loss_state:expr)?
+            $(, shield_hit: $shield_time:path => ($shield_hit:expr, $shield_cast_admission:expr))?
+            $(, riposte_damage: ($riposte_time:expr, $riposte_condition:expr))?
             $(, reserve_promotion: $reserve_promotion:expr)?
             $(, state_consumer: $state_consumer:expr)?
             $(, initial_state: $initial_state:ident)?
@@ -688,11 +718,14 @@ macro_rules! buff_act_definitions {
                     events: &[$($($transaction_events),*)?],
                     wire_marker_events: &[$($($transaction_wire_marker_events),*)?],
                     handler: buff_act_definitions!(@transaction $($transaction)?),
+                    expiry_publications: &[$($(($expiry_stage, AttrId::$expiry_attr, PublicationPhase::$expiry_phase)),*)?],
                 },
                 state: BuffActStateDefinition {
                     read_timing: buff_act_definitions!(@stat_read $($stat_read)?),
                     attack_replacement: buff_act_definitions!(@attack_replacement $($attack_replacement)?),
                     hp_loss: buff_act_definitions!(@hp_loss_state $($hp_loss_state)?),
+                    shield_hit: buff_act_definitions!(@shield_hit $($shield_time => ($shield_hit, $shield_cast_admission))?),
+                    riposte_damage: buff_act_definitions!(@riposte_damage $(($riposte_time, $riposte_condition))?),
                     reserve_promotion: buff_act_definitions!(@reserve_promotion $($reserve_promotion)?),
                     consumer: buff_act_definitions!(@state_consumer $($state_consumer)?),
                     initial: buff_act_definitions!(@initial_state $($initial_state)?),
@@ -772,6 +805,10 @@ macro_rules! buff_act_definitions {
     (@attack_replacement) => { None };
     (@hp_loss_state $handler:expr) => { Some($handler) };
     (@hp_loss_state) => { None };
+    (@shield_hit $time:path => ($handler:expr, $admits_cast:expr)) => { Some(ShieldHitRoute { effect_time: $time, handler: $handler, admits_cast: $admits_cast }) };
+    (@shield_hit) => { None };
+    (@riposte_damage ($time:expr, $condition:expr)) => { Some(($time, $condition)) };
+    (@riposte_damage) => { None };
     (@reserve_promotion $handler:expr) => { Some($handler) };
     (@reserve_promotion) => { None };
     (@state_consumer $value:expr) => { $value };
@@ -1054,10 +1091,10 @@ buff_act_definitions! {
         supports: |args| matches!(args, [attr_id, amount, maximum]
             if crate::engine::entity::attr::AttrId::from_raw(*attr_id).is_some()
                 && *amount != 0 && *maximum > 0), state_consumer: true, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(801, "FixAttrByTeammateInjuryCountNotReset"), &[EffectType::None as i32]));
-    (802, "BeatBackByCounter") => BeatBackByCounter, frame: CausingFrame, actor: OpposingTeam,
-        runtime: |context| super::riposte::shielded_ally_rule_ops(context.pool, context.subscriber, context.event?),
+    (802, "BeatBackByCounter") => BeatBackByCounter, effect_time_subscription: false,
         supports: |args| matches!(args, [skill_id] if *skill_id > 0),
         references: references_for_feature,
+        shield_hit: super::effect_time::RIPOSTE => (super::shield_counter::earn, super::shield_counter::admits_cast),
         wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(802, "BeatBackByCounter"), &[EffectType::None as i32]));
     (803, "Poison") => Poison, stat_read: OnGrant,
         runtime: |context| Some(super::damage_over_time::damage_rule_ops(context.managers, context.pool, context.determinism, context.subscriber)),
@@ -1983,9 +2020,13 @@ pub fn resolve_feature(game: Option<&config::GameDB>, raw: &str) -> Option<Parse
         },
     };
     let args = values.get(1..).unwrap_or_default().to_vec();
+    let effect_time = act.map(|act| act.effect_time).unwrap_or_default();
+    let effect_condition = act.map(|act| act.effect_condition).unwrap_or_default();
     let arguments_supported = parse_error.is_none()
-        && definition
-            .is_some_and(|definition| definition.validate_arguments(game, &args, Some(raw)));
+        && definition.is_some_and(|definition| {
+            definition.accepts_route(effect_time, effect_condition)
+                && definition.validate_arguments(game, &args, Some(raw))
+        });
     Some(ParsedBuffAct {
         raw: raw.to_owned(),
         raw_cells,
@@ -1994,8 +2035,8 @@ pub fn resolve_feature(game: Option<&config::GameDB>, raw: &str) -> Option<Parse
         values,
         args,
         act_type: act.map(|act| act.r#type.clone()).unwrap_or_default(),
-        effect_time: act.map(|act| act.effect_time).unwrap_or_default(),
-        effect_condition: act.map(|act| act.effect_condition).unwrap_or_default(),
+        effect_time,
+        effect_condition,
         kind: definition.map(|definition| definition.kind),
         arguments_supported,
         parse_error,
@@ -2009,6 +2050,7 @@ pub fn destination_for_feature(
 ) -> Option<BuffActDestination> {
     let definition = feature.definition?;
     if feature.is_malformed()
+        || !definition.accepts_route(feature.effect_time, feature.effect_condition)
         || !definition.validate_arguments(game, &feature.args, Some(&feature.raw))
     {
         return None;

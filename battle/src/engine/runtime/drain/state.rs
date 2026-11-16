@@ -36,6 +36,7 @@ pub(super) struct DrainState {
     // Actions that will publish ActionCompleted and have not yet done so.
     open_actions: HashSet<FramePath>,
     completed_actions: HashSet<FramePath>,
+    pub(super) shield_counter: super::shield_counter::Tally,
     action_reactions: HashMap<FramePath, HashSet<ActionReactionKey>>,
     action_shared_damage: HashMap<FramePath, HashMap<i64, [i32; 2]>>,
     action_skill_reaction_frames: HashMap<(FramePath, i64, i32), FramePath>,
@@ -289,6 +290,7 @@ impl DrainState {
     }
 
     pub(super) fn cancel_action(&mut self, action_path: &FramePath) -> Vec<QueuedOp> {
+        self.shield_counter.close(action_path);
         self.open_actions.remove(action_path);
         self.completed_actions.insert(action_path.clone());
         self.injuries.remove(action_path);
@@ -336,6 +338,19 @@ impl DrainState {
     // Only an action that will still complete releases held casts; otherwise they run at once.
     pub(super) fn action_in_progress(&self, action_path: &FramePath) -> bool {
         self.open_actions.contains(action_path)
+    }
+
+    pub(super) fn action_chain(&self, path: &[usize]) -> Option<FramePath> {
+        let mut chain = None;
+        for depth in 1..=path.len() {
+            let prefix = &path[..depth];
+            if self.completed_actions.contains(prefix) {
+                chain = None;
+            } else if chain.is_none() && self.open_actions.contains(prefix) {
+                chain = Some(prefix);
+            }
+        }
+        chain.map(<[usize]>::to_vec)
     }
 
     pub(super) fn action_reactions(

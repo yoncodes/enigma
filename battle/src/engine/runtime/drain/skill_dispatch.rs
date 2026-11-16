@@ -21,6 +21,15 @@ pub(super) fn drain_skill(
     subscriber: Option<SubscriberContext>,
     caster_frame: Option<FrameOwner>,
 ) -> Result<(), DrainError> {
+    if let Some(FrameOwner::BuffAct { key, .. }) = &frame_owner
+        && let Some(route) =
+            crate::engine::skill::buff_act::registry::find(key.opcode, key.type_name)
+                .and_then(|definition| definition.state.shield_hit)
+        && !(route.admits_cast)(managers, invocation.plan.source_uid)
+    {
+        cancel_invocation_progress(managers, state, None, &invocation);
+        return Ok(());
+    }
     let active_cast = matches!(trigger, SkillOpTrigger::Active)
         || matches!(&frame_owner, Some(FrameOwner::BuffAct { .. }));
     // After terminal commitment, skip active skills that have not

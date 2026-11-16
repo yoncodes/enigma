@@ -134,6 +134,7 @@ pub mod round_start_ex_point;
 pub mod share_hurt;
 pub mod shell;
 pub mod shield;
+pub(crate) mod shield_counter;
 pub mod sleep;
 pub mod special_count_cast_channel;
 pub mod special_count_continue_channel;
