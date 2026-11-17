@@ -200,49 +200,32 @@ pub(in crate::engine::runtime::drain) fn dispatch_reactions(
     if lane.is_none()
         && let BattleEvent::SkillAction(action) = event
     {
-        reactions
-            .after_publish
-            .extend(
-                managers
-                    .buff
-                    .plan_action_expiries(action)
-                    .into_iter()
-                    .map(|expiry| QueuedOp {
-                        op: RuleOp::Command(
-                            crate::engine::skill::rule::output::BattleCommand::Buff(
-                                crate::engine::manager::buff::BuffCommand::ExpireAction(
-                                    crate::engine::manager::buff::BuffRemove {
-                                        origin: crate::engine::skill::rule::CommandOrigin {
-                                            domain:
-                                                crate::engine::skill::rule::RuleDomain::Lifecycle,
-                                            key: expiry.trigger.key(),
-                                        },
-                                        target_uid: expiry.owner_uid,
-                                        selector:
-                                            crate::engine::manager::buff::BuffRemoveSelector::Uid(
-                                                expiry.buff_uid,
-                                            ),
-                                    },
-                                ),
-                            ),
-                        ),
-                        trigger: SkillOpTrigger::Event(event.clone()),
-                        skill_execution: None,
-                        frame_path: None,
-                        parent_path: parent_path.map(|path| path.to_vec()),
-                        frame_group: None,
-                        independent_parent_group: None,
-                        frame_owner: Some(FrameOwner::BuffAct {
-                            owner_uid: expiry.owner_uid,
-                            source_uid: expiry.source_uid,
-                            buff_uid: expiry.buff_uid,
-                            buff_id: expiry.buff_id,
-                            key: expiry.trigger.key(),
-                        }),
-                        subscriber: None,
-                        caster_frame: None,
+        reactions.after_publish.extend(
+            managers
+                .buff
+                .plan_action_settlements(action)
+                .into_iter()
+                .map(|settlement| QueuedOp {
+                    op: RuleOp::Command(crate::engine::skill::rule::output::BattleCommand::Buff(
+                        settlement.command,
+                    )),
+                    trigger: SkillOpTrigger::Event(event.clone()),
+                    skill_execution: None,
+                    frame_path: None,
+                    parent_path: parent_path.map(|path| path.to_vec()),
+                    frame_group: None,
+                    independent_parent_group: None,
+                    frame_owner: Some(FrameOwner::BuffAct {
+                        owner_uid: settlement.owner_uid,
+                        source_uid: settlement.source_uid,
+                        buff_uid: settlement.buff_uid,
+                        buff_id: settlement.buff_id,
+                        key: settlement.trigger.key(),
                     }),
-            );
+                    subscriber: None,
+                    caster_frame: None,
+                }),
+        );
     }
     if runs_after {
         let mut selected = queued_selected_timing(

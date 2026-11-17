@@ -50,13 +50,14 @@ impl BuffTakeAction {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct BuffActionExpiry {
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct BuffActionSettlement {
     pub(crate) owner_uid: i64,
     pub(crate) source_uid: i64,
     pub(crate) buff_uid: i64,
     pub(crate) buff_id: i32,
     pub(crate) trigger: BuffTakeActionTrigger,
+    pub(crate) command: BuffCommand,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -116,10 +117,10 @@ impl BuffManager {
         )
     }
 
-    pub(crate) fn plan_action_expiries(
+    pub(crate) fn plan_action_settlements(
         &self,
         action: &crate::engine::skill::action::SkillActionEvent,
-    ) -> Vec<BuffActionExpiry> {
+    ) -> Vec<BuffActionSettlement> {
         if action.phase != crate::engine::skill::action::SkillPhase::HitPassives {
             return Vec::new();
         }
@@ -143,12 +144,39 @@ impl BuffManager {
                                 || action.target_uids.contains(&active.owner_uid))
                     }
                 };
-                matches.then_some(BuffActionExpiry {
+                if !matches {
+                    return None;
+                }
+                let buff_uid = active.buff.uid?;
+                let origin = crate::engine::skill::rule::CommandOrigin {
+                    domain: crate::engine::skill::rule::RuleDomain::Lifecycle,
+                    key: take_action.trigger.key(),
+                };
+                let command = if definition.has_effect_count()
+                    && active.buff.count.unwrap_or_default() > 0
+                    && take_action.trigger == BuffTakeActionTrigger::OwnerCastSkill
+                {
+                    BuffCommand::ConsumeCount(BuffConsume {
+                        origin,
+                        target_uid: active.owner_uid,
+                        selector: BuffSelector::Uid(buff_uid),
+                        amount: 1,
+                        depleted: DepletedBuff::Remove,
+                    })
+                } else {
+                    BuffCommand::ExpireAction(BuffRemove {
+                        origin,
+                        target_uid: active.owner_uid,
+                        selector: BuffRemoveSelector::Uid(buff_uid),
+                    })
+                };
+                Some(BuffActionSettlement {
                     owner_uid: active.owner_uid,
                     source_uid: active.buff.from_uid.unwrap_or(active.owner_uid),
-                    buff_uid: active.buff.uid?,
+                    buff_uid,
                     buff_id: active.buff.buff_id?,
                     trigger: take_action.trigger,
+                    command,
                 })
             })
             .collect()
