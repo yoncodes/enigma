@@ -110,6 +110,9 @@ pub(super) fn drain_skill(
         && invocation.mode == SkillExecutionMode::DirectBig
         && let Some(parent) = parent_path.as_deref()
     {
+        if invocation.target == SkillTarget::Configured && invocation.frame_target.is_none() {
+            invocation.frame_target = TargetResolver::delegated_anchor(pool, invocation.plan);
+        }
         push_change(
             &mut result.frames,
             parent,

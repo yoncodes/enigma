@@ -333,8 +333,21 @@ fn side_owned_ultimate_card_keeps_its_submitted_target() {
                 if matches!(
                     marker.as_ref(),
                     BattleChange::UltimateDelegated { caster_uid: 11 }
-                ) && matches!(cast.owner, FrameOwner::Skill { source_uid: 11, skill_id: 31473141, .. })
+                ) && matches!(cast.owner, FrameOwner::Skill {
+                    source_uid: 11,
+                    skill_id: 31473141,
+                    target_uid: Some(10),
+                    ..
+                })
         )));
+        let has_new_life = |uid| {
+            managers
+                .buff
+                .active_for(uid)
+                .any(|buff| buff.buff_id == Some(31472003))
+        };
+        assert!(has_new_life(11));
+        assert!(!has_new_life(10));
         assert_eq!(managers.ex_point.get(11), 4);
         let moxie = result
             .outcomes

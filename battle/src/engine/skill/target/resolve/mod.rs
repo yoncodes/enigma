@@ -6,6 +6,7 @@ use crate::engine::{
     },
 };
 
+mod delegated;
 mod highest_moxie;
 
 pub struct TargetResolver;
