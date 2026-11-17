@@ -430,7 +430,7 @@ fn use_ex_skill_checks_the_active_skill_payload() {
     let condition = ParsedCondition {
         opcode: 25210,
         type_name: String::new(),
-        kind: ParsedConditionKind::UseExSkill { slot: 0 },
+        kind: ParsedConditionKind::AfterUltimate,
         raw_args: Vec::new(),
     };
     let matches = |active_skill_id| {
@@ -547,7 +547,7 @@ fn use_ex_skill_does_not_treat_an_enhanced_basic_skill_as_an_ultimate() {
     let condition = ParsedCondition {
         opcode: 25210,
         type_name: "UseExSkill".into(),
-        kind: ParsedConditionKind::UseExSkill { slot: 0 },
+        kind: ParsedConditionKind::AfterUltimate,
         raw_args: Vec::new(),
     };
     let matches = |active_skill_id| {

@@ -989,7 +989,7 @@ condition_definitions! {
     [25203] "UseExSkill" => trigger::parse_use_ex_skill_slot, event_trigger(EventKind::SkillAction, Some(SkillPhase::Immediate));
     [25204] "UseExSkill" => trigger::parse_use_ex_skill, incoming_attack_modifier(attack_target_observes(event_trigger(EventKind::SkillAction, Some(SkillPhase::Immediate))));
     [25208] "UseExSkill" => trigger::parse_use_ex_skill, event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterDamage));
-    [25210] "UseExSkill" => trigger::parse_use_ex_skill, event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterHit));
+    [25210] "UseExSkill" => trigger::after_ultimate, event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterHit));
     [564210] "BurnOverflow" => buff::burn_overflow, event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterHit));
     [564203] "BurnOverflow" => buff::burn_overflow, event_trigger(EventKind::SkillAction, Some(SkillPhase::Immediate));
     [25212] "UseExSkill" => trigger::parse_use_ex_skill, event_trigger(EventKind::AllyAction, None);

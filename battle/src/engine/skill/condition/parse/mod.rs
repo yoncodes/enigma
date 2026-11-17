@@ -339,6 +339,7 @@ pub enum ParsedConditionKind {
     UseExSkill {
         slot: i32,
     },
+    AfterUltimate,
     TeammateUseExSkill,
     ActiveSkillSourceIsTarget,
     ActiveSkillRank {

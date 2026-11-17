@@ -1199,21 +1199,19 @@ fn condition_kind_matches(
         ),
         ParsedConditionKind::UseExSkill { slot } => {
             (*slot == 0 || context.active_skill_slot == *slot)
-                && pool
-                    .entity(if context.active_skill_source_uid != 0 {
-                        context.active_skill_source_uid
-                    } else {
-                        source_uid
-                    })
-                    .is_some_and(|source| {
-                        managers.is_some_and(|managers| {
-                            crate::engine::mechanic::card::CardMechanic.is_ultimate_skill(
-                                managers,
-                                context.active_skill_id,
-                                source,
-                            )
-                        })
-                    })
+                && card_ultimate(source_uid, pool, managers, context)
+        }
+        ParsedConditionKind::AfterUltimate => {
+            if context.active_skill_mode == crate::engine::skill::action::SkillExecutionMode::Device
+            {
+                managers.is_some_and(|managers| {
+                    managers
+                        .conduit
+                        .is_unique_skill(action_owner(source_uid, context), context.active_skill_id)
+                })
+            } else {
+                card_ultimate(source_uid, pool, managers, context)
+            }
         }
         ParsedConditionKind::TeammateUseExSkill => pool.allies(source_uid).iter().any(|ally| {
             ally.uid != source_uid
@@ -1422,6 +1420,32 @@ fn condition_kind_matches(
         ParsedConditionKind::NoActionRound => !context.owner_played_card,
         ParsedConditionKind::Unsupported(_) => false,
     }
+}
+
+fn action_owner(source_uid: i64, context: TargetContext) -> i64 {
+    if context.active_skill_source_uid != 0 {
+        context.active_skill_source_uid
+    } else {
+        source_uid
+    }
+}
+
+fn card_ultimate(
+    source_uid: i64,
+    pool: &TargetPool,
+    managers: Option<&BattleManagers>,
+    context: TargetContext,
+) -> bool {
+    pool.entity(action_owner(source_uid, context))
+        .is_some_and(|source| {
+            managers.is_some_and(|managers| {
+                crate::engine::mechanic::card::CardMechanic.is_ultimate_skill(
+                    managers,
+                    context.active_skill_id,
+                    source,
+                )
+            })
+        })
 }
 
 fn card_anchor_matches(
