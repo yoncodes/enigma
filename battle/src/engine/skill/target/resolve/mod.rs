@@ -315,7 +315,7 @@ impl TargetResolver {
                 pool.main_allies(source_uid),
                 source_uid,
                 managers,
-                (action && !request.raw.is_empty()).then_some(context.runtime_target_uid),
+                action.then_some(context.runtime_target_uid),
             ),
             TargetRule::AllyPosition(position) => at_position(pool.allies(source_uid), position),
             TargetRule::AdjacentAllies => adjacent_allies(pool.allies(source_uid), source_uid),

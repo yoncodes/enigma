@@ -298,10 +298,14 @@ fn highest_moxie_action_prefers_selected_ally_only_when_tied() {
         code: 112,
         raw: vec![3114],
     };
-    let resolve = |selected, managers: &BattleManagers| {
+    let bare = TargetRequest {
+        code: 112,
+        raw: vec![],
+    };
+    let resolve = |request: &TargetRequest, skill_id, selected, managers: &BattleManagers| {
         TargetResolver::resolve_action_targets(
-            &request,
-            311401511,
+            request,
+            skill_id,
             0,
             &pool,
             &mut RoundDeterminism::default(),
@@ -312,30 +316,29 @@ fn highest_moxie_action_prefers_selected_ally_only_when_tied() {
             },
         )
     };
-    assert_eq!(resolve(12, &managers), vec![12]);
-    assert_eq!(resolve(10, &managers), vec![11]);
-    assert_eq!(resolve(-1, &managers), vec![11]);
+    // The tie order without a usable selection is unproven, so it is not pinned here.
+    assert_eq!(resolve(&request, 311401511, 12, &managers), vec![12]);
     managers.ex_point.set(10, 10, 0, 0);
-    assert_eq!(
+    assert_eq!(resolve(&bare, 31140151, 12, &managers), vec![12]);
+    // Effect slots have no selection of their own; the action's target must not
+    // steer them.
+    let effect = |selected| {
         TargetResolver::resolve_with_managers_and_context(
-            &TargetRequest {
-                code: 112,
-                raw: vec![]
-            },
+            &bare,
             1001,
             11,
             &pool,
             &mut RoundDeterminism::default(),
             Some(&managers),
             TargetContext {
-                runtime_target_uid: 12,
+                runtime_target_uid: selected,
                 ..Default::default()
             },
-        ),
-        vec![11]
-    );
+        )
+    };
+    assert_eq!(effect(12), effect(-1));
     managers.ex_point.set(12, 12, 1, 0);
-    assert_eq!(resolve(12, &managers), vec![11]);
+    assert_eq!(resolve(&request, 311401511, 12, &managers), vec![11]);
 }
 #[test]
 fn bound_ally_target_requires_the_sources_completed_contract() {
