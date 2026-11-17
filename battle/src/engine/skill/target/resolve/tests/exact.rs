@@ -278,6 +278,66 @@ fn highest_ex_point_uses_current_main_ally_moxie() {
 }
 
 #[test]
+fn highest_moxie_action_prefers_selected_ally_only_when_tied() {
+    let mut recoleta = entity_stats(10, 2, 100, 100, 4);
+    recoleta.model_id = Some(3114);
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![
+                entity_stats(11, 1, 100, 100, 2),
+                recoleta,
+                entity_stats(12, 3, 100, 100, 2),
+            ],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    let request = TargetRequest {
+        code: 112,
+        raw: vec![3114],
+    };
+    let resolve = |selected, managers: &BattleManagers| {
+        TargetResolver::resolve_action_targets(
+            &request,
+            311401511,
+            0,
+            &pool,
+            &mut RoundDeterminism::default(),
+            Some(managers),
+            TargetContext {
+                runtime_target_uid: selected,
+                ..Default::default()
+            },
+        )
+    };
+    assert_eq!(resolve(12, &managers), vec![12]);
+    assert_eq!(resolve(10, &managers), vec![11]);
+    assert_eq!(resolve(-1, &managers), vec![11]);
+    managers.ex_point.set(10, 10, 0, 0);
+    assert_eq!(
+        TargetResolver::resolve_with_managers_and_context(
+            &TargetRequest {
+                code: 112,
+                raw: vec![]
+            },
+            1001,
+            11,
+            &pool,
+            &mut RoundDeterminism::default(),
+            Some(&managers),
+            TargetContext {
+                runtime_target_uid: 12,
+                ..Default::default()
+            },
+        ),
+        vec![11]
+    );
+    managers.ex_point.set(12, 12, 1, 0);
+    assert_eq!(resolve(12, &managers), vec![11]);
+}
+#[test]
 fn bound_ally_target_requires_the_sources_completed_contract() {
     init_config();
     let fight = Fight {

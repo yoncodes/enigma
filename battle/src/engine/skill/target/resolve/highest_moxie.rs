@@ -20,6 +20,7 @@ pub(super) fn select(
     allies: &[TargetEntity],
     source_uid: i64,
     managers: Option<&BattleManagers>,
+    selected: Option<i64>,
 ) -> Vec<i64> {
     let Some(excluded) = excluded_model(args) else {
         return Vec::new();
@@ -37,6 +38,7 @@ pub(super) fn select(
                 -managers.map_or(entity.ex_point, |managers| {
                     managers.ex_point.get(entity.uid)
                 }),
+                selected != Some(entity.uid),
                 entity.position,
                 entity.uid,
             )
