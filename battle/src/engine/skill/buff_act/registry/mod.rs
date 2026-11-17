@@ -1287,6 +1287,7 @@ buff_act_definitions! {
     (825, "ConsumeBuffContinueChannel") => ConsumeBuffContinueChannel, references: references_for_feature, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(825, "ConsumeBuffContinueChannel"), &[EffectType::None as i32]));
     (827, "Bullet") => Bullet,
         source: Applier,
+        timing: AfterSkill,
         runtime: |context| super::bullet::rule_ops(context.subscriber, context.event?),
         supports: |_| true, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(827, "Bullet"), &[EffectType::None as i32]));
     (834, "EachChangeAttr") => EachChangeAttr,

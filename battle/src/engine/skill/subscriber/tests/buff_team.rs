@@ -66,6 +66,7 @@ fn discovers_active_buff_acts_from_effect_time() {
     assert!(completed.iter().any(|subscriber| {
         subscriber.key
             == SubscriptionKey::new(EventKind::SkillCast, DefinitionKey::new(827, "Bullet"))
+                .with_timing(crate::engine::event::subscription::ReactionTiming::AfterSkill)
             && subscriber.effect_time == 208
             && subscriber.effect_condition == 3
             && subscriber.args.is_empty()

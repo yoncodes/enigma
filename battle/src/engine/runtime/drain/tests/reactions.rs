@@ -1,5 +1,6 @@
 use super::*;
 
+mod bullet_timing;
 mod burn_application;
 mod conduit_timing;
 mod damage_reactions;
