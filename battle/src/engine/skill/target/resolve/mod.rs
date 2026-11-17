@@ -387,9 +387,12 @@ impl TargetResolver {
             TargetRule::EnemyMostQueuedAttacks => {
                 enemy_with_most_queued_attacks(pool.enemies(source_uid, false), managers)
             }
+            // "If the target has ..." checks read the enemy the action hit.
+            TargetRule::BurnPriorityEnemy if !action && context.runtime_target_uid != 0 => {
+                vec![context.runtime_target_uid]
+            }
             TargetRule::BurnPriorityEnemy => burn_priority::select(
                 &burn_priority::candidates(pool, source_uid, managers),
-                (!action).then_some(context.runtime_target_uid),
                 determinism,
             ),
             TargetRule::EnemyPosition(position) => {

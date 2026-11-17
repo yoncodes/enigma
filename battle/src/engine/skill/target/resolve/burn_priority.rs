@@ -32,21 +32,13 @@ pub(super) fn candidates(
         .collect()
 }
 
-pub(super) fn select(
-    candidates: &[TargetEntity],
-    selected: Option<i64>,
-    determinism: &mut RoundDeterminism,
-) -> Vec<i64> {
+pub(super) fn select(candidates: &[TargetEntity], determinism: &mut RoundDeterminism) -> Vec<i64> {
     if let [candidate] = candidates {
         return vec![candidate.uid];
     }
-    selected
-        .filter(|uid| candidates.iter().any(|candidate| candidate.uid == *uid))
-        .or_else(|| {
-            determinism
-                .lua_random_index(candidates.len())
-                .map(|index| candidates[index].uid)
-        })
+    determinism
+        .lua_random_index(candidates.len())
+        .map(|index| candidates[index].uid)
         .into_iter()
         .collect()
 }

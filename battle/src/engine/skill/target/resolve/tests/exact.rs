@@ -258,12 +258,13 @@ fn burn_priority_uses_current_stacks_and_observed_ties() {
                 &pool,
                 &mut determinism,
                 Some(&managers),
+                // The hit target, even when it no longer has the most Burn.
                 TargetContext {
-                    runtime_target_uid: -3,
+                    runtime_target_uid: -1,
                     ..context
                 },
             ),
-            vec![-3],
+            vec![-1],
         );
         assert_eq!(determinism.skill_targets.len(), 1);
         assert_eq!(
