@@ -60,6 +60,18 @@ pub fn period_then_start(_: i32, _: &str, args: &[String]) -> Option<ParsedCondi
     })
 }
 
+pub fn round_start_interval(_: i32, _: &str, args: &[String]) -> Option<ParsedConditionKind> {
+    let [period, start_round] = parse_fixed(args)?;
+    Some(ParsedConditionKind::RoundStartInterval {
+        period,
+        start_round,
+    })
+}
+
+pub(super) fn interval_matches(round: i32, start: i32, period: i32) -> bool {
+    period > 0 && round >= start && (i64::from(round) - i64::from(start)) % i64::from(period) == 0
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum LifecycleMode {
     BattleStart,

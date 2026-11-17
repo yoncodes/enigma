@@ -29,6 +29,7 @@ pub struct RoundState {
     pub hero_sp_attributes: Vec<FightHeroSpAttributeInfo>,
     pub last_change_hero_uid: Option<i64>,
     pub(crate) extra_rounds: usize,
+    pub(crate) defender_starts: i32,
 }
 
 impl RoundState {
@@ -69,6 +70,11 @@ impl RoundState {
         if self.extra_rounds > 0 {
             self.extra_rounds -= 1;
         }
+    }
+
+    pub(crate) fn start_defender_round(&mut self) -> i32 {
+        self.defender_starts = self.defender_starts.saturating_add(1);
+        self.defender_starts
     }
 }
 

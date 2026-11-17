@@ -9,6 +9,7 @@ mod auto_battle;
 mod cards;
 mod cloth;
 mod core;
+mod intervals;
 mod qte;
 mod rounds;
 mod terminal;

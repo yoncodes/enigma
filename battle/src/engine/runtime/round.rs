@@ -164,9 +164,10 @@ impl BattleRuntime {
         let commands = commands_from_opers(&request.opers);
         let fight_version = self.fight.version.unwrap_or_default();
         let absorb_hurt_map_layout = self.absorb_hurt_map_layout;
-        let uses_action_phase_power_clear =
-            crate::engine::fight::versions::round_start_setup_layout(fight_version)
-                == Some(crate::engine::fight::versions::RoundStartSetupLayout::Version7);
+        let setup_layout = crate::engine::fight::versions::round_start_setup_layout(fight_version);
+        let version_seven =
+            setup_layout == Some(crate::engine::fight::versions::RoundStartSetupLayout::Version7);
+        let uses_action_phase_power_clear = version_seven;
         let device_operations = &request.devices_opers;
 
         let player = schedule::run_player_phase(
@@ -433,12 +434,17 @@ impl BattleRuntime {
         }
         if runs_phase_two {
             let wave_entry_condition_uids = std::mem::take(&mut self.wave_entry_condition_uids);
+            let defender_context = crate::engine::skill::target::TargetContext {
+                defender_start_round: version_seven
+                    .then(|| self.round_state.start_defender_round()),
+                ..context
+            };
             let before_ai = schedule::run_before_ai_round_start(
                 &mut self.managers,
                 &pool,
                 catalog,
                 &mut self.determinism,
-                context,
+                defender_context,
                 1,
                 &wave_entry_condition_uids,
                 (uses_action_phase_power_clear && !wave_defeated_after_attacker_settlement)

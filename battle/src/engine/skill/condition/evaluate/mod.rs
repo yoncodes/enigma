@@ -461,11 +461,17 @@ fn condition_kind_matches(
         ParsedConditionKind::RoundInterval {
             start_round,
             period,
-        } => {
-            *period > 0
-                && context.current_round >= *start_round
-                && (context.current_round - *start_round) % *period == 0
-        }
+        } => super::lifecycle::interval_matches(context.current_round, *start_round, *period),
+        ParsedConditionKind::RoundStartInterval {
+            start_round,
+            period,
+        } => super::lifecycle::interval_matches(
+            context
+                .defender_start_round
+                .unwrap_or(context.current_round),
+            *start_round,
+            *period,
+        ),
         ParsedConditionKind::ActionOrder(order) => context.action_order == *order,
         ParsedConditionKind::ActionOrderRange { start, count } => {
             *count > 0

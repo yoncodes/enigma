@@ -78,6 +78,7 @@ struct TargetBuff {
 pub struct TargetContext {
     pub battle_id: i32,
     pub current_round: i32,
+    pub defender_start_round: Option<i32>,
     pub runtime_target_uid: i64,
     pub causing_skill_target_uid: i64,
     pub event_source_uid: i64,
