@@ -143,6 +143,16 @@ impl CardMechanic {
                 .is_some_and(|skill_id| self.is_ultimate_skill(managers, skill_id, entity))
     }
 
+    pub(crate) fn is_dealt_ultimate(
+        &self,
+        managers: &BattleManagers,
+        card: &CardInfo,
+        entity: &TargetEntity,
+    ) -> bool {
+        !crate::engine::manager::card::CardManager::is_sovereign(card)
+            && self.is_ultimate(managers, card, entity)
+    }
+
     pub fn is_ultimate_skill(
         &self,
         managers: &BattleManagers,
@@ -171,7 +181,7 @@ impl CardMechanic {
                 .hand()
                 .iter()
                 .chain(managers.card.team_cards())
-                .any(|card| self.is_ultimate(managers, card, entity))
+                .any(|card| self.is_dealt_ultimate(managers, card, entity))
     }
 
     pub fn refill_hand_len(&self, managers: &BattleManagers, pool: &TargetPool) -> usize {
@@ -275,7 +285,7 @@ impl CardMechanic {
                 (self.ultimate_ready(managers, entity)
                     && !before_hand
                         .iter()
-                        .any(|card| self.is_ultimate(managers, card, entity))
+                        .any(|card| self.is_dealt_ultimate(managers, card, entity))
                     && self.ultimate_ignores_limit(managers, uid, skill_id))
                 .then(|| crate::engine::manager::card::pool::card_for_target(entity, skill_id))
                 .flatten()
@@ -287,6 +297,7 @@ impl CardMechanic {
 #[cfg(test)]
 mod tests {
     mod cost;
+    mod ultimate;
 
     use sonettobuf::{BuffInfo, Fight, FightEntityInfo, FightTeam};
 
