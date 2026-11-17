@@ -332,11 +332,9 @@ fn project_change(
     redeal_layout: RedealWireLayout,
 ) -> Result<Vec<ActEffect>, ProjectionError> {
     Ok(match change {
-        BattleChange::SkillLifecycle(
-            crate::engine::skill::action::SkillLifecycle::DirectUltimateBodyCompleted {
-                source_uid,
-            },
-        ) => vec![EffectPacket::direct_use_ex_skill(*source_uid)],
+        BattleChange::UltimateDelegated { caster_uid } => {
+            vec![EffectPacket::direct_use_ex_skill(*caster_uid)]
+        }
         BattleChange::SkillLifecycle(
             crate::engine::skill::action::SkillLifecycle::EmitterAttackStarted(attack),
         ) => vec![EffectPacket::emitter_attack_marker(*attack)],

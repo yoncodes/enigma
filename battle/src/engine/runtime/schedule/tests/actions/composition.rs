@@ -319,13 +319,30 @@ fn side_owned_ultimate_card_keeps_its_submitted_target() {
             .find(|step| step.act_id == Some(311401511))
             .unwrap();
         assert_eq!(parent.to_id, Some(anchor));
-        assert!(result.outcomes.iter().any(|outcome| matches!(
-            outcome,
-            RuleOutcome::SkillLifecycle(
-                crate::engine::skill::action::SkillLifecycle::DirectUltimateBodyCompleted {
-                    source_uid: 11,
-                }
-            )
+        use crate::engine::runtime::{
+            change::BattleChange,
+            record::{FrameItem, FrameOwner},
+        };
+        let flood = result
+            .frames
+            .iter()
+            .find(|frame| {
+                matches!(
+                    frame.owner,
+                    FrameOwner::Skill {
+                        skill_id: 311401511,
+                        ..
+                    }
+                )
+            })
+            .unwrap();
+        assert!(flood.items.windows(2).any(|items| matches!(
+            items,
+            [FrameItem::Change(marker), FrameItem::Child(cast)]
+                if matches!(
+                    marker.as_ref(),
+                    BattleChange::UltimateDelegated { caster_uid: 11 }
+                ) && matches!(cast.owner, FrameOwner::Skill { source_uid: 11, skill_id: 31473141, .. })
         )));
         assert_eq!(managers.ex_point.get(11), 4);
         let moxie = result

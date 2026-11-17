@@ -1233,10 +1233,7 @@ pub(crate) fn execute_rule_op_with(
                     .push(crate::engine::event::payload::BattleEvent::AllyAction(
                         action.clone(),
                     )),
-                crate::engine::skill::action::SkillLifecycle::DirectUltimateBodyCompleted {
-                    ..
-                }
-                | crate::engine::skill::action::SkillLifecycle::EmitterAttackStarted(_)
+                crate::engine::skill::action::SkillLifecycle::EmitterAttackStarted(_)
                 | crate::engine::skill::action::SkillLifecycle::EmitterSkillEnded { .. } => {}
             }
             Ok(RuleOutcome::SkillLifecycle(lifecycle))

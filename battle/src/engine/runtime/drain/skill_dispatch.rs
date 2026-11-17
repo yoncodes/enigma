@@ -1,3 +1,5 @@
+use crate::engine::{runtime::change::BattleChange, skill::action::SkillExecutionMode};
+
 use super::*;
 
 #[allow(clippy::too_many_arguments)]
@@ -104,6 +106,18 @@ pub(super) fn drain_skill(
     } else {
         trigger
     };
+    if frame_path.is_none()
+        && invocation.mode == SkillExecutionMode::DirectBig
+        && let Some(parent) = parent_path.as_deref()
+    {
+        push_change(
+            &mut result.frames,
+            parent,
+            BattleChange::UltimateDelegated {
+                caster_uid: invocation.plan.source_uid,
+            },
+        );
+    }
     let frame_path = ensure_frame(
         &mut result.frames,
         frame_path,
@@ -213,7 +227,7 @@ pub(super) fn drain_skill(
                 .filter(|target_uid| pool.source_is_attacker(*target_uid) == source_is_attacker),
         );
     }
-    if invocation.mode == crate::engine::skill::action::SkillExecutionMode::DirectBig {
+    if invocation.mode == SkillExecutionMode::DirectBig {
         execution.prepare_direct_big(invocation.additional_moxie);
     }
 

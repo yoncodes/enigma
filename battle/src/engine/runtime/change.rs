@@ -20,6 +20,7 @@ use crate::engine::manager::{
 #[derive(Debug, Clone, PartialEq)]
 pub enum BattleChange {
     SkillLifecycle(crate::engine::skill::action::SkillLifecycle),
+    UltimateDelegated { caster_uid: i64 },
     Buff(Box<BuffChanges>),
     BuffFanout(Box<BuffFanoutResult>),
     BuffFeatureMarker(crate::engine::manager::buff::BuffMarkerResult),

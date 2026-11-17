@@ -84,7 +84,6 @@ impl SkillStart {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SkillLifecycle {
-    DirectUltimateBodyCompleted { source_uid: i64 },
     EmitterAttackStarted(crate::engine::manager::emitter::EmitterAttack),
     EmitterSkillEnded { source_uid: i64 },
     PhaseCompleted(SkillActionEvent),

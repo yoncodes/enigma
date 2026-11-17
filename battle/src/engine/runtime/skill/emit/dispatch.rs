@@ -1291,22 +1291,6 @@ pub(in crate::engine::runtime) fn emit_ops(
     let publishes_lifecycle =
         invocation.condition_key.is_none() && !matches!(trigger, SkillOpTrigger::Setup { .. });
 
-    if continuation.is_none()
-        && active_phase.is_some()
-        && invocation.mode == crate::engine::skill::action::SkillExecutionMode::DirectBig
-    {
-        outputs.push(SkillEmissionOp {
-            op: RuleOp::SkillLifecycle(
-                crate::engine::skill::action::SkillLifecycle::DirectUltimateBodyCompleted {
-                    source_uid: invocation.plan.source_uid,
-                },
-            ),
-            owner: behavior::registry::OutputOwner::Skill,
-            consequence: ConsequencePolicy::Default,
-            frame_owner: None,
-        });
-    }
-
     if publishes_lifecycle && active_phase == Some(SkillPhase::SourceOpening) {
         outputs.push(phase_completed_op(
             &invocation,
