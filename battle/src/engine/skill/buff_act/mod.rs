@@ -1177,9 +1177,10 @@ pub fn hp_loss_state_updates(
     managers: &BattleManagers,
     target_uid: i64,
     amount: i32,
+    mut resolved: Option<HpLossStateUpdate>,
 ) -> Option<Vec<HpLossStateUpdate>> {
     if amount <= 0 {
-        return Some(Vec::new());
+        return Some(resolved.into_iter().collect());
     }
     let mut features = managers
         .buff
@@ -1196,9 +1197,16 @@ pub fn hp_loss_state_updates(
     features.sort_by_key(|(feature, _)| feature.buff_uid);
     let mut updates = Vec::new();
     for (feature, handler) in features {
-        updates.extend(handler(managers, &feature, amount)?);
+        if resolved.as_ref().is_some_and(|update| {
+            update.marker.buff_uid == feature.buff_uid
+                && Some(update.marker.act_id) == feature.act_id()
+        }) {
+            updates.extend(resolved.take());
+        } else {
+            updates.extend(handler(managers, &feature, amount)?);
+        }
     }
-    Some(updates)
+    resolved.is_none().then_some(updates)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

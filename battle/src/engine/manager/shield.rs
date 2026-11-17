@@ -265,11 +265,9 @@ fn commit(managers: &mut BattleManagers, plan: ShieldPlan) -> ShieldChanges {
         let changes = managers.commit_buff(planned.plan);
         planned.expose.then_some(changes)
     });
-    let hp = plan.hp.map(|command| {
-        managers
-            .hp
-            .commit_validated_command_with_team_shared(command, None)
-    });
+    let hp = plan
+        .hp
+        .map(|command| managers.hp.commit_validated_command(command, None, None));
     if let Some(gain) = plan.team_shared
         && let Some(added) = buff
             .as_mut()
