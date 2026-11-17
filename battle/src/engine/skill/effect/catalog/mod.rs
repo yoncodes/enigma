@@ -19,7 +19,7 @@ pub struct SkillEffectCatalog {
     effects: HashMap<i32, ParsedSkillEffect>,
     aliases: HashMap<i32, i32>,
     effect_tags: HashMap<i32, i32>,
-    logic_targets: HashMap<i32, i32>,
+    logic_targets: HashMap<i32, TargetRequest>,
     damage_rates: HashMap<i32, i32>,
     skill_types: HashMap<i32, i32>,
     skill_effect_types: HashMap<i32, i32>,
@@ -93,7 +93,13 @@ impl SkillEffectCatalog {
     }
 
     pub fn insert_logic_target(&mut self, effect_id: i32, logic_target: i32) {
-        self.logic_targets.insert(effect_id, logic_target);
+        self.logic_targets.insert(
+            effect_id,
+            TargetRequest {
+                code: logic_target,
+                raw: Vec::new(),
+            },
+        );
     }
 
     pub fn insert_damage_rate(&mut self, effect_id: i32, damage_rate: i32) {
@@ -262,11 +268,16 @@ impl SkillEffectCatalog {
     }
 
     pub fn logic_target(&self, skill_id: i32) -> i32 {
+        self.logic_request(skill_id).code
+    }
+
+    pub(crate) fn logic_request(&self, skill_id: i32) -> &TargetRequest {
+        static DEFAULT: TargetRequest = TargetRequest {
+            code: 0,
+            raw: Vec::new(),
+        };
         let effect_id = self.aliases.get(&skill_id).copied().unwrap_or(skill_id);
-        self.logic_targets
-            .get(&effect_id)
-            .copied()
-            .unwrap_or_default()
+        self.logic_targets.get(&effect_id).unwrap_or(&DEFAULT)
     }
 
     pub fn damage_rate(&self, skill_id: i32) -> i32 {

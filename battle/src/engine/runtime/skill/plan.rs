@@ -14,7 +14,7 @@ use crate::engine::{
         effect::SkillEffectCatalog,
         rule::{CommandOrigin, DefinitionKey, RuleDomain, output::RuleOp},
         target::{
-            TargetContext, TargetPool, TargetRequest, TargetResolver, request::SOURCE_TARGET_CODE,
+            TargetContext, TargetPool, TargetResolver, request::SOURCE_TARGET_CODE,
             resolve::preserves_selected_frame_target,
         },
     },
@@ -1293,10 +1293,7 @@ fn damage_targets(
 ) -> (Vec<i64>, usize, usize) {
     let source_uid = invocation.plan.source_uid;
     let skill_id = invocation.plan.skill_id;
-    let request = TargetRequest {
-        code: catalog.logic_target(effect_skill_id),
-        raw: Vec::new(),
-    };
+    let request = catalog.logic_request(effect_skill_id);
     if let Some(rend) = rend {
         let targets = rend.targets();
         let base_count = targets.len();
@@ -1306,7 +1303,7 @@ fn damage_targets(
     let mut targets = if execution.modifiers.redirected_damage_targets.is_empty() {
         execution.configured_targets.clone().unwrap_or_else(|| {
             TargetResolver::resolve_action_targets(
-                &request,
+                request,
                 skill_id,
                 source_uid,
                 pool,

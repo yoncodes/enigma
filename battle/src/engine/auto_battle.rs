@@ -16,7 +16,7 @@ use crate::engine::{
     runtime::{determinism::RoundDeterminism, schedule::card_skill_is_blocked},
     skill::{
         effect::SkillEffectCatalog,
-        target::{CardSelectionResolver, TargetContext, TargetPool, TargetRequest},
+        target::{CardSelectionResolver, TargetContext, TargetPool},
     },
 };
 
@@ -895,11 +895,8 @@ fn target_options(
     catalog: &SkillEffectCatalog,
     determinism: &RoundDeterminism,
 ) -> Vec<i64> {
-    let code = catalog.logic_target(skill_id);
-    let request = TargetRequest {
-        code,
-        raw: Vec::new(),
-    };
+    let request = catalog.logic_request(skill_id);
+    let code = request.code;
     let attack = catalog.is_attack(skill_id);
     let context = TargetContext {
         runtime_target_uid: preferred_target.unwrap_or_default(),
@@ -913,7 +910,7 @@ fn target_options(
         ..Default::default()
     };
     crate::engine::skill::target::TargetResolver::resolve_primary_candidates(
-        &request,
+        request,
         skill_id,
         source_uid,
         pool,
@@ -933,12 +930,10 @@ fn card_selection_target_options(
     catalog: &SkillEffectCatalog,
     determinism: &RoundDeterminism,
 ) -> Vec<i64> {
-    let code = catalog.logic_target(skill_id);
+    let request = catalog.logic_request(skill_id);
+    let code = request.code;
     CardSelectionResolver::candidates(
-        &TargetRequest {
-            code,
-            raw: Vec::new(),
-        },
+        request,
         skill_id,
         source_uid,
         pool,

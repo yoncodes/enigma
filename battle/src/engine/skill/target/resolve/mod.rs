@@ -1,10 +1,12 @@
 use crate::engine::{
-    manager::{BattleManagers, buff::BuffStatus, emitter, ex_point::ExPointKind},
+    manager::{BattleManagers, buff::BuffStatus, emitter},
     runtime::determinism::RoundDeterminism,
     skill::target::{
         BehaviorTargetOrder, TargetContext, TargetEntity, TargetPool, request::TargetRequest,
     },
 };
+
+mod highest_moxie;
 
 pub struct TargetResolver;
 
@@ -196,6 +198,29 @@ impl TargetResolver {
         managers: Option<&BattleManagers>,
         context: TargetContext,
     ) -> Vec<i64> {
+        Self::resolve_request(
+            request,
+            skill_id,
+            source_uid,
+            pool,
+            determinism,
+            managers,
+            context,
+            false,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn resolve_request(
+        request: &TargetRequest,
+        skill_id: i32,
+        source_uid: i64,
+        pool: &TargetPool,
+        determinism: &mut RoundDeterminism,
+        managers: Option<&BattleManagers>,
+        context: TargetContext,
+        action: bool,
+    ) -> Vec<i64> {
         let rule = target_rule(request.code);
         if rule.is_none() {
             eprintln!(
@@ -278,9 +303,13 @@ impl TargetResolver {
             TargetRule::LowestHpPercentageAlly => lowest_hp_percentage(pool.allies(source_uid)),
             TargetRule::HighestAttackAlly => highest_attack(pool.allies(source_uid), managers),
             TargetRule::LowestExPointAlly => lowest_ex_point(pool.allies(source_uid), source_uid),
-            TargetRule::HighestExPointAlly => {
-                highest_ex_point(pool.main_allies(source_uid), source_uid, managers)
-            }
+            TargetRule::HighestExPointAlly if !action && !request.raw.is_empty() => Vec::new(),
+            TargetRule::HighestExPointAlly => highest_moxie::select(
+                &request.raw,
+                pool.main_allies(source_uid),
+                source_uid,
+                managers,
+            ),
             TargetRule::AllyPosition(position) => at_position(pool.allies(source_uid), position),
             TargetRule::AdjacentAllies => adjacent_allies(pool.allies(source_uid), source_uid),
             TargetRule::AdjacentAlly(offset) => {
@@ -407,7 +436,7 @@ impl TargetResolver {
         managers: Option<&BattleManagers>,
         context: TargetContext,
     ) -> Vec<i64> {
-        let targets = Self::resolve_with_managers_and_context(
+        let targets = Self::resolve_request(
             request,
             skill_id,
             source_uid,
@@ -415,6 +444,7 @@ impl TargetResolver {
             determinism,
             managers,
             context,
+            true,
         );
         let targets = prioritize_provoked_target(targets, source_uid, pool, context);
         let targets = redirect_taunted_single_target(targets, source_uid, pool, context);
@@ -577,9 +607,19 @@ pub fn is_mapped_target_code(code: i32) -> bool {
 }
 
 pub fn is_supported_target(request: &TargetRequest) -> bool {
-    target_rule(request.code).is_some_and(|rule| {
-        rule != TargetRule::AlliesWithBuff || matches!(request.raw.as_slice(), [buff] if *buff > 0)
+    target_rule(request.code).is_some_and(|rule| match rule {
+        TargetRule::AlliesWithBuff => matches!(request.raw.as_slice(), [buff] if *buff > 0),
+        TargetRule::HighestExPointAlly => request.raw.is_empty(),
+        _ => true,
     })
+}
+
+pub(crate) fn compile_logic_target(mut request: TargetRequest) -> Option<TargetRequest> {
+    if target_rule(request.code)? == TargetRule::HighestExPointAlly {
+        return highest_moxie::supports(&request.raw).then_some(request);
+    }
+    request.raw.clear();
+    is_supported_target(&request).then_some(request)
 }
 
 pub(crate) fn preserves_selected_frame_target(
@@ -1005,32 +1045,6 @@ fn lowest_ex_point(entities: &[TargetEntity], fallback_uid: i64) -> Vec<i64> {
     let uid = entities
         .iter()
         .min_by_key(|entity| (entity.ex_point, entity.position, entity.uid))
-        .map(|entity| entity.uid)
-        .unwrap_or(fallback_uid);
-    vec![uid]
-}
-
-fn highest_ex_point(
-    entities: &[TargetEntity],
-    fallback_uid: i64,
-    managers: Option<&BattleManagers>,
-) -> Vec<i64> {
-    let uid = entities
-        .iter()
-        .filter(|entity| {
-            managers.is_none_or(|managers| {
-                managers.ex_point.kind(entity.uid) == ExPointKind::Common.as_wire()
-            })
-        })
-        .min_by_key(|entity| {
-            (
-                -managers
-                    .map(|managers| managers.ex_point.get(entity.uid))
-                    .unwrap_or(entity.ex_point),
-                entity.position,
-                entity.uid,
-            )
-        })
         .map(|entity| entity.uid)
         .unwrap_or(fallback_uid);
     vec![uid]

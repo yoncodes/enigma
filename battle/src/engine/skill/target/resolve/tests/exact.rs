@@ -197,16 +197,14 @@ fn resolves_lowest_highest_and_position_targets() {
 
 #[test]
 fn highest_ex_point_uses_current_main_ally_moxie() {
+    let mut recoleta = entity_stats(10, 1, 100, 100, 0);
+    recoleta.model_id = Some(3114);
     let mut device = entity_stats(13, 3, 100, 100, 65);
     device.ex_point_type =
         Some(crate::engine::manager::ex_point::ExPointKind::DevicePower.as_wire());
     let fight = Fight {
         attacker: Some(FightTeam {
-            entitys: vec![
-                entity_stats(10, 1, 100, 100, 0),
-                entity_stats(11, 2, 100, 100, 0),
-                device,
-            ],
+            entitys: vec![recoleta, entity_stats(11, 2, 100, 100, 0), device],
             sub_entitys: vec![entity_stats(12, -1, 100, 100, 10)],
             ..Default::default()
         }),
@@ -230,6 +228,53 @@ fn highest_ex_point_uses_current_main_ally_moxie() {
     );
 
     assert_eq!(targets, vec![11]);
+
+    managers.ex_point.set(10, 10, 7, 0);
+    let catalog = crate::engine::skill::effect::SkillEffectCatalog::from_roots(
+        crate::test_support::game_data(),
+        [311401511],
+        [],
+    );
+    let request = catalog.logic_request(311401511);
+    assert!(!is_supported_target(request));
+    assert!(
+        TargetResolver::resolve_with_managers_and_context(
+            request,
+            311401511,
+            0,
+            &pool,
+            &mut RoundDeterminism::default(),
+            Some(&managers),
+            TargetContext::default(),
+        )
+        .is_empty()
+    );
+    let resolve = |request: &TargetRequest, pool: &TargetPool| {
+        TargetResolver::resolve_action_targets(
+            request,
+            311401511,
+            0,
+            pool,
+            &mut RoundDeterminism::default(),
+            Some(&managers),
+            TargetContext::default(),
+        )
+    };
+    assert_eq!(resolve(request, &pool), vec![11]);
+    assert_eq!(
+        resolve(
+            &TargetRequest {
+                code: 112,
+                raw: Vec::new()
+            },
+            &pool
+        ),
+        vec![10]
+    );
+
+    let mut solo = fight;
+    solo.attacker.as_mut().unwrap().entitys.truncate(1);
+    assert!(resolve(request, &TargetPool::from_fight(&solo)).is_empty());
 }
 
 #[test]

@@ -255,9 +255,15 @@ pub(in crate::engine::runtime) fn emit_ops(
         )
         && execution.configured_targets.is_none()
     {
-        let request = TargetRequest {
-            code: execution.context.logic_target,
-            raw: Vec::new(),
+        let configured;
+        let request = if let SkillTarget::LogicRule(code) = invocation.target {
+            configured = TargetRequest {
+                code,
+                raw: Vec::new(),
+            };
+            &configured
+        } else {
+            catalog.logic_request(effect_skill_id)
         };
         let routes_configured_damage = effect
             .slots
@@ -276,7 +282,7 @@ pub(in crate::engine::runtime) fn emit_ops(
             Vec::new()
         } else {
             TargetResolver::resolve_action_targets(
-                &request,
+                request,
                 invocation.plan.skill_id,
                 invocation.plan.source_uid,
                 pool,
