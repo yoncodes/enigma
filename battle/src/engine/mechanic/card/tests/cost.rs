@@ -1,6 +1,22 @@
 use super::*;
 
 #[test]
+fn sovereign_card_waives_ap_by_card_type() {
+    let managers = BattleManagers::seeded(&Fight::default());
+    let catalog = crate::engine::skill::effect::catalog::SkillEffectCatalog::default();
+    let mut card = CardInfo {
+        uid: Some(10),
+        skill_id: Some(31472131),
+        card_type: Some(sonettobuf::card_info::CardType::Skill3 as i32),
+        ..Default::default()
+    };
+
+    assert!(!CardMechanic.uses_action_point(&card, 10, 31472131, &managers, &catalog));
+    card.card_type = None;
+    assert!(CardMechanic.uses_action_point(&card, 10, 31472131, &managers, &catalog));
+}
+
+#[test]
 fn common_ultimate_uses_base_gauge_before_cost_offset() {
     crate::test_support::init_config();
     for (moxie, ready) in [(4, false), (5, true)] {
