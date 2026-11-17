@@ -185,7 +185,7 @@ fn resolves_lowest_highest_and_position_targets() {
     assert_eq!(resolve_code(112, 10, &pool, &mut determinism), vec![11]);
     assert_eq!(resolve_code(113, 10, &pool, &mut determinism), vec![10]);
     assert_eq!(resolve_code(208, 10, &pool, &mut determinism), vec![-11]);
-    assert_eq!(resolve_code(231, 10, &pool, &mut determinism), vec![-11]);
+    assert_eq!(resolve_code(223, 10, &pool, &mut determinism), vec![-11]);
     assert_eq!(resolve_code(228, 10, &pool, &mut determinism), vec![-12]);
     assert_eq!(resolve_code(117, 11, &pool, &mut determinism), vec![10, 12]);
     assert_eq!(resolve_code(118, 11, &pool, &mut determinism), vec![12]);
@@ -195,6 +195,129 @@ fn resolves_lowest_highest_and_position_targets() {
     assert_eq!(resolve_code(127, 11, &pool, &mut determinism), vec![13]);
 }
 
+#[test]
+fn burn_priority_uses_current_stacks_and_observed_ties() {
+    init_config();
+    for layers in [[8, 7, 13], [0, 0, 0]] {
+        let enemy = |uid, position, layers| FightEntityInfo {
+            buffs: if layers > 0 {
+                vec![BuffInfo {
+                    buff_id: Some(4150001),
+                    uid: Some(100 - uid),
+                    from_uid: Some(10),
+                    layer: Some(layers),
+                    ..Default::default()
+                }]
+            } else {
+                Vec::new()
+            },
+            ..entity_at(uid, position)
+        };
+        let fight = Fight {
+            attacker: Some(FightTeam {
+                entitys: vec![entity_at(10, 1)],
+                ..Default::default()
+            }),
+            defender: Some(FightTeam {
+                entitys: vec![
+                    enemy(-1, 1, layers[0]),
+                    enemy(-2, 2, layers[1]),
+                    enemy(-3, 3, layers[2]),
+                ],
+                sub_entitys: vec![enemy(-4, 4, 99)],
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let pool = TargetPool::from_fight(&fight);
+        let managers = BattleManagers::seeded(&fight);
+        let mut determinism = RoundDeterminism::default();
+        determinism.enqueue_skill_target_choices([SkillTargetChoice {
+            skill_id: 31020141,
+            source_uid: 10,
+            target_code: 231,
+            targets: vec![-3],
+            additional_targets: vec![],
+            crit_targets: vec![],
+            additional_crit_targets: vec![],
+        }]);
+        let request = TargetRequest {
+            code: 231,
+            raw: vec![],
+        };
+        let context = TargetContext {
+            runtime_target_uid: -2,
+            ..Default::default()
+        };
+        let mut expected = determinism.clone();
+        assert_eq!(
+            TargetResolver::resolve_with_managers_and_context(
+                &request,
+                31020141,
+                10,
+                &pool,
+                &mut determinism,
+                Some(&managers),
+                TargetContext {
+                    runtime_target_uid: -3,
+                    ..context
+                },
+            ),
+            vec![-3],
+        );
+        assert_eq!(determinism.skill_targets.len(), 1);
+        assert_eq!(
+            determinism.lua_random_index(100),
+            expected.lua_random_index(100)
+        );
+        assert_eq!(
+            TargetResolver::resolve_action_targets(
+                &request,
+                31020141,
+                10,
+                &pool,
+                &mut determinism,
+                Some(&managers),
+                context,
+            ),
+            vec![-3],
+        );
+        assert_eq!(resolve_code(223, 10, &pool, &mut determinism), vec![-2]);
+        if layers == [8, 7, 13] {
+            for captured in [None, Some(-2)] {
+                let mut determinism = RoundDeterminism::default();
+                if let Some(target) = captured {
+                    determinism.enqueue_skill_target_choices([SkillTargetChoice {
+                        skill_id: 31020141,
+                        source_uid: 10,
+                        target_code: 231,
+                        targets: vec![target],
+                        additional_targets: vec![],
+                        crit_targets: vec![],
+                        additional_crit_targets: vec![],
+                    }]);
+                }
+                let mut expected = determinism.clone();
+                assert_eq!(
+                    TargetResolver::resolve_action_targets(
+                        &request,
+                        31020141,
+                        10,
+                        &pool,
+                        &mut determinism,
+                        Some(&managers),
+                        context,
+                    ),
+                    vec![-3],
+                );
+                assert_eq!(
+                    determinism.lua_random_index(100),
+                    expected.lua_random_index(100),
+                );
+            }
+        }
+    }
+}
 #[test]
 fn highest_ex_point_uses_current_main_ally_moxie() {
     let mut recoleta = entity_stats(10, 1, 100, 100, 0);

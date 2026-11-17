@@ -6,6 +6,7 @@ use crate::engine::{
     },
 };
 
+mod burn_priority;
 mod highest_moxie;
 mod self_anchor;
 
@@ -52,6 +53,7 @@ enum TargetRule {
     EnemyMostShell,
     EnemyMostQueuedAttacks,
     EnemyPosition(i32),
+    BurnPriorityEnemy,
     RandomEnemy,
     EnemyWithSourceModelLabel,
     EnemyWithConfiguredBuffType,
@@ -88,6 +90,7 @@ pub(crate) fn uses_rng(target_code: i32) -> bool {
                 | TargetRule::RandomAllyByRng
                 | TargetRule::RandomOtherAllyByRng
                 | TargetRule::RandomEnemy
+                | TargetRule::BurnPriorityEnemy
         )
     )
 }
@@ -244,10 +247,15 @@ impl TargetResolver {
                 | TargetRule::SingleOrRandomEnemy
                 | TargetRule::RandomEnemyByRng
                 | TargetRule::RandomEnemy
-        ) && let Some(targets) =
-            determinism.take_skill_targets(skill_id, source_uid, request.code)
+                | TargetRule::BurnPriorityEnemy
+        ) && (action || rule != TargetRule::BurnPriorityEnemy)
+            && let Some(targets) =
+                determinism.take_skill_targets(skill_id, source_uid, request.code)
         {
             let candidates = match rule {
+                TargetRule::BurnPriorityEnemy => {
+                    burn_priority::candidates(pool, source_uid, managers)
+                }
                 TargetRule::RandomAllyByRng => pool.allies(source_uid).to_vec(),
                 TargetRule::RandomOtherAllyByRng => pool
                     .allies(source_uid)
@@ -379,6 +387,11 @@ impl TargetResolver {
             TargetRule::EnemyMostQueuedAttacks => {
                 enemy_with_most_queued_attacks(pool.enemies(source_uid, false), managers)
             }
+            TargetRule::BurnPriorityEnemy => burn_priority::select(
+                &burn_priority::candidates(pool, source_uid, managers),
+                (!action).then_some(context.runtime_target_uid),
+                determinism,
+            ),
             TargetRule::EnemyPosition(position) => {
                 at_position(pool.enemies(source_uid, false), position)
             }
@@ -691,6 +704,7 @@ pub fn targets_enemy(code: i32) -> Option<bool> {
         | TargetRule::EnemyMostShell
         | TargetRule::EnemyMostQueuedAttacks
         | TargetRule::EnemyPosition(_)
+        | TargetRule::BurnPriorityEnemy
         | TargetRule::RandomEnemy
         | TargetRule::EnemyWithSourceModelLabel
         | TargetRule::EnemyWithConfiguredBuffType
@@ -775,7 +789,7 @@ fn target_rule(code: i32) -> Option<TargetRule> {
         235 => TargetRule::EnemyMostShell,
         244 => TargetRule::EnemyMostQueuedAttacks,
         222..=225 => TargetRule::EnemyPosition(code - 221),
-        231 => TargetRule::EnemyPosition(2),
+        231 => TargetRule::BurnPriorityEnemy,
         232 => TargetRule::EnemyPosition(7),
         226..=229 => TargetRule::EnemyPosition(code - 225),
         230 => TargetRule::PriorityEnemyWithMonsterLabel(3097),

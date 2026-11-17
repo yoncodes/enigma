@@ -39,7 +39,7 @@ fn afflatus_target_codes_select_matching_allies() {
 fn overlapping_enemy_codes_keep_their_exact_rules() {
     assert_eq!(target_rule(210), Some(TargetRule::LowestHpPercentageEnemy));
     assert_eq!(target_rule(221), Some(TargetRule::PriorityBossEnemy));
-    assert_eq!(target_rule(231), Some(TargetRule::EnemyPosition(2)));
+    assert_eq!(target_rule(231), Some(TargetRule::BurnPriorityEnemy));
     assert_eq!(target_rule(233), Some(TargetRule::Runtime));
     assert_eq!(target_rule(232), Some(TargetRule::EnemyPosition(7)));
     assert_eq!(target_rule(234), Some(TargetRule::AssistBoss));
