@@ -1270,7 +1270,7 @@ buff_act_definitions! {
     (815, "AddSpTempCard") => AddSpTempCard,
         scoped_runtime: |context| {
             let reserve_id = i64::from(context.pool.entity(context.subscriber.owner_uid)?.model_id);
-            super::add_sp_temp_card::subscriber_rule_ops(context.subscriber, context.event?, reserve_id)
+            super::add_sp_temp_card::subscriber_rule_ops(context.managers, context.subscriber, context.event?, reserve_id)
         },
         supports: |_| true, references: references_for_feature, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(815, "AddSpTempCard"), &[EffectType::None as i32]));
     (820, "AttrFromEntity") => AttrFromEntity, effect_time_subscription: false, state_consumer: true, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(820, "AttrFromEntity"), &[EffectType::Attr as i32]));

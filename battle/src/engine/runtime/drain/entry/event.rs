@@ -1,4 +1,5 @@
 use super::*;
+use crate::engine::manager::buff::BuffDurationAdvance;
 
 pub fn run_event(
     managers: &mut BattleManagers,
@@ -70,15 +71,10 @@ pub fn run_round_start_card_event(
         .into_iter()
         .filter_map(|take_stage| {
             let buff_uids = managers.buff.duration_buff_uids(take_stage, owner_uids);
-            (!buff_uids.is_empty())
-                .then(|| {
-                    crate::engine::manager::buff::BuffDurationAdvance::new(
-                        take_stage,
-                        owner_uids.to_vec(),
-                        Some(buff_uids),
-                    )
-                })
-                .flatten()
+            if buff_uids.is_empty() {
+                return None;
+            }
+            BuffDurationAdvance::new(take_stage, owner_uids.to_vec(), Some(buff_uids))
         })
         .collect::<Vec<_>>();
     let mut result = run_group_event_lanes(
@@ -87,14 +83,31 @@ pub fn run_round_start_card_event(
         catalog,
         determinism,
         context,
-        event.clone(),
+        event,
         &[ReactionLane::BuffActs, ReactionLane::Skills],
         Some(owner_uids),
     )?;
-    if advances.is_empty() {
-        return Ok(result);
-    }
+    let duration =
+        run_round_start_card_duration(managers, pool, catalog, determinism, context, advances)?;
+    result.outcomes.extend(duration.outcomes);
+    result.events.extend(duration.events);
+    result.frames.extend(duration.frames);
+    Ok(result)
+}
 
+pub(crate) fn run_round_start_card_duration(
+    managers: &mut BattleManagers,
+    pool: &TargetPool,
+    catalog: &SkillEffectCatalog,
+    determinism: &mut RoundDeterminism,
+    context: TargetContext,
+    advances: impl IntoIterator<Item = BuffDurationAdvance>,
+) -> Result<DrainResult, DrainError> {
+    let mut advances = advances.into_iter().peekable();
+    if advances.peek().is_none() {
+        return Ok(DrainResult::default());
+    }
+    let event = BattleEvent::Kind(crate::engine::event::kind::EventKind::RoundStartCard);
     let mut frames = Vec::new();
     let scope = push_root(
         &mut frames,
@@ -102,7 +115,6 @@ pub fn run_round_start_card_event(
         FrameTrigger::Event(event.clone()),
     );
     let mut queue = advances
-        .into_iter()
         .map(|advance| QueuedOp {
             op: RuleOp::Command(crate::engine::skill::rule::output::BattleCommand::Buff(
                 crate::engine::manager::buff::BuffCommand::AdvanceDuration(advance),
@@ -118,7 +130,7 @@ pub fn run_round_start_card_event(
             caster_frame: None,
         })
         .collect::<VecDeque<_>>();
-    let duration = drain_queue_with_frames(
+    drain_queue_with_frames(
         managers,
         pool,
         catalog,
@@ -126,11 +138,7 @@ pub fn run_round_start_card_event(
         context,
         &mut queue,
         frames,
-    )?;
-    result.outcomes.extend(duration.outcomes);
-    result.events.extend(duration.events);
-    result.frames.extend(duration.frames);
-    Ok(result)
+    )
 }
 
 #[allow(clippy::too_many_arguments)]

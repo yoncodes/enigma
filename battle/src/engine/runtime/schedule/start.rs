@@ -1165,6 +1165,11 @@ pub fn run_start(
         .filter(|entity| managers.hp.current(entity.uid) > 0)
         .map(|entity| entity.uid)
         .collect::<Vec<_>>();
+    let card_duration = if version7_opening {
+        buff_act::add_sp_temp_card::opening_duration(managers, &owner_uids)
+    } else {
+        None
+    };
     append(
         &mut result,
         drain::run_group_event(
@@ -1194,6 +1199,17 @@ pub fn run_start(
     append(
         &mut result,
         super::sovereign::run_unlock(managers, pool, catalog, determinism, context)?,
+    );
+    append(
+        &mut result,
+        drain::run_round_start_card_duration(
+            managers,
+            pool,
+            catalog,
+            determinism,
+            context,
+            card_duration,
+        )?,
     );
     append(
         &mut result,

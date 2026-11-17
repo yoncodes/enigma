@@ -205,6 +205,20 @@ impl BuffManager {
         })
     }
 
+    pub(crate) fn buff_has_act(&self, owner_uid: i64, buff_uid: i64, kind: BuffActKind) -> bool {
+        self.buffs.iter().any(|active| {
+            active.effective
+                && active.owner_uid == owner_uid
+                && active.buff.uid == Some(buff_uid)
+                && active.definition.as_ref().is_some_and(|definition| {
+                    definition
+                        .features()
+                        .iter()
+                        .any(|feature| feature.kind == Some(kind) && feature.arguments_supported)
+                })
+        })
+    }
+
     pub(crate) fn active_act_definitions(
         &self,
         owner_uid: i64,

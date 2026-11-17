@@ -1,7 +1,11 @@
 use crate::engine::{
     event::{kind::EventKind, payload::BattleEvent},
+    fight::versions::{RoundStartSetupLayout, round_start_setup_layout},
     manager::{
-        buff::{ActiveBuffFeature, BuffCommand, BuffRemove, BuffRemoveSelector},
+        BattleManagers,
+        buff::{
+            ActiveBuffFeature, BuffCommand, BuffDurationAdvance, BuffRemove, BuffRemoveSelector,
+        },
         card::{CardAddTemporary, CardCommand, TemporaryCardKind},
     },
     skill::{
@@ -11,7 +15,32 @@ use crate::engine::{
     },
 };
 
-use super::{is_kind, registry::BuffActKind};
+use super::{effect_time::ROUND_START_CARD_SETTLED_DURATION, is_kind, registry::BuffActKind};
+
+pub(crate) fn opening_duration(
+    managers: &BattleManagers,
+    owner_uids: &[i64],
+) -> Option<BuffDurationAdvance> {
+    if owner_uids.is_empty() {
+        return None;
+    }
+    let stage = ROUND_START_CARD_SETTLED_DURATION;
+    let buff_uids = managers
+        .buff
+        .duration_targets(stage, owner_uids)
+        .into_iter()
+        .filter(|timer| {
+            managers
+                .buff
+                .buff_has_act(timer.owner_uid, timer.buff_uid, BuffActKind::AddSpTempCard)
+        })
+        .map(|timer| timer.buff_uid)
+        .collect::<Vec<_>>();
+    if buff_uids.is_empty() {
+        return None;
+    }
+    BuffDurationAdvance::new(stage, owner_uids.to_vec(), Some(buff_uids))
+}
 
 pub fn skill_id(feature: &ActiveBuffFeature) -> Option<i32> {
     if !is_kind(feature, BuffActKind::AddSpTempCard) {
@@ -38,6 +67,7 @@ pub fn rule_op(feature: &ActiveBuffFeature, target_uid: i64, reserve_id: i64) ->
 }
 
 pub fn subscriber_rule_ops(
+    managers: &BattleManagers,
     subscriber: &BuffActSubscriber,
     event: &BattleEvent,
     reserve_id: i64,
@@ -53,14 +83,23 @@ pub fn subscriber_rule_ops(
     if *skill_id <= 0 || reserve_id <= 0 {
         return None;
     }
-    temporary_card_rule_ops(
+    let mut ops = temporary_cards(
         subscriber,
         *skill_id,
         None,
         reserve_id,
         TemporaryCardKind::ConfiguredSkill,
         subscriber.amount,
-    )
+    )?;
+    if round_start_setup_layout(managers.fight_version()) != Some(RoundStartSetupLayout::Version7)
+        || managers
+            .buff
+            .duration_stage(subscriber.owner_uid, subscriber.buff_uid)
+            != Some(ROUND_START_CARD_SETTLED_DURATION)
+    {
+        ops.push(remove_after_trigger(subscriber)?);
+    }
+    Some(ops)
 }
 
 pub fn supports_hero_skill(args: &[i32]) -> bool {
@@ -134,6 +173,19 @@ fn temporary_card_rule_ops(
     kind: TemporaryCardKind,
     count: i32,
 ) -> Option<Vec<super::BuffActRuleOp>> {
+    let mut ops = temporary_cards(subscriber, skill_id, hero_id, reserve_id, kind, count)?;
+    ops.push(remove_after_trigger(subscriber)?);
+    Some(ops)
+}
+
+fn temporary_cards(
+    subscriber: &BuffActSubscriber,
+    skill_id: i32,
+    hero_id: Option<i32>,
+    reserve_id: i64,
+    kind: TemporaryCardKind,
+    count: i32,
+) -> Option<Vec<super::BuffActRuleOp>> {
     let origin = super::command_origin(subscriber)?;
     let count = usize::try_from(count).ok().filter(|count| *count > 0)?;
     let mut ops = Vec::with_capacity(count + 1);
@@ -150,7 +202,12 @@ fn temporary_card_rule_ops(
             }),
         )))
     }));
-    ops.push(super::BuffActRuleOp::separate_independent_command(
+    Some(ops)
+}
+
+fn remove_after_trigger(subscriber: &BuffActSubscriber) -> Option<super::BuffActRuleOp> {
+    let origin = super::command_origin(subscriber)?;
+    Some(super::BuffActRuleOp::separate_independent_command(
         RuleOp::Command(BattleCommand::Buff(BuffCommand::RemoveAfterTrigger(
             BuffRemove {
                 origin,
@@ -158,8 +215,7 @@ fn temporary_card_rule_ops(
                 selector: BuffRemoveSelector::Uid(subscriber.buff_uid),
             },
         ))),
-    ));
-    Some(ops)
+    ))
 }
 
 #[cfg(test)]
@@ -204,6 +260,7 @@ mod tests {
 
     #[test]
     fn round_start_card_adds_one_card_per_layer_before_consuming_the_buff() {
+        init_config();
         let subscriber = BuffActSubscriber {
             owner_uid: 10,
             source_uid: 10,
@@ -224,6 +281,7 @@ mod tests {
         };
 
         let ops = subscriber_rule_ops(
+            &BattleManagers::seeded(&Fight::default()),
             &subscriber,
             &BattleEvent::Kind(EventKind::RoundStartCard),
             3114,
