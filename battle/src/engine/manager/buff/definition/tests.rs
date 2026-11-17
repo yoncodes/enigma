@@ -37,6 +37,28 @@ fn halo_fanout_keeps_add_markers_from_non_halo_features() {
 }
 
 #[test]
+fn bendith_grant_markers_come_from_its_two_acts() {
+    use crate::engine::skill::buff_act::wire::WirePhase;
+    use sonettobuf::effect_type_enum::EffectType;
+
+    crate::test_support::init_config();
+    let none = EffectType::None as i32;
+    for (opcode, name) in [
+        (1138, "ReplaceEntitySkillGroup"),
+        (1140, "SkillNoUseActPoint"),
+    ] {
+        let wire = crate::engine::skill::buff_act::wire::find(opcode, name).unwrap();
+        assert_eq!(wire.markers(WirePhase::Add), [none], "{opcode}");
+    }
+    for buff_id in [31460133, 31460136, 31460137, 31460138, 31460140] {
+        let definition = BuffDefinition::get(buff_id).unwrap();
+        assert_eq!(definition.command_add_wire_markers(), [none, none]);
+        assert!(definition.wire_markers(WirePhase::Refresh).is_empty());
+        assert!(definition.wire_markers(WirePhase::Static).is_empty());
+    }
+}
+
+#[test]
 fn halo_cost_marker_stays_with_the_child_grant() {
     use crate::engine::skill::buff_act::wire::WirePhase;
     use sonettobuf::effect_type_enum::EffectType;

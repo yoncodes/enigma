@@ -1787,11 +1787,16 @@ buff_act_definitions! {
         raw_supports: super::bendith::supports_replace_entity_skill_group,
         parser: super::bendith::parse_feature,
         references: super::bendith::references,
-        wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(1138, "ReplaceEntitySkillGroup"), &[]));
+        // Unproven split: live Bendith grants carry two NONE records and 1138
+        // only ever appears with 1140, so one is assigned to each act. Revisit
+        // when a capture grants either act without the other (the 1138-only
+        // test buff 115370003 would decide it).
+        wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(1138, "ReplaceEntitySkillGroup"), &[EffectType::None as i32]));
     (1140, "SkillNoUseActPoint") => SkillNoUseActPoint,
         effect_time_subscription: false,
         supports: |args| args.is_empty(), state_consumer: true,
-        wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(1140, "SkillNoUseActPoint"), &[]));
+        // Unproven split with 1138; see the note above.
+        wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(1140, "SkillNoUseActPoint"), &[EffectType::None as i32]));
 }
 
 pub fn definitions() -> impl Iterator<Item = &'static BuffActDefinition> {
