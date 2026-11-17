@@ -473,6 +473,31 @@ fn defeated_entity_cleanup_preserves_halos_from_surviving_emitters() {
                 .count(),
             3
         );
+        let untracked = BuffInfo {
+            uid: Some(90_000),
+            buff_id: Some(101),
+            ..Default::default()
+        };
+        let mut entity = FightEntityInfo {
+            uid: Some(owner_uid),
+            no_effect_buffs: manager
+                .active_for(owner_uid)
+                .filter(|buff| buff.buff_id == Some(31450143))
+                .cloned()
+                .chain(std::iter::once(untracked.clone()))
+                .collect(),
+            ..Default::default()
+        };
+        manager.snapshot_entity(&mut entity);
+        let count_song = |buffs: &[BuffInfo]| {
+            buffs
+                .iter()
+                .filter(|buff| buff.buff_id == Some(31450143))
+                .count()
+        };
+        assert_eq!(count_song(&entity.buffs), 1);
+        assert_eq!(count_song(&entity.no_effect_buffs), 2);
+        assert!(entity.no_effect_buffs.contains(&untracked));
     }
 
     hp.lose(30, 100, 0).unwrap();

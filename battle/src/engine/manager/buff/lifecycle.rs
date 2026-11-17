@@ -270,6 +270,23 @@ impl BuffManager {
         entity.buffs = self.active_for(uid).cloned().collect();
     }
 
+    pub(crate) fn snapshot_entity(&self, entity: &mut FightEntityInfo) {
+        let Some(uid) = entity.uid else { return };
+        entity.buffs.clear();
+        for active in self.buffs.iter().filter(|active| active.owner_uid == uid) {
+            if let Some(buff_uid) = active.buff.uid {
+                entity
+                    .no_effect_buffs
+                    .retain(|buff| buff.uid != Some(buff_uid));
+            }
+            if active.effective {
+                entity.buffs.push(active.buff.clone());
+            } else {
+                entity.no_effect_buffs.push(active.buff.clone());
+            }
+        }
+    }
+
     pub(crate) fn plan_round_start_duration_sync(
         &self,
         owner_uids: &[i64],
