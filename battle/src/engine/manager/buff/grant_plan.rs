@@ -18,6 +18,7 @@ pub(super) enum GrantAction {
     RefreshExisting,
     ProlongDuration,
     KeepExisting,
+    DiscardWeaker,
     RetainEnhancedVariant,
     ReplaceExisting,
     Add,
@@ -340,6 +341,9 @@ impl BuffManager {
         }
 
         let has_same_id = self.has_buff_id(route.target_uid, route.buff_id);
+        if super::family_priority::retains_stronger(self, route, definition, policy) {
+            return GrantAction::DiscardWeaker;
+        }
         let has_matching = self
             .buffs
             .iter()

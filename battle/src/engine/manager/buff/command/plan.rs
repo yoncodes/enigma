@@ -936,6 +936,14 @@ impl BuffManager {
                 0,
                 0,
             )),
+            GrantAction::DiscardWeaker => Some(super::uid_policy::plan(
+                self,
+                route,
+                &definition,
+                policy.uid.allocation.uses_child_for_apply(args),
+                0,
+                0,
+            )),
             GrantAction::Add | GrantAction::ReplaceExisting => Some(super::uid_policy::plan(
                 self,
                 route,

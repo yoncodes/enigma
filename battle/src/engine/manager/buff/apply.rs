@@ -319,6 +319,11 @@ impl BuffManager {
                     .collect();
             }
             GrantAction::KeepExisting => {}
+            GrantAction::DiscardWeaker => {
+                if let Some(uid) = uid {
+                    uid_policy::commit(self, route.target_uid, uid);
+                }
+            }
             GrantAction::RetainEnhancedVariant => {
                 if let Some(uid) = uid {
                     uid_policy::commit(self, route.target_uid, uid);

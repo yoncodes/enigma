@@ -9,6 +9,7 @@ use crate::engine::manager::hp::HpManager;
 mod apply;
 mod command;
 mod definition;
+mod family_priority;
 mod feature;
 mod grant_plan;
 mod lifecycle;
