@@ -1752,19 +1752,14 @@ impl BattleManagers {
 
     pub(crate) fn entity_snapshot(&self, uid: i64) -> Option<FightEntityInfo> {
         let mut entity = self.entity.snapshot(uid)?;
-        self.buff.snapshot_entity(&mut entity);
-        self.project_entity_details(&mut entity);
+        self.project_entity_state(&mut entity);
         self.eureka.sync_entity(uid, &mut entity);
         Some(entity)
     }
 
     fn project_entity_state(&self, entity: &mut FightEntityInfo) {
-        self.buff.sync_entity(entity);
-        self.project_entity_details(entity);
-    }
-
-    fn project_entity_details(&self, entity: &mut FightEntityInfo) {
         let Some(uid) = entity.uid else { return };
+        self.buff.sync_entity(entity);
         for link in self.buff.passive_skill_links_for(uid) {
             if !entity.passive_skill.contains(&link.skill_id) {
                 entity.passive_skill.push(link.skill_id);

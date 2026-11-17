@@ -401,8 +401,7 @@ fn defeated_halo_emitter_removes_opposing_team_children() {
     assert!(!manager.has_buff_id(-1, 109320214));
 }
 
-#[test]
-fn defeated_entity_cleanup_preserves_halos_from_surviving_emitters() {
+fn song_halo_from_one_emitter() -> (BuffManager, HpManager) {
     crate::test_support::init_config();
     let fight = Fight {
         attacker: Some(FightTeam {
@@ -442,6 +441,65 @@ fn defeated_entity_cleanup_preserves_halos_from_surviving_emitters() {
             )
             .unwrap();
     }
+    (manager, hp)
+}
+
+#[test]
+fn entity_projection_splits_inactive_halo_copies_and_round_trips() {
+    let (manager, _) = song_halo_from_one_emitter();
+    let song = |buffs: &[BuffInfo]| {
+        buffs
+            .iter()
+            .filter(|buff| buff.buff_id == Some(31450143))
+            .count()
+    };
+    let owned = |manager: &BuffManager, owner_uid| {
+        let mut owned = manager
+            .buffs
+            .iter()
+            .filter(|active| active.owner_uid == owner_uid)
+            .cloned()
+            .collect::<Vec<_>>();
+        owned.sort_by_key(|active| active.buff.uid);
+        owned
+    };
+    let stale = BuffInfo {
+        uid: Some(90_000),
+        buff_id: Some(101),
+        ..Default::default()
+    };
+    let mut entity = FightEntityInfo {
+        uid: Some(10),
+        team_type: Some(1),
+        no_effect_buffs: vec![stale.clone()],
+        ..Default::default()
+    };
+    manager.sync_entity(&mut entity);
+    assert_eq!(song(&entity.buffs), 1);
+    assert_eq!(song(&entity.no_effect_buffs), 3);
+    assert!(!entity.no_effect_buffs.contains(&stale));
+
+    let mut registered = manager.clone();
+    registered.register_entity(&entity, 1);
+    assert_eq!(owned(&registered, 10), owned(&manager, 10));
+
+    let mut unlisted = entity.clone();
+    let dropped = unlisted.no_effect_buffs.pop().unwrap();
+    let mut registered = manager.clone();
+    registered.register_entity(&unlisted, 1);
+    let mut projected = FightEntityInfo {
+        uid: Some(10),
+        ..Default::default()
+    };
+    registered.sync_entity(&mut projected);
+    assert_eq!(projected.buffs, entity.buffs);
+    assert!(!projected.no_effect_buffs.contains(&dropped));
+    assert_eq!(song(&projected.no_effect_buffs), 2);
+}
+
+#[test]
+fn defeated_entity_cleanup_preserves_halos_from_surviving_emitters() {
+    let (mut manager, mut hp) = song_halo_from_one_emitter();
     hp.lose(11, 100, 0).unwrap();
 
     let commands = manager.defeated_entity_halo_cleanup(11, &hp);
@@ -473,31 +531,6 @@ fn defeated_entity_cleanup_preserves_halos_from_surviving_emitters() {
                 .count(),
             3
         );
-        let untracked = BuffInfo {
-            uid: Some(90_000),
-            buff_id: Some(101),
-            ..Default::default()
-        };
-        let mut entity = FightEntityInfo {
-            uid: Some(owner_uid),
-            no_effect_buffs: manager
-                .active_for(owner_uid)
-                .filter(|buff| buff.buff_id == Some(31450143))
-                .cloned()
-                .chain(std::iter::once(untracked.clone()))
-                .collect(),
-            ..Default::default()
-        };
-        manager.snapshot_entity(&mut entity);
-        let count_song = |buffs: &[BuffInfo]| {
-            buffs
-                .iter()
-                .filter(|buff| buff.buff_id == Some(31450143))
-                .count()
-        };
-        assert_eq!(count_song(&entity.buffs), 1);
-        assert_eq!(count_song(&entity.no_effect_buffs), 2);
-        assert!(entity.no_effect_buffs.contains(&untracked));
     }
 
     hp.lose(30, 100, 0).unwrap();

@@ -267,18 +267,9 @@ impl BuffManager {
 
     pub(crate) fn sync_entity(&self, entity: &mut FightEntityInfo) {
         let Some(uid) = entity.uid else { return };
-        entity.buffs = self.active_for(uid).cloned().collect();
-    }
-
-    pub(crate) fn snapshot_entity(&self, entity: &mut FightEntityInfo) {
-        let Some(uid) = entity.uid else { return };
         entity.buffs.clear();
+        entity.no_effect_buffs.clear();
         for active in self.buffs.iter().filter(|active| active.owner_uid == uid) {
-            if let Some(buff_uid) = active.buff.uid {
-                entity
-                    .no_effect_buffs
-                    .retain(|buff| buff.uid != Some(buff_uid));
-            }
             if active.effective {
                 entity.buffs.push(active.buff.clone());
             } else {
@@ -612,8 +603,39 @@ impl BuffManager {
         let Some(uid) = entity.uid else { return };
         self.entities.retain(|tracked| tracked.uid != uid);
         self.team_types.remove(&uid);
-        self.buffs.retain(|active| active.owner_uid != uid);
+        let (mut previous, kept): (Vec<_>, Vec<_>) = std::mem::take(&mut self.buffs)
+            .into_iter()
+            .partition(|active| active.owner_uid == uid);
+        self.buffs = kept;
         self.seed_entity(entity, fallback_team_type, true);
+        // An unchanged record keeps the manager-only state the wire cannot
+        // carry, such as its halo emitter and effective flag.
+        for active in self
+            .buffs
+            .iter_mut()
+            .filter(|active| active.owner_uid == uid)
+        {
+            if let Some(index) = previous
+                .iter()
+                .position(|tracked| tracked.buff == active.buff)
+            {
+                *active = previous.remove(index);
+            }
+        }
+        // Inactive copies exist only in the manager; keep those still listed.
+        let (kept, dropped): (Vec<_>, Vec<_>) = previous.into_iter().partition(|tracked| {
+            !tracked.effective && entity.no_effect_buffs.contains(&tracked.buff)
+        });
+        self.buffs.extend(kept);
+        for buff_uid in dropped.into_iter().filter_map(|dropped| dropped.buff.uid) {
+            if !self
+                .buffs
+                .iter()
+                .any(|active| active.buff.uid == Some(buff_uid))
+            {
+                self.remove_act_states(buff_uid);
+            }
+        }
         self.reconcile_transition_progress();
     }
 
