@@ -140,15 +140,18 @@ pub fn transaction_rule_ops(
             let Some(origin) = buff_act::feature_command_origin(&feature) else {
                 continue;
             };
-            ops.push((
-                feature,
-                RuleOp::Command(BattleCommand::Hp(HpCommand::AdjustMax(MaxHpAdjust {
-                    origin,
-                    source_uid: change.source_uid,
-                    target_uid: change.target_uid,
-                    delta: value,
-                }))),
-            ));
+            let adjustment = MaxHpAdjust {
+                origin,
+                source_uid: change.source_uid,
+                target_uid: change.target_uid,
+                delta: value,
+            };
+            let command = if change.replaced_fixed_max_hp == Some(value) {
+                HpCommand::RestoreMax(adjustment)
+            } else {
+                HpCommand::AdjustMax(adjustment)
+            };
+            ops.push((feature, RuleOp::Command(BattleCommand::Hp(command))));
         }
     }
     ops

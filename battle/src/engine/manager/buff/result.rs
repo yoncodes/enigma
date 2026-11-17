@@ -127,7 +127,11 @@ impl BuffReplaceResult {
         &self,
         pre_add_refreshes: usize,
     ) -> Vec<BattleEvent> {
-        fn push_added(events: &mut Vec<BattleEvent>, applied: &BuffApplyResult) {
+        fn push_added(
+            events: &mut Vec<BattleEvent>,
+            applied: &BuffApplyResult,
+            replaced_fixed_max_hp: Option<i32>,
+        ) {
             let buff = &applied.buff;
             events.push(BattleEvent::BuffAdded(BuffChangeEvent {
                 source_uid: applied.source_uid,
@@ -147,10 +151,11 @@ impl BuffReplaceResult {
                     .and_then(|info| info.param.first())
                     .copied()
                     .unwrap_or_default(),
+                replaced_fixed_max_hp,
                 expiry: BuffExpiry::None,
             }));
             for fanout in &applied.fanout {
-                push_added(events, fanout);
+                push_added(events, fanout, None);
             }
         }
 
@@ -179,6 +184,7 @@ impl BuffReplaceResult {
                             .and_then(|info| info.param.first())
                             .copied()
                             .unwrap_or_default(),
+                        replaced_fixed_max_hp: None,
                         expiry: BuffExpiry::None,
                     },
                 ))
@@ -229,13 +235,25 @@ impl BuffReplaceResult {
                             .copied()
                             .unwrap_or_default()
                     },
+                    replaced_fixed_max_hp: None,
                     expiry: removed.expiry,
                 })
             })
             .collect::<Vec<_>>();
         push_refreshes(&mut events, &self.refreshed[..split]);
         if let Some(added) = &self.added {
-            push_added(&mut events, added);
+            let mut replacements = self.removed.iter().filter(|old| {
+                added.effective
+                    && old.effective
+                    && old.target_uid == added.target_uid
+                    && old.buff.from_uid == Some(added.source_uid)
+                    && old.buff.buff_id == added.buff.buff_id
+            });
+            let previous = replacements
+                .next()
+                .filter(|_| replacements.next().is_none())
+                .map(|old| old.fixed_max_hp_delta);
+            push_added(&mut events, added, previous);
         }
         push_refreshes(&mut events, &self.refreshed[split..]);
         if let Some(rejected) = &self.rejected {

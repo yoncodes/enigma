@@ -254,6 +254,7 @@ fn enemy_burn_conversion_uses_the_settlement_transaction() {
             after_amount: 5,
             act_id: 0,
             act_value: 0,
+            replaced_fixed_max_hp: None,
             expiry: crate::engine::event::payload::BuffExpiry::None,
         },
     ]);

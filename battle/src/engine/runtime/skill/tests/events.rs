@@ -670,6 +670,7 @@ fn event_context_does_not_override_a_reactive_skills_own_target_rule() {
         after_amount: 1,
         act_id: 0,
         act_value: 0,
+        replaced_fixed_max_hp: None,
         expiry: crate::engine::event::payload::BuffExpiry::None,
     });
 

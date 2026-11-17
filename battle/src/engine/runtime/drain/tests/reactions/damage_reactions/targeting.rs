@@ -95,6 +95,7 @@ fn side_state_reactions_anchor_their_frame_to_the_applier() {
         after_amount: 0,
         act_id: 0,
         act_value: 0,
+        replaced_fixed_max_hp: None,
         expiry: crate::engine::event::payload::BuffExpiry::Forced,
     });
 

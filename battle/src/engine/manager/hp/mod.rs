@@ -245,6 +245,7 @@ pub enum HpCommand {
     SetCurrent(CurrentHpSet),
     GrantShield(ShieldGrant),
     AdjustMax(MaxHpAdjust),
+    RestoreMax(MaxHpAdjust),
     AdjustCapacity(MaxHpAdjust),
 }
 

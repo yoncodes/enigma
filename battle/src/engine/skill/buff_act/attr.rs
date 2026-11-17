@@ -179,6 +179,7 @@ mod tests {
             after_amount: 1,
             act_id: 0,
             act_value: 0,
+            replaced_fixed_max_hp: None,
             expiry: crate::engine::event::payload::BuffExpiry::None,
         });
 
@@ -198,6 +199,7 @@ mod tests {
             after_amount: 2,
             act_id: 0,
             act_value: 0,
+            replaced_fixed_max_hp: None,
             expiry: crate::engine::event::payload::BuffExpiry::None,
         });
 

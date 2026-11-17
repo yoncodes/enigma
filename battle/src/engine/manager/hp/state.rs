@@ -102,7 +102,7 @@ impl HpManager {
     pub(super) fn adjust_capacity(&mut self, uid: i64, delta: i32) -> HpState {
         let stat = self.max_without_capacity(uid);
         self.stat_max.insert(uid, stat);
-        self.adjust_combat_max(uid, delta)
+        self.adjust_combat_max(uid, delta, delta.max(0))
     }
 
     pub fn base_max(&self, uid: i64) -> i32 {
@@ -259,23 +259,28 @@ impl HpManager {
     }
 
     pub fn add_max_snapshot(&mut self, uid: i64, delta: i32) -> HpState {
-        let stat = self.max_without_capacity(uid).saturating_add(delta).max(0);
-        self.stat_max.insert(uid, stat);
-        self.adjust_combat_max(uid, delta)
+        self.change_max_snapshot(uid, delta, delta.max(0))
     }
 
-    fn adjust_combat_max(&mut self, uid: i64, delta: i32) -> HpState {
+    pub(super) fn change_max_snapshot(
+        &mut self,
+        uid: i64,
+        delta: i32,
+        current_delta: i32,
+    ) -> HpState {
+        let stat = self.max_without_capacity(uid).saturating_add(delta).max(0);
+        self.stat_max.insert(uid, stat);
+        self.adjust_combat_max(uid, delta, current_delta)
+    }
+
+    fn adjust_combat_max(&mut self, uid: i64, delta: i32, current_delta: i32) -> HpState {
         let state = self.states.entry(uid).or_default();
         let before = state.current;
         if state.base_max == 0 {
             state.base_max = state.max;
         }
         state.max = (state.max + delta).max(0);
-        state.current = if delta >= 0 {
-            (state.current + delta).min(state.max)
-        } else {
-            state.current.min(state.max)
-        };
+        state.current = (state.current + current_delta).min(state.max);
         if before != state.current {
             *self.revisions.entry(uid).or_default() += 1;
         }

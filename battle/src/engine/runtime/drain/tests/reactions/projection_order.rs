@@ -150,9 +150,9 @@ fn each_change_attr_one_way_hp_replacement_releases_before_buff_deletion() {
                 FightEntityInfo {
                     uid: Some(11),
                     team_type: Some(1),
-                    current_hp: Some(1_000),
+                    current_hp: Some(300),
                     attr: Some(HeroAttribute {
-                        hp: Some(1_000),
+                        hp: Some(2_000),
                         attack: Some(1_000),
                         ..Default::default()
                     }),
@@ -191,6 +191,9 @@ fn each_change_attr_one_way_hp_replacement_releases_before_buff_deletion() {
     )
     .unwrap();
 
+    assert_eq!(managers.hp.current(11), 1550);
+    assert_eq!(managers.hp.max(11), 3250);
+
     let replaced = run(
         &mut managers,
         &pool,
@@ -200,6 +203,8 @@ fn each_change_attr_one_way_hp_replacement_releases_before_buff_deletion() {
         [grant()],
     )
     .unwrap();
+    assert_eq!(managers.hp.current(11), 1550);
+    assert_eq!(managers.hp.max(11), 3250);
     let relevant = crate::engine::packet::timeline::project_for_version(&replaced.frames, 7)
         .unwrap()
         .into_iter()
@@ -227,7 +232,7 @@ fn each_change_attr_one_way_hp_replacement_releases_before_buff_deletion() {
     assert!(
         relevant[..2]
             .iter()
-            .all(|effect| { effect.effect_num == Some(1_000) && effect.buff_act_id == Some(1131) })
+            .all(|effect| { effect.effect_num == Some(2_000) && effect.buff_act_id == Some(1131) })
     );
 }
 
