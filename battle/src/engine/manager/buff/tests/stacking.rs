@@ -304,19 +304,12 @@ fn explicit_replacement_policy_still_replaces_permanent_positive_status() {
 }
 
 #[test]
-fn include_type_four_stores_timed_attribute_grants_as_separate_copies() {
+fn include_type_four_stores_one_timed_copy_per_buff_id() {
     init_config();
     let policy = BuffPolicy::for_buff_id(30600101).expect("timed attribute definition");
 
-    assert_eq!(policy.storage, BuffStorage::SeparateCopies);
-    assert_eq!(policy.on_duplicate, DuplicateGrant::AddSeparateCopy);
-
-    let hp = HpManager::default();
-    let mut manager = BuffManager::default();
-    manager.add_replacing_excluded(&hp, 10, 10, 30600101, 0);
-    manager.add_replacing_excluded(&hp, 10, 10, 30600101, 0);
-
-    assert_eq!(manager.active_for(10).count(), 2);
+    assert_eq!(policy.storage, BuffStorage::Single);
+    assert_eq!(policy.on_duplicate, DuplicateGrant::ReplaceExisting);
 }
 
 #[test]
@@ -405,6 +398,31 @@ fn replace_rank_type_rule_replaces_only_the_held_rank_of_its_type() {
     assert!(plumage.removed.is_empty());
     assert!(manager.has_buff_id(10, 215033301));
     assert!(manager.has_buff_id(10, 8290506));
+}
+
+#[test]
+fn include_type_four_regrant_replaces_the_held_copy_from_any_source() {
+    init_config();
+    let hp = HpManager::default();
+    let mut manager = BuffManager::default();
+    // Corrode 420404 (other source) and DMG Taken Reduction Up 31430171 (same source) are bare
+    // include type 4; live deletes the held copy and adds a new UID on each re-grant.
+    for (buff_id, first_source, next_source) in [(420404, 11, 12), (31430171, 11, 11)] {
+        let first = manager
+            .add_replacing_excluded(&hp, first_source, 10, buff_id, 0)
+            .added
+            .unwrap()
+            .buff;
+        let next = manager.add_replacing_excluded(&hp, next_source, 10, buff_id, 0);
+        assert_eq!(next.removed.len(), 1, "{buff_id}");
+        assert_eq!(next.removed[0].buff.uid, first.uid);
+        assert!(manager.snapshot(10, first.uid.unwrap()).is_none());
+
+        let added = next.added.unwrap().buff;
+        assert_ne!(added.uid, first.uid);
+        assert_eq!(added.from_uid, Some(next_source));
+        assert_eq!(manager.buff_id_amount(10, buff_id), 1);
+    }
 }
 
 #[test]

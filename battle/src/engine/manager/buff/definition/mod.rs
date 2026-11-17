@@ -11,7 +11,8 @@ enum BuffIncludeType {
     ReplaceExisting = 1,
     ExistingRefresh = 2,
     OwnUid = 3,
-    SeparateTimedCopies = 4,
+    /// A timed re-grant of a held buff ID replaces that copy with a new UID, whatever its source.
+    ReplaceTimedCopy = 4,
     PermanentMechanicCarrier = 5,
     SharedTypeFamily = 6,
     ReapplyReserve = 7,
@@ -51,7 +52,7 @@ impl BuffIncludeType {
             1 => Self::ReplaceExisting,
             2 => Self::ExistingRefresh,
             3 => Self::OwnUid,
-            4 => Self::SeparateTimedCopies,
+            4 => Self::ReplaceTimedCopy,
             5 => Self::PermanentMechanicCarrier,
             6 => Self::SharedTypeFamily,
             7 => Self::ReapplyReserve,
@@ -74,7 +75,7 @@ impl BuffIncludeType {
             Self::ReplaceExisting => "ReplaceExisting",
             Self::ExistingRefresh => "ExistingRefresh",
             Self::OwnUid => "OwnUid",
-            Self::SeparateTimedCopies => "SeparateTimedCopies",
+            Self::ReplaceTimedCopy => "ReplaceTimedCopy",
             Self::PermanentMechanicCarrier => "PermanentMechanicCarrier",
             Self::SharedTypeFamily => "SharedTypeFamily",
             Self::ReapplyReserve => "ReapplyReserve",
@@ -937,7 +938,6 @@ impl BuffDefinition {
     }
 
     pub(super) fn reapplies_as_new(&self) -> bool {
-        let timed_copy = self.has_include_type(BuffIncludeType::SeparateTimedCopies);
         self.shared_group_capacity().is_some()
             || self.same_type_capacity().is_some()
             || self.capped_separate_copy_limit().is_some()
@@ -946,7 +946,8 @@ impl BuffDefinition {
                 && !self.is_no_show
                 && self.duration > 0
                 && self.count == 0
-                && (timed_copy || !self.has_include_type(BuffIncludeType::ReplaceExisting)))
+                && !self.has_include_type(BuffIncludeType::ReplaceExisting)
+                && !self.has_include_type(BuffIncludeType::ReplaceTimedCopy))
     }
 
     fn reapplies_consumable_charge(&self) -> bool {

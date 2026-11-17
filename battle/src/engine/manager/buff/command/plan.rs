@@ -847,15 +847,9 @@ impl BuffManager {
                 action
             }
         };
-        let replaces_applier_provoke = action == GrantAction::Add
-            && policy.storage == BuffStorage::SeparateCopies
+        let reapplies_provoke = action == GrantAction::ReplaceExisting
             && definition.features().iter().any(|feature| {
                 feature.kind == Some(crate::engine::skill::buff_act::registry::BuffActKind::Provoke)
-            })
-            && self.buffs.iter().any(|active| {
-                active.owner_uid == route.target_uid
-                    && active.buff.buff_id == Some(route.buff_id)
-                    && active.buff.from_uid == Some(route.source_uid)
             });
         let capacity_eviction_uids = if matches!(action, GrantAction::Add) {
             let (limit, mut uids) = if let Some(capacity) = policy.shared_group_capacity {
@@ -1176,26 +1170,27 @@ impl BuffManager {
             || (action == GrantAction::Add
                 && policy.uid.reserve_after_first_apply
                 && stack_layer > 0);
-        let post_add_normal_uids = if action == GrantAction::Add && self.shared_uid_lane {
-            super::uid_policy::normals_after_sequence(
-                self,
-                route.target_uid,
-                pre_add_uids
-                    .iter()
-                    .copied()
-                    .chain(uid)
-                    .chain(fanout.iter().map(|plan| plan.uid))
-                    .chain(refresh_uids.iter().copied()),
-                policy.uid.normal_reservations_after_first_apply
-                    + if replaces_applier_provoke {
-                        PROVOKE_REAPPLY_UID_RESERVATIONS
-                    } else {
-                        0
-                    },
-            )
-        } else {
-            Vec::new()
-        };
+        let post_add_normal_uids =
+            if (action == GrantAction::Add || reapplies_provoke) && self.shared_uid_lane {
+                super::uid_policy::normals_after_sequence(
+                    self,
+                    route.target_uid,
+                    pre_add_uids
+                        .iter()
+                        .copied()
+                        .chain(uid)
+                        .chain(fanout.iter().map(|plan| plan.uid))
+                        .chain(refresh_uids.iter().copied()),
+                    policy.uid.normal_reservations_after_first_apply
+                        + if reapplies_provoke {
+                            PROVOKE_REAPPLY_UID_RESERVATIONS
+                        } else {
+                            0
+                        },
+                )
+            } else {
+                Vec::new()
+            };
         let mut post_add_uids = post_add_normal_uids;
         if reserve_after_add {
             let child_uids = super::uid_policy::children_after_sequence(
@@ -1229,16 +1224,6 @@ impl BuffManager {
             self.buffs
                 .iter()
                 .filter(|active| policy.matches(active, route))
-                .filter_map(|active| active.buff.uid)
-                .collect()
-        } else if replaces_applier_provoke {
-            self.buffs
-                .iter()
-                .filter(|active| {
-                    active.owner_uid == route.target_uid
-                        && active.buff.buff_id == Some(route.buff_id)
-                        && active.buff.from_uid == Some(route.source_uid)
-                })
                 .filter_map(|active| active.buff.uid)
                 .collect()
         } else {

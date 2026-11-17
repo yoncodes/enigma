@@ -52,7 +52,7 @@ fn external_refresh_keeps_the_current_applier() {
 }
 
 #[test]
-fn provoke_replaces_only_the_copy_from_the_same_applier() {
+fn provoke_regrant_replaces_the_held_copy_and_reserves_one_uid() {
     crate::test_support::init_config();
     let fight = Fight {
         version: Some(7),
@@ -60,22 +60,13 @@ fn provoke_replaces_only_the_copy_from_the_same_applier() {
             entitys: vec![FightEntityInfo {
                 uid: Some(-1),
                 current_hp: Some(100),
-                buffs: vec![
-                    BuffInfo {
-                        buff_id: Some(229103),
-                        uid: Some(1105),
-                        from_uid: Some(10),
-                        duration: Some(1),
-                        ..Default::default()
-                    },
-                    BuffInfo {
-                        buff_id: Some(229103),
-                        uid: Some(1106),
-                        from_uid: Some(20),
-                        duration: Some(2),
-                        ..Default::default()
-                    },
-                ],
+                buffs: vec![BuffInfo {
+                    buff_id: Some(229103),
+                    uid: Some(1106),
+                    from_uid: Some(20),
+                    duration: Some(1),
+                    ..Default::default()
+                }],
                 ..Default::default()
             }],
             ..Default::default()
@@ -105,14 +96,14 @@ fn provoke_replaces_only_the_copy_from_the_same_applier() {
     let changes = manager.execute(&hp, command).unwrap();
 
     assert_eq!(changes.change.removed.len(), 1);
-    assert_eq!(changes.change.removed[0].buff.uid, Some(1105));
-    assert!(manager.snapshot(-1, 1106).is_some());
+    assert_eq!(changes.change.removed[0].buff.uid, Some(1106));
+    assert!(manager.snapshot(-1, 1106).is_none());
     assert_eq!(
         manager
             .active_for(-1)
             .filter(|buff| buff.buff_id == Some(229103))
             .count(),
-        2
+        1
     );
 }
 
