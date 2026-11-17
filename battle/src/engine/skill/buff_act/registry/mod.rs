@@ -57,6 +57,7 @@ pub struct SetupContext<'a> {
     pub managers: &'a BattleManagers,
     pub catalog: &'a SkillEffectCatalog,
     pub subscriber: &'a BuffActSetupSubscriber,
+    pub defender_start_round: Option<i32>,
 }
 
 pub type SetupHandler = for<'a> fn(&SetupContext<'a>) -> Option<Vec<RuleOp>>;
@@ -1727,8 +1728,13 @@ buff_act_definitions! {
         supports: super::team_immunity_times::supports, initial_state: SecondArgument,
         wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(1126, "TeamImmunityTimes"), &[EffectType::None as i32]));
     (1102, "ToughnessRecover") => ToughnessRecover,
-        runtime: |context| super::toughness::recover_rule_ops(context.subscriber),
-        supports: |args| matches!(args, [config_effect] if *config_effect >= 0),
+        effect_time_subscription: false, events: [EventKind::ToughnessBroken],
+        setup: [RoundStartCondition(100)],
+        side_subscriber_setup: [RoundStartCondition(100)],
+        source: Owner,
+        runtime: |context| super::toughness_recover::on_break(context.managers, context.subscriber, context.event?),
+        setup_handler: |context| super::toughness_recover::at_round_start(context.managers, &context.subscriber.feature, context.defender_start_round),
+        supports: |args| args == [0],
         wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(1102, "ToughnessRecover"), &[EffectType::None as i32]));
     (1127, "TeamExElectricTransConsumeValueAttr") => TeamExElectricTransConsumeValueAttr,
         effect_time_subscription: false, stat_read: OnGrant,

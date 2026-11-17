@@ -884,11 +884,18 @@ pub fn dispatch_buff_act_setup(
     catalog: &SkillEffectCatalog,
     stage: SetupStage,
     priority: i32,
+    defender_start_round: Option<i32>,
 ) -> Vec<(subscriber::BuffActSetupSubscriber, Option<Vec<RuleOp>>)> {
     subscriber::buff_acts_for_setup_stage(managers, stage, priority)
         .into_iter()
         .map(|subscriber| {
-            let ops = buff_act::setup_rule_ops(pool, managers, catalog, &subscriber);
+            let ops = buff_act::setup_rule_ops(
+                pool,
+                managers,
+                catalog,
+                &subscriber,
+                defender_start_round,
+            );
             (subscriber, ops)
         })
         .collect()

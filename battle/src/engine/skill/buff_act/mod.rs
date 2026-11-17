@@ -142,6 +142,7 @@ pub mod team_immunity_times;
 pub mod team_per_power_add_buff;
 pub mod team_share_shield;
 pub mod toughness;
+mod toughness_recover;
 pub mod transfer_energy_buff;
 mod ultimate_cost;
 pub mod unlock_sovereign_card;
@@ -981,6 +982,7 @@ pub fn setup_rule_ops(
     managers: &BattleManagers,
     catalog: &crate::engine::skill::effect::SkillEffectCatalog,
     subscriber: &crate::engine::skill::subscriber::BuffActSetupSubscriber,
+    defender_start_round: Option<i32>,
 ) -> Option<Vec<RuleOp>> {
     let definition = registry::find(subscriber.key.opcode, subscriber.key.type_name)?;
     definition.setup.handler?(&registry::SetupContext {
@@ -988,6 +990,7 @@ pub fn setup_rule_ops(
         managers,
         catalog,
         subscriber,
+        defender_start_round,
     })
 }
 

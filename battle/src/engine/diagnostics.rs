@@ -12,6 +12,7 @@ pub enum TraceArea {
     Buff,
     Condition,
     Event,
+    Toughness,
 }
 
 #[derive(Debug, Default)]
@@ -26,6 +27,7 @@ struct TraceFlags {
     buff: bool,
     condition: bool,
     event: bool,
+    toughness: bool,
 }
 
 /// Returns whether diagnostics are enabled for one source-owned subsystem.
@@ -47,6 +49,7 @@ pub fn enabled(area: TraceArea) -> bool {
             TraceArea::Buff => flags.buff,
             TraceArea::Condition => flags.condition,
             TraceArea::Event => flags.event,
+            TraceArea::Toughness => flags.toughness,
         }
 }
 
@@ -77,6 +80,7 @@ impl TraceFlags {
                 "buff" | "buffs" => flags.buff = true,
                 "condition" | "conditions" => flags.condition = true,
                 "event" | "events" => flags.event = true,
+                "toughness" => flags.toughness = true,
                 "" => {}
                 _ => {}
             }
