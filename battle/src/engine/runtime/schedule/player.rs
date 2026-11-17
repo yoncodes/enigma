@@ -228,15 +228,13 @@ pub fn run_conduit_phase(
                     continue;
                 };
                 let cost_modifier = admission.cost_modifier;
-                let frame_target_uid = (catalog.logic_target(skill.skill_id)
-                    == crate::engine::skill::target::request::SOURCE_TARGET_CODE)
-                    .then(|| {
-                        current_pool
-                            .main_allies(source_uid)
-                            .first()
-                            .map(|entity| entity.uid)
-                    })
-                    .flatten();
+                let frame_target_uid =
+                    crate::engine::skill::target::TargetResolver::self_skill_anchor(
+                        catalog,
+                        &current_pool,
+                        source_uid,
+                        skill.skill_id,
+                    );
                 let action = drain::run_conduit_action(
                     managers,
                     pool,

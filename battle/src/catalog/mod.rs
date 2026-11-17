@@ -491,11 +491,6 @@ impl BattleCatalog {
             .unwrap_or_default()
     }
 
-    pub(crate) fn skill_targeting(self, skill_id: i32) -> Option<(i32, &'static str)> {
-        let effect = self.skill_effect(skill_id)?;
-        Some((effect.target_limit, effect.logic_target.as_str()))
-    }
-
     pub(crate) fn skill_target_type(self, skill_id: i32) -> Option<i32> {
         self.game_data
             .skill_target_type(&self.skill_effect(skill_id)?.logic_target)

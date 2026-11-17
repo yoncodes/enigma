@@ -1,9 +1,35 @@
 use super::*;
 
 #[test]
-fn other_allies_anchor_their_shared_skill_frame_to_the_caster() {
-    assert_eq!(frame_anchor_for_rule(102, 10), Some(10));
-    assert_eq!(frame_anchor_for_rule(103, 10), None);
+fn self_skills_anchor_on_the_first_lineup_ally() {
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![entity_at(11, 1), entity_at(10, 2), entity_at(12, 3)],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut catalog = crate::engine::skill::effect::SkillEffectCatalog::default();
+    catalog.insert_logic_target(
+        100,
+        crate::engine::skill::target::request::SOURCE_TARGET_CODE,
+    );
+    catalog.insert_logic_target(200, 101);
+
+    // The first unit in the lineup, not the caster.
+    assert_eq!(
+        TargetResolver::self_skill_anchor(&catalog, &pool, 12, 100),
+        Some(11)
+    );
+    assert_eq!(
+        TargetResolver::self_skill_anchor(&catalog, &pool, 11, 100),
+        Some(11)
+    );
+    assert_eq!(
+        TargetResolver::self_skill_anchor(&catalog, &pool, 12, 200),
+        None
+    );
 }
 
 #[test]

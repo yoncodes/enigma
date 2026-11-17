@@ -111,7 +111,12 @@ pub(super) fn drain_skill(
         && let Some(parent) = parent_path.as_deref()
     {
         if invocation.target == SkillTarget::Configured && invocation.frame_target.is_none() {
-            invocation.frame_target = TargetResolver::delegated_anchor(pool, invocation.plan);
+            invocation.frame_target = TargetResolver::self_skill_anchor(
+                catalog,
+                pool,
+                invocation.plan.source_uid,
+                invocation.plan.skill_id,
+            );
         }
         push_change(
             &mut result.frames,

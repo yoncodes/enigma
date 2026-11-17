@@ -6,8 +6,8 @@ use crate::engine::{
     },
 };
 
-mod delegated;
 mod highest_moxie;
+mod self_anchor;
 
 pub struct TargetResolver;
 
@@ -791,10 +791,6 @@ fn target_rule(code: i32) -> Option<TargetRule> {
         4101 => TargetRule::EnemiesWithMonsterLabel(101),
         _ => return None,
     })
-}
-
-pub(crate) fn frame_anchor_for_rule(code: i32, source_uid: i64) -> Option<i64> {
-    matches!(target_rule(code), Some(TargetRule::OtherAllies)).then_some(source_uid)
 }
 
 fn allies_by_status(
