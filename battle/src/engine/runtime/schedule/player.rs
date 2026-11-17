@@ -625,7 +625,7 @@ fn run_player_card_ops(
                 grants_ex_point: false,
                 grant_after_action: false,
                 composed_owners: Vec::new(),
-                before_rewards: Vec::new(),
+                before_rewards: std::mem::take(&mut pending_rewards),
                 prelude,
             });
             continue;
@@ -813,13 +813,7 @@ fn run_player_card_ops(
             return Ok(result);
         }
     }
-    if !pending_rewards.is_empty() {
-        skills
-            .last_mut()
-            .expect("a non-empty action queue has a final skill")
-            .before_rewards
-            .extend(pending_rewards);
-    }
+    let submitted_actions = skills.len();
     let actions = managers
         .card
         .played()
@@ -888,11 +882,29 @@ fn run_player_card_ops(
             ))],
         )?,
     );
-    for queued in skills {
+    let mut skills = skills.into_iter();
+    for position in 0..=skills.len() {
+        if position == submitted_actions && !pending_rewards.is_empty() {
+            append(
+                &mut result,
+                run_card_composition_rewards(
+                    managers,
+                    pool,
+                    catalog,
+                    determinism,
+                    context,
+                    CARD_PLAY_ORIGIN,
+                    std::mem::take(&mut pending_rewards),
+                )?,
+            );
+        }
+        let Some(queued) = skills.next() else {
+            break;
+        };
         if fight
             .is_some_and(|fight| crate::engine::round::outcome::battle_ended(fight, pool, managers))
         {
-            break;
+            return Ok(result);
         }
         let current_pool = pool
             .roster_changed(managers)
