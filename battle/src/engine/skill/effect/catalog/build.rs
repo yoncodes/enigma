@@ -361,11 +361,7 @@ impl SkillEffectCatalog {
         let logic_target = parse_target(&row.logic_target)
             .and_then(crate::engine::skill::target::resolve::compile_logic_target);
         if let Some(target) = &logic_target {
-            super::super::delegated_ultimate::bind_reward(
-                &mut slots,
-                target,
-                &row.behavior_target2,
-            );
+            super::super::delegated_ultimate::bind_reward(&mut slots, target);
         }
         self.insert(ParsedSkillEffect {
             skill_id: row.id,

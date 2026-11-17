@@ -44,19 +44,41 @@ fn parses_target_code_and_raw_args() {
 }
 
 #[test]
-fn delegated_reward_does_not_bind_target_with_arguments() {
+fn delegated_card_settles_moxie_grant_in_the_cast_phase() {
     init_config();
     let db = config::configs::get();
     let skill = db.skill.get(311401511).unwrap();
-    let mut row = db.skill_effect.get(skill.skill_effect).unwrap().clone();
-    row.behavior_target2.push_str("#7");
+    let row = db.skill_effect.get(skill.skill_effect).unwrap();
 
     let mut catalog = SkillEffectCatalog::default();
-    catalog.insert_configured_effect(db, &row);
-    let reward = &catalog.get(row.id).unwrap().slots[1];
-    assert!(reward.target_from_condition);
-    assert_eq!(reward.target.code, 101);
-    assert!(reward.active_phases().unwrap().is_empty());
+    catalog.insert_configured_effect(db, row);
+    let [cast, reward] = catalog.get(row.id).unwrap().slots.as_slice() else {
+        panic!("Flood of Fiction should parse as cast + grant");
+    };
+    let cast_phases = cast.active_phases().unwrap();
+    assert_eq!(cast_phases.len(), 1);
+    assert_eq!(reward.active_phases().unwrap(), cast_phases);
+
+    let reward_phase = |edit: fn(&mut config::skill_effect::SkillEffect)| {
+        let mut variant = row.clone();
+        edit(&mut variant);
+        let mut catalog = SkillEffectCatalog::default();
+        catalog.insert_configured_effect(db, &variant);
+        catalog.get(row.id).unwrap().slots[1].delegated_reward_phase
+    };
+    // The grant follows the cast whatever gates it or whom it targets.
+    let bound = Some(cast_phases[0]);
+    assert_eq!(reward_phase(|row| row.condition2.clear()), bound);
+    assert_eq!(
+        reward_phase(|row| row.behavior_target2.push_str("#7")),
+        bound
+    );
+    // Without the delegated cast, or for a non-Moxie slot, nothing is bound.
+    assert_eq!(
+        reward_phase(|row| row.logic_target = "101".to_owned()),
+        None
+    );
+    assert_eq!(reward_phase(|row| row.behavior2 = "60175".to_owned()), None);
 }
 
 #[test]
