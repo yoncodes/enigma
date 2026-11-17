@@ -987,6 +987,7 @@ pub(super) fn execute(
                         add.team_type,
                     ),
             };
+            manager.record_opening_temporary(add.kind, &card);
             operation = Some(CardChange::SpCardAdd {
                 target_uid: add.target_uid,
                 skill_id: add.skill_id,
