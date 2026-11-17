@@ -954,6 +954,16 @@ fn run_player_card_ops(
             crate::engine::skill::action::SkillTarget::LogicRule(code) => code,
             _ => catalog.logic_target(skill.plan.skill_id),
         };
+        if side_owned_card
+            && let crate::engine::skill::action::SkillTarget::Explicit(selected_uid) = skill.target
+            && managers.hp.current(selected_uid) > 0
+            && crate::engine::skill::target::TargetResolver::anchors_delegated_card(
+                catalog,
+                skill.plan.skill_id,
+            )
+        {
+            skill.frame_target.get_or_insert(selected_uid);
+        }
         let configured_targets_enemy = crate::engine::skill::target::targets_enemy(logic_target);
         let explicit_targets_enemy = match skill.target {
             crate::engine::skill::action::SkillTarget::Explicit(target_uid) => pool

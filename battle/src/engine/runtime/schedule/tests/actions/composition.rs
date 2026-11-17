@@ -211,6 +211,7 @@ fn side_owned_temporary_card_executes_without_entity_hp() {
         skill_id: 100,
         slots: Vec::new(),
     });
+    catalog.insert_logic_target(100, 112);
 
     let result = run_player_commands(
         &mut managers,
@@ -224,6 +225,14 @@ fn side_owned_temporary_card_executes_without_entity_hp() {
     )
     .unwrap();
     let steps = crate::engine::packet::timeline::project(&result.frames).unwrap();
+    assert!(result.frames.iter().any(|frame| matches!(
+        &frame.owner,
+        FrameOwner::Skill {
+            skill_id: 100,
+            target_uid: Some(10),
+            ..
+        }
+    )));
 
     assert!(result.outcomes.iter().any(|outcome| matches!(
         outcome,
@@ -240,4 +249,75 @@ fn side_owned_temporary_card_executes_without_entity_hp() {
                     != Some(sonettobuf::effect_type_enum::EffectType::Cardinvalid as i32)
             })
     );
+}
+
+#[test]
+fn side_owned_ultimate_card_keeps_its_submitted_target() {
+    init_config();
+    let entity = |uid, model_id, ex_point, ex_skill, team_type| FightEntityInfo {
+        uid: Some(uid),
+        model_id: Some(model_id),
+        ex_point: Some(ex_point),
+        ex_skill: Some(ex_skill),
+        current_hp: Some(100),
+        team_type: Some(team_type),
+        ..Default::default()
+    };
+    let fight = Fight {
+        version: Some(7),
+        attacker: Some(FightTeam {
+            entitys: vec![
+                entity(10, 3114, 5, 31140131, 1),
+                entity(11, 3147, 4, 31473141, 1),
+                entity(12, 3146, 1, 31460131, 1),
+            ],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![entity(-1, 103370111, 0, 0, 2)],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let catalog = SkillEffectCatalog::from_roots(config::configs::get(), [311401511, 31473141], []);
+    for (selected, anchor) in [(-1, -1), (12, 12), (99, 11)] {
+        let mut managers = BattleManagers::seeded(&fight);
+        managers
+            .execute_card(CardCommand::Setup(CardSetup {
+                hand: vec![crate::engine::manager::card::precast_card(
+                    crate::engine::fight::rules::ATTACKER_SIDE_UID,
+                    311401511,
+                )],
+                draw_pile: Vec::new(),
+                deck_num: 1,
+            }))
+            .unwrap();
+        let result = run_player_commands(
+            &mut managers,
+            &pool,
+            &catalog,
+            &mut RoundDeterminism::default(),
+            TargetContext::default(),
+            [play(0, selected)],
+            1,
+            crate::engine::manager::emitter::UID,
+        )
+        .unwrap();
+        let steps = crate::engine::packet::timeline::project(&result.frames).unwrap();
+        let parent = steps
+            .iter()
+            .find(|step| step.act_id == Some(311401511))
+            .unwrap();
+        assert_eq!(parent.to_id, Some(anchor));
+        assert!(result.outcomes.iter().any(|outcome| matches!(
+            outcome,
+            RuleOutcome::SkillLifecycle(
+                crate::engine::skill::action::SkillLifecycle::DirectUltimateBodyCompleted {
+                    source_uid: 11,
+                }
+            )
+        )));
+        assert_eq!(managers.ex_point.get(11), 4);
+    }
 }

@@ -1,8 +1,12 @@
 use crate::engine::{
     manager::{BattleManagers, buff::BuffStatus, emitter},
     runtime::determinism::RoundDeterminism,
-    skill::target::{
-        BehaviorTargetOrder, TargetContext, TargetEntity, TargetPool, request::TargetRequest,
+    skill::{
+        behavior::{classify::BehaviorKind, registry},
+        effect::SkillEffectCatalog,
+        target::{
+            BehaviorTargetOrder, TargetContext, TargetEntity, TargetPool, request::TargetRequest,
+        },
     },
 };
 
@@ -151,6 +155,23 @@ impl TargetResolver {
             current.enemies(source_uid, false)
         };
         candidates.first().map(|entity| entity.uid)
+    }
+
+    pub(crate) fn anchors_delegated_card(catalog: &SkillEffectCatalog, skill_id: i32) -> bool {
+        let request = catalog.logic_request(skill_id);
+        target_rule(request.code) == Some(TargetRule::HighestExPointAlly)
+            && highest_moxie::supports(&request.raw)
+            && catalog
+                .get(skill_id)
+                .and_then(|effect| effect.slots.iter().find(|slot| slot.behavior.slot == 1))
+                .is_some_and(|slot| {
+                    slot.target == TargetRequest::default()
+                        && !slot.target_from_condition
+                        && slot.behavior.raw_args.is_empty()
+                        && registry::find(&slot.behavior).is_some_and(|definition| {
+                            definition.kind == BehaviorKind::DirectUseBigSkill
+                        })
+                })
     }
 
     pub fn resolve(
