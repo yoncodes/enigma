@@ -35,6 +35,7 @@ pub struct SkillEffectSlot {
     pub condition_target: TargetRequest,
     pub target: TargetRequest,
     pub target_from_condition: bool,
+    pub(crate) delegated_reward_phase: Option<SkillPhase>,
     pub limit: i32,
     pub round_limit: i32,
 }
@@ -48,6 +49,7 @@ impl SkillEffectSlot {
             condition_target: TargetRequest::self_only(),
             target,
             target_from_condition: false,
+            delegated_reward_phase: None,
             limit: 0,
             round_limit: 0,
         }
@@ -220,7 +222,9 @@ impl SkillEffectSlot {
     }
 
     pub fn active_phases(&self) -> Result<Vec<SkillPhase>, RouteError> {
-        let fallback = self.active_presence_phase();
+        let fallback = self
+            .delegated_reward_phase
+            .or_else(|| self.active_presence_phase());
         let mut phases = Vec::new();
         for subscription in self.compiled_subscriptions()? {
             let phase = match subscription.event {

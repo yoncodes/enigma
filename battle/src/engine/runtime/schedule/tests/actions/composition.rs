@@ -267,7 +267,16 @@ fn side_owned_ultimate_card_keeps_its_submitted_target() {
         version: Some(7),
         attacker: Some(FightTeam {
             entitys: vec![
-                entity(10, 3114, 5, 31140131, 1),
+                FightEntityInfo {
+                    ex_point_max: Some(7),
+                    buffs: vec![BuffInfo {
+                        uid: Some(20),
+                        buff_id: Some(31140141),
+                        from_uid: Some(10),
+                        ..Default::default()
+                    }],
+                    ..entity(10, 3114, 5, 31140131, 1)
+                },
                 entity(11, 3147, 4, 31473141, 1),
                 entity(12, 3146, 1, 31460131, 1),
             ],
@@ -319,5 +328,17 @@ fn side_owned_ultimate_card_keeps_its_submitted_target() {
             )
         )));
         assert_eq!(managers.ex_point.get(11), 4);
+        let moxie = result
+            .outcomes
+            .iter()
+            .filter_map(|outcome| match outcome {
+                RuleOutcome::ExPoint(crate::engine::manager::ex_point::ExPointChanges::Value {
+                    change,
+                    ..
+                }) if change.applied_delta != 0 => Some((change.target_uid, change.applied_delta)),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(moxie, [(11, -4), (11, 4), (10, 1)]);
     }
 }

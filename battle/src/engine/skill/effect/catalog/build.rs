@@ -280,7 +280,7 @@ impl SkillEffectCatalog {
         self.warn_unsupported_buffs(db, |buff_id| !existing_buffs.contains(&buff_id));
     }
 
-    fn insert_configured_effect(
+    pub(super) fn insert_configured_effect(
         &mut self,
         db: &GameDB,
         row: &config::skill_effect::SkillEffect,
@@ -358,14 +358,21 @@ impl SkillEffectCatalog {
                 }
             }
         }
+        let logic_target = parse_target(&row.logic_target)
+            .and_then(crate::engine::skill::target::resolve::compile_logic_target);
+        if let Some(target) = &logic_target {
+            super::super::delegated_ultimate::bind_reward(
+                &mut slots,
+                target,
+                &row.behavior_target2,
+            );
+        }
         self.insert(ParsedSkillEffect {
             skill_id: row.id,
             slots,
         });
         self.insert_effect_tag(row.id, row.effect_tag);
-        if let Some(target) = parse_target(&row.logic_target)
-            .and_then(crate::engine::skill::target::resolve::compile_logic_target)
-        {
+        if let Some(target) = logic_target {
             self.logic_targets.insert(row.id, target);
         } else {
             self.issues.entry(row.id).or_default().push(target_issue(

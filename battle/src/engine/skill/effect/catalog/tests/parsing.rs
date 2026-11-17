@@ -44,6 +44,22 @@ fn parses_target_code_and_raw_args() {
 }
 
 #[test]
+fn delegated_reward_does_not_bind_target_with_arguments() {
+    init_config();
+    let db = config::configs::get();
+    let skill = db.skill.get(311401511).unwrap();
+    let mut row = db.skill_effect.get(skill.skill_effect).unwrap().clone();
+    row.behavior_target2.push_str("#7");
+
+    let mut catalog = SkillEffectCatalog::default();
+    catalog.insert_configured_effect(db, &row);
+    let reward = &catalog.get(row.id).unwrap().slots[1];
+    assert!(reward.target_from_condition);
+    assert_eq!(reward.target.code, 101);
+    assert!(reward.active_phases().unwrap().is_empty());
+}
+
+#[test]
 fn slot_parser_rejects_malformed_targets() {
     init_config();
     let db = config::configs::get();

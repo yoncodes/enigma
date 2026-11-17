@@ -2,8 +2,7 @@ use crate::engine::{
     manager::{BattleManagers, buff::BuffStatus, emitter},
     runtime::determinism::RoundDeterminism,
     skill::{
-        behavior::{classify::BehaviorKind, registry},
-        effect::SkillEffectCatalog,
+        effect::{SkillEffectCatalog, delegated_ultimate},
         target::{
             BehaviorTargetOrder, TargetContext, TargetEntity, TargetPool, request::TargetRequest,
         },
@@ -158,20 +157,16 @@ impl TargetResolver {
     }
 
     pub(crate) fn anchors_delegated_card(catalog: &SkillEffectCatalog, skill_id: i32) -> bool {
-        let request = catalog.logic_request(skill_id);
-        target_rule(request.code) == Some(TargetRule::HighestExPointAlly)
-            && highest_moxie::supports(&request.raw)
+        Self::is_highest_moxie(catalog.logic_request(skill_id))
             && catalog
                 .get(skill_id)
                 .and_then(|effect| effect.slots.iter().find(|slot| slot.behavior.slot == 1))
-                .is_some_and(|slot| {
-                    slot.target == TargetRequest::default()
-                        && !slot.target_from_condition
-                        && slot.behavior.raw_args.is_empty()
-                        && registry::find(&slot.behavior).is_some_and(|definition| {
-                            definition.kind == BehaviorKind::DirectUseBigSkill
-                        })
-                })
+                .is_some_and(delegated_ultimate::is_cast_slot)
+    }
+
+    pub(crate) fn is_highest_moxie(request: &TargetRequest) -> bool {
+        target_rule(request.code) == Some(TargetRule::HighestExPointAlly)
+            && highest_moxie::supports(&request.raw)
     }
 
     pub fn resolve(
