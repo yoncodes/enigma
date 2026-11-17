@@ -57,7 +57,7 @@ impl MaxHpWireRule {
             Self::OneWayAttr { buff_act_id } => match delta.cmp(&0) {
                 std::cmp::Ordering::Greater => MaxHpWirePlan {
                     max_hp_repeats: 1,
-                    current_hp_repeats: 1,
+                    current_hp_repeats: u8::from(before_current != after_current),
                     buff_act_id: 0,
                 },
                 std::cmp::Ordering::Less => MaxHpWirePlan {
