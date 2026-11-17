@@ -1,11 +1,8 @@
 use crate::engine::{
     manager::{BattleManagers, buff::BuffStatus, emitter},
     runtime::determinism::RoundDeterminism,
-    skill::{
-        effect::{SkillEffectCatalog, delegated_ultimate},
-        target::{
-            BehaviorTargetOrder, TargetContext, TargetEntity, TargetPool, request::TargetRequest,
-        },
+    skill::target::{
+        BehaviorTargetOrder, TargetContext, TargetEntity, TargetPool, request::TargetRequest,
     },
 };
 
@@ -154,14 +151,6 @@ impl TargetResolver {
             current.enemies(source_uid, false)
         };
         candidates.first().map(|entity| entity.uid)
-    }
-
-    pub(crate) fn anchors_delegated_card(catalog: &SkillEffectCatalog, skill_id: i32) -> bool {
-        Self::is_highest_moxie(catalog.logic_request(skill_id))
-            && catalog
-                .get(skill_id)
-                .and_then(|effect| effect.slots.iter().find(|slot| slot.behavior.slot == 1))
-                .is_some_and(delegated_ultimate::is_cast_slot)
     }
 
     pub(crate) fn is_highest_moxie(request: &TargetRequest) -> bool {
@@ -657,6 +646,10 @@ pub(crate) fn preserves_selected_frame_target(
         && pool
             .team_type(source_uid)
             .is_some_and(|source_team| pool.team_type(selected_uid) == Some(source_team))
+        // The highest-Moxie ally casts the delegated Ultimate; the action
+        // itself stays on the unit the player selected.
+        || target_rule(code) == Some(TargetRule::HighestExPointAlly)
+            && pool.team_type(selected_uid).is_some()
 }
 
 pub fn targets_enemy(code: i32) -> Option<bool> {

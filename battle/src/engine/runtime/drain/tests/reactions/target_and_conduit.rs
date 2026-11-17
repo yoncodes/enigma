@@ -7,13 +7,13 @@ fn configured_action_target_owns_the_projected_skill_frame() {
             entitys: vec![
                 FightEntityInfo {
                     uid: Some(10),
-                    ex_point: Some(1),
+                    ex_point: Some(3),
                     current_hp: Some(100),
                     ..Default::default()
                 },
                 FightEntityInfo {
                     uid: Some(11),
-                    ex_point: Some(3),
+                    ex_point: Some(1),
                     current_hp: Some(100),
                     ..Default::default()
                 },
@@ -86,7 +86,8 @@ fn configured_action_target_owns_the_projected_skill_frame() {
     };
 
     assert_eq!(run_case(101), (Some(-1), -1));
-    assert_eq!(run_case(112), (Some(11), 11));
+    assert_eq!(run_case(111), (Some(11), 11));
+    assert_eq!(run_case(112), (Some(-1), -1));
     assert_eq!(run_case(130), (Some(-1), -1));
     assert_eq!(
         run_case(crate::engine::skill::target::request::SOURCE_TARGET_CODE),

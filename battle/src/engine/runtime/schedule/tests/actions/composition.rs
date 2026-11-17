@@ -211,7 +211,6 @@ fn side_owned_temporary_card_executes_without_entity_hp() {
         skill_id: 100,
         slots: Vec::new(),
     });
-    catalog.insert_logic_target(100, 112);
 
     let result = run_player_commands(
         &mut managers,
@@ -225,14 +224,6 @@ fn side_owned_temporary_card_executes_without_entity_hp() {
     )
     .unwrap();
     let steps = crate::engine::packet::timeline::project(&result.frames).unwrap();
-    assert!(result.frames.iter().any(|frame| matches!(
-        &frame.owner,
-        FrameOwner::Skill {
-            skill_id: 100,
-            target_uid: Some(10),
-            ..
-        }
-    )));
 
     assert!(result.outcomes.iter().any(|outcome| matches!(
         outcome,

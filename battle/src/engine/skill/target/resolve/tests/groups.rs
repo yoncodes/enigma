@@ -30,6 +30,22 @@ fn mass_targets_preserve_the_selected_skill_frame_target() {
     assert!(preserves_selected_frame_target(202, 10, -1, &pool, attack));
     assert!(preserves_selected_frame_target(1, 10, 11, &pool, attack));
     assert!(!preserves_selected_frame_target(1, 10, -1, &pool, attack));
+    for selected in [-1, 11] {
+        assert!(preserves_selected_frame_target(
+            112,
+            10,
+            selected,
+            &pool,
+            TargetContext::default()
+        ));
+    }
+    assert!(!preserves_selected_frame_target(
+        112,
+        10,
+        99,
+        &pool,
+        TargetContext::default()
+    ));
 }
 
 #[test]
