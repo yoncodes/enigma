@@ -883,6 +883,13 @@ fn grant_time_buff_acts_stay_in_the_granting_skill_frame() {
                 )
             )
     )));
+    assert!(matches!(
+        skill.items.last(),
+        Some(crate::engine::runtime::record::FrameItem::Change(change))
+            if matches!(change.as_ref(), BattleChange::BuffFeatureMarker(marker)
+                if marker.target_uid == 10
+                    && marker.effect_type == sonettobuf::effect_type_enum::EffectType::None as i32)
+    ));
 }
 
 #[test]

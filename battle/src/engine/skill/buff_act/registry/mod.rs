@@ -1425,8 +1425,8 @@ buff_act_definitions! {
         supports: |_| true, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(926, "ExPointAddByHit"), &[EffectType::None as i32]));
     (927, "AddBuffByOtherExSkill") => AddBuffByOtherExSkill,
         transactions: [EventKind::BuffAdded],
-        source: Owner,
-        runtime: |context| super::add_buff_by_other_ex_skill::rule_ops(context.catalog, context.subscriber, context.event?),
+        frame: CausingFrame,
+        scoped_runtime: super::add_buff_by_other_ex_skill::rule_ops,
         transaction: super::add_buff_by_other_ex_skill::grant_transaction_rule_ops,
         supports: super::add_buff_by_other_ex_skill::supports,
         wire: (super::wire::BuffActWireDefinition::new(DefinitionKey::new(927, "AddBuffByOtherExSkill"), &[], &[], &[]));

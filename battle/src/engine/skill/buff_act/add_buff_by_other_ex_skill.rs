@@ -11,6 +11,8 @@ use crate::engine::{
     },
 };
 
+use super::{BuffActRuleOp, registry::RuntimeContext};
+
 pub fn supports(args: &[i32]) -> bool {
     matches!(args, [per_moxie, single_target_buff_id, mass_target_buff_id]
         if *per_moxie > 0 && *single_target_buff_id > 0 && *mass_target_buff_id > 0)
@@ -19,11 +21,8 @@ pub fn supports(args: &[i32]) -> bool {
                 && *trigger_skill_id > 0 && *bonus > 0)
 }
 
-pub fn rule_ops(
-    catalog: &SkillEffectCatalog,
-    subscriber: &BuffActSubscriber,
-    event: &BattleEvent,
-) -> Option<Vec<RuleOp>> {
+pub fn rule_ops(context: &mut RuntimeContext<'_>) -> Option<Vec<BuffActRuleOp>> {
+    let subscriber = context.subscriber;
     if !super::subscriber_is_kind(
         subscriber,
         super::registry::BuffActKind::AddBuffByOtherExSkill,
@@ -31,12 +30,12 @@ pub fn rule_ops(
     {
         return None;
     }
-    let BattleEvent::AllyAction(action) = event else {
+    let BattleEvent::AllyAction(action) = context.event? else {
         return Some(Vec::new());
     };
     Some(
         rule_op(
-            catalog,
+            context.catalog,
             subscriber,
             action.source_uid,
             action.skill_id,
@@ -45,6 +44,7 @@ pub fn rule_ops(
             action.trigger,
         )
         .into_iter()
+        .map(BuffActRuleOp::subscriber_from_owner)
         .collect(),
     )
 }
