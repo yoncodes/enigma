@@ -16,12 +16,13 @@ use std::fs;
 mod metadata;
 mod request;
 
+pub use metadata::opening_card_push_path;
 #[cfg(test)]
 use metadata::{capture_command, is_battle_start_packet};
 use metadata::{captured_equipment_metadata, resolve_build_metadata};
 use request::{
-    battle_request_metadata, configured_trial, folder_request_path, request_battle_balance,
-    request_metadata, validated_equipment_loadout,
+    battle_request_metadata, configured_trial, request_battle_balance, request_metadata,
+    start_request_path, validated_equipment_loadout,
 };
 
 type PreviewAttributes = (Vec<(i64, HeroExAttribute)>, Vec<(i64, HeroSpAttribute)>);
@@ -36,7 +37,7 @@ pub fn preview_attributes(fight: &Fight, battle_path: &Path) -> anyhow::Result<P
     preview_attributes_with_request(
         fight,
         battle_path,
-        folder_request_path(battle_path).as_deref(),
+        start_request_path(battle_path)?.as_deref(),
     )
 }
 

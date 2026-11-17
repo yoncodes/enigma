@@ -1,6 +1,42 @@
 use super::*;
 
 #[test]
+fn opening_metadata_uses_only_its_timeline_window() {
+    let directory = test_directory("opening-timeline");
+    let common = directory.join("common");
+    fs::create_dir(&common).unwrap();
+    let write = |index: usize, command: &str, json: &str| {
+        let packet = common.join(format!("20261107_104702_000_{index:06}_{command}.json"));
+        fs::write(&packet, json).unwrap();
+        packet
+    };
+    let request = write(1, "StartDungeonRequest", r#"{"episodeId":100}"#);
+    write(2, "StartDungeonRequest", r#"{"episodeId":200}"#);
+    let start = write(3, "StartDungeonReply", r#"{"fight":{"episodeId":100}}"#);
+    let push = write(4, "CardInfoPush", "{}");
+    write(5, "StartDungeonRequest", r#"{"episodeId":200}"#);
+    write(6, "EndFightReply", "{}");
+    let next = write(7, "StartDungeonReply", r#"{"fight":{"episodeId":200}}"#);
+    write(8, "UseClothSkillReply", "{}");
+    write(9, "CardInfoPush", "{}");
+    write(10, "StartDungeonRequest", r#"{"episodeId":300}"#);
+    write(11, "StartDungeonRequest", r#"{"episodeId":300}"#);
+    let ambiguous = write(12, "StartDungeonReply", r#"{"fight":{"episodeId":300}}"#);
+
+    assert_eq!(start_request_path(&start).unwrap(), Some(request));
+    assert_eq!(opening_card_push_path(&start).unwrap(), Some(push));
+    assert_eq!(start_request_path(&next).unwrap(), None);
+    assert_eq!(opening_card_push_path(&next).unwrap(), None);
+    assert!(
+        start_request_path(&ambiguous)
+            .unwrap_err()
+            .to_string()
+            .contains("ambiguous")
+    );
+    fs::remove_dir_all(directory).unwrap();
+}
+
+#[test]
 fn captured_derived_attributes_are_not_runtime_inputs() {
     crate::init_test_config();
     let uid = 42;

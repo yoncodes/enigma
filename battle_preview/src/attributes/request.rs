@@ -7,7 +7,7 @@ use std::{
 use battle::tooling::entity::{BattleBalance, EntityBuilder, EquipmentBuildInput, Stats};
 use sonettobuf::{Equip, Fight, FightEntityInfo, HeroInfo};
 
-use super::metadata::capture_command;
+use super::metadata::{capture_command, start_request_in_timeline};
 
 #[derive(Debug, Default)]
 pub(super) struct BattleRequestMetadata {
@@ -22,16 +22,25 @@ pub(super) struct SelectedAssist {
     pub(super) user_id: i64,
 }
 
-pub(super) fn folder_request_path(battle_path: &Path) -> Option<PathBuf> {
-    let parent = battle_path.parent()?;
-    ["StartDungeonRequest.json", "StartAct229BattleRequest.json"]
-        .map(|name| parent.join(name))
-        .into_iter()
-        .find(|path| path.exists())
+pub(super) fn start_request_path(battle_path: &Path) -> anyhow::Result<Option<PathBuf>> {
+    if super::metadata::is_battle_start_packet(battle_path)
+        && capture_command(battle_path).as_deref() == Some("StartDungeonReply")
+    {
+        return start_request_in_timeline(battle_path);
+    }
+    let Some(parent) = battle_path.parent() else {
+        return Ok(None);
+    };
+    Ok(
+        ["StartDungeonRequest.json", "StartAct229BattleRequest.json"]
+            .map(|name| parent.join(name))
+            .into_iter()
+            .find(|path| path.is_file()),
+    )
 }
 
 pub(super) fn battle_request_metadata(battle_path: &Path) -> anyhow::Result<BattleRequestMetadata> {
-    folder_request_path(battle_path)
+    start_request_path(battle_path)?
         .map(|path| request_metadata(&path))
         .transpose()
         .map(Option::unwrap_or_default)

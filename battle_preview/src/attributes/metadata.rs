@@ -189,6 +189,98 @@ fn insert_captured_equipment(
     Ok(())
 }
 
+pub(super) fn start_request_in_timeline(path: &Path) -> anyhow::Result<Option<PathBuf>> {
+    let Some(files) = capture_timeline_through(path)? else {
+        return Ok(None);
+    };
+    let reply = read_capture_value(path)?;
+    let fight = reply
+        .get("startDungeonReply")
+        .unwrap_or(&reply)
+        .get("fight")
+        .unwrap_or(&serde_json::Value::Null);
+    let episode = start_episode(fight, path)?;
+    let mut matching = None;
+    let mut saw_request = false;
+    for file in files.into_iter().rev().skip(1) {
+        match capture_command(&file).as_deref() {
+            Some("StartDungeonRequest") => {
+                saw_request = true;
+                if start_episode(&read_capture_value(&file)?, &file)? == episode
+                    && matching.replace(file).is_some()
+                {
+                    anyhow::bail!(
+                        "ambiguous start requests for episode {episode}: {}",
+                        path.display()
+                    );
+                }
+            }
+            Some(command) if closes_opening(command) => break,
+            _ => {}
+        }
+    }
+    if saw_request && matching.is_none() {
+        anyhow::bail!("no start request for episode {episode}: {}", path.display());
+    }
+    Ok(matching)
+}
+
+fn start_episode(value: &serde_json::Value, path: &Path) -> anyhow::Result<i64> {
+    value
+        .get("episodeId")
+        .and_then(serde_json::Value::as_i64)
+        .filter(|id| *id > 0)
+        .ok_or_else(|| anyhow::anyhow!("missing start episode: {}", path.display()))
+}
+
+pub fn opening_card_push_path(path: &Path) -> anyhow::Result<Option<PathBuf>> {
+    if !is_battle_start_packet(path) {
+        let push = path.with_file_name("CardInfoPush_1.json");
+        return Ok(push.is_file().then_some(push));
+    }
+    let Some(files) = session_files(path)? else {
+        return Ok(None);
+    };
+    let Some(index) = timeline_position(&files, path) else {
+        return Ok(None);
+    };
+    Ok(files
+        .into_iter()
+        .skip(index + 1)
+        .find_map(|file| match capture_command(&file).as_deref()? {
+            "CardInfoPush" => Some(Some(file)),
+            command if closes_opening(command) => Some(None),
+            _ => None,
+        })
+        .flatten())
+}
+
+fn closes_opening(command: &str) -> bool {
+    matches!(
+        command,
+        "StartDungeonRequest"
+            | "StartTowerBattleRequest"
+            | "StartAct229BattleRequest"
+            | "StartDungeonReply"
+            | "StartTowerBattleReply"
+            | "StartAct229BattleReply"
+            | "BeginRoundRequest"
+            | "BeginRoundReply"
+            | "UseClothSkillRequest"
+            | "UseClothSkillReply"
+            | "AutoRoundRequest"
+            | "AutoRoundReply"
+            | "EndFightRequest"
+            | "EndFightReply"
+            | "EndFightPush"
+            | "ReconnectFightRequest"
+            | "ReconnectFightReply"
+            | "EndDungeonRequest"
+            | "EndDungeonReply"
+            | "EndDungeonPush"
+    )
+}
+
 fn session_files(path: &Path) -> anyhow::Result<Option<Vec<PathBuf>>> {
     let Some(common) = path
         .ancestors()
