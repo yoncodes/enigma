@@ -105,7 +105,7 @@ impl BattleRuntime {
             .catalog_data
             .expect("battle runtime was not constructed with a catalog");
         let active_round = self.round_state.cur_round;
-        self.round_state.begin_round();
+        let action_round = self.round_state.begin_round();
         self.fight.cur_round = Some(self.round_state.cur_round);
         if let Some(attacker) = self.fight.attacker.as_mut() {
             for skill in &mut attacker.skill_infos {
@@ -144,8 +144,11 @@ impl BattleRuntime {
                 std::iter::empty(),
             );
         }
-        let mut ai_turn =
-            schedule::AiTurnPlan::new(captured_ai_choices, self.managers.card.ai_queue());
+        let mut ai_turn = schedule::AiTurnPlan::new(
+            action_round,
+            captured_ai_choices,
+            self.managers.card.ai_queue(),
+        )?;
         let catalog = &mut self.catalog;
         let mut pool = crate::engine::skill::target::TargetPool::from_fight_with_catalog(
             self.catalog_data
@@ -457,19 +460,20 @@ impl BattleRuntime {
                 fight_version,
                 absorb_hurt_map_layout,
             )?);
-            let choices = ai_turn.into_choices();
-            let ai = schedule::run_ai_actions(
-                &self.fight,
-                &mut self.managers,
-                &pool,
-                catalog,
-                &mut self.determinism,
-                context,
-                choices,
-                promotions.promotions(),
-            )
-            .map_err(|error| format!("{error:?}"))?;
-            fight_steps.extend(project_result(ai, fight_version, absorb_hurt_map_layout)?);
+            if let Some(choices) = ai_turn.into_choices() {
+                let ai = schedule::run_ai_actions(
+                    &self.fight,
+                    &mut self.managers,
+                    &pool,
+                    catalog,
+                    &mut self.determinism,
+                    context,
+                    choices,
+                    promotions.promotions(),
+                )
+                .map_err(|error| format!("{error:?}"))?;
+                fight_steps.extend(project_result(ai, fight_version, absorb_hurt_map_layout)?);
+            }
             let after_ai_round_end = schedule::run_after_ai_round_end(
                 &mut self.managers,
                 &pool,

@@ -458,8 +458,11 @@ fn owned_charge_starts_the_captured_extra_round_flow() {
             entitys: vec![FightEntityInfo {
                 uid: Some(-1),
                 team_type: Some(2),
+                model_id: Some(109390001),
+                skill_group1: vec![109390002],
                 current_hp: Some(100_000),
                 attr: Some(sonettobuf::HeroAttribute {
+                    attack: Some(1000),
                     hp: Some(100_000),
                     ..Default::default()
                 }),
@@ -481,6 +484,24 @@ fn owned_charge_starts_the_captured_extra_round_flow() {
                 }],
                 draw_pile: Vec::new(),
                 deck_num: 59,
+            },
+        ))
+        .unwrap();
+    let enemy_card = CardInfo {
+        uid: Some(-1),
+        skill_id: Some(109390002),
+        target_uid: Some(10),
+        ..Default::default()
+    };
+    runtime
+        .managers
+        .execute_card(crate::engine::manager::card::CardCommand::SetAiQueue(
+            crate::engine::manager::card::CardSetAiQueue {
+                origin: crate::engine::skill::rule::CommandOrigin {
+                    domain: crate::engine::skill::rule::RuleDomain::Lifecycle,
+                    key: crate::engine::skill::rule::DefinitionKey::new(0, "TestAiQueue"),
+                },
+                cards: vec![enemy_card.clone()],
             },
         ))
         .unwrap();
@@ -555,12 +576,21 @@ fn owned_charge_starts_the_captured_extra_round_flow() {
             .is_none()
     );
     let active_round = runtime.current_round();
+    assert_eq!(round.ai_use_cards, vec![enemy_card.clone()]);
+    runtime.seed_next_ai_cards(vec![enemy_card]);
     assert_eq!(
         runtime
             .advance_round(sonettobuf::BeginRoundRequest::default())
             .unwrap()
             .cur_round,
         Some(active_round)
+    );
+    assert_eq!(runtime.managers.hp.current(10), 100);
+    let next = runtime.advance_round(BeginRoundRequest::default()).unwrap();
+    assert!(
+        next.fight_step
+            .iter()
+            .any(|step| { step.from_id == Some(-1) && step.act_id == Some(109390002) })
     );
 }
 

@@ -19,6 +19,12 @@ pub enum RoundCardSnapshotPolicy {
     CurrentOnly,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ActionRound {
+    Standard,
+    AlliedExtra,
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct RoundState {
     pub act_point: i32,
@@ -65,10 +71,13 @@ impl RoundState {
         }
     }
 
-    pub fn begin_round(&mut self) {
+    pub(crate) fn begin_round(&mut self) -> ActionRound {
         self.cur_round = self.next_round_number();
         if self.extra_rounds > 0 {
             self.extra_rounds -= 1;
+            ActionRound::AlliedExtra
+        } else {
+            ActionRound::Standard
         }
     }
 

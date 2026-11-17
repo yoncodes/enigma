@@ -19,7 +19,7 @@ use crate::engine::{
         ex_point::{ExPointChange, ExPointCommand},
     },
     mechanic::impromptu,
-    round::command::RoundCommand,
+    round::{command::RoundCommand, state::ActionRound},
     runtime::{
         change::BattleChange,
         determinism::{AiSkillChoice, RoundDeterminism},
@@ -291,30 +291,44 @@ fn append_to_event(items: &mut Vec<FrameItem>, frame: SemanticFrame, event: &Bat
 }
 
 pub(crate) struct AiTurnPlan {
-    choices: Vec<AiSkillChoice>,
+    choices: Option<Vec<AiSkillChoice>>,
 }
 
 impl AiTurnPlan {
     pub(crate) fn new(
+        round: ActionRound,
         captured: Option<Vec<AiSkillChoice>>,
         cards: &[sonettobuf::CardInfo],
-    ) -> Self {
-        let choices = captured.unwrap_or_else(|| {
-            cards
-                .iter()
-                .filter_map(|card| {
-                    Some(AiSkillChoice {
-                        source_uid: card.uid?,
-                        skill_id: card.skill_id?,
-                        target_uid: card.target_uid.unwrap_or_default(),
+    ) -> Result<Self, String> {
+        // Enemies do not act in an allied extra round, so a captured enemy action there has no owner.
+        if round == ActionRound::AlliedExtra
+            && let Some(captured) = captured.as_ref().filter(|choices| !choices.is_empty())
+        {
+            return Err(format!(
+                "captured enemy actions in an allied extra round: {captured:?}"
+            ));
+        }
+        let choices = (round == ActionRound::Standard).then(|| {
+            captured.unwrap_or_else(|| {
+                cards
+                    .iter()
+                    .filter_map(|card| {
+                        Some(AiSkillChoice {
+                            source_uid: card.uid?,
+                            skill_id: card.skill_id?,
+                            target_uid: card.target_uid.unwrap_or_default(),
+                        })
                     })
-                })
-                .collect()
+                    .collect()
+            })
         });
-        Self { choices }
+        Ok(Self { choices })
     }
 
     pub(crate) fn observe(&mut self, result: &DrainResult) {
+        let Some(choices) = &mut self.choices else {
+            return;
+        };
         let mut canceled_owners = Vec::new();
         for outcome in &result.outcomes {
             let changes = match outcome {
@@ -334,11 +348,10 @@ impl AiTurnPlan {
                     .filter_map(|invalidated| invalidated.card.uid),
             );
         }
-        self.choices
-            .retain(|choice| !canceled_owners.contains(&choice.source_uid));
+        choices.retain(|choice| !canceled_owners.contains(&choice.source_uid));
     }
 
-    pub(crate) fn into_choices(self) -> Vec<AiSkillChoice> {
+    pub(crate) fn into_choices(self) -> Option<Vec<AiSkillChoice>> {
         self.choices
     }
 }
