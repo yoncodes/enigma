@@ -264,17 +264,11 @@ pub fn run_round_start_after_ai_split(
         false,
     )?;
     append(&mut fight_steps, before_duration);
-    let split_losses = if version_seven {
-        split_losses
-    } else {
-        append(&mut fight_steps, split_losses);
-        DrainResult::default()
-    };
+    append(&mut fight_steps, split_losses);
     let damage_heal_settlement =
         run_round_start_damage_heal_settlement(managers, pool, catalog, determinism, context)?;
     append(&mut fight_steps, damage_heal_settlement);
     let mut settlement = begin_round_phase(RoundPhase::RoundStartSettlement);
-    append_round_phase(&mut settlement, split_losses);
     append_round_phase(
         &mut settlement,
         drain::run_buff_act_setup_stage_for_owners(

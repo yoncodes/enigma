@@ -105,6 +105,67 @@ fn round_start_executes_each_team_at_its_own_turn_boundary() {
 }
 
 #[test]
+fn version_seven_round_start_buff_acts_precede_the_settlement_step() {
+    init_config();
+    let fight = Fight {
+        version: Some(7),
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                team_type: Some(1),
+                current_hp: Some(100),
+                buffs: vec![BuffInfo {
+                    uid: Some(1),
+                    buff_id: Some(90031),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    let (attacker_round, _, _, _) = run_round_start_after_ai_split(
+        &mut managers,
+        &pool,
+        &SkillEffectCatalog::default(),
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+        &[],
+        3,
+    )
+    .unwrap();
+
+    fn holds_regen(frame: &crate::engine::runtime::record::SemanticFrame) -> bool {
+        matches!(frame.owner, FrameOwner::BuffAct { buff_id: 90031, .. })
+            || frame
+                .items
+                .iter()
+                .any(|item| matches!(item, FrameItem::Child(child) if holds_regen(child)))
+    }
+    let settlement = |frame: &crate::engine::runtime::record::SemanticFrame| {
+        matches!(
+            frame.owner,
+            FrameOwner::RoundPhase(RoundPhase::RoundStartSettlement)
+        )
+    };
+    let regen = attacker_round
+        .frames
+        .iter()
+        .position(holds_regen)
+        .expect("the round-start buff act fires");
+    let settlement = attacker_round
+        .frames
+        .iter()
+        .position(settlement)
+        .expect("attacker round start has a settlement phase");
+    assert!(regen < settlement);
+    assert!(!holds_regen(&attacker_round.frames[settlement]));
+}
+
+#[test]
 fn version_seven_defers_defender_round_start_until_after_ai() {
     let entity = |skill_ids| FightEntityInfo {
         uid: Some(-1),
