@@ -15,20 +15,14 @@ pub(super) fn candidates(
     let Some(managers) = managers else {
         return Vec::new();
     };
-    let enemies = pool
-        .enemies(source_uid, false)
-        .iter()
-        .filter(|enemy| !pool.is_reserve(enemy.uid))
-        .collect::<Vec<_>>();
-    let amount =
-        |enemy: &&TargetEntity| managers.buff.buff_act_amount(enemy.uid, BuffActKind::Burn);
+    let enemies = pool.field_enemies(source_uid);
+    let amount = |enemy: &TargetEntity| managers.buff.buff_act_amount(enemy.uid, BuffActKind::Burn);
     let Some(maximum) = enemies.iter().map(amount).max() else {
         return Vec::new();
     };
     enemies
         .into_iter()
         .filter(|enemy| amount(enemy) == maximum)
-        .cloned()
         .collect()
 }
 

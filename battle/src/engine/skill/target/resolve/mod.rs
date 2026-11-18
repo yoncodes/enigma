@@ -149,12 +149,14 @@ impl TargetResolver {
 
         let source_team = pool.team_type(source_uid)?;
         let target_team = pool.team_type(target_uid)?;
-        let candidates = if source_team == target_team {
-            current.allies(source_uid)
+        if source_team == target_team {
+            current.allies(source_uid).first().map(|entity| entity.uid)
         } else {
-            current.enemies(source_uid, false)
-        };
-        candidates.first().map(|entity| entity.uid)
+            current
+                .field_enemies(source_uid)
+                .first()
+                .map(|entity| entity.uid)
+        }
     }
 
     pub(crate) fn is_highest_moxie(request: &TargetRequest) -> bool {
@@ -263,7 +265,7 @@ impl TargetResolver {
                     .filter(|entity| entity.uid != source_uid)
                     .cloned()
                     .collect(),
-                _ => pool.enemies(source_uid, false).to_vec(),
+                _ => pool.field_enemies(source_uid),
             };
             if !targets.is_empty()
                 && targets
@@ -361,31 +363,31 @@ impl TargetResolver {
             TargetRule::SelectedTarget => selected_target(pool, source_uid, context),
             TargetRule::SynchronizationTarget => runtime_target(context),
             TargetRule::SingleOrRandomEnemy => {
-                single_and_random_enemy(pool.enemies(source_uid, false), context)
+                single_and_random_enemy(&pool.field_enemies(source_uid), context)
             }
             TargetRule::RandomEnemyByRng => {
-                random_enemy_by_rng(pool.enemies(source_uid, false), context, determinism)
+                random_enemy_by_rng(&pool.field_enemies(source_uid), context, determinism)
             }
             TargetRule::EnemiesIncludingSpecial => uids(pool.enemies(source_uid, true)),
             TargetRule::PriorityBossEnemy => pool.first_boss_enemy(source_uid),
             TargetRule::LowestHpPercentageEnemy => {
-                lowest_hp_percentage(pool.enemies(source_uid, false))
+                lowest_hp_percentage(&pool.field_enemies(source_uid))
             }
             TargetRule::HighestAttackEnemy => {
-                highest_attack(pool.enemies(source_uid, false), managers)
+                highest_attack(&pool.field_enemies(source_uid), managers)
             }
             TargetRule::HighestHpEnemy => highest_hp(source_uid, pool, managers),
             TargetRule::SecondaryEnemies => {
-                secondary_targets(pool.enemies(source_uid, false), context)
+                secondary_targets(&pool.field_enemies(source_uid), context)
             }
             TargetRule::EnemyMostShell => enemy_with_most_shell(
-                pool.enemies(source_uid, false),
+                &pool.field_enemies(source_uid),
                 source_uid,
                 managers,
                 context,
             ),
             TargetRule::EnemyMostQueuedAttacks => {
-                enemy_with_most_queued_attacks(pool.enemies(source_uid, false), managers)
+                enemy_with_most_queued_attacks(&pool.field_enemies(source_uid), managers)
             }
             // "If the target has ..." checks read the enemy the action hit.
             TargetRule::BurnPriorityEnemy if !action && context.runtime_target_uid != 0 => {
@@ -396,30 +398,30 @@ impl TargetResolver {
                 determinism,
             ),
             TargetRule::EnemyPosition(position) => {
-                at_position(pool.enemies(source_uid, false), position)
+                at_position(&pool.field_enemies(source_uid), position)
             }
-            TargetRule::RandomEnemy => random_enemy(pool.enemies(source_uid, false), context),
+            TargetRule::RandomEnemy => random_enemy(&pool.field_enemies(source_uid), context),
             TargetRule::EnemyWithSourceModelLabel => enemy_with_source_model_label(
-                pool.enemies(source_uid, false),
+                &pool.field_enemies(source_uid),
                 pool.entity(source_uid),
             ),
             TargetRule::EnemyWithConfiguredBuffType => request
                 .raw
                 .first()
                 .copied()
-                .map(|type_id| enemy_with_buff_type(pool.enemies(source_uid, false), type_id))
+                .map(|type_id| enemy_with_buff_type(&pool.field_enemies(source_uid), type_id))
                 .unwrap_or_default(),
-            TargetRule::Enemies => uids(pool.enemies(source_uid, false)),
+            TargetRule::Enemies => uids(&pool.field_enemies(source_uid)),
             TargetRule::EnemyWithBuffAct => enemy_with_buff_act_kind(
-                pool.enemies(source_uid, false),
+                &pool.field_enemies(source_uid),
                 crate::engine::skill::buff_act::registry::BuffActKind::TargetingTag,
                 context,
             ),
             TargetRule::EnemiesWithMonsterLabel(label) => {
-                entities_with_monster_label(pool.enemies(source_uid, false), label)
+                entities_with_monster_label(&pool.field_enemies(source_uid), label)
             }
             TargetRule::PriorityEnemyWithMonsterLabel(label) => {
-                priority_enemy_with_monster_label(pool.enemies(source_uid, false), label, context)
+                priority_enemy_with_monster_label(&pool.field_enemies(source_uid), label, context)
             }
             TargetRule::AlliesWithBuff => match request.raw.as_slice() {
                 &[buff_id] if buff_id > 0 => pool
@@ -542,8 +544,8 @@ fn redirect_taunted_single_target(
         return targets;
     }
     let taunted = pool
-        .enemies(source_uid, false)
-        .iter()
+        .field_enemies(source_uid)
+        .into_iter()
         .filter(|entity| {
             entity.has_buff_act_kind(crate::engine::skill::buff_act::registry::BuffActKind::Taunt)
         })
@@ -568,8 +570,8 @@ fn redirect_mock_taunted_single_target(
         return targets;
     }
     let priority_targets = pool
-        .enemies(source_uid, false)
-        .iter()
+        .field_enemies(source_uid)
+        .into_iter()
         .filter(|entity| {
             entity
                 .has_buff_act_kind(crate::engine::skill::buff_act::registry::BuffActKind::MockTaunt)
@@ -619,7 +621,7 @@ pub(crate) fn provoke_target(
     let provoke_source = pool
         .entity(source_uid)?
         .buff_source_for_kind(crate::engine::skill::buff_act::registry::BuffActKind::Provoke)?;
-    pool.enemies(source_uid, false)
+    pool.field_enemies(source_uid)
         .iter()
         .any(|enemy| enemy.uid == provoke_source)
         .then_some(provoke_source)
@@ -879,16 +881,15 @@ fn event_source(context: TargetContext) -> Vec<i64> {
 
 fn selected_target(pool: &TargetPool, source_uid: i64, context: TargetContext) -> Vec<i64> {
     let selected = runtime_target(context);
+    let enemies = pool.field_enemies(source_uid);
     if !context.active_skill_is_attack
-        || selected.first().is_some_and(|selected_uid| {
-            pool.enemies(source_uid, false)
-                .iter()
-                .any(|enemy| enemy.uid == *selected_uid)
-        })
+        || selected
+            .first()
+            .is_some_and(|selected_uid| enemies.iter().any(|enemy| enemy.uid == *selected_uid))
     {
         return selected;
     }
-    pool.enemies(source_uid, false)
+    enemies
         .first()
         .map(|entity| vec![entity.uid])
         .unwrap_or_default()
@@ -1075,9 +1076,8 @@ fn lowest_ex_point(entities: &[TargetEntity], fallback_uid: i64) -> Vec<i64> {
 }
 
 fn highest_hp(source_uid: i64, pool: &TargetPool, managers: Option<&BattleManagers>) -> Vec<i64> {
-    pool.enemies(source_uid, false)
+    pool.field_enemies(source_uid)
         .iter()
-        .filter(|entity| !pool.is_reserve(entity.uid))
         .min_by(|left, right| {
             let left_current = managers
                 .map(|managers| managers.hp.current(left.uid))

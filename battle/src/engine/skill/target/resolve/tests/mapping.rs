@@ -280,6 +280,39 @@ fn highest_hp_enemy_waits_for_reserve_entry() {
 }
 
 #[test]
+fn enemy_rules_skip_waiting_reserves() {
+    init_config();
+    let enemy = |uid, position, current_hp, attack| FightEntityInfo {
+        attr: Some(HeroAttribute {
+            hp: Some(100),
+            attack: Some(attack),
+            ..Default::default()
+        }),
+        ..entity_stats(uid, position, current_hp, 100, 0)
+    };
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![entity_at(10, 1)],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![enemy(-2, 1, 80, 100), enemy(-3, 2, 60, 200)],
+            // Would win every ranking below if it were on the field.
+            sub_entitys: vec![enemy(-4, -1, 10, 900)],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let select = |code| resolve_code(code, 10, &pool, &mut RoundDeterminism::default());
+
+    assert_eq!(select(302), vec![-2, -3]);
+    assert_eq!(select(207), vec![-3]);
+    assert_eq!(select(208), vec![-2]);
+    assert_eq!(select(210), vec![-3]);
+}
+
+#[test]
 fn target_207_selects_the_enemy_with_the_highest_attack() {
     init_config();
     let enemy = |uid, position, attack| FightEntityInfo {

@@ -500,7 +500,7 @@ impl TargetPool {
     }
 
     pub fn first_boss_enemy(&self, source_uid: i64) -> Vec<i64> {
-        self.enemies(source_uid, false)
+        self.field_enemies(source_uid)
             .iter()
             .find(|entity| self.boss_model_ids.contains(&entity.model_id))
             .map(|entity| entity.uid)
@@ -530,6 +530,16 @@ impl TargetPool {
             (Some(2), false) => &self.attacker_all,
             _ => &[],
         }
+    }
+
+    /// Enemies a target rule may pick: waiting reserves are not on the field
+    /// until the roster manager promotes them; special-lane entities are.
+    pub fn field_enemies(&self, source_uid: i64) -> Vec<TargetEntity> {
+        self.enemies(source_uid, false)
+            .iter()
+            .filter(|enemy| !self.is_reserve(enemy.uid))
+            .cloned()
+            .collect()
     }
 
     pub fn team_type(&self, uid: i64) -> Option<i32> {
