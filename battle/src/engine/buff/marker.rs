@@ -177,6 +177,19 @@ mod tests {
     }
 
     #[test]
+    fn silence_marks_its_grant_only() {
+        crate::test_support::init_config();
+
+        assert_eq!(
+            add_markers(4061),
+            vec![BuffMarker {
+                effect_type: EffectType::Forbid as i32,
+            }]
+        );
+        assert!(refresh_markers(4061).is_empty());
+    }
+
+    #[test]
     fn seal_marks_its_grant_only() {
         crate::test_support::init_config();
 

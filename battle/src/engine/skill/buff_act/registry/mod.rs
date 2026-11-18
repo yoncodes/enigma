@@ -1270,7 +1270,7 @@ buff_act_definitions! {
     (405, "Disarm") => Disarm, effect_time_subscription: false,
         supports: |args| args.is_empty(), state_consumer: true, wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(405, "Disarm"), &[EffectType::Disarm as i32]));
     (406, "Forbid") => Forbid, effect_time_subscription: false,
-        supports: |args| args.is_empty(), state_consumer: true, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(406, "Forbid"), &[]));
+        supports: |args| args.is_empty(), state_consumer: true, wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(406, "Forbid"), &[EffectType::Forbid as i32]));
     (407, "Seal") => Seal, effect_time_subscription: false,
         supports: |args| args.is_empty(), state_consumer: true, wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(407, "Seal"), &[EffectType::Seal as i32]));
     (10005, "Provoke") => Provoke, effect_time_subscription: false, state_consumer: true, wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(10005, "Provoke"), &[EffectType::None as i32]));
