@@ -177,6 +177,16 @@ mod tests {
     }
 
     #[test]
+    fn damage_type_attributes_mark_their_grant() {
+        crate::test_support::init_config();
+
+        let attr = BuffMarker {
+            effect_type: EffectType::Attr as i32,
+        };
+        assert_eq!(add_markers(30870311), vec![attr; 4]);
+    }
+
+    #[test]
     fn attack_reaction_feature_adds_its_marker_after_the_halo() {
         crate::test_support::init_config();
 

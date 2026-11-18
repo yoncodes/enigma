@@ -1247,7 +1247,7 @@ buff_act_definitions! {
     (752, "AttrByDmgType") => AttrByDamageType, effect_time_subscription: false,
         supports: |args| matches!(args, [damage_type @ (1 | 2), raw_attr, _]
             if *damage_type > 0
-                && crate::engine::entity::attr::AttrId::from_raw(*raw_attr).is_some()), state_consumer: true, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(752, "AttrByDmgType"), &[]));
+                && crate::engine::entity::attr::AttrId::from_raw(*raw_attr).is_some()), state_consumer: true, wire: (super::wire::BuffActWireDefinition::new(DefinitionKey::new(752, "AttrByDmgType"), &[EffectType::Attr as i32], &[], &[]));
     (10007, "AddAssassinateY") => AddAssassinateY, effect_time_subscription: false,
         supports: super::assassination::supports_source_bonus, state_consumer: true, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(10007, "AddAssassinateY"), &[EffectType::None as i32]));
     (702, "BuffReplace") => BuffReplace, effect_time_subscription: false, references: references_for_feature, state_consumer: true, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(702, "BuffReplace"), &[EffectType::Buffreplace as i32]));
