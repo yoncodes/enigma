@@ -201,25 +201,33 @@ pub(in crate::engine::runtime::drain) fn dispatch_reactions(
                 .buff
                 .plan_action_settlements(action)
                 .into_iter()
-                .map(|settlement| QueuedOp {
-                    op: RuleOp::Command(crate::engine::skill::rule::output::BattleCommand::Buff(
-                        settlement.command,
-                    )),
-                    trigger: SkillOpTrigger::Event(event.clone()),
-                    skill_execution: None,
-                    frame_path: None,
-                    parent_path: parent_path.map(|path| path.to_vec()),
-                    frame_group: None,
-                    independent_parent_group: None,
-                    frame_owner: Some(FrameOwner::BuffAct {
-                        owner_uid: settlement.owner_uid,
-                        source_uid: settlement.source_uid,
-                        buff_uid: settlement.buff_uid,
-                        buff_id: settlement.buff_id,
-                        key: settlement.trigger.key(),
-                    }),
-                    subscriber: None,
-                    caster_frame: None,
+                .map(|settlement| {
+                    let in_action = settlement.trigger
+                        == crate::engine::manager::buff::BuffTakeActionTrigger::Attacked;
+                    QueuedOp {
+                        op: RuleOp::Command(
+                            crate::engine::skill::rule::output::BattleCommand::Buff(
+                                settlement.command,
+                            ),
+                        ),
+                        trigger: SkillOpTrigger::Event(event.clone()),
+                        skill_execution: None,
+                        frame_path: in_action
+                            .then(|| parent_path.map(|path| path.to_vec()))
+                            .flatten(),
+                        parent_path: parent_path.map(|path| path.to_vec()),
+                        frame_group: None,
+                        independent_parent_group: None,
+                        frame_owner: (!in_action).then_some(FrameOwner::BuffAct {
+                            owner_uid: settlement.owner_uid,
+                            source_uid: settlement.source_uid,
+                            buff_uid: settlement.buff_uid,
+                            buff_id: settlement.buff_id,
+                            key: settlement.trigger.key(),
+                        }),
+                        subscriber: None,
+                        caster_frame: None,
+                    }
                 }),
         );
     }

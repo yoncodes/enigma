@@ -363,6 +363,7 @@ pub enum BuffCommand {
     Remove(BuffRemove),
     ForceExpire(BuffRemove),
     RemoveAfterTrigger(BuffRemove),
+    LoseStack(BuffRemove),
     EndChannel(BuffRemove),
     CompleteSelection(BuffRemove),
     Deactivate(BuffRemove),
@@ -734,6 +735,7 @@ enum RemoveSnapshot {
     ClearAmount,
     ClearCount,
     ClearDuration,
+    MarkExpired,
 }
 
 #[derive(Debug, Clone)]

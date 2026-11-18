@@ -3,6 +3,7 @@ use super::*;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(i32)]
 pub(crate) enum BuffTakeActionTrigger {
+    Attacked = 2,
     OwnerCastSkill = 9,
     OwnerAttackedBySkill = 10,
 }
@@ -18,6 +19,9 @@ impl BuffTakeActionTrigger {
 
     pub(crate) fn key(self) -> crate::engine::skill::rule::DefinitionKey {
         match self {
+            Self::Attacked => {
+                crate::engine::skill::rule::DefinitionKey::new(self as i32, "Attacked")
+            }
             Self::OwnerCastSkill => {
                 crate::engine::skill::rule::DefinitionKey::new(self as i32, "OwnerCastSkillSlot")
             }
@@ -37,6 +41,12 @@ pub(crate) struct BuffTakeAction {
 
 impl BuffTakeAction {
     pub(crate) fn parse(value: &str) -> Option<Self> {
+        if value.trim() == "2" {
+            return Some(Self {
+                trigger: BuffTakeActionTrigger::Attacked,
+                skill_slots: Vec::new(),
+            });
+        }
         let (trigger, slots) = value.split_once('#')?;
         let trigger = BuffTakeActionTrigger::parse(trigger)?;
         let skill_slots = slots
@@ -125,6 +135,7 @@ impl BuffManager {
             return Vec::new();
         }
 
+        let mut settled_copies = Vec::new();
         self.buffs
             .iter()
             .filter_map(|active| {
@@ -133,15 +144,26 @@ impl BuffManager {
                     return None;
                 }
                 let take_action = definition.take_action()?;
-                if !take_action.skill_slots.contains(&action.skill_slot) {
-                    return None;
-                }
+                let attacked = action.is_attack
+                    && (action.target_uid == active.owner_uid
+                        || action.target_uids.contains(&active.owner_uid));
                 let matches = match take_action.trigger {
-                    BuffTakeActionTrigger::OwnerCastSkill => active.owner_uid == action.source_uid,
+                    BuffTakeActionTrigger::Attacked => {
+                        let key = (active.owner_uid, active.buff.buff_id);
+                        definition.stacks_as_copies()
+                            && attacked
+                            && !settled_copies.contains(&key)
+                            && {
+                                settled_copies.push(key);
+                                true
+                            }
+                    }
+                    BuffTakeActionTrigger::OwnerCastSkill => {
+                        take_action.skill_slots.contains(&action.skill_slot)
+                            && active.owner_uid == action.source_uid
+                    }
                     BuffTakeActionTrigger::OwnerAttackedBySkill => {
-                        action.is_attack
-                            && (action.target_uid == active.owner_uid
-                                || action.target_uids.contains(&active.owner_uid))
+                        take_action.skill_slots.contains(&action.skill_slot) && attacked
                     }
                 };
                 if !matches {
@@ -164,11 +186,16 @@ impl BuffManager {
                         depleted: DepletedBuff::Remove,
                     })
                 } else {
-                    BuffCommand::ExpireAction(BuffRemove {
+                    let remove = BuffRemove {
                         origin,
                         target_uid: active.owner_uid,
                         selector: BuffRemoveSelector::Uid(buff_uid),
-                    })
+                    };
+                    if take_action.trigger == BuffTakeActionTrigger::Attacked {
+                        BuffCommand::LoseStack(remove)
+                    } else {
+                        BuffCommand::ExpireAction(remove)
+                    }
                 };
                 Some(BuffActionSettlement {
                     owner_uid: active.owner_uid,

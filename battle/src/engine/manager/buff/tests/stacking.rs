@@ -451,6 +451,36 @@ fn include_type_seventeen_stores_capped_separate_counter_instances() {
 }
 
 #[test]
+fn include_type_fourteen_keeps_each_stack_as_a_capped_copy() {
+    init_config();
+    let policy = BuffPolicy::for_buff_id(11410011).expect("Poison Feather definition");
+
+    assert_eq!(policy.storage, BuffStorage::SeparateCopies);
+    assert_eq!(policy.on_duplicate, DuplicateGrant::AddSeparateCopy);
+    assert_eq!(policy.instance_limit, Some(2));
+    assert!(super::super::grants_stacks_as_copies(11410011));
+
+    let hp = HpManager::default();
+    let mut manager = BuffManager::default();
+    for _ in 0..2 {
+        let change = manager.add_replacing_excluded(&hp, -1, -1, 11410011, 0);
+        let added = change.added.expect("a fresh copy below the cap");
+        assert_eq!(added.buff.layer.unwrap_or_default(), 0);
+    }
+    let capped = manager.add_replacing_excluded(&hp, -1, -1, 11410011, 0);
+
+    assert_eq!(manager.active_for(-1).count(), 2);
+    assert!(capped.added.is_none());
+    assert!(capped.refreshed.is_empty());
+    assert_eq!(manager.buff_id_amount(-1, 11410011), 2);
+    assert_eq!(manager.buff_type_layer(-1, 11410011), 2);
+    assert_eq!(
+        manager.attribute_delta(-1, crate::engine::entity::attr::AttrId::DmgTakenReduction),
+        200
+    );
+}
+
+#[test]
 fn value_bearing_type_seven_evicts_the_oldest_same_type_instance() {
     init_config();
     let policy = BuffPolicy::for_buff_id(6200501).expect("Incantation Might definition");

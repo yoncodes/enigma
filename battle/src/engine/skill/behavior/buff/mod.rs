@@ -59,7 +59,7 @@ pub(super) use dispel::{
 };
 use distribute::*;
 pub use grant::random_buff_pool;
-use grant::{grant_command, random_pool_grant_commands};
+use grant::{grant_command, random_pool_grant_commands, stacks_as_copies};
 pub(super) use layer::supports_team_layer;
 use layer::{
     add_buff_by_layer_ops, add_buff_by_layer_range_ops, add_buff_by_team_layer_ops,
@@ -247,7 +247,7 @@ impl BehaviorHandler for Handler {
                             context.event,
                             behavior,
                         )
-                        .map(|command| vec![RuleOp::Command(BattleCommand::Buff(command))])
+                        .map(|command| vec![RuleOp::Command(stacks_as_copies(command))])
                     })
             }
             BehaviorKind::RemoveBuffToAddBuff => remove_buff_to_add_buff_ops(&context, behavior),

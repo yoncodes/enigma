@@ -100,3 +100,49 @@ fn counted_action_settlement_consumes_one_charge() {
         }
     }
 }
+
+#[test]
+fn attack_drops_only_the_oldest_include_fourteen_copy() {
+    crate::test_support::init_config();
+    let buff = |uid, buff_id| BuffInfo {
+        uid: Some(uid),
+        buff_id: Some(buff_id),
+        from_uid: Some(-1),
+        count: Some(2),
+        ..Default::default()
+    };
+    let fight = Fight {
+        defender: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(-1),
+                current_hp: Some(100),
+                buffs: vec![
+                    buff(1017, 11410011),
+                    buff(1018, 11410011),
+                    buff(30, 3120012),
+                ],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let mut manager = BuffManager::default();
+    manager.seed(&fight);
+    let hp = HpManager::default();
+
+    let settlements = manager.plan_action_settlements(&action());
+    assert_eq!(settlements.len(), 1);
+    assert_eq!(settlements[0].buff_uid, 1017);
+    let removed = manager
+        .execute(&hp, settlements[0].command.clone())
+        .unwrap()
+        .change
+        .removed;
+
+    assert_eq!(removed[0].buff.count, Some(2));
+    assert_eq!(removed[0].buff.duration, Some(-1));
+    assert_eq!(removed[0].config_effect, 0);
+    assert!(manager.snapshot(-1, 1018).is_some());
+    assert!(manager.snapshot(-1, 30).is_some());
+}

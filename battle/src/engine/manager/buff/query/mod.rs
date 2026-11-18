@@ -823,7 +823,7 @@ impl BuffManager {
             .filter(|active| {
                 active.effective && active.owner_uid == uid && active.type_id == type_id
             })
-            .map(|active| active.buff.layer.unwrap_or_default())
+            .map(stack_layer)
             .sum()
     }
 
@@ -843,7 +843,7 @@ impl BuffManager {
                     && active.owner_uid == uid
                     && (active.type_id == id || active.buff.buff_id == Some(id))
             })
-            .map(|active| active.buff.layer.unwrap_or_default())
+            .map(stack_layer)
     }
 
     pub fn attribute_delta(&self, uid: i64, attr_id: AttrId) -> i32 {
@@ -860,7 +860,7 @@ impl BuffManager {
                         .iter()
                         .filter_map(|(actual, value)| (*actual == attr_id).then_some(*value))
                         .sum::<i32>()
-                        * attribute_amount(&active.buff)
+                        * attribute_amount(&active.buff, active.definition.as_ref())
                         + definition
                             .features()
                             .iter()
@@ -928,7 +928,7 @@ impl BuffManager {
                             Some(dynamic.saturating_add(fixed))
                         })
                         .sum::<i32>()
-                        * attribute_amount(&active.buff);
+                        * attribute_amount(&active.buff, active.definition.as_ref());
                     (delta != 0).then_some((active.buff.buff_id.unwrap_or_default(), delta))
                 });
             own.chain(team)
@@ -988,7 +988,7 @@ impl BuffManager {
             .filter(|active| active.effective)
             .filter_map(|active| {
                 let buff_uid = active.buff.uid?;
-                let amount = attribute_amount(&active.buff);
+                let amount = attribute_amount(&active.buff, active.definition.as_ref());
                 active
                     .definition
                     .as_ref()?
@@ -1030,7 +1030,7 @@ impl BuffManager {
                     && active.buff.uid.is_some_and(|uid| buff_uids.contains(&uid))
             })
             .filter_map(|active| {
-                let amount = attribute_amount(&active.buff);
+                let amount = attribute_amount(&active.buff, active.definition.as_ref());
                 active.definition.as_ref().map(|definition| {
                     definition
                         .attribute_deltas()
@@ -1313,3 +1313,15 @@ fn passive_skill_owner(active: &ActiveBuff) -> i64 {
 
 #[cfg(test)]
 mod tests;
+
+fn stack_layer(active: &super::ActiveBuff) -> i32 {
+    if active
+        .definition
+        .as_ref()
+        .is_some_and(super::BuffDefinition::stacks_as_copies)
+    {
+        1
+    } else {
+        active.buff.layer.unwrap_or_default()
+    }
+}

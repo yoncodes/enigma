@@ -365,6 +365,15 @@ impl BuffManager {
                     RemoveSnapshot::Preserve,
                 )?),
             ),
+            BuffCommand::LoseStack(remove) => (
+                remove.origin,
+                BuffPlanAction::Remove(self.plan_remove(
+                    remove,
+                    0,
+                    false,
+                    RemoveSnapshot::MarkExpired,
+                )?),
+            ),
             BuffCommand::EndChannel(remove) => (
                 remove.origin,
                 BuffPlanAction::Remove(self.plan_remove(

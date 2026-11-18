@@ -29,19 +29,14 @@ enum BuffIncludeType {
 }
 
 impl BuffIncludeType {
-    const STACK_TYPES: [Self; 4] = [
-        Self::Stacked,
-        Self::Stacked12,
-        Self::Stacked14,
-        Self::TimedIndependentStacks,
-    ];
-    const LAYER_TYPES: [Self; 5] = [
+    const STACK_TYPES: [Self; 3] = [Self::Stacked, Self::Stacked12, Self::TimedIndependentStacks];
+    const LAYER_TYPES: [Self; 4] = [
         Self::Stacked,
         Self::Layer,
         Self::Stacked12,
-        Self::Stacked14,
         Self::TimedIndependentStacks,
     ];
+    const CAPPED_COPY_TYPES: [Self; 2] = [Self::Stacked14, Self::CappedSeparateCopies];
 
     fn id(self) -> i32 {
         self as i32
@@ -813,6 +808,7 @@ impl BuffDefinition {
         (self.has_include_type(BuffIncludeType::Counted)
             || (!self.uses_stack_layer()
                 && !self.has_include_type(BuffIncludeType::ReplaceExisting)
+                && !self.has_include_type(BuffIncludeType::Stacked14)
                 && self.count > 0
                 && !self.reapplies_consumable_charge()))
             && self.count > 0
@@ -958,11 +954,18 @@ impl BuffDefinition {
             && !self.has_include_type(BuffIncludeType::ReplaceExisting)
     }
 
+    pub(super) fn stacks_as_copies(&self) -> bool {
+        self.has_include_type(BuffIncludeType::Stacked14)
+    }
+
     pub(super) fn capped_separate_copy_limit(&self) -> Option<i32> {
         self.include_entries
             .iter()
             .find_map(|(include_type, value)| {
-                (*include_type == BuffIncludeType::CappedSeparateCopies.id() && *value > 0)
+                (BuffIncludeType::CAPPED_COPY_TYPES
+                    .iter()
+                    .any(|kind| kind.id() == *include_type)
+                    && *value > 0)
                     .then_some(*value)
             })
     }

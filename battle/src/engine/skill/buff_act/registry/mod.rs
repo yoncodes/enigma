@@ -1014,7 +1014,7 @@ buff_act_definitions! {
         wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(604, "BuffRoundAdd"), &[]));
     (608, "BuffRoundAddByBuffTypeId") => BuffRoundAddByBuffTypeId, effect_time_subscription: false,
         supports: super::buff_round_add::supports_type_id, state_consumer: true,
-        wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(608, "BuffRoundAddByBuffTypeId"), &[]));
+        wire: (super::wire::BuffActWireDefinition::new(DefinitionKey::new(608, "BuffRoundAddByBuffTypeId"), &[EffectType::Addbuffroundbytypeid as i32], &[], &[]));
     (605, "ExPointDel") => ExPointDel,
         runtime: |context| super::ex_point_del::rule_ops(context.subscriber),
         supports: super::ex_point_del::supports, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(605, "ExPointDel"), &[]));

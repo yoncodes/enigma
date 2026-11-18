@@ -348,13 +348,15 @@ fn configured_type_round_bonus_scales_with_source_buff_count() {
                 FightEntityInfo {
                     uid: Some(10),
                     current_hp: Some(100),
-                    buffs: vec![BuffInfo {
-                        buff_id: Some(11410011),
-                        uid: Some(1),
-                        from_uid: Some(10),
-                        layer: Some(2),
-                        ..Default::default()
-                    }],
+                    buffs: [1, 2]
+                        .map(|uid| BuffInfo {
+                            buff_id: Some(11410011),
+                            uid: Some(uid),
+                            from_uid: Some(10),
+                            count: Some(2),
+                            ..Default::default()
+                        })
+                        .to_vec(),
                     ..Default::default()
                 },
                 FightEntityInfo {

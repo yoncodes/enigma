@@ -39,7 +39,9 @@ use definition::BuffDefinition;
 pub use feature::BuffPassiveSkillLink;
 pub use feature::{ActiveBuffFeature, BuffHpMaxAddRate, BuffPowerMaxAdd};
 use feature::{active_feature, hp_max_add_rate, passive_skill_links, power_max_add};
-pub(crate) use lifecycle::{BuffDurationTarget, BuffTakeAction, rouge2_mode};
+pub(crate) use lifecycle::{
+    BuffDurationTarget, BuffTakeAction, BuffTakeActionTrigger, rouge2_mode,
+};
 pub use query::SpecialCountOutput;
 pub use result::{
     BuffActInfoMarkerResult, BuffActTriggerResult, BuffApplyResult, BuffDeleteReason,
@@ -291,7 +293,10 @@ impl BuffAddArgs {
     }
 }
 
-fn attribute_amount(buff: &BuffInfo) -> i32 {
+fn attribute_amount(buff: &BuffInfo, definition: Option<&BuffDefinition>) -> i32 {
+    if definition.is_some_and(BuffDefinition::stacks_as_copies) {
+        return 1;
+    }
     buff.layer
         .filter(|layer| *layer > 0)
         .or_else(|| buff.count.filter(|count| *count > 0))
@@ -340,6 +345,7 @@ fn count_or_layer(buff: &BuffInfo) -> i32 {
 
 fn count_or_layer_from(buff: &BuffInfo, definition: Option<&BuffDefinition>) -> i32 {
     match definition {
+        Some(definition) if definition.stacks_as_copies() => 1,
         Some(definition) if definition.uses_stack_layer() => buff.layer.unwrap_or_default().max(0),
         Some(definition) if definition.uses_typed_count() => buff.count.unwrap_or_default().max(0),
         _ => buff
@@ -447,6 +453,10 @@ fn typed_count_repeat(
     } else {
         1
     }
+}
+
+pub(crate) fn grants_stacks_as_copies(buff_id: i32) -> bool {
+    BuffDefinition::get(buff_id).is_some_and(|definition| definition.stacks_as_copies())
 }
 
 pub(crate) fn emits_existing_layer_on_refresh(buff_id: i32) -> bool {

@@ -41,6 +41,31 @@ pub(super) fn grant_command(
     })
 }
 
+pub(super) fn stacks_as_copies(command: BuffCommand) -> BattleCommand {
+    let (BuffCommand::Grant(grant) | BuffCommand::GrantOnDeath(grant)) = command else {
+        return BattleCommand::Buff(command);
+    };
+    let Some(stacks) = grant.amount.filter(|stacks| *stacks > 1) else {
+        return BattleCommand::Buff(command);
+    };
+    if !crate::engine::manager::buff::grants_stacks_as_copies(grant.buff_id) {
+        return BattleCommand::Buff(command);
+    }
+    let single = BuffGrant {
+        amount: None,
+        ..grant
+    };
+    let first = match command {
+        BuffCommand::GrantOnDeath(_) => BuffCommand::GrantOnDeath(single),
+        _ => BuffCommand::Grant(single),
+    };
+    BattleCommand::BuffBatch(
+        std::iter::once(first)
+            .chain((1..stacks).map(|_| BuffCommand::GrantUsingChildUid(single)))
+            .collect(),
+    )
+}
+
 pub(super) fn random_pool_grant_commands(
     context: &mut BehaviorOpContext<'_>,
     behavior: &ParsedBehavior,

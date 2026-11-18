@@ -104,6 +104,9 @@ impl BuffManager {
                                     RemoveSnapshot::ClearDuration => {
                                         result.buff.duration = Some(0);
                                     }
+                                    RemoveSnapshot::MarkExpired => {
+                                        result.buff.duration = Some(-1);
+                                    }
                                 }
                             }
                             removed

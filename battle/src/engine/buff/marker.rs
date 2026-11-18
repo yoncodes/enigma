@@ -156,7 +156,28 @@ mod tests {
     }
 
     #[test]
-    fn unregistered_attack_reaction_feature_does_not_add_a_wire_marker() {
+    fn round_extension_marks_only_its_grant_after_earlier_features() {
+        crate::test_support::init_config();
+
+        let round_add = BuffMarker {
+            effect_type: EffectType::Addbuffroundbytypeid as i32,
+        };
+        assert_eq!(
+            add_markers(11410011),
+            vec![
+                BuffMarker {
+                    effect_type: EffectType::Attr as i32,
+                },
+                round_add,
+            ]
+        );
+        assert_eq!(add_markers(21241), vec![round_add]);
+        assert!(static_markers(21241).is_empty());
+        assert!(refresh_markers(21241).is_empty());
+    }
+
+    #[test]
+    fn attack_reaction_feature_adds_its_marker_after_the_halo() {
         crate::test_support::init_config();
 
         assert_eq!(

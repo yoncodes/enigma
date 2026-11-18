@@ -467,3 +467,41 @@ fn add_buff_duration_refreshes_matching_buff_types_to_the_configured_duration() 
     assert_eq!(changes.change.refreshed[0].before.duration, Some(3));
     assert_eq!(changes.change.refreshed[0].after.duration, Some(3));
 }
+
+#[test]
+fn stacks_granted_as_copies_split_into_a_normal_then_child_grant() {
+    crate::test_support::init_config();
+    let grant = |buff_id, amount| BuffGrant {
+        origin: CommandOrigin {
+            domain: RuleDomain::Behavior,
+            key: crate::engine::skill::rule::DefinitionKey::new(1, "AddBuff"),
+        },
+        source_uid: -1,
+        target_uid: -1,
+        buff_id,
+        amount,
+        occurrences: 1,
+        child_uid_reservations: 0,
+    };
+
+    let BattleCommand::BuffBatch(commands) =
+        super::super::grant::stacks_as_copies(BuffCommand::Grant(grant(11410011, Some(2))))
+    else {
+        panic!("two Poison Feather stacks are two grants");
+    };
+    assert_eq!(
+        commands,
+        vec![
+            BuffCommand::Grant(grant(11410011, None)),
+            BuffCommand::GrantUsingChildUid(grant(11410011, None)),
+        ]
+    );
+    assert_eq!(
+        super::super::grant::stacks_as_copies(BuffCommand::Grant(grant(11410011, None))),
+        BattleCommand::Buff(BuffCommand::Grant(grant(11410011, None)))
+    );
+    assert_eq!(
+        super::super::grant::stacks_as_copies(BuffCommand::Grant(grant(30061, Some(2)))),
+        BattleCommand::Buff(BuffCommand::Grant(grant(30061, Some(2))))
+    );
+}
