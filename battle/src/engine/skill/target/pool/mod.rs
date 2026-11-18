@@ -542,6 +542,14 @@ impl TargetPool {
             .collect()
     }
 
+    pub fn field_allies(&self, source_uid: i64) -> Vec<TargetEntity> {
+        self.allies(source_uid)
+            .iter()
+            .filter(|ally| !self.is_reserve(ally.uid))
+            .cloned()
+            .collect()
+    }
+
     pub fn team_type(&self, uid: i64) -> Option<i32> {
         match uid {
             crate::engine::fight::rules::ATTACKER_SIDE_UID => Some(1),

@@ -150,7 +150,10 @@ impl TargetResolver {
         let source_team = pool.team_type(source_uid)?;
         let target_team = pool.team_type(target_uid)?;
         if source_team == target_team {
-            current.allies(source_uid).first().map(|entity| entity.uid)
+            current
+                .field_allies(source_uid)
+                .first()
+                .map(|entity| entity.uid)
         } else {
             current
                 .field_enemies(source_uid)
@@ -258,12 +261,11 @@ impl TargetResolver {
                 TargetRule::BurnPriorityEnemy => {
                     burn_priority::candidates(pool, source_uid, managers)
                 }
-                TargetRule::RandomAllyByRng => pool.allies(source_uid).to_vec(),
+                TargetRule::RandomAllyByRng => pool.field_allies(source_uid),
                 TargetRule::RandomOtherAllyByRng => pool
-                    .allies(source_uid)
-                    .iter()
+                    .field_allies(source_uid)
+                    .into_iter()
                     .filter(|entity| entity.uid != source_uid)
-                    .cloned()
                     .collect(),
                 _ => pool.field_enemies(source_uid),
             };
@@ -306,19 +308,26 @@ impl TargetResolver {
                 .and_then(|managers| managers.contract.bound_uid(source_uid))
                 .into_iter()
                 .collect(),
-            TargetRule::RandomAllyByRng => random_ally_by_rng(pool.allies(source_uid), determinism),
+            TargetRule::RandomAllyByRng => {
+                random_ally_by_rng(&pool.field_allies(source_uid), determinism)
+            }
             TargetRule::RandomOtherAllyByRng => random_ally_by_rng(
                 &pool
-                    .allies(source_uid)
-                    .iter()
+                    .field_allies(source_uid)
+                    .into_iter()
                     .filter(|entity| entity.uid != source_uid)
-                    .cloned()
                     .collect::<Vec<_>>(),
                 determinism,
             ),
-            TargetRule::LowestHpPercentageAlly => lowest_hp_percentage(pool.allies(source_uid)),
-            TargetRule::HighestAttackAlly => highest_attack(pool.allies(source_uid), managers),
-            TargetRule::LowestExPointAlly => lowest_ex_point(pool.allies(source_uid), source_uid),
+            TargetRule::LowestHpPercentageAlly => {
+                lowest_hp_percentage(&pool.field_allies(source_uid))
+            }
+            TargetRule::HighestAttackAlly => {
+                highest_attack(&pool.field_allies(source_uid), managers)
+            }
+            TargetRule::LowestExPointAlly => {
+                lowest_ex_point(&pool.field_allies(source_uid), source_uid)
+            }
             TargetRule::HighestExPointAlly if !action && !request.raw.is_empty() => Vec::new(),
             TargetRule::HighestExPointAlly => highest_moxie::select(
                 &request.raw,
@@ -825,9 +834,8 @@ fn allies_by_status(
         .copied()
         .map(BuffStatus::from_id)
         .unwrap_or(BuffStatus::Unknown);
-    pool.allies(source_uid)
+    pool.field_allies(source_uid)
         .iter()
-        .filter(|entity| !pool.is_reserve(entity.uid))
         .filter(|entity| entity.has_buff_status(status) == present)
         .map(|entity| entity.uid)
         .collect()
@@ -902,9 +910,9 @@ fn uids(entities: &[TargetEntity]) -> Vec<i64> {
 
 fn other_allies(pool: &TargetPool, source_uid: i64, context: TargetContext) -> Vec<i64> {
     let mut targets = pool
-        .allies(source_uid)
+        .field_allies(source_uid)
         .iter()
-        .filter(|entity| entity.uid != source_uid && !pool.is_reserve(entity.uid))
+        .filter(|entity| entity.uid != source_uid)
         .map(|entity| entity.uid)
         .collect::<Vec<_>>();
     let runtime_target = context.runtime_target_uid;

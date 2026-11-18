@@ -498,3 +498,28 @@ fn target_2001_selects_enemies_carrying_monster_label_one() {
         vec![20]
     );
 }
+
+#[test]
+fn ally_pickers_skip_waiting_reserves() {
+    init_config();
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![
+                entity_stats(10, 1, 60, 100, 3),
+                entity_stats(20, 2, 80, 100, 2),
+            ],
+            sub_entitys: vec![entity_stats(30, -1, 10, 100, 0)],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![entity_at(-1, 1)],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let select = |code| resolve_code(code, 20, &pool, &mut RoundDeterminism::default());
+
+    assert_eq!(select(107), vec![10]);
+    assert_eq!(select(111), vec![20]);
+}
