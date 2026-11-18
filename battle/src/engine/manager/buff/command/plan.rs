@@ -1764,6 +1764,19 @@ impl BuffManager {
         depleted: DepletedBuff,
         field: ConsumeField,
     ) -> ConsumeAction {
+        if crate::engine::diagnostics::enabled(crate::engine::diagnostics::TraceArea::Buff) {
+            eprintln!(
+                "buff consume owner={} buff={:?} uid={:?} count={:?} layer={:?} amount={} field={:?} depleted={:?}",
+                active.owner_uid,
+                active.buff.buff_id,
+                active.buff.uid,
+                active.buff.count,
+                active.buff.layer,
+                amount,
+                field,
+                depleted,
+            );
+        }
         if amount == 0 {
             return ConsumeAction::Update {
                 buff_uid: active.buff.uid.unwrap_or_default(),
@@ -1807,7 +1820,15 @@ impl BuffManager {
                 depleted,
                 DepletedBuff::Remove | DepletedBuff::RemoveWithZeroLayer
             )
-            && (consume_count || uses_stack_layer || uses_typed_count)
+            && (consume_count
+                || uses_stack_layer
+                || uses_typed_count
+                || (active
+                    .definition
+                    .as_ref()
+                    .is_some_and(|definition| !definition.has_effect_count())
+                    && active.buff.count.unwrap_or_default() <= 0
+                    && active.buff.layer.unwrap_or_default() <= 0))
         {
             ConsumeAction::Remove {
                 buff_uid,
