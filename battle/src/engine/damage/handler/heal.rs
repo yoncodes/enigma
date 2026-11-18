@@ -101,7 +101,12 @@ fn modifier_rates(source_uid: i64, target_uid: i64, managers: &BattleManagers) -
     let healing_done = managers.attribute.get(source_uid, AttrId::HealingDone)
         + managers
             .buff
-            .attribute_delta(source_uid, AttrId::HealingDone);
+            .attribute_delta(source_uid, AttrId::HealingDone)
+        + crate::engine::skill::buff_act::attr_from_entity::active_delta(
+            managers,
+            source_uid,
+            AttrId::HealingDone,
+        );
     let target = managers.hp.get(target_uid);
     let missing_permille = if target.max > 0 {
         ((i64::from((target.max - target.current).max(0)) * 1000) / i64::from(target.max))
@@ -213,5 +218,33 @@ mod tests {
             },
         );
         assert_eq!(modified_fraction(733, 1, 10, 11, &managers, boosted), 879);
+    }
+
+    #[test]
+    fn healing_done_includes_the_max_hp_derived_bonus() {
+        crate::test_support::init_config();
+        let managers = BattleManagers::seeded(&sonettobuf::Fight {
+            attacker: Some(sonettobuf::FightTeam {
+                entitys: vec![sonettobuf::FightEntityInfo {
+                    uid: Some(1),
+                    current_hp: Some(10_000),
+                    attr: Some(sonettobuf::HeroAttribute {
+                        hp: Some(10_000),
+                        attack: Some(1_000),
+                        ..Default::default()
+                    }),
+                    buffs: vec![sonettobuf::BuffInfo {
+                        uid: Some(2),
+                        buff_id: Some(30870302),
+                        ..Default::default()
+                    }],
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }),
+            ..Default::default()
+        });
+
+        assert_eq!(modified(1_000, 1, 1, &managers, &[]), 1_700);
     }
 }
