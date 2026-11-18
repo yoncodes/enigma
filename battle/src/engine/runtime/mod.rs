@@ -276,6 +276,13 @@ impl BattleRuntime {
         self.determinism.enqueue_random_skills(skills);
     }
 
+    pub fn seed_random_buff_pools(
+        &mut self,
+        choices: impl IntoIterator<Item = determinism::RandomBuffChoice>,
+    ) {
+        self.determinism.replace_random_buff_pools(choices);
+    }
+
     pub fn seed_shell_moxie_choices(&mut self, choices: impl IntoIterator<Item = bool>) {
         self.determinism.replace_shell_moxie_choices(choices);
     }

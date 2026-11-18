@@ -16,10 +16,13 @@ pub mod replay {
             BattleRuntime as ReplayBattle, ClothSkillType,
             determinism::{
                 ConditionRandomChoice, CrystalReuseChoice, HandRankChoice,
-                MoxieReductionResistanceChoice, RoundDeterminism, SkillTargetChoice,
+                MoxieReductionResistanceChoice, RandomBuffChoice, RoundDeterminism,
+                SkillTargetChoice,
             },
         },
     };
+
+    pub use crate::engine::skill::rule::ConfiguredRuleKey;
 
     pub fn seed_observed_redeal(
         runtime: &mut ReplayBattle,
@@ -50,6 +53,7 @@ pub mod scan {
     }
 
     pub mod behavior {
+        pub use crate::engine::skill::behavior::buff::random_buff_pool;
         pub use crate::engine::skill::behavior::{
             has_destination, is_slot_supported, is_supported,
         };

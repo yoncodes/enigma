@@ -67,10 +67,26 @@ pub(super) fn random_pool_grant_commands(
         })
         .collect::<Vec<_>>();
     let mut ops = Vec::new();
-    for _ in 0..((*count).max(0) as usize).min(candidates.len()) {
-        let index = context
-            .determinism
-            .take_random_buff(&candidates)
+    let count = ((*count).max(0) as usize).min(candidates.len());
+    let mut observed = context
+        .determinism
+        .take_random_buff_pool(
+            crate::engine::skill::rule::ConfiguredRuleKey::new(
+                behavior.effect_id,
+                behavior.slot,
+                definition.key,
+            ),
+            context.source_uid,
+            context.target_uid,
+            count,
+            &candidates,
+        )
+        .unwrap_or_default()
+        .into_iter();
+    for _ in 0..count {
+        let index = observed
+            .next()
+            .or_else(|| context.determinism.take_random_buff(&candidates))
             .and_then(|buff_id| {
                 candidates
                     .iter()

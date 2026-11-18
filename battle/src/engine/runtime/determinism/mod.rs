@@ -4,6 +4,9 @@ use sonettobuf::CardInfo;
 
 use crate::engine::manager::card::CardPlayChoice;
 
+mod random_buff;
+pub use random_buff::RandomBuffChoice;
+
 type StartDeckSeed = (Vec<CardInfo>, Vec<CardInfo>, Vec<CardInfo>, usize);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -81,6 +84,7 @@ pub struct RoundDeterminism {
     random_skill_choices: VecDeque<i32>,
     scripted_random_skills: HashSet<i32>,
     random_buff_choices: VecDeque<i32>,
+    random_buff_pools: VecDeque<RandomBuffChoice>,
     hand_rank_choices: VecDeque<HandRankChoice>,
     hand_card_choices: VecDeque<HandCardChoice>,
     permille_rolls: VecDeque<i32>,

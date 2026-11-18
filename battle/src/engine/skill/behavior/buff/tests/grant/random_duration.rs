@@ -3,13 +3,29 @@ use super::*;
 #[test]
 fn random_pool_add_emits_distinct_configured_buff_commands() {
     crate::test_support::init_config();
-    let behavior = ParsedBehavior::from_spec(
+    let mut behavior = ParsedBehavior::from_spec(
         crate::engine::skill::behavior::classify::BehaviorSpec::new(20021, "AddBuffRanId"),
         vec![30630111, 2],
         Vec::new(),
     );
+    behavior.effect_id = 30630151;
+    behavior.slot = 1;
     let managers = BattleManagers::default();
     let mut determinism = RoundDeterminism::default();
+    determinism.replace_random_buff_pools([
+        crate::engine::runtime::determinism::RandomBuffChoice {
+            rule: crate::engine::skill::rule::ConfiguredRuleKey::new(
+                behavior.effect_id,
+                behavior.slot,
+                super::super::super::super::registry::find(&behavior)
+                    .unwrap()
+                    .key,
+            ),
+            source_uid: 10,
+            target_uid: 10,
+            buff_ids: vec![30630114, 30630112],
+        },
+    ]);
     let mut modifiers = crate::engine::skill::action::SkillModifiers::default();
     let mut target = crate::engine::skill::target::TargetContext::default();
 
@@ -38,9 +54,7 @@ fn random_pool_add_emits_distinct_configured_buff_commands() {
         })
         .collect::<Vec<_>>();
 
-    assert_eq!(buff_ids.len(), 2);
-    assert_ne!(buff_ids[0], buff_ids[1]);
-    assert!(buff_ids.iter().all(|id| (30630112..=30630115).contains(id)));
+    assert_eq!(buff_ids, [30630114, 30630112]);
 }
 
 #[test]

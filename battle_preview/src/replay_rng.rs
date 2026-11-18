@@ -9,6 +9,8 @@ use battle::tooling::{
 };
 use sonettobuf::{CardInfo, Fight, FightRound, FightStep};
 
+mod random_buff;
+
 /// Imports observed random choices while leaving card construction and validation to the engine.
 pub fn opening_determinism(
     game_data: &'static config::GameDB,
@@ -17,6 +19,8 @@ pub fn opening_determinism(
 ) -> Result<RoundDeterminism, String> {
     let mut determinism =
         RoundDeterminism::with_seed(fight.battle_id.unwrap_or_default().max(0) as u64);
+    let catalog = SkillEffectCatalog::from_fight(game_data, fight);
+    determinism.replace_random_buff_pools(random_buff::choices(&catalog, round));
     determinism.enqueue_hand_rank_choices(opening_hand_rank_choices(game_data, fight, round));
     let draws = round
         .team_a_cards1
@@ -93,6 +97,7 @@ pub fn seed_action_determinism(
     catalog: &SkillEffectCatalog,
     round: &FightRound,
 ) {
+    runtime.seed_random_buff_pools(random_buff::choices(catalog, round));
     runtime.seed_skill_targets(skill_target_choices(catalog, round));
     runtime.seed_random_skills(random_skill_choices(catalog, round));
     runtime.seed_shell_moxie_choices(shell_moxie_choices(config::configs::get(), round));
