@@ -137,7 +137,8 @@ impl BuffManager {
         }
 
         let mut settled_copies = Vec::new();
-        self.buffs
+        let mut settlements = self
+            .buffs
             .iter()
             .filter_map(|active| {
                 let definition = active.definition.as_ref()?;
@@ -215,7 +216,28 @@ impl BuffManager {
                     in_action: copy,
                 })
             })
-            .collect()
+            .collect::<Vec<_>>();
+        let attacked_slots = settlements
+            .iter()
+            .enumerate()
+            .filter(|(_, settlement)| settlement.trigger == BuffTakeActionTrigger::Attacked)
+            .map(|(index, _)| index)
+            .collect::<Vec<_>>();
+        let target_rank = |owner_uid: i64| {
+            std::iter::once(action.target_uid)
+                .chain(action.target_uids.iter().copied())
+                .position(|uid| uid == owner_uid)
+                .unwrap_or(usize::MAX)
+        };
+        let mut attacked = attacked_slots
+            .iter()
+            .map(|index| settlements[*index].clone())
+            .collect::<Vec<_>>();
+        attacked.sort_by_key(|settlement| target_rank(settlement.owner_uid));
+        for (index, settlement) in attacked_slots.into_iter().zip(attacked) {
+            settlements[index] = settlement;
+        }
+        settlements
     }
 
     pub(crate) fn defeated_entity_halo_cleanup(

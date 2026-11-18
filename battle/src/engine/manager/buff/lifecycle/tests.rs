@@ -214,3 +214,41 @@ fn attack_leaves_featureless_layer_markers_to_their_own_rule() {
 
     assert!(manager.plan_action_settlements(&action()).is_empty());
 }
+
+#[test]
+fn attack_settles_copies_in_the_attack_target_order() {
+    crate::test_support::init_config();
+    let copy = |owner: i64, uid| FightEntityInfo {
+        uid: Some(owner),
+        current_hp: Some(100),
+        buffs: vec![BuffInfo {
+            uid: Some(uid),
+            buff_id: Some(11410011),
+            from_uid: Some(owner),
+            count: Some(2),
+            ..Default::default()
+        }],
+        ..Default::default()
+    };
+    let fight = Fight {
+        defender: Some(FightTeam {
+            entitys: vec![copy(-2, 1023), copy(-1, 1063)],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let mut manager = BuffManager::default();
+    manager.seed(&fight);
+    let mut mass = action();
+    mass.target_uids = vec![-1, -2];
+    mass.attacked_target_uids = vec![-1, -2];
+
+    assert_eq!(
+        manager
+            .plan_action_settlements(&mass)
+            .iter()
+            .map(|settlement| settlement.owner_uid)
+            .collect::<Vec<_>>(),
+        vec![-1, -2]
+    );
+}
