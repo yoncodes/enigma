@@ -68,6 +68,7 @@ pub(crate) struct BuffActionSettlement {
     pub(crate) buff_id: i32,
     pub(crate) trigger: BuffTakeActionTrigger,
     pub(crate) command: BuffCommand,
+    pub(crate) in_action: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -147,15 +148,19 @@ impl BuffManager {
                 let attacked = action.is_attack
                     && (action.target_uid == active.owner_uid
                         || action.target_uids.contains(&active.owner_uid));
+                let copy = take_action.trigger == BuffTakeActionTrigger::Attacked
+                    && definition.stacks_as_copies();
                 let matches = match take_action.trigger {
                     BuffTakeActionTrigger::Attacked => {
                         let key = (active.owner_uid, active.buff.buff_id);
-                        definition.stacks_as_copies()
-                            && attacked
-                            && !settled_copies.contains(&key)
-                            && {
-                                settled_copies.push(key);
-                                true
+                        attacked
+                            && if copy {
+                                !settled_copies.contains(&key) && {
+                                    settled_copies.push(key);
+                                    true
+                                }
+                            } else {
+                                definition.features().is_empty() && !definition.uses_stack_layer()
                             }
                     }
                     BuffTakeActionTrigger::OwnerCastSkill => {
@@ -176,8 +181,11 @@ impl BuffManager {
                 };
                 let command = if definition.has_effect_count()
                     && active.buff.count.unwrap_or_default() > 0
-                    && take_action.trigger == BuffTakeActionTrigger::OwnerCastSkill
-                {
+                    && !copy
+                    && matches!(
+                        take_action.trigger,
+                        BuffTakeActionTrigger::OwnerCastSkill | BuffTakeActionTrigger::Attacked
+                    ) {
                     BuffCommand::ConsumeCount(BuffConsume {
                         origin,
                         target_uid: active.owner_uid,
@@ -191,7 +199,7 @@ impl BuffManager {
                         target_uid: active.owner_uid,
                         selector: BuffRemoveSelector::Uid(buff_uid),
                     };
-                    if take_action.trigger == BuffTakeActionTrigger::Attacked {
+                    if copy {
                         BuffCommand::LoseStack(remove)
                     } else {
                         BuffCommand::ExpireAction(remove)
@@ -204,6 +212,7 @@ impl BuffManager {
                     buff_id: active.buff.buff_id?,
                     trigger: take_action.trigger,
                     command,
+                    in_action: copy,
                 })
             })
             .collect()

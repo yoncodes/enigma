@@ -202,8 +202,7 @@ pub(in crate::engine::runtime::drain) fn dispatch_reactions(
                 .plan_action_settlements(action)
                 .into_iter()
                 .map(|settlement| {
-                    let in_action = settlement.trigger
-                        == crate::engine::manager::buff::BuffTakeActionTrigger::Attacked;
+                    let in_action = settlement.in_action;
                     QueuedOp {
                         op: RuleOp::Command(
                             crate::engine::skill::rule::output::BattleCommand::Buff(

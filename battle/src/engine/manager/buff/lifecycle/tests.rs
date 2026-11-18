@@ -134,6 +134,7 @@ fn attack_drops_only_the_oldest_include_fourteen_copy() {
     let settlements = manager.plan_action_settlements(&action());
     assert_eq!(settlements.len(), 1);
     assert_eq!(settlements[0].buff_uid, 1017);
+    assert!(settlements[0].in_action);
     let removed = manager
         .execute(&hp, settlements[0].command.clone())
         .unwrap()
@@ -145,4 +146,71 @@ fn attack_drops_only_the_oldest_include_fourteen_copy() {
     assert_eq!(removed[0].config_effect, 0);
     assert!(manager.snapshot(-1, 1018).is_some());
     assert!(manager.snapshot(-1, 30).is_some());
+}
+
+#[test]
+fn attack_spends_a_featureless_attacked_marker_in_its_own_frame() {
+    crate::test_support::init_config();
+    let fight = Fight {
+        defender: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(-1),
+                current_hp: Some(100),
+                buffs: vec![BuffInfo {
+                    uid: Some(1029),
+                    buff_id: Some(303020010),
+                    from_uid: Some(-1),
+                    count: Some(1),
+                    duration: Some(1),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let mut manager = BuffManager::default();
+    manager.seed(&fight);
+    let hp = HpManager::default();
+
+    let settlements = manager.plan_action_settlements(&action());
+    assert_eq!(settlements.len(), 1);
+    assert!(!settlements[0].in_action);
+    let removed = manager
+        .execute(&hp, settlements[0].command.clone())
+        .unwrap()
+        .change
+        .removed;
+
+    assert_eq!(removed[0].buff.count, Some(0));
+    assert!(!manager.has_buff_id(-1, 303020010));
+    assert!(manager.plan_action_settlements(&action()).is_empty());
+}
+
+#[test]
+fn attack_leaves_featureless_layer_markers_to_their_own_rule() {
+    crate::test_support::init_config();
+    let fight = Fight {
+        defender: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(-1),
+                current_hp: Some(100),
+                buffs: vec![BuffInfo {
+                    uid: Some(40),
+                    buff_id: Some(7160019),
+                    from_uid: Some(-1),
+                    layer: Some(3),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let mut manager = BuffManager::default();
+    manager.seed(&fight);
+
+    assert!(manager.plan_action_settlements(&action()).is_empty());
 }
