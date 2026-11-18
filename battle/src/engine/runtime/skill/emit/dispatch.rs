@@ -324,6 +324,16 @@ pub(in crate::engine::runtime) fn emit_ops(
                 invocation.mode,
             ),
         );
+        execution.modifiers.rates.extend(
+            crate::engine::skill::buff_act::attack_skill_rate_up::rate_modifiers(
+                managers,
+                invocation.plan.source_uid,
+                invocation.plan.skill_id,
+                catalog.is_big_skill(invocation.plan.skill_id),
+                execution.context.runtime_target_uid,
+                invocation.mode,
+            ),
+        );
         plan::snapshot_action_start_damage_state(managers, catalog, effect_skill_id, execution)?;
         // The caster's and its targets' reactions to the action starting run before its own effects.
         let effect_started_owners = std::iter::once(invocation.plan.source_uid)

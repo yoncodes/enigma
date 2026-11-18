@@ -17,6 +17,7 @@ pub mod additional_damage;
 pub mod adrenaline_add_card;
 pub mod assassinate_create_additional_damage;
 pub mod assassination;
+pub mod attack_skill_rate_up;
 pub mod attr;
 pub mod attr_and_layer_attr;
 pub mod attr_by_damage_type;
