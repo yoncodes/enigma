@@ -3,6 +3,7 @@ use super::*;
 mod bullet_timing;
 mod burn_application;
 mod conduit_timing;
+mod configured_targets;
 mod damage_reactions;
 mod death_reactions;
 mod limits_and_outcomes;

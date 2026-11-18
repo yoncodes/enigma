@@ -799,7 +799,7 @@ pub(in crate::engine::runtime) fn emit_ops(
         );
         let event_targets = if condition_uses_hit_targets {
             selected_event.and_then(active_skill_hit_targets)
-        } else if condition_uses_active_skill_targets {
+        } else if condition_uses_active_skill_targets && uses_action_targets {
             selected_event.and_then(active_skill_targets)
         } else {
             None
