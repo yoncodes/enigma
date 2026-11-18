@@ -208,6 +208,15 @@ pub struct SkillInvocation {
     pub action_hand_settlement: Option<CommandOrigin>,
     pub card_enchants: Vec<i32>,
     pub recorded_skill: Option<SkillRequest>,
+    pub(crate) round_cap: Option<BuffActRoundCap>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct BuffActRoundCap {
+    pub owner_uid: i64,
+    pub buff_uid: i64,
+    pub key: DefinitionKey,
+    pub limit: i32,
 }
 
 impl From<SkillRequest> for SkillInvocation {
@@ -236,6 +245,7 @@ impl From<SkillRequest> for SkillInvocation {
             action_hand_settlement: None,
             card_enchants: Vec::new(),
             recorded_skill: None,
+            round_cap: None,
         }
     }
 }
@@ -274,6 +284,7 @@ mod invocation_tests {
             action_hand_settlement: None,
             card_enchants: Vec::new(),
             recorded_skill: None,
+            round_cap: None,
         };
 
         assert_eq!(invocation.target, SkillTarget::Explicit(-1));

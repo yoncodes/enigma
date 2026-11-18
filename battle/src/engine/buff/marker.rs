@@ -182,9 +182,14 @@ mod tests {
 
         assert_eq!(
             add_markers(30870301),
-            vec![BuffMarker {
-                effect_type: EffectType::Slavehalo as i32,
-            }]
+            vec![
+                BuffMarker {
+                    effect_type: EffectType::Slavehalo as i32,
+                },
+                BuffMarker {
+                    effect_type: EffectType::None as i32,
+                },
+            ]
         );
         assert!(refresh_markers(30870301).is_empty());
     }

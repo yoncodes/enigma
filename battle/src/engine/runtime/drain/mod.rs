@@ -482,26 +482,35 @@ fn drain_queue_with_deferred(
             RuleOp::TerminalSettlement => {
                 commit_terminal(managers, base_pool, context, state, &mut result.events);
             }
-            RuleOp::Skill(invocation) => drain_skill(
-                managers,
-                base_pool,
-                pool,
-                catalog,
-                determinism,
-                context,
-                queue,
-                &mut result,
-                state,
-                invocation,
-                trigger,
-                skill_execution,
-                frame_path,
-                parent_path,
-                frame_group,
-                frame_owner,
-                subscriber,
-                caster_frame,
-            )?,
+            RuleOp::Skill(invocation)
+                if invocation.round_cap.is_some_and(|cap| {
+                    !managers.can_fire_buff_act(cap.owner_uid, cap.buff_uid, cap.key, cap.limit)
+                }) => {}
+            RuleOp::Skill(mut invocation) => {
+                if let Some(cap) = invocation.round_cap.take() {
+                    managers.mark_buff_act_fired(cap.owner_uid, cap.buff_uid, cap.key);
+                }
+                drain_skill(
+                    managers,
+                    base_pool,
+                    pool,
+                    catalog,
+                    determinism,
+                    context,
+                    queue,
+                    &mut result,
+                    state,
+                    invocation,
+                    trigger,
+                    skill_execution,
+                    frame_path,
+                    parent_path,
+                    frame_group,
+                    frame_owner,
+                    subscriber,
+                    caster_frame,
+                )?
+            }
             RuleOp::FreezeActiveSkillRates => {
                 let frame_path = frame_path.ok_or(DrainError::MissingActiveSkillContext)?;
                 let execution = queue

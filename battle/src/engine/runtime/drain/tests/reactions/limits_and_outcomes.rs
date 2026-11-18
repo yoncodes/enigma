@@ -522,3 +522,79 @@ fn active_skill_publishes_hits_between_after_damage_and_after_hit_rows() {
         "fear={fear} attacked={attacked} combustion_cleanup={combustion_cleanup} shock_wave={shock_wave}"
     );
 }
+
+#[test]
+fn reaction_round_cap_is_spent_when_each_queued_cast_starts() {
+    crate::test_support::init_config();
+    let entity = |uid, team| FightEntityInfo {
+        uid: Some(uid),
+        team_type: Some(team),
+        current_hp: Some(1_000),
+        attr: Some(HeroAttribute {
+            hp: Some(1_000),
+            attack: Some(100),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![entity(10, 1), entity(20, 1), entity(30, 1)],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![entity(-1, 2)],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let mut catalog = SkillEffectCatalog::default();
+    catalog.insert(ParsedSkillEffect {
+        skill_id: 300,
+        slots: Vec::new(),
+    });
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    let key = crate::engine::skill::rule::DefinitionKey::new(10010, "BeAttackedFromUseSkill");
+    let cast = |target| {
+        let mut invocation: SkillInvocation = SkillRequest {
+            source_uid: 30,
+            skill_id: 300,
+        }
+        .into();
+        invocation.target = SkillTarget::Explicit(target);
+        invocation.round_cap = Some(crate::engine::skill::action::BuffActRoundCap {
+            owner_uid: 30,
+            buff_uid: 0,
+            key,
+            limit: 2,
+        });
+        RuleOp::Skill(invocation)
+    };
+
+    let result = run(
+        &mut managers,
+        &pool,
+        &catalog,
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+        [cast(10), cast(20), cast(30)],
+    )
+    .unwrap();
+
+    let completed = result
+        .events
+        .iter()
+        .filter_map(|event| match event {
+            BattleEvent::SkillAction(action)
+                if action.phase == crate::engine::skill::action::SkillPhase::AfterHit =>
+            {
+                Some(action.target_uid)
+            }
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(completed, vec![10, 20]);
+    assert!(!managers.can_fire_buff_act(30, 0, key, 2));
+    assert!(managers.can_fire_buff_act(30, 0, key, 3));
+}
