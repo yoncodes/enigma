@@ -93,7 +93,7 @@ fn loadout_diffs_report_fields_that_differ_from_the_rebuilt_entity() {
     write_roster(&directory, hero.clone());
     let mut fight = fight(uid);
     let entity = &mut fight.attacker.as_mut().unwrap().entitys[0];
-    let built = EntityBuilder::new(preview_build_input(entity, &hero).unwrap(), 0, 0, false)
+    let built = EntityBuilder::new(preview_build_input(entity, &hero).unwrap(), 0, 0)
         .build()
         .unwrap();
     entity.skill_group1 = built.skill_group1.clone();

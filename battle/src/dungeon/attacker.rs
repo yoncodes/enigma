@@ -247,7 +247,7 @@ impl Attacker {
             ex_attributes.push((hero_input.uid, stats.ex()));
             sp_attributes.push((hero_input.uid, stats.sp()));
 
-            let mut builder = EntityBuilder::new(hero_input, position, 1, false)
+            let mut builder = EntityBuilder::new(hero_input, position, 1)
                 .with_catalog(catalog)
                 .with_equips(equip_inputs)
                 .with_stats(stats);
@@ -275,7 +275,7 @@ impl Attacker {
             ex_attributes.push((hero_input.uid, stats.ex()));
             sp_attributes.push((hero_input.uid, stats.sp()));
 
-            let mut builder = EntityBuilder::new(hero_input, -1, 1, true)
+            let mut builder = EntityBuilder::new(hero_input, -1, 1)
                 .with_catalog(catalog)
                 .with_equips(equip_inputs)
                 .with_stats(stats);
@@ -1083,6 +1083,54 @@ mod tests {
 
         assert_eq!(entity.equip_uid, Some(0));
         assert!(entity.equips.is_empty());
+    }
+
+    #[test]
+    fn reserve_hero_uses_its_portrait_and_destiny_kit() {
+        crate::test_support::init_config();
+        let fighter = |uid, hero_id, skin| BattleFighter {
+            hero: HeroBuildInput {
+                uid,
+                user_id: 1,
+                hero_id,
+                skin,
+                level: 60,
+                rank: 3,
+                ex_skill_level: 3,
+                destiny_stone: if hero_id == 3039 { 303902 } else { 0 },
+                destiny_rank: if hero_id == 3039 { 4 } else { 0 },
+                ..Default::default()
+            },
+            equips: vec![],
+        };
+        let roster = BattleRoster {
+            user_id: 1,
+            fighters: vec![
+                fighter(20_000_001, 3028, 302801),
+                fighter(20_000_002, 3039, 303901),
+            ],
+            ..Default::default()
+        };
+        let group = sonettobuf::FightGroup {
+            hero_list: vec![20_000_001],
+            sub_hero_list: vec![20_000_002],
+            ..Default::default()
+        };
+
+        let built = super::super::build_fight(
+            crate::catalog::BattleCatalog::new(crate::test_support::game_data()),
+            &roster,
+            10101,
+            10101,
+            &group,
+            FightOptions::default(),
+            None,
+        )
+        .unwrap();
+        let reserve = &built.fight.attacker.unwrap().sub_entitys[0];
+
+        assert_eq!(reserve.skill_group1, vec![303901141, 303901151, 303901161]);
+        assert_eq!(reserve.skill_group2, vec![303901271, 303901281, 303901291]);
     }
 
     #[test]

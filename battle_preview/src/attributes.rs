@@ -137,13 +137,11 @@ pub fn loadout_diffs(fight: &Fight, battle_path: &Path) -> anyhow::Result<Vec<St
     let metadata = resolve_build_metadata(battle_path, request.selected_assist)?.0;
     let battle_balance = request_battle_balance(fight, request.is_balance)?;
     let mut diffs = Vec::new();
-    let teams = fight.attacker.iter().flat_map(|team| {
-        team.entitys
-            .iter()
-            .map(|entity| (entity, false))
-            .chain(team.sub_entitys.iter().map(|entity| (entity, true)))
-    });
-    for (entity, is_sub) in teams {
+    let teams = fight
+        .attacker
+        .iter()
+        .flat_map(|team| team.entitys.iter().chain(&team.sub_entitys));
+    for entity in teams {
         let uid = entity
             .uid
             .ok_or_else(|| anyhow::anyhow!("attacker is missing uid"))?;
@@ -162,7 +160,6 @@ pub fn loadout_diffs(fight: &Fight, battle_path: &Path) -> anyhow::Result<Vec<St
                 build.clone(),
                 entity.position.unwrap_or_default(),
                 entity.team_type.unwrap_or_default(),
-                is_sub,
             );
             // Balance rewrites rank, which picks the kit and resource type.
             if let Some(balance) = battle_balance {
