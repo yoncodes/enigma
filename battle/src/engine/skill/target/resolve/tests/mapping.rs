@@ -247,6 +247,39 @@ fn hp_percentage_targets_use_widened_ratio_arithmetic() {
 }
 
 #[test]
+fn highest_hp_enemy_waits_for_reserve_entry() {
+    init_config();
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![entity_at(10, 1)],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![entity_stats(-2, 1, 40, 100, 0)],
+            sub_entitys: vec![entity_stats(-3, -1, 100, 100, 0)],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    let select = |managers: &BattleManagers| {
+        resolve_code(
+            208,
+            10,
+            &pool.runtime_view(managers),
+            &mut RoundDeterminism::default(),
+        )
+    };
+
+    assert_eq!(select(&managers), vec![-2]);
+    managers.hp.lose(-2, 40, 0);
+    assert!(select(&managers).is_empty());
+    assert_eq!(managers.entity.promote_reserves(&managers.hp).len(), 1);
+    assert_eq!(select(&managers), vec![-3]);
+}
+
+#[test]
 fn target_207_selects_the_enemy_with_the_highest_attack() {
     init_config();
     let enemy = |uid, position, attack| FightEntityInfo {

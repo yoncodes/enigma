@@ -374,7 +374,7 @@ impl TargetResolver {
             TargetRule::HighestAttackEnemy => {
                 highest_attack(pool.enemies(source_uid, false), managers)
             }
-            TargetRule::HighestHpEnemy => highest_hp(pool.enemies(source_uid, false), managers),
+            TargetRule::HighestHpEnemy => highest_hp(source_uid, pool, managers),
             TargetRule::SecondaryEnemies => {
                 secondary_targets(pool.enemies(source_uid, false), context)
             }
@@ -1074,9 +1074,10 @@ fn lowest_ex_point(entities: &[TargetEntity], fallback_uid: i64) -> Vec<i64> {
     vec![uid]
 }
 
-fn highest_hp(entities: &[TargetEntity], managers: Option<&BattleManagers>) -> Vec<i64> {
-    entities
+fn highest_hp(source_uid: i64, pool: &TargetPool, managers: Option<&BattleManagers>) -> Vec<i64> {
+    pool.enemies(source_uid, false)
         .iter()
+        .filter(|entity| !pool.is_reserve(entity.uid))
         .min_by(|left, right| {
             let left_current = managers
                 .map(|managers| managers.hp.current(left.uid))
