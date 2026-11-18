@@ -1207,4 +1207,8 @@ fn enemy_active_use_marks_the_acting_enemy_as_its_latest_holder() {
         definition.reaction_frame_target,
         ReactionFrameTarget::EventSource
     );
+    assert_eq!(
+        definition.reaction_timing.resolve(Default::default()),
+        ReactionTiming::AfterSkill
+    );
 }
