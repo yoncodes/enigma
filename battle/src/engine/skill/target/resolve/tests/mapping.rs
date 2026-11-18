@@ -475,3 +475,26 @@ fn target_132_selects_allies_with_the_configured_battle_tag() {
         vec![10, 11, 12]
     );
 }
+
+#[test]
+fn target_2001_selects_enemies_carrying_monster_label_one() {
+    init_config();
+    let marked = enemy_with_buff(20, 2, 100, buff(11410111, 11410111));
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![entity_at(10, 1), marked],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![entity_at(-1, 1)],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+
+    assert_eq!(
+        resolve_code(2001, -1, &pool, &mut RoundDeterminism::default()),
+        vec![20]
+    );
+}

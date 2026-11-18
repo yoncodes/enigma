@@ -665,6 +665,40 @@ pub(crate) fn execute_rule_op(
     )
 }
 
+#[inline(never)]
+fn move_to_holder_commands(
+    managers: &BattleManagers,
+    grant: crate::engine::manager::buff::BuffGrant,
+) -> Vec<crate::engine::manager::buff::BuffCommand> {
+    use crate::engine::manager::buff::{BuffCommand, BuffRemove, BuffRemoveSelector};
+
+    let mut commands = managers
+        .entity
+        .ordered_uids()
+        .filter(|owner_uid| *owner_uid != grant.target_uid)
+        .flat_map(|owner_uid| {
+            managers
+                .buff
+                .active_for(owner_uid)
+                .filter(|buff| {
+                    buff.buff_id == Some(grant.buff_id) && buff.from_uid == Some(grant.source_uid)
+                })
+                .filter_map(|buff| buff.uid)
+                .map(move |buff_uid| (owner_uid, buff_uid))
+                .collect::<Vec<_>>()
+        })
+        .map(|(target_uid, buff_uid)| {
+            BuffCommand::RemoveAfterTrigger(BuffRemove {
+                origin: grant.origin,
+                target_uid,
+                selector: BuffRemoveSelector::Uid(buff_uid),
+            })
+        })
+        .collect::<Vec<_>>();
+    commands.push(BuffCommand::Grant(grant));
+    commands
+}
+
 pub(crate) fn execute_rule_op_with(
     managers: &mut BattleManagers,
     events: &mut EventBus,
@@ -693,6 +727,14 @@ pub(crate) fn execute_rule_op_with(
             }
             Ok(RuleOutcome::Buff(Box::new(changes)))
         }
+        RuleOp::Command(BattleCommand::BuffMoveToHolder(grant)) => execute_rule_op_with(
+            managers,
+            events,
+            determinism,
+            RuleOp::Command(BattleCommand::BuffBatch(move_to_holder_commands(
+                managers, grant,
+            ))),
+        ),
         RuleOp::Command(BattleCommand::BuffBatch(commands)) => {
             managers.buff.begin_transaction();
             let batch_result = (|| {

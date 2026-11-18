@@ -419,6 +419,7 @@ pub(in crate::engine::runtime::drain) fn reaction_skill_target(
         ReactionFrameTarget::Counterparty => reaction_counterparty(pool, event, owner_uid),
         ReactionFrameTarget::Owner => Some(owner_uid),
         ReactionFrameTarget::EventTarget => event.target_uid(),
+        ReactionFrameTarget::EventSource => event.source_uid(),
         ReactionFrameTarget::CausingFrame => current_skill_target.or_else(|| event.target_uid()),
     }
 }

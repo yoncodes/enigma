@@ -519,6 +519,13 @@ impl BehaviorHandler for Handler {
                 };
                 let Some(skill_id) =
                     skill_from_group_and_star(context.pool, context.source_uid, *group, *star)
+                        .or_else(|| {
+                            (context.target_uid != context.source_uid)
+                                .then(|| {
+                                    loadout_skill(context.pool, context.source_uid, *group, *star)
+                                })
+                                .flatten()
+                        })
                 else {
                     return Some(Vec::new());
                 };

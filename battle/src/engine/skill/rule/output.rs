@@ -64,6 +64,7 @@ pub struct EffectMarker {
 pub enum BattleCommand {
     Buff(BuffCommand),
     BuffBatch(Vec<BuffCommand>),
+    BuffMoveToHolder(crate::engine::manager::buff::BuffGrant),
     Hp(HpCommand),
     HpBatch(Vec<HpCommand>),
     LinkedDamage(Vec<LinkedHit>),

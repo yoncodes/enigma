@@ -807,6 +807,7 @@ fn target_rule(code: i32) -> Option<TargetRule> {
         301 => TargetRule::AllActiveEntities,
         302 => TargetRule::Enemies,
         307 => TargetRule::EnemyWithBuffAct,
+        2001 => TargetRule::EnemiesWithMonsterLabel(1),
         4101 => TargetRule::EnemiesWithMonsterLabel(101),
         _ => return None,
     })

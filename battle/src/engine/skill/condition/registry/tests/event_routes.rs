@@ -1181,3 +1181,30 @@ fn teammate_count_keeps_its_after_hit_route() {
         })
     );
 }
+
+#[test]
+fn enemy_active_use_marks_the_acting_enemy_as_its_latest_holder() {
+    let definition = find_key(502213, "ActiveUseSkill").unwrap();
+
+    assert_eq!(
+        parse(502213, "ActiveUseSkill", &["0".into()]),
+        Some(ParsedConditionKind::ActiveUseSkillBySource { slot: 0 })
+    );
+    assert_eq!(
+        definition.role,
+        ConditionRole::Trigger {
+            event: EventKind::SkillAction,
+            phase: Some(SkillPhase::HitPassives),
+        }
+    );
+    assert_eq!(
+        definition.skill_action_observer,
+        SkillActionObserver::OpposingTeam
+    );
+    assert!(definition.filters_behavior_targets);
+    assert_eq!(definition.consequence, ConsequencePolicy::LatestHolderGrant);
+    assert_eq!(
+        definition.reaction_frame_target,
+        ReactionFrameTarget::EventSource
+    );
+}

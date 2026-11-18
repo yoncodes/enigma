@@ -90,6 +90,7 @@ pub enum ConsequencePolicy {
     Default,
     ChildBuffGrant,
     NormalBuffGrant,
+    LatestHolderGrant,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -121,6 +122,7 @@ pub enum ReactionFrameTarget {
     Counterparty,
     Owner,
     EventTarget,
+    EventSource,
     CausingFrame,
 }
 
@@ -511,6 +513,11 @@ pub const fn normal_buff_grant(mut metadata: ConditionMetadata) -> ConditionMeta
     metadata
 }
 
+pub const fn latest_holder_grant(mut metadata: ConditionMetadata) -> ConditionMetadata {
+    metadata.consequence = ConsequencePolicy::LatestHolderGrant;
+    metadata
+}
+
 pub const fn matching_buff_act_owns_behavior(mut metadata: ConditionMetadata) -> ConditionMetadata {
     metadata.behavior_ownership = BehaviorOwnership::MatchingBuffAct;
     metadata
@@ -549,6 +556,11 @@ pub const fn reaction_targets_owner(mut metadata: ConditionMetadata) -> Conditio
 
 pub const fn reaction_targets_event(mut metadata: ConditionMetadata) -> ConditionMetadata {
     metadata.reaction_frame_target = ReactionFrameTarget::EventTarget;
+    metadata
+}
+
+pub const fn reaction_targets_event_source(mut metadata: ConditionMetadata) -> ConditionMetadata {
+    metadata.reaction_frame_target = ReactionFrameTarget::EventSource;
     metadata
 }
 
@@ -996,6 +1008,7 @@ condition_definitions! {
     [720212] "TeammateUseExSkill" => trigger::parse_teammate_use_ex_skill, event_trigger(EventKind::AllyAction, None);
     [737212] "IsEffectEntity" => target_identity::active_skill_source, predicate(&[]);
     [502212] "ActiveUseSkill" => active_skill::active_ally_use, reaction_targets_causing_frame(normal_buff_grant(event_trigger(EventKind::AllyAction, None)));
+    [502213] "ActiveUseSkill" => active_skill::active_source_use, filters_behavior_targets(reaction_targets_event_source(latest_holder_grant(opposing_team_observes(event_trigger(EventKind::SkillAction, Some(SkillPhase::HitPassives))))));
     [620212] "CurrSkillLevel" => active_skill::rank, event_trigger(EventKind::AllyAction, None);
     [502203] "ActiveUseSkill" => active_skill::active_use, event_trigger(EventKind::SkillAction, Some(SkillPhase::Immediate));
     [502202] "ActiveUseSkill" => active_skill::active_use, incoming_attack_modifier(attack_target_observes(event_trigger(EventKind::SkillEffectStarted, Some(SkillPhase::Immediate))));

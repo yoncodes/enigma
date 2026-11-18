@@ -753,6 +753,13 @@ fn attach_buff_grant_relation(
     use crate::engine::skill::rule::output::BattleCommand;
 
     match op {
+        RuleOp::Command(BattleCommand::Buff(crate::engine::manager::buff::BuffCommand::Grant(
+            grant,
+        ))) if consequence
+            == crate::engine::skill::condition::registry::ConsequencePolicy::LatestHolderGrant =>
+        {
+            RuleOp::Command(BattleCommand::BuffMoveToHolder(grant))
+        }
         RuleOp::Command(BattleCommand::Buff(command)) => {
             RuleOp::Command(BattleCommand::Buff(attach_relation(command, consequence)))
         }
