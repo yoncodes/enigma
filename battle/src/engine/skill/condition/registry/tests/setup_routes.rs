@@ -264,6 +264,7 @@ fn missing_buff_shares_the_final_settlement_trigger() {
     );
     let definition = find_key(57307, "NoBuffId").unwrap();
     assert_eq!(definition.role, find_key(307, "None").unwrap().role);
+    assert_eq!(definition.reaction_frame_target, ReactionFrameTarget::Owner);
     assert_eq!(
         definition.role,
         ConditionRole::Trigger {
