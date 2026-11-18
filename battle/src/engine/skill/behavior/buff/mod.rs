@@ -67,6 +67,7 @@ use layer::{
 };
 pub(super) use poison::supports_add_target_buff_by_poison;
 use poison::*;
+pub(super) use replace::supports_layer_reward;
 use replace::*;
 
 pub(super) fn supports_consume_power_add_buff(behavior: &ParsedBehavior) -> bool {
