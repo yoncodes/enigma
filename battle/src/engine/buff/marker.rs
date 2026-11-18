@@ -177,6 +177,30 @@ mod tests {
     }
 
     #[test]
+    fn seal_marks_its_grant_only() {
+        crate::test_support::init_config();
+
+        assert_eq!(
+            add_markers(720202),
+            vec![BuffMarker {
+                effect_type: EffectType::Seal as i32,
+            }]
+        );
+        assert!(refresh_markers(720202).is_empty());
+        assert_eq!(
+            add_markers(25582)
+                .into_iter()
+                .map(|marker| marker.effect_type)
+                .collect::<Vec<_>>(),
+            vec![
+                EffectType::Addtotarget as i32,
+                EffectType::Attr as i32,
+                EffectType::Seal as i32,
+            ]
+        );
+    }
+
+    #[test]
     fn damage_type_attributes_mark_their_grant() {
         crate::test_support::init_config();
 
