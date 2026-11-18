@@ -254,6 +254,27 @@ fn missing_buff_round_end_gate_keeps_the_actor_target() {
 }
 
 #[test]
+fn missing_buff_shares_the_final_settlement_trigger() {
+    assert_eq!(
+        parse(57307, "NoBuffId", &["303020011".into()]),
+        Some(ParsedConditionKind::BuffId {
+            mode: BuffConditionMode::Absent,
+            buff_ids: vec![303020011],
+        })
+    );
+    let definition = find_key(57307, "NoBuffId").unwrap();
+    assert_eq!(definition.role, find_key(307, "None").unwrap().role);
+    assert_eq!(
+        definition.role,
+        ConditionRole::Trigger {
+            event: EventKind::RoundEndFinalSettlement,
+            phase: None,
+        }
+    );
+    assert!(definition.filters_behavior_targets);
+}
+
+#[test]
 fn conditional_round_start_interval_preserves_period_then_start_order() {
     assert_eq!(
         parse(45101, "HeroRoundInterval", &["99".into(), "15".into()]),
