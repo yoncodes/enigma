@@ -192,15 +192,29 @@ impl BehaviorHandler for Handler {
             return Some(Vec::new());
         }
         if behavior.spec.kind == BehaviorKind::SkillRateUp2 {
-            let target_uid = context.target.runtime_target_uid;
-            let delta = status_skill_rate(&context.managers.buff, target_uid, behavior);
-            if context.active_skill_id != 0 && target_uid != 0 && delta != 0 {
-                context.modifiers.rates.push(SkillRateModifier::fixed(
-                    target_uid,
-                    behavior.spec.key.opcode,
-                    delta,
-                    true,
-                ));
+            if context.active_skill_id == 0 {
+                return Some(Vec::new());
+            }
+            let runtime_target = context.target.runtime_target_uid;
+            let mut targets = context
+                .pool
+                .field_enemies(context.source_uid)
+                .into_iter()
+                .map(|enemy| enemy.uid)
+                .collect::<Vec<_>>();
+            if runtime_target != 0 && !targets.contains(&runtime_target) {
+                targets.insert(0, runtime_target);
+            }
+            for target_uid in targets {
+                let delta = status_skill_rate(&context.managers.buff, target_uid, behavior);
+                if delta != 0 {
+                    context.modifiers.rates.push(SkillRateModifier::fixed(
+                        target_uid,
+                        behavior.spec.key.opcode,
+                        delta,
+                        true,
+                    ));
+                }
             }
             return Some(Vec::new());
         }

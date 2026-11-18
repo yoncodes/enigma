@@ -116,6 +116,83 @@ fn target_status_skill_rate_is_scoped_to_the_attacked_entity() {
 }
 
 #[test]
+fn target_status_skill_rate_checks_every_hit_target() {
+    crate::test_support::init_config();
+    let debuffed = |uid| FightEntityInfo {
+        uid: Some(uid),
+        current_hp: Some(100),
+        buffs: vec![BuffInfo {
+            uid: Some(uid.abs()),
+            buff_id: Some(301),
+            ..Default::default()
+        }],
+        ..Default::default()
+    };
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                current_hp: Some(100),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![
+                FightEntityInfo {
+                    uid: Some(-1),
+                    current_hp: Some(100),
+                    ..Default::default()
+                },
+                debuffed(-2),
+            ],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let managers = BattleManagers::seeded(&fight);
+    let pool = TargetPool::from_fight(&fight);
+    let behavior = ParsedBehavior::from_spec(
+        crate::engine::skill::behavior::classify::BehaviorSpec::new(10003, "SkillRateUp2"),
+        vec![650, 1],
+        vec!["650".into(), "1".into(), "2,4,6".into()],
+    );
+    let mut determinism = RoundDeterminism::default();
+    let mut modifiers = crate::engine::skill::action::SkillModifiers::default();
+    let mut target = TargetContext {
+        runtime_target_uid: -1,
+        ..Default::default()
+    };
+
+    crate::engine::skill::behavior::rule_ops(
+        BehaviorOpContext {
+            source_uid: 10,
+            source_team: 1,
+            target_uid: 10,
+            active_skill_id: 30200115,
+            transfer_count: 1,
+            event: None,
+            managers: &managers,
+            pool: &pool,
+            determinism: &mut determinism,
+            modifiers: &mut modifiers,
+            target: &mut target,
+        },
+        &behavior,
+    )
+    .unwrap();
+
+    assert_eq!(
+        modifiers
+            .rates
+            .iter()
+            .map(|rate| (rate.target_uid, rate.fixed_value()))
+            .collect::<Vec<_>>(),
+        vec![(-2, Some(650))]
+    );
+}
+
+#[test]
 fn self_buff_type_rate_scales_by_the_configured_buff_amount() {
     crate::test_support::init_config();
     let fight = Fight {
