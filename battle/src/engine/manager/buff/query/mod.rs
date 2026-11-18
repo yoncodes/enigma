@@ -1,3 +1,5 @@
+mod replacement;
+
 use super::update::special_count_value;
 use super::*;
 use crate::engine::skill::buff_act::registry::BuffActKind;

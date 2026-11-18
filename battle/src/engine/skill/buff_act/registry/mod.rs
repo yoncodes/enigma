@@ -477,6 +477,7 @@ pub struct BuffActTransactionDefinition {
     pub events: &'static [EventKind],
     pub wire_marker_events: &'static [EventKind],
     pub handler: Option<TransactionHandler>,
+    pub replacement_publication: Option<PublicationPhase>,
     pub expiry_publications: &'static [(i32, AttrId, PublicationPhase)],
 }
 
@@ -665,6 +666,7 @@ macro_rules! buff_act_definitions {
             $(, scoped_runtime: $scoped_runtime:expr)?
             $(, fallible_scoped_runtime: $fallible_scoped_runtime:expr)?
             $(, transaction: $transaction:expr)?
+            $(, replacement_publication: $replacement_publication:ident)?
             $(, expiry_publications: [$(($expiry_stage:expr, $expiry_attr:ident) => $expiry_phase:ident),*])?
             $(, setup_handler: $setup_handler:expr)?
             $(, supports: $supports:expr)?
@@ -720,6 +722,7 @@ macro_rules! buff_act_definitions {
                     events: &[$($($transaction_events),*)?],
                     wire_marker_events: &[$($($transaction_wire_marker_events),*)?],
                     handler: buff_act_definitions!(@transaction $($transaction)?),
+                    replacement_publication: buff_act_definitions!(@replacement_publication $($replacement_publication)?),
                     expiry_publications: &[$($(($expiry_stage, AttrId::$expiry_attr, PublicationPhase::$expiry_phase)),*)?],
                 },
                 state: BuffActStateDefinition {
@@ -753,6 +756,8 @@ macro_rules! buff_act_definitions {
     };
     (@publication $publication:ident) => { PublicationPhase::$publication };
     (@publication) => { PublicationPhase::AfterPublish };
+    (@replacement_publication $publication:ident) => { Some(PublicationPhase::$publication) };
+    (@replacement_publication) => { None };
     (@frame $frame:ident) => { RuntimeFrameScope::$frame };
     (@frame) => { RuntimeFrameScope::SubscriberFrame };
     (@source $source:ident) => { RuntimeFrameSource::$source };
@@ -829,7 +834,9 @@ buff_act_definitions! {
             EventKind::BuffAdded => BeforePublish
         ],
         frame: CausingFrame,
-        transaction: super::attr::transaction_rule_ops, wire: (super::wire::BuffActWireDefinition::add_refresh(DefinitionKey::new(100, "Attr"), &[EffectType::Attr as i32]).with_attr_max_hp());
+        transaction: super::attr::transaction_rule_ops,
+        replacement_publication: BeforePublish,
+        wire: (super::wire::BuffActWireDefinition::add_refresh(DefinitionKey::new(100, "Attr"), &[EffectType::Attr as i32]).with_attr_max_hp());
     (108, "Attr") => UltimateAttribute,
         effect_time_subscription: false,
         supports: super::ultimate_attribute::supports,

@@ -96,16 +96,12 @@ pub(in crate::engine::runtime::drain) fn dispatch_reactions(
             continue;
         }
         let timing = definition.runtime.reaction_timing;
-        let publication = crate::engine::skill::buff_act::transaction_publication(
-            &feature,
-            &op,
-            event,
-            managers.fight_version(),
-        )
-        .ok_or_else(|| DrainError::MissingBuffActDefinition {
-            opcode: feature.act_id(),
-            type_name: feature.act_type.clone(),
-        })?;
+        let publication =
+            crate::engine::skill::buff_act::transaction_publication(&feature, &op, event, managers)
+                .ok_or_else(|| DrainError::MissingBuffActDefinition {
+                    opcode: feature.act_id(),
+                    type_name: feature.act_type.clone(),
+                })?;
         let selected_for_pass = publication_phase.is_none_or(|phase| {
             if timing == ReactionTiming::AfterAction {
                 phase == PublicationPhase::AfterPublish

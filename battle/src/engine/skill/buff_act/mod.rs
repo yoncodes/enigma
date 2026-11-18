@@ -277,7 +277,7 @@ pub fn transaction_publication(
     feature: &ActiveBuffFeature,
     op: &RuleOp,
     event: &BattleEvent,
-    fight_version: i32,
+    managers: &BattleManagers,
 ) -> Option<crate::engine::event::subscription::PublicationPhase> {
     use crate::engine::event::{payload::BuffExpiry, subscription::PublicationPhase};
 
@@ -286,8 +286,27 @@ pub fn transaction_publication(
     }
     if let BattleEvent::BuffRemoved(change) = event
         && let BuffExpiry::Duration(stage) = change.expiry
-        && let Some(phase) =
-            registry::expiry_publication(&feature.values, &feature.act_type, stage, fight_version)
+        && let Some(phase) = registry::expiry_publication(
+            &feature.values,
+            &feature.act_type,
+            stage,
+            managers.fight_version(),
+        )
+    {
+        return Some(phase);
+    }
+    let definition = registry::find(feature.act_id()?, &feature.act_type)?;
+    if matches!(event, BattleEvent::BuffRemoved(_))
+        && let Some(phase) = definition.transaction.replacement_publication
+        && managers
+            .buff
+            .replacement_uid(
+                feature.source_uid,
+                feature.owner_uid,
+                feature.buff_id,
+                feature.buff_uid,
+            )
+            .is_some()
     {
         return Some(phase);
     }
