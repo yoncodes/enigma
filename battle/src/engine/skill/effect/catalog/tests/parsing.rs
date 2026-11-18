@@ -44,6 +44,32 @@ fn parses_target_code_and_raw_args() {
 }
 
 #[test]
+fn predicate_grants_after_an_after_damage_slot_follow_its_reactions() {
+    init_config();
+    let db = config::configs::get();
+    let phases = |effect_id: i32| {
+        let mut catalog = SkillEffectCatalog::default();
+        catalog.insert_configured_effect(db, db.skill_effect.get(effect_id).unwrap());
+        catalog
+            .get(effect_id)
+            .unwrap()
+            .slots
+            .iter()
+            .map(|slot| slot.active_phases().unwrap())
+            .collect::<Vec<_>>()
+    };
+    let after_hit = vec![crate::engine::skill::action::SkillPhase::AfterHit];
+
+    assert_eq!(phases(30870331)[4], after_hit);
+    assert_eq!(
+        phases(308801211)[1..],
+        [after_hit.clone(), after_hit.clone()]
+    );
+    assert_eq!(phases(30630181)[3..5], [after_hit.clone(), after_hit]);
+    assert!(phases(30030209).iter().all(Vec::is_empty));
+}
+
+#[test]
 fn delegated_card_settles_moxie_grant_in_the_cast_phase() {
     init_config();
     let db = config::configs::get();

@@ -36,6 +36,7 @@ pub struct SkillEffectSlot {
     pub target: TargetRequest,
     pub target_from_condition: bool,
     pub(crate) delegated_reward_phase: Option<SkillPhase>,
+    pub(crate) ordered_phase: Option<SkillPhase>,
     pub limit: i32,
     pub round_limit: i32,
 }
@@ -50,6 +51,7 @@ impl SkillEffectSlot {
             target,
             target_from_condition: false,
             delegated_reward_phase: None,
+            ordered_phase: None,
             limit: 0,
             round_limit: 0,
         }
@@ -242,6 +244,11 @@ impl SkillEffectSlot {
             {
                 phases.push(phase);
             }
+        }
+        if phases.is_empty()
+            && let Some(phase) = self.ordered_phase
+        {
+            phases.push(phase);
         }
         Ok(phases)
     }

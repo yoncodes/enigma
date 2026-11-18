@@ -226,6 +226,7 @@ pub(super) fn parse_slot(db: &GameDB, raw: RawSlot<'_>) -> Result<SkillEffectSlo
         target,
         target_from_condition,
         delegated_reward_phase: None,
+        ordered_phase: None,
         limit,
         round_limit,
     })

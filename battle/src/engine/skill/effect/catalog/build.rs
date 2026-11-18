@@ -358,6 +358,7 @@ impl SkillEffectCatalog {
                 }
             }
         }
+        super::super::slot_order::bind_after_damage_grants(&mut slots);
         let logic_target = parse_target(&row.logic_target)
             .and_then(crate::engine::skill::target::resolve::compile_logic_target);
         if let Some(target) = &logic_target {
