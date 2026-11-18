@@ -1022,9 +1022,11 @@ impl BuffDefinition {
     }
 
     pub(super) fn reserves_normal_uid_on_kept_reapply(&self) -> bool {
-        self.features
-            .iter()
-            .any(|feature| feature.kind == Some(BuffActKind::HeatScaleDecrCounter))
+        (self.stacks_as_copies() && self.capped_separate_copy_limit().is_some())
+            || self
+                .features
+                .iter()
+                .any(|feature| feature.kind == Some(BuffActKind::HeatScaleDecrCounter))
     }
 
     pub(super) fn is_enhanced_passive_variant_of(&self, incoming: &Self) -> bool {

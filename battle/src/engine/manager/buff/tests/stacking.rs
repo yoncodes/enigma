@@ -481,6 +481,33 @@ fn include_type_fourteen_keeps_each_stack_as_a_capped_copy() {
 }
 
 #[test]
+fn capped_include_fourteen_grant_still_spends_a_normal_uid() {
+    init_config();
+    let hp = HpManager::default();
+    let next_uid = |refused: bool| {
+        let mut manager = BuffManager::default();
+        for _ in 0..2 {
+            manager.add_replacing_excluded(&hp, -1, -1, 11410011, 0);
+        }
+        if refused {
+            assert!(
+                manager
+                    .add_replacing_excluded(&hp, -1, -1, 11410011, 0)
+                    .added
+                    .is_none()
+            );
+        }
+        manager
+            .add_replacing_excluded(&hp, -2, -1, 304, 0)
+            .added
+            .and_then(|added| added.buff.uid)
+            .unwrap()
+    };
+
+    assert_eq!(next_uid(true), next_uid(false) + 2);
+}
+
+#[test]
 fn value_bearing_type_seven_evicts_the_oldest_same_type_instance() {
     init_config();
     let policy = BuffPolicy::for_buff_id(6200501).expect("Incantation Might definition");
