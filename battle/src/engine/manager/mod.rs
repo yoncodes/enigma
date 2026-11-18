@@ -450,7 +450,8 @@ impl BattleManagers {
                 )
             })
             .sum::<i32>();
-        let flat = snapshotted_attribute_delta(&self.buff, &self.hp, uid, attack);
+        let flat = self.buff.fixed_attribute_delta(uid, attack)
+            + snapshotted_attribute_delta(&self.buff, &self.hp, uid, attack);
         let rate = 1000
             + self.attribute.get(uid, attack)
             + self.buff.attribute_delta(uid, attack)
