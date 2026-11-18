@@ -109,10 +109,7 @@ pub fn damage_rule_ops(
         return Vec::new();
     };
     let mut ops = Vec::new();
-    if matches!(
-        DamageOverTimeKind::from_subscriber(subscriber),
-        Some(DamageOverTimeKind::Burn | DamageOverTimeKind::Dot | DamageOverTimeKind::Radiance)
-    ) && let Some(effect_type) =
+    if let Some(effect_type) =
         super::wire::find(subscriber.key.definition.opcode, &subscriber.act_type).and_then(|wire| {
             wire.markers(super::wire::WirePhase::Static)
                 .first()
@@ -529,6 +526,98 @@ mod tests {
                 RuleOp::Command(BattleCommand::Hp(_))
             ] if *effect_type == EffectType::Dot as i32
         ));
+    }
+
+    #[test]
+    fn poison_tick_emits_its_registered_marker_before_the_damage() {
+        crate::test_support::init_config();
+        let fight = Fight {
+            attacker: Some(FightTeam {
+                entitys: vec![FightEntityInfo {
+                    uid: Some(10),
+                    attr: Some(sonettobuf::HeroAttribute {
+                        attack: Some(1_000),
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }),
+            defender: Some(FightTeam {
+                entitys: vec![FightEntityInfo {
+                    uid: Some(-1),
+                    team_type: Some(2),
+                    current_hp: Some(1_000),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let mut managers = BattleManagers::seeded(&fight);
+        let pool = TargetPool::from_fight(&fight);
+        let buff_uid = managers
+            .execute_buff(crate::engine::manager::buff::BuffCommand::Grant(
+                crate::engine::manager::buff::BuffGrant {
+                    origin: crate::engine::skill::rule::CommandOrigin {
+                        domain: crate::engine::skill::rule::RuleDomain::Behavior,
+                        key: crate::engine::skill::rule::DefinitionKey::new(1, "AddBuff"),
+                    },
+                    source_uid: 10,
+                    target_uid: -1,
+                    buff_id: 11410012,
+                    amount: None,
+                    occurrences: 1,
+                    child_uid_reservations: 0,
+                },
+            ))
+            .unwrap()
+            .change
+            .added
+            .unwrap()
+            .buff
+            .uid
+            .unwrap();
+        let subscriber = BuffActSubscriber {
+            owner_uid: -1,
+            source_uid: 10,
+            buff_uid,
+            buff_id: 11410012,
+            team_type: 2,
+            owner_alive: true,
+            amount: 1,
+            key: SubscriptionKey::new(
+                EventKind::RoundEnd,
+                crate::engine::skill::rule::DefinitionKey::new(803, "Poison"),
+            ),
+            act_type: "Poison".to_owned(),
+            effect_time: 302,
+            effect_condition: 0,
+            args: vec![300, 0],
+            raw: "803#300#0".to_owned(),
+        };
+
+        let ops = damage_rule_ops(
+            &managers,
+            &pool,
+            &mut RoundDeterminism::default(),
+            &subscriber,
+        );
+        assert!(
+            matches!(
+                ops.as_slice(),
+                [
+                    RuleOp::BuffFeatureMarker {
+                        effect_type,
+                        effect_num: 11410012,
+                        buff_act_id: 803,
+                        ..
+                    },
+                    RuleOp::Command(BattleCommand::Hp(_))
+                ] if *effect_type == EffectType::Poison as i32
+            ),
+            "{ops:?}"
+        );
     }
 
     #[test]
