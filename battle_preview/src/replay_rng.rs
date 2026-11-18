@@ -22,6 +22,7 @@ pub fn opening_determinism(
     let catalog = SkillEffectCatalog::from_fight(game_data, fight);
     determinism.replace_random_buff_pools(random_buff::choices(&catalog, round));
     determinism.enqueue_hand_rank_choices(opening_hand_rank_choices(game_data, fight, round));
+    determinism.enqueue_hand_rank_choices(card_level_add_choices(round));
     let draws = round
         .team_a_cards1
         .iter()
@@ -98,6 +99,7 @@ pub fn seed_action_determinism(
     round: &FightRound,
 ) {
     runtime.seed_random_buff_pools(random_buff::choices(catalog, round));
+    runtime.seed_hand_rank_choices(card_level_add_choices(round));
     runtime.seed_skill_targets(skill_target_choices(catalog, round));
     runtime.seed_random_skills(random_skill_choices(catalog, round));
     runtime.seed_shell_moxie_choices(shell_moxie_choices(config::configs::get(), round));
@@ -107,6 +109,45 @@ pub fn seed_action_determinism(
     ));
     let (hidden, additional, indirect_heals) = crit_choices(config::configs::get(), round);
     runtime.seed_crits(hidden, additional, indirect_heals);
+}
+
+fn card_level_add_choices(round: &FightRound) -> Vec<HandRankChoice> {
+    use sonettobuf::effect_type_enum::EffectType;
+    const CARD_LEVEL_ADD: i32 = 701;
+
+    fn visit(step: &FightStep, choices: &mut Vec<HandRankChoice>) {
+        for pair in step.act_effect.windows(2) {
+            let [added, changed] = pair else { continue };
+            if added.effect_type == Some(EffectType::Cardleveladd as i32)
+                && added.buff_act_id == Some(CARD_LEVEL_ADD)
+                && changed.effect_type == Some(EffectType::Cardlevelchange as i32)
+                && let Some(owner_uid) = changed.entity.as_ref().and_then(|entity| entity.uid)
+                && let Some(hand_index) = changed
+                    .target_id
+                    .and_then(|target| target.checked_sub(1))
+                    .and_then(|index| usize::try_from(index).ok())
+            {
+                choices.push(HandRankChoice {
+                    opcode: CARD_LEVEL_ADD,
+                    owner_uid,
+                    hand_index,
+                });
+            }
+        }
+        for nested in step
+            .act_effect
+            .iter()
+            .filter_map(|effect| effect.fight_step.as_ref())
+        {
+            visit(nested, choices);
+        }
+    }
+
+    let mut choices = Vec::new();
+    for step in &round.fight_step {
+        visit(step, &mut choices);
+    }
+    choices
 }
 
 fn captured_round_draws(round: &FightRound) -> Vec<CardInfo> {
@@ -675,6 +716,46 @@ mod tests {
             temp_card: Some(temporary),
             ..Default::default()
         }
+    }
+
+    #[test]
+    fn card_level_add_choice_reads_the_captured_hand_position() {
+        use sonettobuf::effect_type_enum::EffectType;
+        let add = |buff_act_id| sonettobuf::ActEffect {
+            effect_type: Some(EffectType::Cardleveladd as i32),
+            buff_act_id,
+            ..Default::default()
+        };
+        let change = |target_id| sonettobuf::ActEffect {
+            effect_type: Some(EffectType::Cardlevelchange as i32),
+            target_id: Some(target_id),
+            entity: Some(FightEntityInfo {
+                uid: Some(10),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let round = FightRound {
+            fight_step: vec![FightStep {
+                act_effect: vec![
+                    add(None),
+                    change(4),
+                    add(Some(701)),
+                    change(7),
+                    add(Some(701)),
+                    change(1),
+                ],
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        let choice = |hand_index| HandRankChoice {
+            opcode: 701,
+            owner_uid: 10,
+            hand_index,
+        };
+
+        assert_eq!(card_level_add_choices(&round), vec![choice(6), choice(0)]);
     }
 
     #[test]

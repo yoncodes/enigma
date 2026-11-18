@@ -459,6 +459,10 @@ impl RoundDeterminism {
         self.hand_rank_choices.extend(choices);
     }
 
+    pub fn replace_hand_rank_choices(&mut self, choices: impl IntoIterator<Item = HandRankChoice>) {
+        self.hand_rank_choices = choices.into_iter().collect();
+    }
+
     pub fn take_hand_rank_choice(
         &mut self,
         opcode: i32,

@@ -283,6 +283,13 @@ impl BattleRuntime {
         self.determinism.replace_random_buff_pools(choices);
     }
 
+    pub fn seed_hand_rank_choices(
+        &mut self,
+        choices: impl IntoIterator<Item = determinism::HandRankChoice>,
+    ) {
+        self.determinism.replace_hand_rank_choices(choices);
+    }
+
     pub fn seed_shell_moxie_choices(&mut self, choices: impl IntoIterator<Item = bool>) {
         self.determinism.replace_shell_moxie_choices(choices);
     }
