@@ -301,37 +301,6 @@ fn afflatus_hit_conditions_match_only_the_attacked_target() {
 }
 
 #[test]
-fn no_action_round_checks_the_owner_card_state() {
-    init_config();
-    let condition = ParsedCondition {
-        opcode: 46301,
-        type_name: String::new(),
-        kind: ParsedConditionKind::NoActionRound,
-        raw_args: Vec::new(),
-    };
-
-    assert!(conditions_match(
-        std::slice::from_ref(&condition),
-        10,
-        &[],
-        None,
-        &TargetPool::default(),
-        TargetContext::default(),
-    ));
-    assert!(!conditions_match(
-        &[condition],
-        10,
-        &[],
-        None,
-        &TargetPool::default(),
-        TargetContext {
-            owner_played_card: true,
-            ..Default::default()
-        },
-    ));
-}
-
-#[test]
 fn full_moxie_uses_each_targets_configured_maximum() {
     init_config();
     let fight = Fight {

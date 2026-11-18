@@ -140,7 +140,6 @@ pub struct TargetContext {
     pub rejected_buff_id: i32,
     pub rejected_buff_type_id: i32,
     pub buff_overflow_amount: i32,
-    pub owner_played_card: bool,
     pub direct_skill_body: bool,
     pub action_dealt_damage: bool,
     pub action_damage_amount: i32,

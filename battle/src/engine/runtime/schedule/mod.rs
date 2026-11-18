@@ -510,6 +510,17 @@ pub fn run_ai_actions(
             );
             continue;
         }
+        managers
+            .execute_card(CardCommand::RecordAiCast(
+                crate::engine::manager::card::CardRecordAiCast {
+                    origin: CommandOrigin {
+                        domain: RuleDomain::Lifecycle,
+                        key: DefinitionKey::new(0, "AiActionCast"),
+                    },
+                    owner_uid: choice.source_uid,
+                },
+            ))
+            .map_err(|error| DrainError::Command(error.into()))?;
         let mut invocation: crate::engine::skill::action::SkillInvocation =
             crate::engine::skill::action::SkillRequest {
                 source_uid: choice.source_uid,
@@ -555,12 +566,6 @@ pub fn run_no_action_round(
 ) -> Result<DrainResult, DrainError> {
     let mut result = DrainResult::default();
     for &owner_uid in owner_uids {
-        let mut owner_context = context;
-        owner_context.owner_played_card = managers
-            .card
-            .played()
-            .iter()
-            .any(|played| played.caster_uid == owner_uid);
         append(
             &mut result,
             drain::run_group_event(
@@ -568,7 +573,7 @@ pub fn run_no_action_round(
                 pool,
                 catalog,
                 determinism,
-                owner_context,
+                context,
                 BattleEvent::Kind(EventKind::NoActionRound),
                 drain::ReactionLane::Skills,
                 Some(std::slice::from_ref(&owner_uid)),

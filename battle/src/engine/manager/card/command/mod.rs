@@ -258,6 +258,12 @@ pub struct CardSetAiQueue {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CardRecordAiCast {
+    pub origin: CommandOrigin,
+    pub owner_uid: i64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CardRemoveOwner {
     pub origin: CommandOrigin,
     pub owner_uid: i64,
@@ -471,6 +477,7 @@ pub enum CardCommand {
     RefreshAiQueue(CardRefreshAiQueue),
     PrepareAiSkill(CardPrepareAiSkill),
     SetAiQueue(CardSetAiQueue),
+    RecordAiCast(CardRecordAiCast),
     SetTeamCards(CardSetTeamCards),
     RemoveOwner(CardRemoveOwner),
     InvalidateAiOwner(CardInvalidateAiOwner),
@@ -568,6 +575,7 @@ pub enum CardChangeKind {
     AiQueueRefreshed,
     AiSkillPrepared,
     AiQueueSet,
+    AiCastRecorded,
     TeamCardsSet,
     AiOwnerRemoved,
     AiCardsInvalidated,
@@ -1311,6 +1319,17 @@ pub(super) fn execute(
             (
                 Some(set.origin),
                 CardChangeKind::AiQueueSet,
+                None,
+                None,
+                Vec::new(),
+                Vec::new(),
+            )
+        }
+        CardCommand::RecordAiCast(record) => {
+            manager.ai_casters.push(record.owner_uid);
+            (
+                Some(record.origin),
+                CardChangeKind::AiCastRecorded,
                 None,
                 None,
                 Vec::new(),

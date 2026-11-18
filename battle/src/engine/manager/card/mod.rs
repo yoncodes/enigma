@@ -32,8 +32,8 @@ pub use command::{
     CardHandLimitChange, CardInitialSovereignBoost, CardInsertSovereign, CardInvalidateAiOwner,
     CardInvalidatePlayed, CardInvalidatedAi, CardMarkTemporary, CardOpeningDraw, CardOwnerRemoval,
     CardPersistTemporary, CardPlay, CardQueueUse, CardRankChange, CardRankFailure, CardRankResult,
-    CardRecordCastChannel, CardRedealKeepRanks, CardRefillOne, CardRefillStage, CardRefreshAiQueue,
-    CardRemoveOwner, CardReplaceOwnerSkills, CardSetAiQueue, CardSetTeamCards,
+    CardRecordAiCast, CardRecordCastChannel, CardRedealKeepRanks, CardRefillOne, CardRefillStage,
+    CardRefreshAiQueue, CardRemoveOwner, CardReplaceOwnerSkills, CardSetAiQueue, CardSetTeamCards,
     CardSetUltimateAvailability, CardSetup, CardUnlockHedone, CardUseUniversal, HandCardRankUp,
     QueuedCardRankChange, QueuedCardRankUp, QueuedUseCard, SovereignBoostChange, TemporaryCardKind,
 };
@@ -64,6 +64,7 @@ pub struct CardManager {
     prepared_ai_skills: Vec<PreparedAiSkill>,
     cleaned_owners: HashSet<i64>,
     played: Vec<PlayedCard>,
+    ai_casters: Vec<i64>,
     committed_hand: Vec<CardInfo>,
     refilled: Vec<CardInfo>,
     action_phase: action_phase::ActionPhaseCards,
@@ -166,6 +167,7 @@ impl CardManager {
             prepared_ai_skills: Vec::new(),
             cleaned_owners: HashSet::new(),
             played: Vec::new(),
+            ai_casters: Vec::new(),
             committed_hand: Vec::new(),
             refilled: Vec::new(),
             action_phase: action_phase::ActionPhaseCards::default(),
@@ -193,6 +195,7 @@ impl CardManager {
             prepared_ai_skills: Vec::new(),
             cleaned_owners: HashSet::new(),
             played: Vec::new(),
+            ai_casters: Vec::new(),
             committed_hand: Vec::new(),
             refilled: Vec::new(),
             action_phase: action_phase::ActionPhaseCards::default(),
@@ -402,6 +405,7 @@ impl CardManager {
         self.deck_num = deck_num;
         self.deck_capacity = deck_num;
         self.played.clear();
+        self.ai_casters.clear();
         self.committed_hand.clear();
         self.refilled.clear();
         self.clear_action_phase();
@@ -424,6 +428,7 @@ impl CardManager {
 
     pub(super) fn begin_round(&mut self) {
         self.played.clear();
+        self.ai_casters.clear();
         self.committed_hand.clear();
         self.refilled.clear();
         self.clear_action_phase();
@@ -512,6 +517,14 @@ impl CardManager {
 
     pub fn played(&self) -> &[PlayedCard] {
         &self.played
+    }
+
+    pub(crate) fn acted_this_round(&self, owner_uid: i64) -> bool {
+        self.ai_casters.contains(&owner_uid)
+            || self
+                .played
+                .iter()
+                .any(|played| played.caster_uid == owner_uid)
     }
 
     pub(crate) fn committed_hand(&self) -> &[CardInfo] {

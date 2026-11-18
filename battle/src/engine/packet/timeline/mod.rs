@@ -885,7 +885,14 @@ fn project_change(
         BattleChange::Card(changes) if changes.kind == CardChangeKind::AiQueueRefreshed => {
             Vec::new()
         }
-        BattleChange::Card(changes) if changes.kind == CardChangeKind::AiQueueSet => Vec::new(),
+        BattleChange::Card(changes)
+            if matches!(
+                changes.kind,
+                CardChangeKind::AiQueueSet | CardChangeKind::AiCastRecorded
+            ) =>
+        {
+            Vec::new()
+        }
         BattleChange::Card(changes) if changes.kind == CardChangeKind::TeamCardsSet => Vec::new(),
         BattleChange::Card(changes) if changes.kind == CardChangeKind::OwnerSkillsReplaced => {
             let Some(entity) = changes.entity.as_ref() else {

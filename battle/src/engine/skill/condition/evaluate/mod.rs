@@ -1430,7 +1430,9 @@ fn condition_kind_matches(
         ParsedConditionKind::MasterHalo => condition_targets
             .iter()
             .any(|uid| has_master_halo(*uid, managers)),
-        ParsedConditionKind::NoActionRound => !context.owner_played_card,
+        ParsedConditionKind::NoActionRound => {
+            managers.is_some_and(|managers| !managers.card.acted_this_round(source_uid))
+        }
         ParsedConditionKind::Unsupported(_) => false,
     }
 }

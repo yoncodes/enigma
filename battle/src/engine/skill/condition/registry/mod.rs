@@ -987,7 +987,8 @@ condition_definitions! {
         741210, 741211, 741212, 741213, 741301, 741302, 741303, 741304, 741305,
         741306, 741307, 741401, 741402,
     ] "TriggerTypeBullet" => trigger::parse_buff_feature, event_trigger(EventKind::BuffFeatureTriggered, None);
-    [46301, 46303, 46304, 46307] "NoActRound" => trigger::parse_no_action_round, event_trigger(EventKind::NoActionRound, None);
+    [46301, 46303, 46307] "NoActRound" => trigger::parse_no_action_round, event_trigger(EventKind::NoActionRound, None);
+    [46304] "NoActRound" => trigger::parse_no_action_round, event_trigger(EventKind::RoundEndAfterSettlement, None);
     [22202, 22204, 22211] "BeAttacked" => trigger::parse_target_attacked, after_shared_hit(event_trigger(EventKind::TargetAttacked, None));
     [22209] "BeAttacked" => trigger::parse_target_attacked, psychube_after_hit_observers(event_trigger(EventKind::TargetAttacked, None));
     [22213] "BeAttacked" => trigger::parse_ally_attacked, before_publish(ally_of_attacked_target_observes(event_trigger(EventKind::SkillAction, Some(SkillPhase::HitPassives))));
