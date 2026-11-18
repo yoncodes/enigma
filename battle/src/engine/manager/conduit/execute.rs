@@ -120,7 +120,6 @@ impl ConduitManager {
                         },
                         committed_cost: skill.cost_value,
                         cost_committed: false,
-                        activation_cost_measured: false,
                     },
                 );
                 Ok(ConduitChange::SkillBegan {
@@ -275,17 +274,6 @@ impl ConduitManager {
                 let before = *counter;
                 *counter = counter.saturating_add(change.delta).max(0);
                 let after = *counter;
-                if change.kind == ConduitCounterKind::EnergyAccumulation
-                    && let Some(pending) = self
-                        .pending_activations
-                        .get_mut(&(change.source_uid, change.skill_id))
-                        .filter(|pending| {
-                            pending.event.activation_cost == 0 && !pending.activation_cost_measured
-                        })
-                {
-                    pending.event.activation_cost = before;
-                    pending.activation_cost_measured = true;
-                }
                 Ok(ConduitChange::CounterChanged {
                     origin: change.origin,
                     source_uid: change.source_uid,
@@ -331,7 +319,6 @@ impl ConduitManager {
                 pending.event.power_id = 0;
                 pending.event.activation_cost = spent;
                 pending.event.spent = spent;
-                pending.activation_cost_measured = true;
                 Ok(ConduitChange::PowersCleared {
                     origin,
                     source_uid,
