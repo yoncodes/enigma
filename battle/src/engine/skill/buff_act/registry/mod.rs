@@ -154,6 +154,7 @@ pub enum BuffActKind {
     AttrOnlyCalDamageBeAttacked,
     AttrOnlyCalDamageBeAttackedType,
     AttrOnlyCalDamageInExtra,
+    UltimateAttribute,
     AttrOnlyCalDamageHpReplaceAttackCalSkillDamage,
     AttrOnlyCalDamageReplaceAttr,
     AttrOnlyCalDamageReplaceAttrAdCreator,
@@ -829,6 +830,11 @@ buff_act_definitions! {
         ],
         frame: CausingFrame,
         transaction: super::attr::transaction_rule_ops, wire: (super::wire::BuffActWireDefinition::add_refresh(DefinitionKey::new(100, "Attr"), &[EffectType::Attr as i32]).with_attr_max_hp());
+    (108, "Attr") => UltimateAttribute,
+        effect_time_subscription: false,
+        supports: super::ultimate_attribute::supports,
+        state_consumer: true,
+        wire: (super::wire::BuffActWireDefinition::add_refresh(DefinitionKey::new(108, "Attr"), &[EffectType::Attr as i32]));
     (111, "Attr") => AttrOnlyCalDamageBasicAttacked,
         effect_time_subscription: false,
         supports: super::attr_only_cal_damage_attack::supports_basic_attacked,

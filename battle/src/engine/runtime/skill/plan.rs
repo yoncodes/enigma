@@ -851,6 +851,13 @@ pub(super) fn damage_ops(
                 &managers.hp,
             );
         let mut attack_attributes = target_modifiers.primary_attack_attributes();
+        attack_attributes.extend(
+            crate::engine::skill::buff_act::ultimate_attribute::attributes(
+                managers,
+                source_uid,
+                is_big_skill,
+            ),
+        );
         if target_count_damage_bonus != 0 {
             attack_attributes.push((
                 crate::engine::entity::attr::AttrId::DmgBonus,
@@ -1375,6 +1382,13 @@ pub(super) fn plan_crits(
         .into_iter()
         .map(|target_uid| {
             let mut attack_attributes = execution.modifiers.attack_attributes.clone();
+            attack_attributes.extend(
+                crate::engine::skill::buff_act::ultimate_attribute::attributes(
+                    managers,
+                    source_uid,
+                    is_big_skill,
+                ),
+            );
             attack_attributes.extend(
                 crate::engine::skill::buff_act::incoming_target_attack_attributes(
                     managers,
