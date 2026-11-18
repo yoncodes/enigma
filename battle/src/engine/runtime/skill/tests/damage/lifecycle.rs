@@ -216,6 +216,80 @@ fn bloodlust_applies_leech_efficacy_modifiers_to_committed_damage() {
 }
 
 #[test]
+fn attack_leech_rate_heals_from_each_hit() {
+    crate::test_support::init_config();
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                current_hp: Some(100),
+                attr: Some(HeroAttribute {
+                    hp: Some(1_000),
+                    attack: Some(1_000),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(-1),
+                current_hp: Some(10_000),
+                attr: Some(HeroAttribute {
+                    hp: Some(10_000),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    let target_before = managers.hp.current(-1);
+    let mut invocation: SkillInvocation = SkillRequest {
+        source_uid: 10,
+        skill_id: 101111,
+    }
+    .into();
+    invocation.target = SkillTarget::Explicit(-1);
+
+    let result = crate::engine::runtime::drain::run(
+        &mut managers,
+        &pool,
+        crate::engine::skill::effect::catalog::global(),
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+        [RuleOp::Skill(invocation)],
+    )
+    .unwrap();
+
+    let dealt = target_before - managers.hp.current(-1);
+    assert!(dealt > 0);
+    assert_eq!(
+        managers.hp.current(10),
+        100 + crate::engine::damage::scale_permille(dealt, 300)
+    );
+    let kinds = result
+        .outcomes
+        .iter()
+        .filter_map(|outcome| match outcome {
+            crate::engine::runtime::executor::RuleOutcome::HpBatch(batch) => Some(batch),
+            _ => None,
+        })
+        .flat_map(|batch| batch.iter().filter_map(|execution| execution.changes.hp))
+        .map(|hp| hp.effect_type)
+        .collect::<Vec<_>>();
+    assert_eq!(
+        kinds.last(),
+        Some(&(sonettobuf::effect_type_enum::EffectType::Bloodlust as i32))
+    );
+    assert_eq!(kinds.len(), 2);
+}
+
+#[test]
 fn mei_lei_er_extra_round_attack_forces_afflatus_advantage() {
     crate::test_support::init_config();
     let entity = |uid, team_type| FightEntityInfo {

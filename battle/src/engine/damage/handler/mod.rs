@@ -69,6 +69,38 @@ pub fn supports_bloodlust(behavior: &ParsedBehavior) -> bool {
     matches!(behavior.args.as_slice(), [rate] if *rate > 0)
 }
 
+pub(crate) fn leech_rate(
+    managers: &crate::engine::manager::BattleManagers,
+    source_uid: i64,
+    attack_rate: i32,
+) -> i32 {
+    attack_rate
+        .saturating_add(managers.attribute.get(source_uid, AttrId::LeechRate))
+        .saturating_add(managers.buff.attribute_delta(source_uid, AttrId::LeechRate))
+}
+
+pub(crate) fn leech_amount(
+    managers: &crate::engine::manager::BattleManagers,
+    source_uid: i64,
+    damage: i32,
+    attack_rate: i32,
+) -> i32 {
+    let efficacy = 1000_i32
+        .saturating_sub(
+            managers
+                .buff
+                .buff_act_scalar(source_uid, BuffActKind::InjuryAbsorb),
+        )
+        .max(0);
+    crate::engine::damage::scale_permille(
+        crate::engine::damage::scale_permille(
+            damage,
+            leech_rate(managers, source_uid, attack_rate),
+        ),
+        efficacy,
+    )
+}
+
 impl BehaviorHandler for Handler {
     fn references(behavior: &ParsedBehavior) -> crate::engine::skill::rule::RuleReferences {
         crate::engine::skill::rule::RuleReferences {
@@ -176,34 +208,12 @@ impl BehaviorHandler for Handler {
                 let [rate] = behavior.args.as_slice() else {
                     return None;
                 };
-                let leech_rate = rate
-                    .saturating_add(
-                        context
-                            .managers
-                            .attribute
-                            .get(source_uid, AttrId::LeechRate),
-                    )
-                    .saturating_add(
-                        context
-                            .managers
-                            .buff
-                            .attribute_delta(source_uid, AttrId::LeechRate),
-                    );
-                let efficacy = 1000_i32
-                    .saturating_sub(
-                        context
-                            .managers
-                            .buff
-                            .buff_act_scalar(source_uid, BuffActKind::InjuryAbsorb),
-                    )
-                    .max(0);
                 return Some(heal(
-                    crate::engine::damage::scale_permille(
-                        crate::engine::damage::scale_permille(
-                            context.target.action_damage_amount,
-                            leech_rate,
-                        ),
-                        efficacy,
+                    leech_amount(
+                        context.managers,
+                        source_uid,
+                        context.target.action_damage_amount,
+                        *rate,
                     ),
                     HpHealKind::Bloodlust,
                 ));

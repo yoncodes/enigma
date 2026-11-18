@@ -677,6 +677,12 @@ pub(super) fn damage_ops(
 ) -> Result<DamageOps, super::SkillOpError> {
     let source_uid = invocation.plan.source_uid;
     let skill_id = invocation.plan.skill_id;
+    let skill_bloodlust = catalog.get(effect_skill_id).is_some_and(|effect| {
+        effect.slots.iter().any(|slot| {
+            slot.behavior.spec.kind
+                == crate::engine::skill::behavior::classify::BehaviorKind::Bloodlust
+        })
+    });
     let riposte_damage = RiposteDamage::for_action(
         managers,
         pool,
@@ -1062,11 +1068,33 @@ pub(super) fn damage_ops(
                 }
             }
             crit_count += i32::from(is_crit);
+            let hit_amount = match &resolved.command {
+                HpCommand::Damage(damage) => damage.amount,
+                _ => 0,
+            };
             damage_commands.extend(crate::engine::skill::buff_act::absorb_hurt::route(
                 managers,
                 pool,
                 resolved.command,
             ));
+            if !skill_bloodlust {
+                let attack_rate = attack_attributes
+                    .iter()
+                    .filter(|(attr, _)| *attr == crate::engine::entity::attr::AttrId::LeechRate)
+                    .map(|(_, delta)| *delta)
+                    .sum();
+                let amount = damage::leech_amount(managers, source_uid, hit_amount, attack_rate);
+                if amount > 0 {
+                    damage_commands.push(HpCommand::Heal(crate::engine::manager::hp::HpHeal {
+                        origin: main_origin,
+                        source_uid,
+                        target_uid: source_uid,
+                        amount,
+                        config_effect: 0,
+                        kind: crate::engine::manager::hp::HpHealKind::Bloodlust,
+                    }));
+                }
+            }
         }
         for (_, additional, uses_extra_lane, origin) in &additional {
             if additional.requires_assassination && !assassination.assassinate {
