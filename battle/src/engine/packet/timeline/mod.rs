@@ -888,7 +888,9 @@ fn project_change(
         BattleChange::Card(changes)
             if matches!(
                 changes.kind,
-                CardChangeKind::AiQueueSet | CardChangeKind::AiCastRecorded
+                CardChangeKind::AiQueueSet
+                    | CardChangeKind::AiCastRecorded
+                    | CardChangeKind::AiHandMerged
             ) =>
         {
             Vec::new()

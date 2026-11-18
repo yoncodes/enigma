@@ -278,7 +278,54 @@ pub(crate) struct ConfiguredStartDecks {
     pub ai: Vec<CardInfo>,
     pub player: Vec<CardInfo>,
     pub used_capture: bool,
-    used_ai_capture: bool,
+    pub used_ai_capture: bool,
+}
+
+pub(crate) fn configured_ai_hand_deal(
+    fight: &Fight,
+    managers: &crate::engine::manager::BattleManagers,
+    seed_value: i32,
+) -> Vec<CardInfo> {
+    let mut current_fight = fight.clone();
+    managers.sync_entities(&mut current_fight);
+    let mut rng = StdRng::seed_from_u64(seed(&current_fight, seed_value));
+    super::ai::ai_hand_deal(&current_fight, managers.card.ai_hand(), &mut rng)
+}
+
+pub(crate) fn configured_ai_hand_queue(
+    fight: &Fight,
+    managers: &crate::engine::manager::BattleManagers,
+    skill_catalog: &crate::engine::skill::effect::SkillEffectCatalog,
+    determinism: &crate::engine::runtime::determinism::RoundDeterminism,
+    extra_ai_actions: i32,
+    seed_value: i32,
+) -> Result<super::ai::AiHandQueue, String> {
+    let mut current_fight = fight.clone();
+    managers.sync_entities(&mut current_fight);
+    let fight = &current_fight;
+    let pool = crate::engine::skill::target::TargetPool::from_fight_with_catalog(
+        managers.catalog(),
+        fight,
+    );
+    let prepared = super::prepared::cards(&pool, managers.card.prepared_ai_skills())?;
+    let mut rng = StdRng::seed_from_u64(seed(fight, seed_value).rotate_left(17));
+    let mut hand_queue = super::ai::ai_hand_queue(
+        fight,
+        managers.card.ai_hand(),
+        &managers.ex_point,
+        &managers.eureka,
+        extra_ai_actions,
+        &mut rng,
+    );
+    hand_queue.queue.extend_from_slice(&prepared);
+    resolve_configured_targets(
+        fight,
+        managers,
+        skill_catalog,
+        determinism,
+        &mut hand_queue.queue,
+    )?;
+    Ok(hand_queue)
 }
 
 pub(crate) fn configured_start_decks(

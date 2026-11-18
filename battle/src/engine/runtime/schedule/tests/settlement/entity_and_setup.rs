@@ -666,6 +666,66 @@ fn heat_tag_setup_selects_lingering_glow_over_bloodtithe() {
     );
 }
 
+#[test]
+fn enemy_hand_settlement_rewards_the_merge_its_used_card_exposes() {
+    init_config();
+    let settle = |ex_point: i32| {
+        let fight = Fight {
+            defender: Some(FightTeam {
+                entitys: vec![FightEntityInfo {
+                    uid: Some(-1),
+                    model_id: Some(100),
+                    current_hp: Some(100),
+                    ex_point: Some(ex_point),
+                    ex_point_max: Some(5),
+                    skill_group1: vec![100, 101],
+                    skill_group2: vec![200, 201],
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let pool = TargetPool::from_fight(&fight);
+        let mut managers = BattleManagers::seeded(&fight);
+        let card = |skill_id| {
+            crate::engine::manager::card::pool::card_for_owner(-1, 100, skill_id).unwrap()
+        };
+        managers
+            .execute_card(CardCommand::DealAiHand(
+                crate::engine::manager::card::CardDealAiHand {
+                    origin: CARD_PLAY_ORIGIN,
+                    cards: vec![card(100), card(200), card(100)],
+                },
+            ))
+            .unwrap();
+        managers
+            .execute_card(CardCommand::QueueAiHand(
+                crate::engine::manager::card::CardQueueAiHand {
+                    origin: CARD_PLAY_ORIGIN,
+                    queue: vec![card(200)],
+                    from_hand: vec![card(200)],
+                },
+            ))
+            .unwrap();
+        run_after_ai_round_end(
+            &mut managers,
+            &pool,
+            &SkillEffectCatalog::default(),
+            &mut RoundDeterminism::default(),
+            TargetContext::default(),
+        )
+        .unwrap();
+        (managers.card.ai_hand().to_vec(), managers.ex_point.get(-1))
+    };
+
+    let (hand, moxie) = settle(2);
+    assert_eq!(hand.len(), 1);
+    assert_eq!(hand[0].skill_id, Some(101));
+    assert_eq!(moxie, 3);
+    assert_eq!(settle(5).1, 5);
+}
+
 fn no_action_round_setup(opcode: i32) -> (TargetPool, BattleManagers, SkillEffectCatalog) {
     let entity = |uid| FightEntityInfo {
         uid: Some(uid),

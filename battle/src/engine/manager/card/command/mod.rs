@@ -257,6 +257,19 @@ pub struct CardSetAiQueue {
     pub cards: Vec<CardInfo>,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct CardDealAiHand {
+    pub origin: CommandOrigin,
+    pub cards: Vec<CardInfo>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct CardQueueAiHand {
+    pub origin: CommandOrigin,
+    pub queue: Vec<CardInfo>,
+    pub from_hand: Vec<CardInfo>,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CardRecordAiCast {
     pub origin: CommandOrigin,
@@ -478,6 +491,11 @@ pub enum CardCommand {
     PrepareAiSkill(CardPrepareAiSkill),
     SetAiQueue(CardSetAiQueue),
     RecordAiCast(CardRecordAiCast),
+    DealAiHand(CardDealAiHand),
+    QueueAiHand(CardQueueAiHand),
+    SettleAiHand {
+        origin: CommandOrigin,
+    },
     SetTeamCards(CardSetTeamCards),
     RemoveOwner(CardRemoveOwner),
     InvalidateAiOwner(CardInvalidateAiOwner),
@@ -576,6 +594,7 @@ pub enum CardChangeKind {
     AiSkillPrepared,
     AiQueueSet,
     AiCastRecorded,
+    AiHandMerged,
     TeamCardsSet,
     AiOwnerRemoved,
     AiCardsInvalidated,
@@ -1323,6 +1342,40 @@ pub(super) fn execute(
                 None,
                 Vec::new(),
                 Vec::new(),
+            )
+        }
+        CardCommand::DealAiHand(deal) => {
+            let owners = manager.deal_ai_hand(deal.cards);
+            (
+                Some(deal.origin),
+                CardChangeKind::AiHandMerged,
+                None,
+                None,
+                Vec::new(),
+                owners,
+            )
+        }
+        CardCommand::QueueAiHand(queue) => {
+            manager.queue_ai_hand(queue.queue, queue.from_hand);
+            ai_queue = Some(manager.ai_queue().to_vec());
+            (
+                Some(queue.origin),
+                CardChangeKind::AiQueueSet,
+                None,
+                None,
+                Vec::new(),
+                Vec::new(),
+            )
+        }
+        CardCommand::SettleAiHand { origin } => {
+            let owners = manager.settle_ai_hand();
+            (
+                Some(origin),
+                CardChangeKind::AiHandMerged,
+                None,
+                None,
+                Vec::new(),
+                owners,
             )
         }
         CardCommand::RecordAiCast(record) => {

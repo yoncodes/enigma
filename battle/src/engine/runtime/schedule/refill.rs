@@ -431,15 +431,105 @@ pub fn run_ai_queue_refresh(
         domain: RuleDomain::Lifecycle,
         key: DefinitionKey::new(0, "AiQueueRefresh"),
     };
-    let mut result = drain::run(
+    run_rewarded_ai_card_command(
+        managers,
+        pool,
+        catalog,
+        determinism,
+        context,
+        origin,
+        CardCommand::RefreshAiQueue(CardRefreshAiQueue { origin, cards }),
+    )
+}
+
+pub fn run_ai_hand_deal(
+    managers: &mut BattleManagers,
+    pool: &TargetPool,
+    catalog: &SkillEffectCatalog,
+    determinism: &mut RoundDeterminism,
+    context: TargetContext,
+    cards: Vec<sonettobuf::CardInfo>,
+) -> Result<DrainResult, DrainError> {
+    let origin = CommandOrigin {
+        domain: RuleDomain::Lifecycle,
+        key: DefinitionKey::new(0, "AiHandDeal"),
+    };
+    run_rewarded_ai_card_command(
+        managers,
+        pool,
+        catalog,
+        determinism,
+        context,
+        origin,
+        CardCommand::DealAiHand(crate::engine::manager::card::CardDealAiHand { origin, cards }),
+    )
+}
+
+pub fn run_ai_hand_queue(
+    managers: &mut BattleManagers,
+    pool: &TargetPool,
+    catalog: &SkillEffectCatalog,
+    determinism: &mut RoundDeterminism,
+    context: TargetContext,
+    queue: crate::engine::manager::card::ai::AiHandQueue,
+) -> Result<DrainResult, DrainError> {
+    drain::run(
         managers,
         pool,
         catalog,
         determinism,
         context,
         [RuleOp::Command(BattleCommand::Card(
-            CardCommand::RefreshAiQueue(CardRefreshAiQueue { origin, cards }),
+            CardCommand::QueueAiHand(crate::engine::manager::card::CardQueueAiHand {
+                origin: CommandOrigin {
+                    domain: RuleDomain::Lifecycle,
+                    key: DefinitionKey::new(0, "AiHandQueue"),
+                },
+                queue: queue.queue,
+                from_hand: queue.from_hand,
+            }),
         ))],
+    )
+}
+
+pub fn run_ai_hand_settlement(
+    managers: &mut BattleManagers,
+    pool: &TargetPool,
+    catalog: &SkillEffectCatalog,
+    determinism: &mut RoundDeterminism,
+    context: TargetContext,
+) -> Result<DrainResult, DrainError> {
+    let origin = CommandOrigin {
+        domain: RuleDomain::Lifecycle,
+        key: DefinitionKey::new(0, "AiHandSettlement"),
+    };
+    run_rewarded_ai_card_command(
+        managers,
+        pool,
+        catalog,
+        determinism,
+        context,
+        origin,
+        CardCommand::SettleAiHand { origin },
+    )
+}
+
+fn run_rewarded_ai_card_command(
+    managers: &mut BattleManagers,
+    pool: &TargetPool,
+    catalog: &SkillEffectCatalog,
+    determinism: &mut RoundDeterminism,
+    context: TargetContext,
+    origin: CommandOrigin,
+    command: CardCommand,
+) -> Result<DrainResult, DrainError> {
+    let mut result = drain::run(
+        managers,
+        pool,
+        catalog,
+        determinism,
+        context,
+        [RuleOp::Command(BattleCommand::Card(command))],
     )?;
     let composed_owners = result
         .outcomes

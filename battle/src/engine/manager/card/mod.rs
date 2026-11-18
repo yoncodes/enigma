@@ -2,6 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 mod action_phase;
 pub mod ai;
+mod ai_hand;
 pub mod change;
 mod command;
 mod conduit_energy;
@@ -28,12 +29,13 @@ pub use command::{
     CARD_ENERGY_CLEAR_ORIGIN, CARD_PLAY_ORIGIN, CardAddCrystal, CardAddGenerated, CardAddHedone,
     CardAddPrecast, CardAddTemporary, CardAddUniversal, CardChangeKind, CardChangeToTemporary,
     CardChanges, CardCommand, CardCommandError, CardConsumeForEffect, CardConsumptionKind,
-    CardDeckRankUpRange, CardDraw, CardEnchantHand, CardEnergyAllocation, CardEnergyChange,
-    CardHandLimitChange, CardInitialSovereignBoost, CardInsertSovereign, CardInvalidateAiOwner,
-    CardInvalidatePlayed, CardInvalidatedAi, CardMarkTemporary, CardOpeningDraw, CardOwnerRemoval,
-    CardPersistTemporary, CardPlay, CardQueueUse, CardRankChange, CardRankFailure, CardRankResult,
-    CardRecordAiCast, CardRecordCastChannel, CardRedealKeepRanks, CardRefillOne, CardRefillStage,
-    CardRefreshAiQueue, CardRemoveOwner, CardReplaceOwnerSkills, CardSetAiQueue, CardSetTeamCards,
+    CardDealAiHand, CardDeckRankUpRange, CardDraw, CardEnchantHand, CardEnergyAllocation,
+    CardEnergyChange, CardHandLimitChange, CardInitialSovereignBoost, CardInsertSovereign,
+    CardInvalidateAiOwner, CardInvalidatePlayed, CardInvalidatedAi, CardMarkTemporary,
+    CardOpeningDraw, CardOwnerRemoval, CardPersistTemporary, CardPlay, CardQueueAiHand,
+    CardQueueUse, CardRankChange, CardRankFailure, CardRankResult, CardRecordAiCast,
+    CardRecordCastChannel, CardRedealKeepRanks, CardRefillOne, CardRefillStage, CardRefreshAiQueue,
+    CardRemoveOwner, CardReplaceOwnerSkills, CardSetAiQueue, CardSetTeamCards,
     CardSetUltimateAvailability, CardSetup, CardUnlockHedone, CardUseUniversal, HandCardRankUp,
     QueuedCardRankChange, QueuedCardRankUp, QueuedUseCard, SovereignBoostChange, TemporaryCardKind,
 };
@@ -65,6 +67,8 @@ pub struct CardManager {
     cleaned_owners: HashSet<i64>,
     played: Vec<PlayedCard>,
     ai_casters: Vec<i64>,
+    ai_hand: Vec<CardInfo>,
+    ai_hand_queued: Vec<CardInfo>,
     committed_hand: Vec<CardInfo>,
     refilled: Vec<CardInfo>,
     action_phase: action_phase::ActionPhaseCards,
@@ -168,6 +172,8 @@ impl CardManager {
             cleaned_owners: HashSet::new(),
             played: Vec::new(),
             ai_casters: Vec::new(),
+            ai_hand: Vec::new(),
+            ai_hand_queued: Vec::new(),
             committed_hand: Vec::new(),
             refilled: Vec::new(),
             action_phase: action_phase::ActionPhaseCards::default(),
@@ -196,6 +202,8 @@ impl CardManager {
             cleaned_owners: HashSet::new(),
             played: Vec::new(),
             ai_casters: Vec::new(),
+            ai_hand: Vec::new(),
+            ai_hand_queued: Vec::new(),
             committed_hand: Vec::new(),
             refilled: Vec::new(),
             action_phase: action_phase::ActionPhaseCards::default(),
@@ -320,6 +328,7 @@ impl CardManager {
     }
 
     fn invalidate_ai_owner(&mut self, owner_uid: i64) -> Vec<(i32, CardInfo)> {
+        self.remove_ai_hand_owner(owner_uid);
         self.prepared_ai_skills
             .retain(|prepared| prepared.owner_uid != owner_uid);
         let mut card_index = 0;
@@ -349,6 +358,7 @@ impl CardManager {
     }
 
     fn remove_ai_owner_cards(&mut self, owner_uid: i64) -> Option<Vec<i64>> {
+        self.remove_ai_hand_owner(owner_uid);
         self.prepared_ai_skills
             .retain(|prepared| prepared.owner_uid != owner_uid);
         if !self.cleaned_owners.insert(owner_uid) {
@@ -406,6 +416,8 @@ impl CardManager {
         self.deck_capacity = deck_num;
         self.played.clear();
         self.ai_casters.clear();
+        self.ai_hand.clear();
+        self.ai_hand_queued.clear();
         self.committed_hand.clear();
         self.refilled.clear();
         self.clear_action_phase();

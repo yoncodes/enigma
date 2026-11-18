@@ -368,6 +368,10 @@ fn run_round_end_transition(
     push_cue(&mut result.frames, RoundCue::SmallRoundEnd { team_type: 1 });
     append(
         &mut result,
+        run_ai_hand_settlement(managers, pool, catalog, determinism, context)?,
+    );
+    append(
+        &mut result,
         run_committed_terminal_conduit_roster_refresh(
             managers,
             pool,

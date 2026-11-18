@@ -154,6 +154,44 @@ mod tests {
     }
 
     #[test]
+    fn reset_mode_drops_the_old_form_hand() {
+        let mut managers = managers_with_ai_action();
+        let card = CardInfo {
+            uid: Some(-7),
+            skill_id: Some(251401),
+            ..Default::default()
+        };
+        managers
+            .execute_card(CardCommand::DealAiHand(
+                crate::engine::manager::card::CardDealAiHand {
+                    origin: ORIGIN,
+                    cards: vec![card.clone()],
+                },
+            ))
+            .unwrap();
+        managers
+            .execute_card(CardCommand::QueueAiHand(
+                crate::engine::manager::card::CardQueueAiHand {
+                    origin: ORIGIN,
+                    queue: vec![card.clone()],
+                    from_hand: vec![card],
+                },
+            ))
+            .unwrap();
+
+        execute(&mut managers, command(1)).unwrap();
+
+        assert!(managers.card.ai_hand().is_empty());
+        assert!(
+            managers
+                .execute_card(CardCommand::SettleAiHand { origin: ORIGIN })
+                .unwrap()
+                .composed_owners
+                .is_empty()
+        );
+    }
+
+    #[test]
     fn preserve_mode_keeps_ai_actions_without_reset_markers() {
         let mut managers = managers_with_ai_action();
 

@@ -644,7 +644,8 @@ impl BattleRuntime {
                 .determinism
                 .take_next_ai_card_snapshot()
                 .map(crate::engine::manager::card::start::CapturedDeckSeed::NextAi);
-            let cards = crate::engine::manager::card::start::configured_start_decks(
+            let replays_capture = captured.is_some();
+            let decks = crate::engine::manager::card::start::configured_start_decks(
                 &self.fight,
                 &self.managers,
                 catalog,
@@ -652,23 +653,71 @@ impl BattleRuntime {
                 extra_ai_actions,
                 self.round_state.cur_round,
                 captured,
-            )?
-            .ai;
-            battle_catalog.extend_skill_roots(
-                catalog,
-                cards.iter().filter_map(|card| card.skill_id),
-                std::iter::empty(),
-            );
-            fight_steps.extend(project_result(
+            )?;
+            let refresh = if decks.used_ai_capture || replays_capture {
+                battle_catalog.extend_skill_roots(
+                    catalog,
+                    decks.ai.iter().filter_map(|card| card.skill_id),
+                    std::iter::empty(),
+                );
                 schedule::run_ai_queue_refresh(
                     &mut self.managers,
                     &pool,
                     catalog,
                     &mut self.determinism,
                     context,
-                    cards,
+                    decks.ai,
                 )
-                .map_err(|error| format!("{error:?}"))?,
+                .map_err(|error| format!("{error:?}"))?
+            } else {
+                let dealt = crate::engine::manager::card::start::configured_ai_hand_deal(
+                    &self.fight,
+                    &self.managers,
+                    self.round_state.cur_round,
+                );
+                battle_catalog.extend_skill_roots(
+                    catalog,
+                    dealt.iter().filter_map(|card| card.skill_id),
+                    std::iter::empty(),
+                );
+                let mut refresh = schedule::run_ai_hand_deal(
+                    &mut self.managers,
+                    &pool,
+                    catalog,
+                    &mut self.determinism,
+                    context,
+                    dealt,
+                )
+                .map_err(|error| format!("{error:?}"))?;
+                let queue = crate::engine::manager::card::start::configured_ai_hand_queue(
+                    &self.fight,
+                    &self.managers,
+                    catalog,
+                    &self.determinism,
+                    extra_ai_actions,
+                    self.round_state.cur_round,
+                )?;
+                battle_catalog.extend_skill_roots(
+                    catalog,
+                    queue.queue.iter().filter_map(|card| card.skill_id),
+                    std::iter::empty(),
+                );
+                let queued = schedule::run_ai_hand_queue(
+                    &mut self.managers,
+                    &pool,
+                    catalog,
+                    &mut self.determinism,
+                    context,
+                    queue,
+                )
+                .map_err(|error| format!("{error:?}"))?;
+                refresh.outcomes.extend(queued.outcomes);
+                refresh.events.extend(queued.events);
+                refresh.frames.extend(queued.frames);
+                refresh
+            };
+            fight_steps.extend(project_result(
+                refresh,
                 fight_version,
                 absorb_hurt_map_layout,
             )?);
