@@ -929,6 +929,15 @@ impl BuffManager {
         } else {
             0
         };
+        let replacement_uids = if action == GrantAction::ReplaceExisting {
+            self.buffs
+                .iter()
+                .filter(|active| policy.matches(active, route))
+                .filter_map(|active| active.buff.uid)
+                .collect::<Vec<_>>()
+        } else {
+            Vec::new()
+        };
         let uid = match action {
             GrantAction::Reject(_) | GrantAction::Resist => Some(super::uid_policy::plan(
                 self,
@@ -964,7 +973,12 @@ impl BuffManager {
                         | GrantInput::ChildInstance { .. }
                         | GrantInput::TriggeredChildInstance { .. }
                 ) || (!request.force_normal_uid
-                    && policy.uid.allocation.uses_child_for_apply(args)),
+                    && (policy.uid.allocation.uses_child_for_apply(args)
+                        || super::uid_policy::follows_replaced_halo_copies(
+                            self,
+                            &replacement_uids,
+                            route.target_uid,
+                        ))),
                 normal_reserve_before,
                 reserve_before,
             )),
@@ -1238,15 +1252,6 @@ impl BuffManager {
         let initial_act_info =
             definition.initial_planned_act_info(inputs.source_attack, &grant_values);
         let initial_params = self.plan_grant_params(&definition, route.source_uid);
-        let replacement_uids = if action == GrantAction::ReplaceExisting {
-            self.buffs
-                .iter()
-                .filter(|active| policy.matches(active, route))
-                .filter_map(|active| active.buff.uid)
-                .collect()
-        } else {
-            Vec::new()
-        };
         let transition_progress = (policy.storage == BuffStorage::Single
             && !unconditional
             && BuffManager::tracks_single_transition(&definition)

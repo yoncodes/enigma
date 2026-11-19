@@ -76,6 +76,10 @@ impl BuffUidAllocator {
     pub(super) fn last_was_child(&self) -> bool {
         self.last_lane == Some(UidLane::Child)
     }
+
+    pub(super) fn last_child(&self) -> Option<i64> {
+        self.last_was_child().then_some(self.last)
+    }
 }
 
 #[cfg(test)]

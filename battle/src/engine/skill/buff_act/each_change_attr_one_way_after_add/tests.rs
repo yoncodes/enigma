@@ -168,6 +168,41 @@ fn regrant_publishes_fresh_and_replaced_copies_through_one_per_ally_fanout() {
 }
 
 #[test]
+fn regrant_right_after_its_own_copies_continues_the_child_uid_lane() {
+    let uids = |changes: &crate::engine::manager::buff::BuffChanges| {
+        let master = changes
+            .change
+            .added
+            .as_ref()
+            .and_then(|added| added.buff.uid);
+        let copies = changes
+            .fanout
+            .iter()
+            .flat_map(|fanout| {
+                fanout
+                    .added
+                    .iter()
+                    .chain(fanout.allies.iter().filter_map(|ally| ally.added.as_ref()))
+            })
+            .filter_map(|copy| copy.buff.uid)
+            .collect::<Vec<_>>();
+        (master.unwrap(), copies)
+    };
+    let mut managers = managers();
+    let (first, first_copies) = uids(&grant(&mut managers));
+    assert_eq!(first_copies, [first + 1, first + 2, first + 3]);
+    let (second, second_copies) = uids(&grant(&mut managers));
+    assert_eq!(second, first + 4);
+    assert_eq!(second_copies, [second + 1, second + 2, second + 3]);
+
+    managers.buff.add(&managers.hp, -4, -1, 31560185, 0);
+    let unrelated = managers.buff.buff_id_uid(-1, 31560185).unwrap();
+    assert_eq!(unrelated, second + 5);
+    let (third, _) = uids(&grant(&mut managers));
+    assert_eq!(third, unrelated + 2);
+}
+
+#[test]
 fn supports_only_the_proven_conversion_shape() {
     assert!(supports(&[231, 205, 1_000, 750]));
     assert!(!supports(&[231, 205, 1_000]));
