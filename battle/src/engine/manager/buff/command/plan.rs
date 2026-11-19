@@ -154,8 +154,9 @@ impl BuffManager {
                     },
                     inputs,
                 )?;
+                plan.initial_act_info_markers = Some(stateful.act_info.clone());
                 plan.initial_act_info = Some(stateful.act_info);
-                plan.initial_act_info_markers = Some(Vec::new());
+                plan.snapshot_markers = true;
                 (grant.origin, BuffPlanAction::Grant(Box::new(plan)))
             }
             BuffCommand::GrantUsingChildUid(grant) => (
@@ -1293,6 +1294,7 @@ impl BuffManager {
             initial_params,
             initial_act_info,
             initial_act_info_markers: None,
+            snapshot_markers: false,
             dot_snapshots,
             grant_values,
             attr_snapshots: Vec::new(),

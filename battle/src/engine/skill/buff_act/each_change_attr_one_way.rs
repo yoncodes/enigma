@@ -125,17 +125,6 @@ pub fn transaction_rule_ops(
     }
     let mut ops = Vec::new();
     for (feature, attr, value) in snapshots {
-        ops.push((
-            feature.clone(),
-            RuleOp::BuffActInfoMarker(BuffActInfoMarkerResult {
-                target_uid: 0,
-                buff_uid: change.buff_uid,
-                act_id: feature.act_id().unwrap_or_default(),
-                params: Vec::new(),
-                str_param: Some(format!("{}#{value}", attr.id())),
-                team_type: 0,
-            }),
-        ));
         if attr == AttrId::Hp && value != 0 {
             let Some(origin) = buff_act::feature_command_origin(&feature) else {
                 continue;
@@ -253,6 +242,20 @@ mod tests {
                 vec!["102#310", "101#1550"]
             }
         );
+        assert_eq!(
+            added
+                .pre_markers
+                .iter()
+                .map(|marker| (marker.target_uid, marker.str_param.as_deref()))
+                .collect::<Vec<_>>(),
+            added
+                .buff
+                .act_info
+                .iter()
+                .map(|info| (0, info.str_param.as_deref()))
+                .collect::<Vec<_>>()
+        );
+        assert!(changes.leading_pre_markers);
         changes
             .events()
             .into_iter()
@@ -265,20 +268,55 @@ mod tests {
         let mut managers = managers(4_000, 20_000, 2_000);
         let event = grant(&mut managers, 31460131);
         let ops = transaction_rule_ops(&managers, &event);
-        let markers = ops
-            .iter()
-            .filter_map(|(_, op)| match op {
-                RuleOp::BuffActInfoMarker(marker) => marker.str_param.clone(),
-                _ => None,
-            })
-            .collect::<Vec<_>>();
-        assert_eq!(markers, ["102#250", "101#1250"]);
+        assert!(
+            !ops.iter()
+                .any(|(_, op)| matches!(op, RuleOp::BuffActInfoMarker(_)))
+        );
         assert!(ops.iter().any(|(_, op)| matches!(
             op,
             RuleOp::Command(BattleCommand::Hp(HpCommand::AdjustMax(change)))
                 if change.delta == 1_250
         )));
         assert_eq!(managers.origin_attribute(11, AttrId::Attack), 1_250);
+    }
+
+    #[test]
+    fn source_relative_grant_leads_with_target_zero_snapshot_markers() {
+        let mut managers = managers(4_000, 20_000, 2_000);
+        let act_info = definition_snapshot(&managers, 31460131, 10).unwrap();
+        let changes = managers
+            .execute_buff(BuffCommand::GrantSourceRelative(
+                crate::engine::manager::buff::SourceRelativeBuffGrant {
+                    grant: BuffGrant {
+                        origin: CommandOrigin {
+                            domain: RuleDomain::BuffAct,
+                            key: DefinitionKey::new(1131, "EachChangeAttrOneWay"),
+                        },
+                        source_uid: 10,
+                        target_uid: 11,
+                        buff_id: 31460131,
+                        amount: None,
+                        occurrences: 1,
+                        child_uid_reservations: 0,
+                    },
+                    act_info: act_info.clone(),
+                    relation: None,
+                },
+            ))
+            .unwrap();
+        let added = changes.change.added.as_ref().expect("buff added");
+        assert_eq!(
+            added
+                .pre_markers
+                .iter()
+                .map(|marker| (marker.target_uid, marker.str_param.clone()))
+                .collect::<Vec<_>>(),
+            act_info
+                .iter()
+                .map(|info| (0, info.str_param.clone()))
+                .collect::<Vec<_>>()
+        );
+        assert!(changes.leading_pre_markers);
     }
 
     #[test]
@@ -325,15 +363,20 @@ mod tests {
             };
             let buff_uid = change.buff_uid;
             assert!(
-                transaction_rule_ops(&managers, &added)
+                changes
+                    .change
+                    .added
+                    .as_ref()
+                    .expect("buff added")
+                    .pre_markers
                     .iter()
-                    .any(|(_, op)| {
-                        matches!(
-                            op,
-                            RuleOp::BuffActInfoMarker(marker)
-                                if marker.str_param.as_deref() == Some(expected_str.as_str())
-                        )
-                    })
+                    .any(|marker| marker.target_uid == 0
+                        && marker.str_param.as_deref() == Some(expected_str.as_str()))
+            );
+            assert!(
+                !transaction_rule_ops(&managers, &added)
+                    .iter()
+                    .any(|(_, op)| matches!(op, RuleOp::BuffActInfoMarker(_)))
             );
             assert_eq!(
                 managers.origin_attribute(11, AttrId::CriticalDmg),

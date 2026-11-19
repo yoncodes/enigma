@@ -13,10 +13,17 @@ impl BuffManager {
                 let burn = plan.burn_application();
                 let refresh = plan.layer_refresh.is_some();
                 let replaced_uids = plan.replacement_uids.clone();
+                let snapshot_markers = plan.snapshot_markers;
                 let change = self.commit_grant_plan(hp, *plan);
                 let mut changes = BuffChanges::new(catalog, origin, change)
                     .with_refresh_initial_state_markers(markers);
                 changes.replaced_uids = replaced_uids;
+                changes.leading_pre_markers = snapshot_markers
+                    && changes
+                        .change
+                        .added
+                        .as_ref()
+                        .is_some_and(|added| !added.pre_markers.is_empty());
                 if changes.change.rejected.is_none() && (refresh || changes.change.added.is_some())
                 {
                     changes.burn_application = burn;
@@ -521,7 +528,11 @@ impl BuffManager {
             }
         }
         if let (Some(added), Some(act_info)) = (change.added.as_mut(), initial_act_info_markers) {
-            let target_uid = added.target_uid;
+            let target_uid = if plan.snapshot_markers {
+                0
+            } else {
+                added.target_uid
+            };
             let buff_uid = added.buff.uid.unwrap_or_default();
             added
                 .pre_markers

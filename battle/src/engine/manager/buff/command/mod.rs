@@ -560,6 +560,21 @@ impl BuffPlan {
         plan.attr_snapshots.extend(values);
     }
 
+    pub(crate) fn initialize_added_snapshot_act_info(&mut self, values: Vec<BuffActInfo>) {
+        if values.is_empty() {
+            return;
+        }
+        let plan = match &mut self.action {
+            BuffPlanAction::Grant(plan) => plan.as_mut(),
+            _ => return,
+        };
+        plan.initial_act_info
+            .get_or_insert_with(Vec::new)
+            .extend(values.iter().cloned());
+        plan.initial_act_info_markers = Some(values);
+        plan.snapshot_markers = true;
+    }
+
     pub(crate) fn initialize_added_act_info_without_markers(&mut self, values: Vec<BuffActInfo>) {
         if values.is_empty() {
             return;
@@ -831,6 +846,7 @@ pub(super) struct GrantPlan {
     initial_params: Option<String>,
     initial_act_info: Option<Vec<BuffActInfo>>,
     initial_act_info_markers: Option<Vec<BuffActInfo>>,
+    snapshot_markers: bool,
     dot_snapshots: Vec<super::state::DotSnapshotPlan>,
     grant_values: Vec<(i32, i32)>,
     attr_snapshots: Vec<(i64, crate::engine::entity::attr::AttrId, i32)>,

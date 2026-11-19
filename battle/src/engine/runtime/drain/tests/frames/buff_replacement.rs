@@ -30,6 +30,15 @@ fn max_hp_fixture_at(current_hp: i32) -> (TargetPool, BattleManagers) {
 }
 
 fn drain_grant(pool: &TargetPool, managers: &mut BattleManagers, buff_id: i32) -> DrainResult {
+    drain_grant_from(pool, managers, 10, buff_id)
+}
+
+fn drain_grant_from(
+    pool: &TargetPool,
+    managers: &mut BattleManagers,
+    source_uid: i64,
+    buff_id: i32,
+) -> DrainResult {
     let mut frames = Vec::new();
     let root = push_root(&mut frames, FrameOwner::Command, FrameTrigger::Active);
     let mut queue = VecDeque::from([QueuedOp {
@@ -38,7 +47,7 @@ fn drain_grant(pool: &TargetPool, managers: &mut BattleManagers, buff_id: i32) -
                 domain: RuleDomain::Behavior,
                 key: DefinitionKey::new(1, "AddBuff"),
             },
-            source_uid: 10,
+            source_uid,
             target_uid: 10,
             buff_id,
             amount: None,
@@ -218,4 +227,71 @@ fn rank_down_self_replacement_keeps_current_hp_on_the_add() {
         ]
     );
     assert_eq!(managers.hp.current(10), 630);
+}
+
+#[test]
+fn one_way_snapshot_markers_lead_the_add_and_the_replacement() {
+    use sonettobuf::effect_type_enum::EffectType;
+    crate::test_support::init_config();
+    let hero = |uid| FightEntityInfo {
+        uid: Some(uid),
+        team_type: Some(1),
+        current_hp: Some(1000),
+        attr: Some(HeroAttribute {
+            hp: Some(1000),
+            attack: Some(1000),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let fight = Fight {
+        version: Some(7),
+        attacker: Some(FightTeam {
+            entitys: vec![hero(10), hero(20)],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    let kinds = |result: &DrainResult| {
+        wire(result)
+            .into_iter()
+            .filter_map(|(effect_type, _, buff_act_id)| {
+                [
+                    (EffectType::Buffactinfoupdate as i32, "info"),
+                    (EffectType::Maxhpchange as i32, "max"),
+                    (EffectType::Currenthpchange as i32, "current"),
+                    (EffectType::Buffdel as i32, "del"),
+                    (EffectType::Buffadd as i32, "add"),
+                ]
+                .into_iter()
+                .find(|(kind, _)| *kind == effect_type)
+                .map(|(_, name)| {
+                    if buff_act_id == 0 {
+                        name.to_owned()
+                    } else {
+                        format!("{name}({buff_act_id})")
+                    }
+                })
+            })
+            .collect::<Vec<_>>()
+    };
+
+    let fresh = drain_grant_from(&pool, &mut managers, 20, 31460131);
+    assert_eq!(kinds(&fresh), ["info", "info", "max", "current", "add"]);
+
+    let replaced = drain_grant_from(&pool, &mut managers, 20, 31460131);
+    assert_eq!(
+        kinds(&replaced),
+        [
+            "info",
+            "info",
+            "max(1131)",
+            "max(1131)",
+            "del",
+            "max",
+            "add"
+        ]
+    );
 }

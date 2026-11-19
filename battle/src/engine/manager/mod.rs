@@ -414,7 +414,7 @@ impl BattleManagers {
                     self, buff_id, source_uid,
                 )
         {
-            plan.initialize_added_act_info_without_markers(act_info);
+            plan.initialize_added_snapshot_act_info(act_info);
         }
         if let Some((source_uid, target_uid, buff_id, removed_buff_uids)) =
             plan.after_add_attribute_route()

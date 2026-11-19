@@ -19,6 +19,7 @@ pub struct BuffChanges {
     pub act_info_markers: Vec<BuffActInfoMarkerResult>,
     pub publish_part: BuffPublishPart,
     pub replaced_uids: Vec<i64>,
+    pub leading_pre_markers: bool,
     wire_visible: bool,
 }
 
@@ -196,29 +197,33 @@ impl BuffChanges {
             act_info_markers: Vec::new(),
             publish_part: BuffPublishPart::Whole,
             replaced_uids: Vec::new(),
+            leading_pre_markers: false,
             wire_visible: true,
         }
     }
 
     pub fn replacement_parts(&self) -> Option<BuffReplacementParts> {
         let added = self.change.added.as_ref()?;
-        if !self.wire_visible
-            || self.change.rejected.is_some()
-            || !self.lifecycle_transitions.is_empty()
-            || self.change.removed.is_empty()
-            || !self.change.removed.iter().all(|removed| {
+        let replacing = !self.change.removed.is_empty()
+            && self.change.removed.iter().all(|removed| {
                 removed.target_uid == added.target_uid
                     && removed
                         .buff
                         .uid
                         .is_some_and(|uid| self.replaced_uids.contains(&uid))
-            })
+            });
+        if !self.wire_visible
+            || self.change.rejected.is_some()
+            || !self.lifecycle_transitions.is_empty()
+            || !(replacing || self.leading_pre_markers && self.change.removed.is_empty())
         {
             return None;
         }
+        let leads_pre_markers = !added.pre_markers.is_empty();
         let part = |publish_part| {
             let mut part = self.clone();
             part.publish_part = publish_part;
+            part.pre_add_markers_before_remove = leads_pre_markers;
             part
         };
         Some(BuffReplacementParts {

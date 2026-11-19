@@ -444,11 +444,13 @@ pub(super) fn drain_command(
                 state,
             )?;
         }
-        push_change(
-            &mut result.frames,
-            &frame_path,
-            crate::engine::runtime::change::BattleChange::Buff(Box::new(parts.removal.clone())),
-        );
+        if !parts.removed_buff_uids.is_empty() {
+            push_change(
+                &mut result.frames,
+                &frame_path,
+                crate::engine::runtime::change::BattleChange::Buff(Box::new(parts.removal.clone())),
+            );
+        }
         event_groups = vec![addition_events];
     }
 
