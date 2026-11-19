@@ -813,6 +813,20 @@ fn entity_settlement_buff_id_gate_keeps_owner_scope_and_exact_key() {
 }
 
 #[test]
+fn round_end_buff_id_gate_frames_on_its_owner() {
+    let definition = find_key(19302, "HasBuffId").unwrap();
+    assert_eq!(
+        definition.role,
+        ConditionRole::Trigger {
+            event: EventKind::RoundEnd,
+            phase: None,
+        }
+    );
+    assert_eq!(definition.reaction_frame_target, ReactionFrameTarget::Owner);
+    assert!(definition.filters_behavior_targets);
+}
+
+#[test]
 fn accumulated_owner_buff_count_keeps_owner_scope_and_exact_key() {
     assert_eq!(
         parse(
