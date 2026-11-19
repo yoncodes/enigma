@@ -42,7 +42,7 @@ pub use feature::BuffPassiveSkillLink;
 pub use feature::{ActiveBuffFeature, BuffHpMaxAddRate, BuffPowerMaxAdd};
 use feature::{active_feature, hp_max_add_rate, passive_skill_links, power_max_add};
 pub(crate) use lifecycle::{
-    BuffDurationTarget, BuffTakeAction, BuffTakeActionTrigger, rouge2_mode,
+    BuffDurationTarget, BuffTakeAction, BuffTakeActionTrigger, rouge2_event_type, rouge2_mode,
 };
 pub use query::SpecialCountOutput;
 pub use result::{

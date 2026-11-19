@@ -1314,6 +1314,7 @@ pub(crate) fn rouge2_entry_rule_skills(
     fight: &sonettobuf::Fight,
 ) -> Vec<crate::engine::fight::rules::OwnedBattleSkill> {
     let (career_id, _) = crate::engine::manager::buff::rouge2_mode(fight);
+    let event_type = crate::engine::manager::buff::rouge2_event_type(fight);
     let Some(career) = game_data.rouge2_career.get(career_id) else {
         return Vec::new();
     };
@@ -1321,7 +1322,7 @@ pub(crate) fn rouge2_entry_rule_skills(
         .initial_effects
         .split('#')
         .filter_map(|id| game_data.rouge2_relics.get(id.parse().ok()?))
-        .flat_map(rouge2_battle_start_side_skills)
+        .flat_map(|relic| rouge2_battle_start_side_skills(relic, event_type))
         .filter(|skill_id| game_data.skill.get(*skill_id).is_some())
         .map(|skill_id| crate::engine::fight::rules::OwnedBattleSkill {
             owner_uid: crate::engine::fight::rules::ATTACKER_SIDE_UID,
@@ -1330,7 +1331,10 @@ pub(crate) fn rouge2_entry_rule_skills(
         .collect()
 }
 
-fn rouge2_battle_start_side_skills(relic: &config::rouge2_relics::Rouge2Relics) -> Vec<i32> {
+fn rouge2_battle_start_side_skills(
+    relic: &config::rouge2_relics::Rouge2Relics,
+    event_type: i32,
+) -> Vec<i32> {
     const BATTLE_START: &str = "none#battleStart";
     const ADD_SIDE_SKILL: &str = "addSkill#4#0#0#";
 
@@ -1366,11 +1370,17 @@ fn rouge2_battle_start_side_skills(relic: &config::rouge2_relics::Rouge2Relics) 
         if !condition.contains("battleStart") {
             continue;
         }
+        let applies = if condition.as_str() == BATTLE_START {
+            Some(true)
+        } else {
+            rouge2_relic_attribute_met(&slots, condition, event_type)
+        };
         for effect in effects.split('|') {
-            match effect.strip_prefix(ADD_SIDE_SKILL) {
-                Some(skill_ids) if condition.as_str() == BATTLE_START => {
+            match (effect.strip_prefix(ADD_SIDE_SKILL), applies) {
+                (Some(skill_ids), Some(true)) => {
                     skills.extend(skill_ids.split(',').filter_map(|id| id.parse::<i32>().ok()));
                 }
+                (Some(_), Some(false)) => {}
                 _ => tracing::warn!(
                     relic_id = relic.id,
                     condition,
@@ -1381,6 +1391,59 @@ fn rouge2_battle_start_side_skills(relic: &config::rouge2_relics::Rouge2Relics) 
         }
     }
     skills
+}
+
+fn rouge2_relic_attribute_met(
+    slots: &[(&String, &String)],
+    condition: &str,
+    event_type: i32,
+) -> Option<bool> {
+    let mut fields = condition
+        .strip_prefix("relicsAttr#battleStart#")?
+        .split('#');
+    let attr = fields.next()?.parse::<i32>().ok()?;
+    let operator = fields.next()?.parse::<i32>().ok()?;
+    let threshold = fields.next()?.parse::<i32>().ok()?;
+    if fields.next().is_some() || operator != 1 {
+        return None;
+    }
+    let value = rouge2_event_relic_attribute(slots, attr, event_type)?;
+    (value <= threshold).then_some(value == threshold)
+}
+
+fn rouge2_event_relic_attribute(
+    slots: &[(&String, &String)],
+    attr: i32,
+    event_type: i32,
+) -> Option<i32> {
+    let prefix = format!("relicsAttrPermFix#{attr}#");
+    let mut value = 0;
+    let mut balance = 0;
+    let mut event = None;
+    for (slot_condition, effects) in slots {
+        for effect in effects.split('|') {
+            let Some(fields) = effect.strip_prefix(&prefix) else {
+                continue;
+            };
+            let delta = fields.strip_prefix("0#")?.parse::<i32>().ok()?;
+            let (entered, slot_event) =
+                if let Some(id) = slot_condition.strip_prefix("event#enterEvent#") {
+                    (true, id.parse::<i32>().ok()?)
+                } else if let Some(id) = slot_condition.strip_prefix("event#completeEvent#") {
+                    (false, id.parse::<i32>().ok()?)
+                } else {
+                    return None;
+                };
+            if *event.get_or_insert(slot_event) != slot_event {
+                return None;
+            }
+            balance += delta;
+            if entered && slot_event == event_type {
+                value += delta;
+            }
+        }
+    }
+    (event.is_some() && balance == 0).then_some(value)
 }
 
 pub(crate) fn configured_teaching_cards(

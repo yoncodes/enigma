@@ -1084,6 +1084,31 @@ fn roguelike_career_owns_its_battle_start_side_skills() {
         .collect::<Vec<_>>(),
         [(0, 108300001), (0, 108300002), (0, 108300003)]
     );
+    assert_eq!(
+        rouge2_entry_rule_skills(
+            game_data,
+            &fight(r#"{"career":4,"eventType":7,"attrFinalVal":{"101":5}}"#)
+        )
+        .into_iter()
+        .map(|skill| (skill.owner_uid, skill.skill_id))
+        .collect::<Vec<_>>(),
+        [
+            (0, 108300005),
+            (0, 108300001),
+            (0, 108300002),
+            (0, 108300003)
+        ]
+    );
+    assert_eq!(
+        rouge2_entry_rule_skills(
+            game_data,
+            &fight(r#"{"career":4,"eventType":3,"attrFinalVal":{"101":5}}"#)
+        )
+        .into_iter()
+        .map(|skill| skill.skill_id)
+        .collect::<Vec<_>>(),
+        [108300001, 108300002, 108300003]
+    );
     assert!(
         rouge2_entry_rule_skills(
             game_data,

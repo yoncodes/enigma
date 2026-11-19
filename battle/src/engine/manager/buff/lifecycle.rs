@@ -772,32 +772,39 @@ impl BuffManager {
 #[path = "lifecycle/tests.rs"]
 mod tests;
 
-pub(crate) fn rouge2_mode(fight: &Fight) -> (i32, HashMap<i32, i32>) {
-    #[derive(serde::Deserialize)]
-    #[serde(rename_all = "camelCase")]
-    struct Rouge2Data {
-        #[serde(default)]
-        career: i32,
-        #[serde(deserialize_with = "deserialize_rouge2_attributes")]
-        attr_final_val: HashMap<i32, i32>,
-    }
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct Rouge2Data {
+    #[serde(default)]
+    career: i32,
+    #[serde(deserialize_with = "deserialize_rouge2_attributes")]
+    attr_final_val: HashMap<i32, i32>,
+    #[serde(default)]
+    event_type: i32,
+}
 
+pub(crate) fn rouge2_mode(fight: &Fight) -> (i32, HashMap<i32, i32>) {
+    rouge2_data(fight).map_or((0, HashMap::new()), |data| {
+        (data.career, data.attr_final_val)
+    })
+}
+
+pub(crate) fn rouge2_event_type(fight: &Fight) -> i32 {
+    rouge2_data(fight).map_or(0, |data| data.event_type)
+}
+
+fn rouge2_data(fight: &Fight) -> Option<Rouge2Data> {
     let mut entries = fight
         .custom_data
         .iter()
         .filter(|data| data.r#type == Some(sonettobuf::custom_data::CustomDataType::Rouge2 as i32));
     let (Some(entry), None) = (entries.next(), entries.next()) else {
-        return (0, HashMap::new());
+        return None;
     };
-    let Some(data) = entry
+    entry
         .data
         .as_deref()
         .and_then(|data| serde_json::from_str::<Rouge2Data>(data).ok())
-    else {
-        return (0, HashMap::new());
-    };
-
-    (data.career, data.attr_final_val)
 }
 
 fn deserialize_rouge2_attributes<'de, D>(deserializer: D) -> Result<HashMap<i32, i32>, D::Error>
