@@ -120,6 +120,7 @@ pub fn run_before_ai_round_start(
         false,
         wave_entry_condition_uids,
         action_phase_team.is_some(),
+        &[],
     )?;
     append(&mut result, before);
     debug_assert!(pending_settlement.capacity_groups.is_empty());
@@ -228,7 +229,7 @@ pub fn run_round_start_after_ai_split(
             run_wave_entry_setup(managers, pool, catalog, determinism, context, entering_uids)?,
         );
     }
-    if version_seven {
+    let defender_round_start_owner_uids = if version_seven {
         let mut defender_owner_uids = pool
             .defender_main
             .iter()
@@ -237,20 +238,10 @@ pub fn run_round_start_after_ai_split(
             .collect::<Vec<_>>();
         defender_owner_uids
             .extend(pool.assist_boss(crate::engine::fight::rules::DEFENDER_SIDE_UID));
-        append(
-            &mut fight_steps,
-            drain::run_setup_stage_for_owners(
-                managers,
-                pool,
-                catalog,
-                determinism,
-                context,
-                SetupStage::RoundStart,
-                -1,
-                &round_start_setup_owner_uids(&defender_owner_uids, 2),
-            )?,
-        );
-    }
+        round_start_setup_owner_uids(&defender_owner_uids, 2)
+    } else {
+        Vec::new()
+    };
     let (before_duration, settlement_plan, split_losses) = run_round_start_before_duration(
         managers,
         pool,
@@ -262,6 +253,7 @@ pub fn run_round_start_after_ai_split(
         true,
         &[],
         false,
+        &defender_round_start_owner_uids,
     )?;
     append(&mut fight_steps, before_duration);
     append(&mut fight_steps, split_losses);
@@ -1271,6 +1263,7 @@ fn run_round_start_before_duration(
     split_settlement: bool,
     wave_entry_condition_uids: &[i64],
     defer_round_start_duration: bool,
+    opposing_round_start_owner_uids: &[i64],
 ) -> Result<(DrainResult, RoundStartSettlementPlan, DrainResult), DrainError> {
     let duration_snapshot = duration_snapshot(managers, owner_uids);
     let setup_owner_uids = round_start_setup_owner_uids(owner_uids, team);
@@ -1325,6 +1318,12 @@ fn run_round_start_before_duration(
                 .iter()
                 .copied()
                 .filter(|uid| !wave_entry_condition_uids.contains(uid))
+                .collect::<Vec<_>>()
+        } else if (stage, priority) == (SetupStage::RoundStart, -1) {
+            setup_owner_uids
+                .iter()
+                .chain(opposing_round_start_owner_uids)
+                .copied()
                 .collect::<Vec<_>>()
         } else {
             setup_owner_uids.clone()
