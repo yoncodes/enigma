@@ -17,7 +17,24 @@ pub struct BuffChanges {
     pub refresh_initial_state_markers: Vec<BuffActInfoMarkerResult>,
     pub shield_removed: Vec<BuffShieldRemoveResult>,
     pub act_info_markers: Vec<BuffActInfoMarkerResult>,
+    pub publish_part: BuffPublishPart,
     wire_visible: bool,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum BuffPublishPart {
+    #[default]
+    Whole,
+    Lead,
+    Removal,
+    Addition,
+}
+
+pub struct BuffReplacementParts {
+    pub lead: BuffChanges,
+    pub removal: BuffChanges,
+    pub addition: BuffChanges,
+    pub removed_buff_uids: Vec<i64>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -176,8 +193,39 @@ impl BuffChanges {
             refresh_initial_state_markers: Vec::new(),
             shield_removed: Vec::new(),
             act_info_markers: Vec::new(),
+            publish_part: BuffPublishPart::Whole,
             wire_visible: true,
         }
+    }
+
+    pub fn replacement_parts(&self) -> Option<BuffReplacementParts> {
+        let added = self.change.added.as_ref()?;
+        if !self.wire_visible
+            || self.change.rejected.is_some()
+            || !self.lifecycle_transitions.is_empty()
+            || self.change.removed.is_empty()
+            || !self.change.removed.iter().all(|removed| {
+                removed.target_uid == added.target_uid && removed.buff.buff_id == added.buff.buff_id
+            })
+        {
+            return None;
+        }
+        let part = |publish_part| {
+            let mut part = self.clone();
+            part.publish_part = publish_part;
+            part
+        };
+        Some(BuffReplacementParts {
+            lead: part(BuffPublishPart::Lead),
+            removal: part(BuffPublishPart::Removal),
+            addition: part(BuffPublishPart::Addition),
+            removed_buff_uids: self
+                .change
+                .removed
+                .iter()
+                .filter_map(|removed| removed.buff.uid)
+                .collect(),
+        })
     }
 
     pub(super) fn with_lifecycle_transitions(

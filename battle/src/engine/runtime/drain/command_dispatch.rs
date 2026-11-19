@@ -377,6 +377,81 @@ pub(super) fn drain_command(
         events = flatten_event_groups(&event_groups);
     }
 
+    let replacement = match &outcome {
+        RuleOutcome::Buff(changes) => changes.replacement_parts(),
+        _ => None,
+    };
+    if crate::engine::diagnostics::enabled(crate::engine::diagnostics::TraceArea::Drain)
+        && let RuleOutcome::Buff(changes) = &outcome
+        && changes.change.added.is_some()
+        && !changes.change.removed.is_empty()
+    {
+        eprintln!(
+            "drain buff replacement split={} removed={:?} added={:?}",
+            replacement.is_some(),
+            changes
+                .change
+                .removed
+                .iter()
+                .map(|removed| (removed.target_uid, removed.buff.buff_id, removed.buff.uid))
+                .collect::<Vec<_>>(),
+            changes.change.added.as_ref().map(|added| (
+                added.target_uid,
+                added.buff.buff_id,
+                added.buff.uid
+            )),
+        );
+    }
+    let all_event_groups = replacement.as_ref().map(|_| event_groups.clone());
+    if let Some(parts) = &replacement {
+        push_change(
+            &mut result.frames,
+            &frame_path,
+            crate::engine::runtime::change::BattleChange::Buff(Box::new(parts.lead.clone())),
+        );
+        let (removal_events, addition_events): (Vec<_>, Vec<_>) =
+            events.iter().cloned().partition(|event| {
+                matches!(event, BattleEvent::BuffRemoved(change)
+                    if parts.removed_buff_uids.contains(&change.buff_uid))
+            });
+        let removal_reactions = dispatch_event_groups(
+            pool,
+            managers,
+            catalog,
+            determinism,
+            state,
+            &[removal_events],
+            &event_scope,
+            &frame_path,
+            action_scope.as_deref(),
+            &entry_halo_scope,
+            current_skill,
+            false,
+            context.current_round > 0,
+            crate::engine::event::subscription::PublicationPhase::BeforePublish,
+            None,
+            None,
+            None,
+        )?;
+        if !removal_reactions.before_publish.is_empty() {
+            drain_nested_queue(
+                managers,
+                pool,
+                catalog,
+                determinism,
+                removal_reactions.before_publish.into(),
+                result,
+                state,
+            )?;
+        }
+        push_change(
+            &mut result.frames,
+            &frame_path,
+            crate::engine::runtime::change::BattleChange::Buff(Box::new(parts.removal.clone())),
+        );
+        event_groups = vec![addition_events];
+    }
+
     // BeforePublish reactions run before this outcome is recorded in
     // its semantic frame. Their own manager commits use nested drains.
     let mut before_reactions = dispatch_event_groups(
@@ -398,6 +473,9 @@ pub(super) fn drain_command(
         None,
         None,
     )?;
+    if let Some(groups) = all_event_groups {
+        event_groups = groups;
+    }
     let mut started_after_reactions = None;
     if matches!(
         &outcome,
@@ -535,6 +613,14 @@ pub(super) fn drain_command(
         push_death(&mut result.frames, &frame_path, managers, *death);
     } else {
         for change in outcome.changes() {
+            let change = match (&replacement, change) {
+                (Some(parts), crate::engine::runtime::change::BattleChange::Buff(_)) => {
+                    crate::engine::runtime::change::BattleChange::Buff(Box::new(
+                        parts.addition.clone(),
+                    ))
+                }
+                (_, change) => change,
+            };
             push_change(&mut result.frames, &frame_path, change);
         }
     }

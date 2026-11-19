@@ -863,7 +863,10 @@ mod plan;
 mod result;
 pub(crate) use burn::BurnApplication;
 
-pub use result::{BuffChanges, BuffLifecycleTransition, BuffRefreshWire, BuffStateSnapshotWire};
+pub use result::{
+    BuffChanges, BuffLifecycleTransition, BuffPublishPart, BuffRefreshWire, BuffReplacementParts,
+    BuffStateSnapshotWire,
+};
 
 #[cfg(test)]
 mod tests;

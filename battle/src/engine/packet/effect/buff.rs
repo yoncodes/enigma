@@ -98,13 +98,19 @@ impl EffectPacket {
                 .chain(change.refreshed.iter().map(Self::buff_update))
                 .collect();
         }
+        use crate::engine::manager::buff::BuffPublishPart;
+        let part = changes.publish_part;
+        let leads = matches!(part, BuffPublishPart::Whole | BuffPublishPart::Lead);
+        let removes = matches!(part, BuffPublishPart::Whole | BuffPublishPart::Removal);
+        let adds = matches!(part, BuffPublishPart::Whole | BuffPublishPart::Addition);
         let mut effects = Vec::new();
-        if changes.pre_add_markers_before_remove
+        if leads
+            && changes.pre_add_markers_before_remove
             && let Some(added) = &change.added
         {
             effects.extend(Self::buff_add_pre_markers(added));
         }
-        for removed in &change.removed {
+        for removed in change.removed.iter().filter(|_| removes) {
             if let Some(reason) = Self::buff_delete_reason(removed) {
                 effects.push(reason);
             }
@@ -116,6 +122,9 @@ impl EffectPacket {
             {
                 effects.push(Self::shield_delete(shield.target_uid, shield.value));
             }
+        }
+        if !adds {
+            return effects;
         }
         effects.extend(Self::recorded_buff_refreshes(
             changes,
