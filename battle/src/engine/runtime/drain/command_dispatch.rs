@@ -512,6 +512,17 @@ pub(super) fn drain_command(
         }
         _ => None,
     };
+    let (leading_fanout, fanout): (Vec<_>, Vec<_>) = fanout
+        .into_iter()
+        .partition(|fanout| fanout.precedes_carrier_change());
+    for fanout in leading_fanout {
+        push_fanout(
+            &mut result.frames,
+            &output_frame_path(fanout_output_owner, &event_scope),
+            fanout,
+            frame_trigger(&trigger),
+        );
+    }
     if let RuleOutcome::DeathSettlement(death) = &outcome {
         push_death(&mut result.frames, &frame_path, managers, *death);
     } else {
@@ -549,22 +560,11 @@ pub(super) fn drain_command(
         }
     }
     for fanout in fanout {
-        let fanout_parent = output_frame_path(fanout_output_owner, &event_scope);
-        let fanout_path = push_child(
+        push_fanout(
             &mut result.frames,
-            &fanout_parent,
-            FrameOwner::BuffRule {
-                emitter_uid: fanout.emitter_uid,
-                carrier_buff_uid: fanout.carrier_buff_uid,
-                carrier_buff_id: fanout.carrier_buff_id,
-                rule: fanout.rule,
-            },
+            &output_frame_path(fanout_output_owner, &event_scope),
+            fanout,
             frame_trigger(&trigger),
-        );
-        push_change(
-            &mut result.frames,
-            &fanout_path,
-            crate::engine::runtime::change::BattleChange::BuffFanout(Box::new(fanout)),
         );
     }
     let was_skill_action_started = matches!(
@@ -1025,4 +1025,28 @@ pub(super) fn drain_command(
     prepend(queue, after_publish);
 
     Ok(())
+}
+
+fn push_fanout(
+    frames: &mut [SemanticFrame],
+    parent: &[usize],
+    fanout: crate::engine::manager::buff::BuffFanoutResult,
+    trigger: FrameTrigger,
+) {
+    let fanout_path = push_child(
+        frames,
+        parent,
+        FrameOwner::BuffRule {
+            emitter_uid: fanout.emitter_uid,
+            carrier_buff_uid: fanout.carrier_buff_uid,
+            carrier_buff_id: fanout.carrier_buff_id,
+            rule: fanout.rule,
+        },
+        trigger,
+    );
+    push_change(
+        frames,
+        &fanout_path,
+        crate::engine::runtime::change::BattleChange::BuffFanout(Box::new(fanout)),
+    );
 }

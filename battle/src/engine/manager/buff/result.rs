@@ -44,6 +44,13 @@ pub struct BuffFanoutResult {
     pub refreshed: Vec<BuffFanoutUpdateResult>,
 }
 
+impl BuffFanoutResult {
+    pub fn precedes_carrier_change(&self) -> bool {
+        crate::engine::skill::buff_act::registry::kind(self.rule.opcode, self.rule.type_name)
+            == Some(crate::engine::skill::buff_act::registry::BuffActKind::LayerMasterHalo)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct BuffFanoutUpdateResult {
     pub update: BuffUpdateResult,
