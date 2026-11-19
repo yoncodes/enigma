@@ -1104,3 +1104,91 @@ fn a_cast_from_a_completed_action_reaction_runs_at_once() {
         BattleEvent::SkillAction(action) if action.skill_id == 301
     )));
 }
+
+#[test]
+fn direct_use_skill_cast_names_its_destination_while_hitting_its_configured_target() {
+    crate::test_support::init_config();
+    let entity = |uid, position| FightEntityInfo {
+        uid: Some(uid),
+        position: Some(position),
+        current_hp: Some(10_000),
+        attr: Some(HeroAttribute {
+            hp: Some(10_000),
+            attack: Some(1_000),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![entity(10, 1)],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![entity(-4, 1), entity(-5, 2), entity(-6, 3)],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    let mut catalog = SkillEffectCatalog::default();
+    catalog.insert(ParsedSkillEffect {
+        skill_id: 100,
+        slots: vec![SkillEffectSlot::new(
+            ParsedBehavior::new(50008, "DirectUseSkill", vec![200]),
+            TargetRequest {
+                code: 233,
+                raw: Vec::new(),
+            },
+        )],
+    });
+    catalog.insert_logic_target(100, 1);
+    catalog.insert(ParsedSkillEffect {
+        skill_id: 200,
+        slots: Vec::new(),
+    });
+    catalog.insert_logic_target(200, 222);
+    catalog.insert_damage_rate(200, 1_000);
+    let mut invocation: SkillInvocation = SkillRequest {
+        source_uid: 10,
+        skill_id: 100,
+    }
+    .into();
+    invocation.mode = SkillExecutionMode::Active;
+    invocation.target = SkillTarget::Explicit(-5);
+
+    let result = run_action(
+        &mut managers,
+        &pool,
+        &catalog,
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+        [],
+        invocation,
+    )
+    .unwrap();
+    let steps = crate::engine::packet::timeline::project(&result.frames).unwrap();
+    let child = steps
+        .iter()
+        .flat_map(|step| {
+            std::iter::once(step).chain(
+                step.act_effect
+                    .iter()
+                    .filter_map(|effect| effect.fight_step.as_ref()),
+            )
+        })
+        .find(|step| step.act_id == Some(200))
+        .unwrap();
+
+    assert_eq!(child.to_id, Some(-5));
+    assert_eq!(
+        child
+            .act_effect
+            .iter()
+            .filter(|effect| effect.hurt_info.is_some())
+            .filter_map(|effect| effect.target_id)
+            .collect::<Vec<_>>(),
+        vec![-4]
+    );
+}
