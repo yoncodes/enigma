@@ -869,6 +869,220 @@ fn layered_master_halo_refreshes_existing_allied_copies() {
 }
 
 #[test]
+fn layered_halo_copies_follow_their_master_duration_without_their_own_updates() {
+    crate::test_support::init_config();
+    let fight = Fight {
+        version: Some(7),
+        attacker: Some(FightTeam {
+            entitys: [10, 11, 12]
+                .into_iter()
+                .map(|uid| FightEntityInfo {
+                    uid: Some(uid),
+                    team_type: Some(1),
+                    current_hp: Some(100),
+                    ..Default::default()
+                })
+                .collect(),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let mut manager = BuffManager::default();
+    let mut hp = HpManager::default();
+    manager.seed(&fight);
+    hp.seed(&fight);
+    let granted = manager
+        .execute(
+            &hp,
+            BuffCommand::Grant(BuffGrant {
+                origin: CommandOrigin {
+                    domain: RuleDomain::Behavior,
+                    key: DefinitionKey::new(1, "AddBuff"),
+                },
+                source_uid: 10,
+                target_uid: 10,
+                buff_id: 31460002,
+                amount: None,
+                occurrences: 1,
+                child_uid_reservations: 0,
+            }),
+        )
+        .unwrap();
+    let master_uid = granted.change.added.as_ref().unwrap().buff.uid.unwrap();
+    assert_eq!(granted.fanout[0].added.len(), 2);
+    let copy_durations = |manager: &BuffManager| {
+        manager
+            .layer_halo_sync()
+            .iter()
+            .map(|copy| (copy.target_uid, copy.buff.duration))
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(copy_durations(&manager), [(11, Some(3)), (12, Some(3))]);
+
+    let aged = manager.advance_durations(103);
+    assert_eq!(
+        aged.iter()
+            .flat_map(|change| change.refreshed.iter())
+            .map(|update| (update.target_uid, update.after.uid, update.after.duration))
+            .collect::<Vec<_>>(),
+        [(10, Some(master_uid), Some(2))]
+    );
+    assert_eq!(copy_durations(&manager), [(11, Some(2)), (12, Some(2))]);
+
+    manager.advance_durations(103);
+    let expired = manager.advance_durations(103);
+    assert_eq!(
+        expired
+            .iter()
+            .flat_map(|change| change.removed.iter())
+            .map(|removed| removed.target_uid)
+            .collect::<Vec<_>>(),
+        [10, 11, 12]
+    );
+    assert!(copy_durations(&manager).is_empty());
+}
+
+#[test]
+fn layered_halo_copies_outlive_a_master_removed_before_expiry() {
+    crate::test_support::init_config();
+    let fight = Fight {
+        version: Some(7),
+        attacker: Some(FightTeam {
+            entitys: [10, 11]
+                .into_iter()
+                .map(|uid| FightEntityInfo {
+                    uid: Some(uid),
+                    team_type: Some(1),
+                    current_hp: Some(100),
+                    ..Default::default()
+                })
+                .collect(),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let mut manager = BuffManager::default();
+    let mut hp = HpManager::default();
+    manager.seed(&fight);
+    hp.seed(&fight);
+    let granted = manager
+        .execute(
+            &hp,
+            BuffCommand::Grant(BuffGrant {
+                origin: CommandOrigin {
+                    domain: RuleDomain::Behavior,
+                    key: DefinitionKey::new(1, "AddBuff"),
+                },
+                source_uid: 10,
+                target_uid: 10,
+                buff_id: 31460002,
+                amount: None,
+                occurrences: 1,
+                child_uid_reservations: 0,
+            }),
+        )
+        .unwrap();
+    let master_uid = granted.change.added.as_ref().unwrap().buff.uid.unwrap();
+
+    let removed = manager.delete(10, master_uid);
+    assert_eq!(
+        removed
+            .iter()
+            .map(|removed| removed.target_uid)
+            .collect::<Vec<_>>(),
+        [10]
+    );
+    let aged = manager.advance_durations(103);
+    assert_eq!(
+        aged.iter()
+            .flat_map(|change| change.refreshed.iter())
+            .map(|update| (update.target_uid, update.after.duration))
+            .collect::<Vec<_>>(),
+        [(11, Some(2))]
+    );
+}
+
+#[test]
+fn layered_halo_copies_follow_the_stack_that_last_refreshed_them() {
+    crate::test_support::init_config();
+    let fight = Fight {
+        version: Some(7),
+        attacker: Some(FightTeam {
+            entitys: [10, 11]
+                .into_iter()
+                .map(|uid| FightEntityInfo {
+                    uid: Some(uid),
+                    team_type: Some(1),
+                    current_hp: Some(100),
+                    ..Default::default()
+                })
+                .collect(),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let mut manager = BuffManager::default();
+    let mut hp = HpManager::default();
+    manager.seed(&fight);
+    hp.seed(&fight);
+    let granted = manager
+        .execute(
+            &hp,
+            BuffCommand::Grant(BuffGrant {
+                origin: CommandOrigin {
+                    domain: RuleDomain::Behavior,
+                    key: DefinitionKey::new(1, "AddBuff"),
+                },
+                source_uid: 10,
+                target_uid: 10,
+                buff_id: 31460002,
+                amount: None,
+                occurrences: 1,
+                child_uid_reservations: 0,
+            }),
+        )
+        .unwrap();
+    let first_uid = granted.change.added.as_ref().unwrap().buff.uid.unwrap();
+    let second_uid = first_uid + 100;
+    let mut second = manager
+        .buffs
+        .iter()
+        .find(|active| active.buff.uid == Some(first_uid))
+        .unwrap()
+        .clone();
+    second.buff.uid = Some(second_uid);
+    manager.buffs.push(second);
+    let plans =
+        manager.fanout_refresh_specs(&hp, BuffRoute::new(10, 10, 31460002), second_uid, 2, 3);
+    assert_eq!(manager.commit_fanout_refreshes(&plans).len(), 1);
+    manager
+        .buffs
+        .iter_mut()
+        .find(|active| active.buff.uid == Some(first_uid))
+        .unwrap()
+        .buff
+        .duration = Some(1);
+
+    let expired = manager.advance_durations(103);
+    assert_eq!(
+        expired
+            .iter()
+            .flat_map(|change| change.removed.iter())
+            .map(|removed| removed.buff.uid)
+            .collect::<Vec<_>>(),
+        [Some(first_uid)]
+    );
+    assert_eq!(
+        manager
+            .layer_halo_sync()
+            .iter()
+            .map(|copy| (copy.target_uid, copy.buff.duration))
+            .collect::<Vec<_>>(),
+        [(11, Some(2))]
+    );
+}
+
+#[test]
 fn identical_indefinite_halo_grant_keeps_master_and_children() {
     crate::test_support::init_config();
     let fight = Fight {

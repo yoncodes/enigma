@@ -300,7 +300,11 @@ impl BuffManager {
                     fanout: plans
                         .into_iter()
                         .filter_map(|plan| {
-                            let added = self.commit_fanout(hp, std::slice::from_ref(&plan.fanout));
+                            let added = self.commit_fanout(
+                                hp,
+                                Some(plan.carrier_buff_uid),
+                                std::slice::from_ref(&plan.fanout),
+                            );
                             (!added.is_empty()).then_some(BuffFanoutResult {
                                 rule: plan.fanout.spec.rule,
                                 emitter_uid: plan.emitter_uid,

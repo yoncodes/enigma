@@ -182,6 +182,7 @@ impl BuffManager {
             type_id: definition.effective_type_id(),
             definition: Some(definition.clone()),
             fanout_emitter_uid: None,
+            fanout_carrier_uid: None,
             effective,
             buff: buff.clone(),
         });
@@ -246,7 +247,7 @@ impl BuffManager {
                 effective: true,
             },
         )?;
-        applied.fanout = self.commit_fanout(hp, fanout);
+        applied.fanout = self.commit_fanout(hp, applied.buff.uid, fanout);
         Some(applied)
     }
 
@@ -694,17 +695,19 @@ impl BuffManager {
     pub(in crate::engine::manager::buff) fn commit_fanout(
         &mut self,
         hp: &HpManager,
+        carrier_buff_uid: Option<i64>,
         plans: &[PlannedFanout],
     ) -> Vec<BuffApplyResult> {
         plans
             .iter()
-            .filter_map(|plan| self.commit_fanout_one(hp, &plan.spec, plan.uid))
+            .filter_map(|plan| self.commit_fanout_one(hp, carrier_buff_uid, &plan.spec, plan.uid))
             .collect()
     }
 
     fn commit_fanout_one(
         &mut self,
         hp: &HpManager,
+        carrier_buff_uid: Option<i64>,
         spec: &FanoutSpec,
         uid: uid_policy::UidAllocationPlan,
     ) -> Option<BuffApplyResult> {
@@ -735,6 +738,7 @@ impl BuffManager {
             active.owner_uid == child.target_uid && active.buff.uid == child.buff.uid
         }) {
             active.fanout_emitter_uid = Some(spec.emitter_uid);
+            active.fanout_carrier_uid = carrier_buff_uid;
         }
         if !initial_act_info.is_empty() {
             child.buff.act_info.extend(initial_act_info);
@@ -803,6 +807,12 @@ impl BuffManager {
             ) else {
                 continue;
             };
+            if let Some(copy) = self.buffs.iter_mut().find(|active| {
+                active.owner_uid == plan.spec.route.target_uid
+                    && active.buff.uid == Some(plan.buff_uid)
+            }) {
+                copy.fanout_carrier_uid = Some(plan.carrier_buff_uid);
+            }
             let mut markers = halo::fanout_markers(self.catalog(), plan.spec.route.buff_id)
                 .into_iter()
                 .map(|marker| BuffMarkerResult {

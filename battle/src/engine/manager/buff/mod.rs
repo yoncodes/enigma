@@ -223,6 +223,7 @@ struct ActiveBuff {
     type_id: i32,
     definition: Option<BuffDefinition>,
     fanout_emitter_uid: Option<i64>,
+    fanout_carrier_uid: Option<i64>,
     effective: bool,
     buff: BuffInfo,
 }
@@ -329,6 +330,22 @@ fn buff_wire_type(
 
 fn is_layer_halo_slave(buff: &BuffInfo) -> bool {
     buff.r#type == Some(LayerHaloWireType::Slave as i32)
+}
+
+fn layer_halo_carrier_uid(active: &ActiveBuff) -> Option<i64> {
+    active
+        .fanout_carrier_uid
+        .filter(|_| is_layer_halo_slave(&active.buff))
+}
+
+impl BuffManager {
+    fn follows_layer_halo_master(&self, active: &ActiveBuff) -> bool {
+        layer_halo_carrier_uid(active).is_some_and(|carrier_uid| {
+            self.buffs
+                .iter()
+                .any(|master| master.buff.uid == Some(carrier_uid))
+        })
+    }
 }
 
 fn fallback_type_id(buff: &BuffInfo) -> i32 {

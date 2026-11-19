@@ -567,6 +567,7 @@ impl BuffManager {
                 let buff_uid = active.buff.uid?;
                 let duration = active.buff.duration.unwrap_or_default();
                 (duration > 0
+                    && !self.follows_layer_halo_master(active)
                     && active
                         .definition
                         .as_ref()
@@ -601,6 +602,13 @@ impl BuffManager {
         let before = active.buff.clone();
         self.buffs[index].buff.duration = Some(duration - 1);
         let after = self.buffs[index].buff.clone();
+        for copy in self
+            .buffs
+            .iter_mut()
+            .filter(|copy| super::layer_halo_carrier_uid(copy) == Some(plan.buff_uid))
+        {
+            copy.buff.duration = Some(duration - 1);
+        }
         if duration == 1 {
             let mut removed = self.delete(plan.target_uid, plan.buff_uid);
             use crate::engine::event::payload::BuffExpiry;
@@ -612,6 +620,19 @@ impl BuffManager {
                 } else {
                     removed.expiry = BuffExpiry::Forced;
                 }
+            }
+            while let Some((owner_uid, copy_uid)) = self.buffs.iter().find_map(|copy| {
+                (super::layer_halo_carrier_uid(copy) == Some(plan.buff_uid))
+                    .then_some((copy.owner_uid, copy.buff.uid?))
+            }) {
+                let copies = self.delete(owner_uid, copy_uid);
+                if copies.is_empty() {
+                    break;
+                }
+                removed.extend(copies.into_iter().map(|mut copy| {
+                    copy.expiry = BuffExpiry::Duration(plan.take_stage);
+                    copy
+                }));
             }
             Some(BuffReplaceResult {
                 removed,
@@ -679,6 +700,7 @@ impl BuffManager {
                 type_id,
                 definition,
                 fanout_emitter_uid: None,
+                fanout_carrier_uid: None,
                 effective: true,
                 buff,
             });
