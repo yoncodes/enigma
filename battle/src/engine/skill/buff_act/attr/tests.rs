@@ -9,7 +9,7 @@ use crate::engine::{
 };
 
 #[test]
-fn replacing_hp_rate_preserves_the_aggregate_and_removal_boundary() {
+fn replacing_hp_rate_keeps_the_aggregate_and_the_clamped_current_hp() {
     crate::test_support::init_config();
     let mut managers = BattleManagers::seeded(&Fight {
         version: Some(7),
@@ -28,10 +28,10 @@ fn replacing_hp_rate_preserves_the_aggregate_and_removal_boundary() {
         ..Default::default()
     });
     let mut events = EventBus::default();
-    for (buff_id, expected) in [
-        (2140002, vec![15_715]),
-        (31460121, vec![17_286]),
-        (31460121, vec![15_715, 17_286]),
+    for (buff_id, expected, current) in [
+        (2140002, vec![15_715], 15_715),
+        (31460121, vec![17_286], 17_286),
+        (31460121, vec![15_715, 17_286], 15_715),
     ] {
         let changes = managers
             .execute_buff(BuffCommand::Grant(BuffGrant {
@@ -61,7 +61,7 @@ fn replacing_hp_rate_preserves_the_aggregate_and_removal_boundary() {
             }
         }
         assert_eq!(observed, expected);
-        assert_eq!(managers.hp.current(10), managers.hp.max(10));
+        assert_eq!(managers.hp.current(10), current);
     }
 }
 
@@ -150,6 +150,7 @@ fn consumed_attribute_stack_does_not_emit_a_refresh_marker() {
         act_id: 0,
         act_value: 0,
         replaced_fixed_max_hp: None,
+        replaced_buff_id: None,
         expiry: crate::engine::event::payload::BuffExpiry::None,
     });
 
@@ -170,6 +171,7 @@ fn source_snapshot_refresh_owns_its_attribute_marker_decision() {
         act_id: 0,
         act_value: 0,
         replaced_fixed_max_hp: None,
+        replaced_buff_id: None,
         expiry: crate::engine::event::payload::BuffExpiry::None,
     });
 

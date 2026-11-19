@@ -169,6 +169,7 @@ impl BuffReplaceResult {
                     .copied()
                     .unwrap_or_default(),
                 replaced_fixed_max_hp,
+                replaced_buff_id: None,
                 expiry: BuffExpiry::None,
             }));
             for fanout in &applied.fanout {
@@ -202,6 +203,7 @@ impl BuffReplaceResult {
                             .copied()
                             .unwrap_or_default(),
                         replaced_fixed_max_hp: None,
+                        replaced_buff_id: None,
                         expiry: BuffExpiry::None,
                     },
                 ))
@@ -253,6 +255,7 @@ impl BuffReplaceResult {
                             .unwrap_or_default()
                     },
                     replaced_fixed_max_hp: None,
+                    replaced_buff_id: None,
                     expiry: removed.expiry,
                 })
             })

@@ -548,13 +548,19 @@ fn project_change(
                         buff_act_id: 0,
                     },
                     |rule| {
-                        rule.plan(
-                            changes.source_uid,
-                            changes.target_uid,
-                            max_hp.before_current,
-                            max_hp.after_current,
-                            max_hp.delta,
-                        )
+                        max_hp
+                            .replaced_removal
+                            .then(|| rule.replaced_removal_plan())
+                            .flatten()
+                            .unwrap_or_else(|| {
+                                rule.plan(
+                                    changes.source_uid,
+                                    changes.target_uid,
+                                    max_hp.before_current,
+                                    max_hp.after_current,
+                                    max_hp.delta,
+                                )
+                            })
                     },
                 );
                 for index in 0..plan.max_hp_repeats {

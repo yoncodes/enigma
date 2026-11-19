@@ -1325,3 +1325,18 @@ fn stack_layer(active: &super::ActiveBuff) -> i32 {
         active.buff.layer.unwrap_or_default()
     }
 }
+
+impl BuffManager {
+    pub(crate) fn configured_attr_hp_permille(&self, buff_id: i32) -> Option<i32> {
+        BuffDefinition::configured(self.catalog().game_data(), buff_id)?
+            .features()
+            .iter()
+            .find_map(|feature| {
+                (feature.arguments_supported
+                    && feature.kind == Some(BuffActKind::Attr)
+                    && feature.values.get(1).copied() == Some(AttrId::Hp.id()))
+                .then(|| feature.values.get(2).copied())
+                .flatten()
+            })
+    }
+}

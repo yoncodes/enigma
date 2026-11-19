@@ -133,6 +133,7 @@ fn target(command: HpCommand) -> i64 {
         HpCommand::Heal(value) => value.target_uid,
         HpCommand::AdjustMax(value)
         | HpCommand::RestoreMax(value)
+        | HpCommand::RemoveReplacedMax(value)
         | HpCommand::AdjustCapacity(value) => value.target_uid,
         HpCommand::SetCurrent(value) => value.target_uid,
         HpCommand::GrantShield(value) => value.target_uid,

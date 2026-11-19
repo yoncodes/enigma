@@ -12,9 +12,11 @@ impl BuffManager {
                 let markers = plan.refresh_initial_state_markers();
                 let burn = plan.burn_application();
                 let refresh = plan.layer_refresh.is_some();
+                let replaced_uids = plan.replacement_uids.clone();
                 let change = self.commit_grant_plan(hp, *plan);
                 let mut changes = BuffChanges::new(catalog, origin, change)
                     .with_refresh_initial_state_markers(markers);
+                changes.replaced_uids = replaced_uids;
                 if changes.change.rejected.is_none() && (refresh || changes.change.added.is_some())
                 {
                     changes.burn_application = burn;

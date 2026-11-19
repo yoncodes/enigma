@@ -151,6 +151,7 @@ impl HpManager {
             }
             HpCommand::AdjustMax(value)
             | HpCommand::RestoreMax(value)
+            | HpCommand::RemoveReplacedMax(value)
             | HpCommand::AdjustCapacity(value) => {
                 let before = self.get(target_uid);
                 let after = match command {
@@ -180,6 +181,7 @@ impl HpManager {
                     delta: after.max - before.max,
                     after_current: after.current,
                     after_max: after.max,
+                    replaced_removal: matches!(command, HpCommand::RemoveReplacedMax(_)),
                 });
             }
         }
@@ -250,7 +252,9 @@ impl HpManager {
                 value.target_uid,
                 value.amount > 0 && value.max > 0,
             ),
-            HpCommand::AdjustMax(value) | HpCommand::AdjustCapacity(value) => (
+            HpCommand::AdjustMax(value)
+            | HpCommand::RemoveReplacedMax(value)
+            | HpCommand::AdjustCapacity(value) => (
                 value.origin,
                 value.source_uid,
                 value.target_uid,

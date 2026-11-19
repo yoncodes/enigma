@@ -246,6 +246,7 @@ pub enum HpCommand {
     GrantShield(ShieldGrant),
     AdjustMax(MaxHpAdjust),
     RestoreMax(MaxHpAdjust),
+    RemoveReplacedMax(MaxHpAdjust),
     AdjustCapacity(MaxHpAdjust),
 }
 
@@ -275,6 +276,7 @@ pub struct MaxHpChange {
     pub delta: i32,
     pub after_current: i32,
     pub after_max: i32,
+    pub replaced_removal: bool,
 }
 
 /// A hit split by ShareHurt before it landed: the consumed stack and each ally's share.

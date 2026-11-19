@@ -18,6 +18,7 @@ pub struct BuffChanges {
     pub shield_removed: Vec<BuffShieldRemoveResult>,
     pub act_info_markers: Vec<BuffActInfoMarkerResult>,
     pub publish_part: BuffPublishPart,
+    pub replaced_uids: Vec<i64>,
     wire_visible: bool,
 }
 
@@ -194,6 +195,7 @@ impl BuffChanges {
             shield_removed: Vec::new(),
             act_info_markers: Vec::new(),
             publish_part: BuffPublishPart::Whole,
+            replaced_uids: Vec::new(),
             wire_visible: true,
         }
     }
@@ -205,7 +207,11 @@ impl BuffChanges {
             || !self.lifecycle_transitions.is_empty()
             || self.change.removed.is_empty()
             || !self.change.removed.iter().all(|removed| {
-                removed.target_uid == added.target_uid && removed.buff.buff_id == added.buff.buff_id
+                removed.target_uid == added.target_uid
+                    && removed
+                        .buff
+                        .uid
+                        .is_some_and(|uid| self.replaced_uids.contains(&uid))
             })
         {
             return None;
@@ -363,6 +369,32 @@ impl BuffChanges {
                     }
                     .events(),
                 );
+            }
+        }
+        if let Some(replaced_buff_id) = self
+            .change
+            .removed
+            .iter()
+            .find(|removed| {
+                removed
+                    .buff
+                    .uid
+                    .is_some_and(|uid| self.replaced_uids.contains(&uid))
+                    && self
+                        .change
+                        .added
+                        .as_ref()
+                        .is_some_and(|added| removed.buff.from_uid == Some(added.source_uid))
+            })
+            .and_then(|removed| removed.buff.buff_id)
+            && let Some(added_uid) = self.change.added.as_ref().and_then(|added| added.buff.uid)
+        {
+            for event in &mut events {
+                if let BattleEvent::BuffAdded(change) = event
+                    && change.buff_uid == added_uid
+                {
+                    change.replaced_buff_id = Some(replaced_buff_id);
+                }
             }
         }
         events

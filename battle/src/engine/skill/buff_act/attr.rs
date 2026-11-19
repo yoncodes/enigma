@@ -16,6 +16,23 @@ pub fn max_hp_rule_op(
     feature: &ActiveBuffFeature,
     amount_delta: i32,
 ) -> Option<RuleOp> {
+    added_max_hp_rule_op(managers, feature, amount_delta, HpCommand::AdjustMax)
+}
+
+fn replacement_added_max_hp_rule_op(
+    managers: &BattleManagers,
+    feature: &ActiveBuffFeature,
+    amount_delta: i32,
+) -> Option<RuleOp> {
+    added_max_hp_rule_op(managers, feature, amount_delta, HpCommand::RestoreMax)
+}
+
+fn added_max_hp_rule_op(
+    managers: &BattleManagers,
+    feature: &ActiveBuffFeature,
+    amount_delta: i32,
+    command: fn(MaxHpAdjust) -> HpCommand,
+) -> Option<RuleOp> {
     hp_permille(feature)?;
     if amount_delta == 0 {
         return None;
@@ -27,7 +44,7 @@ pub fn max_hp_rule_op(
         .filter(|active| active.owner_uid == feature.owner_uid)
         .filter_map(hp_permille)
         .sum::<i32>();
-    max_hp_adjustment(managers, feature, amount_delta, after_permille)
+    max_hp_adjustment(managers, feature, amount_delta, after_permille, command)
 }
 
 fn removed_max_hp_rule_op(
@@ -54,7 +71,17 @@ fn removed_max_hp_rule_op(
         })
         .filter_map(hp_permille)
         .sum::<i32>();
-    max_hp_adjustment(managers, feature, amount_delta, after_permille)
+    let self_replaced = feature.source_uid == feature.owner_uid
+        && positive_hp_permille(feature)
+        && replacement_uid
+            .and_then(|uid| managers.buff.snapshot(feature.owner_uid, uid))
+            .is_some_and(|replacement| replacement.from_uid == Some(feature.source_uid));
+    let command = if self_replaced {
+        HpCommand::RemoveReplacedMax
+    } else {
+        HpCommand::AdjustMax
+    };
+    max_hp_adjustment(managers, feature, amount_delta, after_permille, command)
 }
 
 fn max_hp_adjustment(
@@ -62,6 +89,7 @@ fn max_hp_adjustment(
     feature: &ActiveBuffFeature,
     amount_delta: i32,
     after_permille: i32,
+    command: fn(MaxHpAdjust) -> HpCommand,
 ) -> Option<RuleOp> {
     if !buff_act::is_kind(feature, BuffActKind::Attr) {
         return None;
@@ -76,14 +104,12 @@ fn max_hp_adjustment(
     let before_permille = after_permille.saturating_sub(permille.saturating_mul(amount_delta));
     let base_max = managers.hp.base_max(feature.owner_uid);
     let delta = scaled_hp(base_max, after_permille) - scaled_hp(base_max, before_permille);
-    (delta != 0).then_some(RuleOp::Command(BattleCommand::Hp(HpCommand::AdjustMax(
-        MaxHpAdjust {
-            origin,
-            source_uid: feature.source_uid,
-            target_uid: feature.owner_uid,
-            delta,
-        },
-    ))))
+    (delta != 0).then_some(RuleOp::Command(BattleCommand::Hp(command(MaxHpAdjust {
+        origin,
+        source_uid: feature.source_uid,
+        target_uid: feature.owner_uid,
+        delta,
+    }))))
 }
 
 pub fn transaction_rule_ops(
@@ -103,16 +129,28 @@ pub fn transaction_rule_ops(
         managers,
         event,
         BuffActKind::Attr,
-        if matches!(
-            event,
-            crate::engine::event::payload::BattleEvent::BuffRemoved(_)
-        ) {
-            removed_max_hp_rule_op
-        } else {
-            max_hp_rule_op
+        match event {
+            crate::engine::event::payload::BattleEvent::BuffRemoved(_) => removed_max_hp_rule_op,
+            crate::engine::event::payload::BattleEvent::BuffAdded(change)
+                if change.source_uid == change.target_uid
+                    && change.replaced_buff_id.is_some_and(|replaced_buff_id| {
+                        let rate = |buff_id| managers.buff.configured_attr_hp_permille(buff_id);
+                        rate(change.buff_id).is_some_and(|added| {
+                            rate(replaced_buff_id)
+                                .is_some_and(|replaced| added > 0 && added <= replaced)
+                        })
+                    }) =>
+            {
+                replacement_added_max_hp_rule_op
+            }
+            _ => max_hp_rule_op,
         },
         owns_refresh_markers,
     )
+}
+
+fn positive_hp_permille(feature: &ActiveBuffFeature) -> bool {
+    hp_permille(feature).is_some() && feature.values.get(2).is_some_and(|permille| *permille > 0)
 }
 
 fn hp_permille(feature: &ActiveBuffFeature) -> Option<i32> {

@@ -269,6 +269,7 @@ fn enemy_burn_conversion_uses_the_settlement_transaction() {
             act_id: 0,
             act_value: 0,
             replaced_fixed_max_hp: None,
+            replaced_buff_id: None,
             expiry: crate::engine::event::payload::BuffExpiry::None,
         },
     ]);

@@ -52,6 +52,7 @@ fn transaction_event(buff_id: i32, before_amount: i32, after_amount: i32) -> Bat
         act_id: 0,
         act_value: 0,
         replaced_fixed_max_hp: None,
+        replaced_buff_id: None,
         expiry: crate::engine::event::payload::BuffExpiry::None,
     };
     if after_amount == 0 {

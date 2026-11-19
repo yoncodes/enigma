@@ -357,6 +357,7 @@ fn primary_team_raspberry_removes_temporary_capacity_with_the_feast() {
             act_id: 1041,
             act_value: 525,
             replaced_fixed_max_hp: None,
+            replaced_buff_id: None,
             expiry: crate::engine::event::payload::BuffExpiry::None,
         }),
     )

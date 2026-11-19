@@ -374,6 +374,7 @@ mod tests {
                 act_id: ACT_ID,
                 act_value,
                 replaced_fixed_max_hp: None,
+                replaced_buff_id: None,
                 expiry: crate::engine::event::payload::BuffExpiry::None,
             })
         };
@@ -405,6 +406,7 @@ mod tests {
             act_id: 0,
             act_value: 0,
             replaced_fixed_max_hp: None,
+            replaced_buff_id: None,
             expiry: crate::engine::event::payload::BuffExpiry::None,
         });
         let ops = transaction_rule_ops(&managers, &event);

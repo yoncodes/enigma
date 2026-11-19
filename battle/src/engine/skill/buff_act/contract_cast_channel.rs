@@ -288,6 +288,7 @@ mod tests {
                 act_id: 0,
                 act_value: 0,
                 replaced_fixed_max_hp: None,
+                replaced_buff_id: None,
                 expiry: crate::engine::event::payload::BuffExpiry::None,
             }),
         );

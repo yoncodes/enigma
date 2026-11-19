@@ -47,6 +47,7 @@ pub struct BuffChangeEvent {
     pub act_id: i32,
     pub act_value: i32,
     pub replaced_fixed_max_hp: Option<i32>,
+    pub replaced_buff_id: Option<i32>,
     pub expiry: BuffExpiry,
 }
 
@@ -604,6 +605,7 @@ mod tests {
             act_id: 0,
             act_value: 0,
             replaced_fixed_max_hp: None,
+            replaced_buff_id: None,
             expiry: BuffExpiry::None,
         };
 
