@@ -1,8 +1,8 @@
 use super::*;
 
-fn wire(
-    fanout: &crate::engine::manager::buff::BuffFanoutResult,
-) -> Vec<(i32, i64, Option<(i64, i32)>)> {
+type WireLine = (i32, i64, Option<(i64, i32)>);
+
+fn wire(fanout: &crate::engine::manager::buff::BuffFanoutResult) -> Vec<WireLine> {
     project_change(
         &crate::engine::runtime::change::BattleChange::BuffFanout(Box::new(fanout.clone())),
         true,
