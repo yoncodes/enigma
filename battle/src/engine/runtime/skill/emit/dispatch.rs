@@ -662,6 +662,7 @@ pub(in crate::engine::runtime) fn emit_ops(
                         .entity
                         .passive_source(invocation.plan.source_uid, invocation.plan.skill_id),
                     execution.context.action_damage_amount,
+                    execution.context.active_skill_id == invocation.plan.skill_id,
                 ) || definition
                     .skill_action_trigger
                     .rejects_extra_skill(execution.context.extra_skill_kind)

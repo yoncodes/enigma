@@ -400,3 +400,57 @@ fn aggregate_buff_count_with_target_999_applies_to_the_action_targets() {
         result.events
     );
 }
+
+#[test]
+fn another_skills_after_damage_reaction_skips_non_action_casts() {
+    crate::test_support::init_config();
+    let fight = target_301_fight();
+    let mut invocation: SkillInvocation = SkillRequest {
+        source_uid: 10,
+        skill_id: 119381141,
+    }
+    .into();
+    invocation.condition_key = Some(DefinitionKey::new(208, "None"));
+    invocation.phase = Some(SkillPhase::AfterDamage);
+    invocation.mode = SkillExecutionMode::Active;
+    let event = BattleEvent::SkillAction(crate::engine::skill::action::SkillActionEvent {
+        source_uid: 10,
+        card_index: 0,
+        skill_id: 30060151,
+        target_uid: -1,
+        target_uids: vec![-1],
+        attacked_target_uids: vec![-1],
+        phase: SkillPhase::AfterDamage,
+        skill_slot: 1,
+        is_attack: true,
+        rank: 1,
+        skill_type: 1,
+        effect_tag: 0,
+        assassinate: false,
+        ignore_riposte: false,
+        damage_amount: 1,
+        kill_count: 0,
+        crit_count: 0,
+        guard_break_count: 0,
+        additional_moxie: 0,
+        extra_skill_kind: 0,
+        mode: SkillExecutionMode::Nested,
+        teammate_injury_count: 0,
+        teammate_injury_count_not_reset: 0,
+        team_injury_count_round: 0,
+        card_enchants: Vec::new(),
+        buff_additions: Vec::new(),
+    });
+    let ops = emit_all_ops(
+        invocation,
+        &BattleManagers::seeded(&fight),
+        &TargetPool::from_fight(&fight),
+        crate::engine::skill::effect::catalog::global(),
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+        &SkillOpTrigger::Event(event),
+    )
+    .unwrap();
+
+    assert!(buff_grant_targets(&ops, 119381141).is_empty());
+}
