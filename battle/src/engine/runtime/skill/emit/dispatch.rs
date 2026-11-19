@@ -807,7 +807,8 @@ pub(in crate::engine::runtime) fn emit_ops(
             slot,
             condition_uses_active_skill_targets || condition_uses_hit_targets,
         );
-        let event_targets = if condition_uses_hit_targets {
+        let event_targets = if condition_uses_hit_targets && slot.target.code != SOURCE_TARGET_CODE
+        {
             selected_event.and_then(active_skill_hit_targets)
         } else if condition_uses_active_skill_targets && uses_action_targets {
             selected_event.and_then(active_skill_targets)
