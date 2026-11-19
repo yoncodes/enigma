@@ -12,6 +12,7 @@ mod definition;
 mod family_priority;
 mod feature;
 mod grant_plan;
+mod layer_halo_allies;
 mod lifecycle;
 mod query;
 mod result;
@@ -47,7 +48,7 @@ pub use result::{
     BuffActInfoMarkerResult, BuffActTriggerResult, BuffApplyResult, BuffDeleteReason,
     BuffFanoutResult, BuffFanoutUpdateResult, BuffMarkerResult, BuffRejectResult, BuffRemoveResult,
     BuffReplaceResult, BuffShieldRemoveResult, BuffSyncResult, BuffUpdateResult,
-    BuffWireEffectResult,
+    BuffWireEffectResult, LayerHaloAllyResult,
 };
 pub use rules::{
     BuffExclusions, BuffLifetime, BuffPolicy, BuffPolicyError, BuffStorage, DuplicateGrant,

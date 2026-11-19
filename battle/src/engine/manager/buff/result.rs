@@ -42,6 +42,16 @@ pub struct BuffFanoutResult {
     pub carrier_buff_id: i32,
     pub added: Vec<BuffApplyResult>,
     pub refreshed: Vec<BuffFanoutUpdateResult>,
+    pub allies: Vec<LayerHaloAllyResult>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct LayerHaloAllyResult {
+    pub target_uid: i64,
+    pub trimmed: Vec<BuffRemoveResult>,
+    pub trim_refreshed: Vec<BuffUpdateResult>,
+    pub added: Option<BuffApplyResult>,
+    pub refreshed: Option<BuffFanoutUpdateResult>,
 }
 
 impl BuffFanoutResult {

@@ -356,6 +356,18 @@ fn project_change(
                 std::iter::once(EffectPacket::buff_update(&refreshed.update))
                     .chain(refreshed.markers.iter().map(EffectPacket::buff_marker))
             }))
+            .chain(fanout.allies.iter().flat_map(|ally| {
+                ally.trimmed
+                    .iter()
+                    .map(EffectPacket::buff_delete)
+                    .chain(ally.trim_refreshed.iter().map(EffectPacket::buff_update))
+                    .chain(ally.added.iter().flat_map(EffectPacket::buff_add_direct))
+                    .chain(ally.refreshed.iter().flat_map(|refreshed| {
+                        std::iter::once(EffectPacket::buff_update(&refreshed.update))
+                            .chain(refreshed.markers.iter().map(EffectPacket::buff_marker))
+                    }))
+                    .collect::<Vec<_>>()
+            }))
             .collect(),
         BattleChange::RaspberryCapacity(result) => match result.as_ref() {
             crate::engine::skill::buff_act::raspberry::CapacityResult::Applied(changes) => {

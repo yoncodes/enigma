@@ -704,19 +704,22 @@ impl BuffManager {
             .collect()
     }
 
-    fn commit_fanout_one(
+    pub(in crate::engine::manager::buff) fn commit_fanout_one(
         &mut self,
         hp: &HpManager,
         carrier_buff_uid: Option<i64>,
         spec: &FanoutSpec,
         uid: uid_policy::UidAllocationPlan,
     ) -> Option<BuffApplyResult> {
-        let effective = !self.buffs.iter().any(|active| {
-            active.effective
-                && active.owner_uid == spec.route.target_uid
-                && active.buff.buff_id == Some(spec.route.buff_id)
-                && active.buff.from_uid == Some(spec.route.source_uid)
-        });
+        let effective =
+            crate::engine::skill::buff_act::registry::kind(spec.rule.opcode, spec.rule.type_name)
+                == Some(BuffActKind::LayerMasterHalo)
+                || !self.buffs.iter().any(|active| {
+                    active.effective
+                        && active.owner_uid == spec.route.target_uid
+                        && active.buff.buff_id == Some(spec.route.buff_id)
+                        && active.buff.from_uid == Some(spec.route.source_uid)
+                });
         let grant_values = self.plan_grant_values(&spec.definition, spec.route.source_uid);
         let mut initial_act_info = spec
             .definition
@@ -795,52 +798,9 @@ impl BuffManager {
     ) -> Vec<BuffFanoutResult> {
         let mut groups = Vec::<BuffFanoutResult>::new();
         for plan in plans {
-            if let Some(reservation) = plan.uid_reservation {
-                uid_policy::commit(self, plan.spec.route.target_uid, reservation);
-            }
-            let Some(update) = self.update(
-                plan.spec.route.target_uid,
-                plan.buff_uid,
-                Some(plan.spec.args.layer),
-                None,
-                Some(plan.spec.duration),
-            ) else {
+            let Some(refreshed) = self.commit_fanout_refresh_one(plan) else {
                 continue;
             };
-            if let Some(copy) = self.buffs.iter_mut().find(|active| {
-                active.owner_uid == plan.spec.route.target_uid
-                    && active.buff.uid == Some(plan.buff_uid)
-            }) {
-                copy.fanout_carrier_uid = Some(plan.carrier_buff_uid);
-            }
-            let mut markers = halo::fanout_markers(self.catalog(), plan.spec.route.buff_id)
-                .into_iter()
-                .map(|marker| BuffMarkerResult {
-                    target_uid: plan.spec.route.target_uid,
-                    effect_type: marker.effect_type as i32,
-                    effect_num: plan.spec.definition.marker_effect_num(
-                        marker.effect_type as i32,
-                        update.after.act_common_params.as_deref(),
-                    ),
-                    buff_act_id: 0,
-                })
-                .collect::<Vec<_>>();
-            markers.extend(
-                plan.spec
-                    .definition
-                    .fanout_wire_markers(crate::engine::skill::buff_act::wire::WirePhase::Refresh)
-                    .into_iter()
-                    .map(|effect_type| BuffMarkerResult {
-                        target_uid: plan.spec.route.target_uid,
-                        effect_type,
-                        effect_num: plan.spec.definition.marker_effect_num(
-                            effect_type,
-                            update.after.act_common_params.as_deref(),
-                        ),
-                        buff_act_id: 0,
-                    }),
-            );
-            let refreshed = BuffFanoutUpdateResult { update, markers };
             if let Some(group) = groups.iter_mut().find(|group| {
                 group.rule == plan.spec.rule && group.carrier_buff_uid == plan.carrier_buff_uid
             }) {
@@ -853,10 +813,60 @@ impl BuffManager {
                     carrier_buff_id: plan.carrier_buff_id,
                     added: Vec::new(),
                     refreshed: vec![refreshed],
+                    allies: Vec::new(),
                 });
             }
         }
         groups
+    }
+
+    pub(in crate::engine::manager::buff) fn commit_fanout_refresh_one(
+        &mut self,
+        plan: &PlannedFanoutRefresh,
+    ) -> Option<BuffFanoutUpdateResult> {
+        if let Some(reservation) = plan.uid_reservation {
+            uid_policy::commit(self, plan.spec.route.target_uid, reservation);
+        }
+        let update = self.update(
+            plan.spec.route.target_uid,
+            plan.buff_uid,
+            Some(plan.spec.args.layer),
+            None,
+            Some(plan.spec.duration),
+        )?;
+        if let Some(copy) = self.buffs.iter_mut().find(|active| {
+            active.owner_uid == plan.spec.route.target_uid && active.buff.uid == Some(plan.buff_uid)
+        }) {
+            copy.fanout_carrier_uid = Some(plan.carrier_buff_uid);
+        }
+        let mut markers = halo::fanout_markers(self.catalog(), plan.spec.route.buff_id)
+            .into_iter()
+            .map(|marker| BuffMarkerResult {
+                target_uid: plan.spec.route.target_uid,
+                effect_type: marker.effect_type as i32,
+                effect_num: plan.spec.definition.marker_effect_num(
+                    marker.effect_type as i32,
+                    update.after.act_common_params.as_deref(),
+                ),
+                buff_act_id: 0,
+            })
+            .collect::<Vec<_>>();
+        markers.extend(
+            plan.spec
+                .definition
+                .fanout_wire_markers(crate::engine::skill::buff_act::wire::WirePhase::Refresh)
+                .into_iter()
+                .map(|effect_type| BuffMarkerResult {
+                    target_uid: plan.spec.route.target_uid,
+                    effect_type,
+                    effect_num: plan
+                        .spec
+                        .definition
+                        .marker_effect_num(effect_type, update.after.act_common_params.as_deref()),
+                    buff_act_id: 0,
+                }),
+        );
+        Some(BuffFanoutUpdateResult { update, markers })
     }
 
     pub(super) fn has_source_buff(&self, owner_uid: i64, buff_id: i32, source_uid: i64) -> bool {

@@ -543,6 +543,7 @@ impl BuffManager {
                     })
                     .flatten();
                 if replacement_uid.is_none()
+                    && carrier.kind != HaloKind::LayerMaster
                     && self.has_fanout_buff(target.uid, fanout_buff_id, emitter_uid)
                 {
                     continue;
@@ -611,16 +612,27 @@ impl BuffManager {
                 })
                 .filter(|entity| entity.uid != emitter_uid)
             {
-                let Some(buff_uid) = self.buffs.iter().find_map(|active| {
-                    (active.owner_uid == target.uid
-                        && active.buff.buff_id == Some(fanout_buff_id)
-                        && active
-                            .fanout_emitter_uid
-                            .unwrap_or_else(|| active.buff.from_uid.unwrap_or(active.owner_uid))
-                            == emitter_uid)
-                        .then_some(active.buff.uid)
-                        .flatten()
-                }) else {
+                let copies =
+                    self.buffs
+                        .iter()
+                        .filter(|active| {
+                            active.owner_uid == target.uid
+                                && active.buff.buff_id == Some(fanout_buff_id)
+                                && active.fanout_emitter_uid.unwrap_or_else(|| {
+                                    active.buff.from_uid.unwrap_or(active.owner_uid)
+                                }) == emitter_uid
+                        })
+                        .collect::<Vec<_>>();
+                let Some(buff_uid) = copies
+                    .iter()
+                    .find(|active| super::layer_halo_carrier_uid(active) == Some(carrier_buff_uid))
+                    .or_else(|| {
+                        copies
+                            .iter()
+                            .find(|active| !self.follows_layer_halo_master(active))
+                    })
+                    .and_then(|active| active.buff.uid)
+                else {
                     continue;
                 };
                 specs.push(PlannedFanoutRefresh {

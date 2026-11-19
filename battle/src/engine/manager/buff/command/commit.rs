@@ -312,6 +312,7 @@ impl BuffManager {
                                 carrier_buff_id: plan.carrier_buff_id,
                                 added,
                                 refreshed: Vec::new(),
+                                allies: Vec::new(),
                             })
                         })
                         .collect(),
@@ -438,6 +439,17 @@ impl BuffManager {
                 changes
             },
         );
+        let copy_trims = self.plan_layer_halo_copy_trims(&stack_trim);
+        let (per_ally_fanout, fanout): (Vec<_>, Vec<_>) = plan
+            .fanout
+            .iter()
+            .partition(|fanout| copy_trims.owns(fanout.spec.rule));
+        let fanout = fanout.into_iter().cloned().collect::<Vec<_>>();
+        let (per_ally_refreshes, fanout_refreshes): (Vec<_>, Vec<_>) = plan
+            .fanout_refreshes
+            .iter()
+            .partition(|refresh| copy_trims.owns(refresh.spec.rule));
+        let fanout_refreshes = fanout_refreshes.into_iter().cloned().collect::<Vec<_>>();
         for uid in &plan.pre_add_uids {
             super::uid_policy::commit(self, plan.route.target_uid, *uid);
         }
@@ -459,7 +471,7 @@ impl BuffManager {
             &plan.refresh_uids,
             plan.layer_refresh,
             layer_refresh_uid,
-            &plan.fanout,
+            &fanout,
         );
         if let Some(progress) = plan.transition_progress {
             self.transition_progress
@@ -467,7 +479,17 @@ impl BuffManager {
         }
         change
             .fanout
-            .extend(self.commit_fanout_refreshes(&plan.fanout_refreshes));
+            .extend(self.commit_fanout_refreshes(&fanout_refreshes));
+        if !copy_trims.is_empty() {
+            let carrier_buff_uid = change.added.as_ref().and_then(|added| added.buff.uid);
+            change.fanout.extend(self.commit_layer_halo_allies(
+                hp,
+                carrier_buff_uid,
+                &per_ally_fanout,
+                &per_ally_refreshes,
+                copy_trims,
+            ));
+        }
         change.removed.splice(0..0, stack_trim.removed.drain(..));
         change
             .refreshed

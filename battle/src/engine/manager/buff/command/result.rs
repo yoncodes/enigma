@@ -155,6 +155,7 @@ impl BuffChanges {
                                 carrier_buff_id,
                                 added: vec![child],
                                 refreshed: Vec::new(),
+                                allies: Vec::new(),
                             });
                         }
                     }
@@ -274,6 +275,29 @@ impl BuffChanges {
                 .collect()
         };
         for fanout in &self.fanout {
+            for ally in &fanout.allies {
+                for change in [
+                    BuffReplaceResult {
+                        removed: ally.trimmed.clone(),
+                        refreshed: ally.trim_refreshed.clone(),
+                        ..Default::default()
+                    },
+                    BuffReplaceResult {
+                        added: ally.added.clone(),
+                        ..Default::default()
+                    },
+                    BuffReplaceResult {
+                        refreshed: ally
+                            .refreshed
+                            .iter()
+                            .map(|refreshed| refreshed.update.clone())
+                            .collect(),
+                        ..Default::default()
+                    },
+                ] {
+                    events.extend(change.events());
+                }
+            }
             for added in &fanout.added {
                 events.extend(
                     BuffReplaceResult {

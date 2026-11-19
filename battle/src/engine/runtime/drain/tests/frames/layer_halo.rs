@@ -128,3 +128,63 @@ fn event_owned_layer_halo_fanout_follows_the_master_step() {
         assert_eq!(order(&result.frames[0].items), ["skill", "fanout"]);
     }
 }
+
+#[test]
+fn setup_owned_layer_halo_fanout_follows_the_master_step() {
+    let (pool, mut managers, _) = rapport_fixture();
+    let mut slot = SkillEffectSlot::new(
+        ParsedBehavior::new(1, "AddBuff", vec![31460002]),
+        TargetRequest::self_only(),
+    );
+    slot.conditions = vec![crate::engine::skill::condition::ParsedCondition {
+        opcode: 103,
+        type_name: "None".to_owned(),
+        kind: crate::engine::skill::condition::ParsedConditionKind::None(
+            crate::engine::skill::condition::none::NoneMode::RoundStart,
+        ),
+        raw_args: Vec::new(),
+    }];
+    slot.compiled_route =
+        crate::engine::skill::rule::route::ConditionRoute::compile(&slot.conditions);
+    let mut catalog = SkillEffectCatalog::default();
+    catalog.insert(ParsedSkillEffect {
+        skill_id: 100,
+        slots: vec![slot],
+    });
+    let trigger = SkillOpTrigger::Setup {
+        stage: crate::engine::skill::rule::SetupStage::RoundStart,
+        priority: 1,
+    };
+    let mut frames = Vec::new();
+    let side = push_root(
+        &mut frames,
+        FrameOwner::SetupSide(crate::engine::runtime::record::SetupSide::Attacker),
+        frame_trigger(&trigger),
+    );
+    let mut invocation = grant();
+    invocation.condition_slot = Some(0);
+    invocation.condition_key = Some(crate::engine::skill::rule::DefinitionKey::new(103, "None"));
+    let mut queue = VecDeque::from([QueuedOp {
+        op: RuleOp::Skill(invocation),
+        trigger,
+        skill_execution: None,
+        frame_path: None,
+        parent_path: Some(side),
+        frame_group: None,
+        independent_parent_group: None,
+        frame_owner: None,
+        subscriber: None,
+        caster_frame: None,
+    }]);
+    let result = drain_queue_with_frames(
+        &mut managers,
+        &pool,
+        &catalog,
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+        &mut queue,
+        frames,
+    )
+    .unwrap();
+    assert_eq!(order(&result.frames[0].items), ["skill", "fanout"]);
+}

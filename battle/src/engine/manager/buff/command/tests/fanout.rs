@@ -1003,7 +1003,7 @@ fn layered_halo_copies_outlive_a_master_removed_before_expiry() {
 }
 
 #[test]
-fn layered_halo_copies_follow_the_stack_that_last_refreshed_them() {
+fn unlinked_layered_halo_copy_follows_the_stack_that_refreshes_it() {
     crate::test_support::init_config();
     let fight = Fight {
         version: Some(7),
@@ -1052,6 +1052,13 @@ fn layered_halo_copies_follow_the_stack_that_last_refreshed_them() {
         .clone();
     second.buff.uid = Some(second_uid);
     manager.buffs.push(second);
+    for copy in manager
+        .buffs
+        .iter_mut()
+        .filter(|active| active.owner_uid == 11)
+    {
+        copy.fanout_carrier_uid = None;
+    }
     let plans =
         manager.fanout_refresh_specs(&hp, BuffRoute::new(10, 10, 31460002), second_uid, 2, 3);
     assert_eq!(manager.commit_fanout_refreshes(&plans).len(), 1);
@@ -1080,6 +1087,72 @@ fn layered_halo_copies_follow_the_stack_that_last_refreshed_them() {
             .collect::<Vec<_>>(),
         [(11, Some(2))]
     );
+}
+
+#[test]
+fn inactive_ally_keeps_its_layered_halo_copy_trim_in_its_own_entry() {
+    crate::test_support::init_config();
+    let fight = Fight {
+        version: Some(7),
+        attacker: Some(FightTeam {
+            entitys: [10, 11]
+                .into_iter()
+                .map(|uid| FightEntityInfo {
+                    uid: Some(uid),
+                    team_type: Some(1),
+                    current_hp: Some(100),
+                    ..Default::default()
+                })
+                .collect(),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let mut manager = BuffManager::default();
+    let mut hp = HpManager::default();
+    manager.seed(&fight);
+    hp.seed(&fight);
+    let grant = |amount| {
+        BuffCommand::Grant(BuffGrant {
+            origin: CommandOrigin {
+                domain: RuleDomain::Behavior,
+                key: DefinitionKey::new(1, "AddBuff"),
+            },
+            source_uid: 10,
+            target_uid: 10,
+            buff_id: 31460002,
+            amount,
+            occurrences: 1,
+            child_uid_reservations: 0,
+        })
+    };
+    let first = manager.execute(&hp, grant(None)).unwrap();
+    let first_copy = first.fanout[0].added[0].buff.uid;
+    manager.advance_durations(103);
+    manager.execute(&hp, grant(None)).unwrap();
+    manager
+        .entities
+        .iter_mut()
+        .find(|entity| entity.uid == 11)
+        .unwrap()
+        .active = false;
+
+    let merged = manager.execute(&hp, grant(Some(4))).unwrap();
+    let allies = merged.fanout[0]
+        .allies
+        .iter()
+        .map(|ally| {
+            (
+                ally.target_uid,
+                ally.trimmed
+                    .iter()
+                    .map(|removed| removed.buff.uid)
+                    .collect::<Vec<_>>(),
+                ally.added.is_some() || ally.refreshed.is_some(),
+            )
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(allies, [(11, vec![first_copy], false)]);
 }
 
 #[test]

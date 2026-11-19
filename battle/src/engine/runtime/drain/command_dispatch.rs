@@ -260,6 +260,14 @@ pub(super) fn drain_command(
             false,
         )
     };
+    let layer_halo_fanout_output_owner = if !entry_halo_fanout
+        && current_skill.is_some()
+        && matches!(trigger, SkillOpTrigger::Setup { .. })
+    {
+        crate::engine::skill::behavior::registry::OutputOwner::Parent
+    } else {
+        fanout_output_owner
+    };
 
     // Managers publish semantic events through the bus. Reactions are
     // derived from these committed events, never fired by packet code.
@@ -518,7 +526,7 @@ pub(super) fn drain_command(
     for fanout in leading_fanout {
         push_fanout(
             &mut result.frames,
-            &output_frame_path(fanout_output_owner, &event_scope),
+            &output_frame_path(layer_halo_fanout_output_owner, &event_scope),
             fanout,
             frame_trigger(&trigger),
         );
