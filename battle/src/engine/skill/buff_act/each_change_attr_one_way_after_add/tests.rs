@@ -98,7 +98,11 @@ fn replacement_keeps_the_captured_value() {
     let added = changes.change.added.as_ref().expect("replacement carrier");
 
     assert!(captured_state(&added.buff.act_info, 600));
-    let copies = &changes.fanout[0].added;
+    let allies = &changes.fanout[0].allies;
+    let copies = allies
+        .iter()
+        .filter_map(|ally| ally.added.as_ref())
+        .collect::<Vec<_>>();
     assert_eq!(copies.len(), 3);
     assert!(
         copies
@@ -106,12 +110,28 @@ fn replacement_keeps_the_captured_value() {
             .all(|copy| captured_state(&copy.buff.act_info, 600))
     );
     assert!(old_copy_uids.iter().all(|uid| {
+        allies.iter().any(|ally| {
+            ally.replaced.iter().any(|removed| {
+                removed.buff.uid == Some(*uid) && removed.target_uid == ally.target_uid
+            })
+        })
+    }));
+    assert_eq!(
         changes
             .change
             .removed
             .iter()
-            .any(|removed| removed.buff.uid == Some(*uid))
+            .map(|removed| removed.target_uid)
+            .collect::<Vec<_>>(),
+        vec![-4]
+    );
+    assert!(copies.iter().all(|copy| {
+        copy.pre_markers
+            .iter()
+            .all(|marker| marker.target_uid == 0 && marker.act_id == 1162)
+            && !copy.pre_markers.is_empty()
     }));
+    assert!(changes.leading_pre_markers);
     assert!(
         copies
             .iter()
@@ -124,6 +144,27 @@ fn replacement_keeps_the_captured_value() {
             600
         );
     }
+}
+
+#[test]
+fn regrant_publishes_fresh_and_replaced_copies_through_one_per_ally_fanout() {
+    let mut managers = managers();
+    grant(&mut managers);
+    let cleansed = managers.buff.buff_id_uid(-1, 31560152).unwrap();
+    managers.buff.delete(-1, cleansed);
+    let changes = grant(&mut managers);
+
+    assert_eq!(changes.fanout.len(), 1);
+    let fanout = &changes.fanout[0];
+    assert!(fanout.added.is_empty());
+    assert_eq!(
+        fanout
+            .allies
+            .iter()
+            .map(|ally| (ally.target_uid, ally.replaced.len(), ally.added.is_some()))
+            .collect::<Vec<_>>(),
+        vec![(-1, 0, true), (-2, 1, true), (-3, 1, true)]
+    );
 }
 
 #[test]

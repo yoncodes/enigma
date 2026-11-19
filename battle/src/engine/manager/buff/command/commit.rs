@@ -419,6 +419,9 @@ impl BuffManager {
             let Some(uid) = fanout.replacement_uid else {
                 continue;
             };
+            if fanout.replaces_layered_copy() {
+                continue;
+            }
             planned_removed.extend(
                 self.delete(fanout.spec.route.target_uid, uid)
                     .into_iter()
@@ -448,11 +451,17 @@ impl BuffManager {
                 changes
             },
         );
-        let copy_trims = self.plan_layer_halo_copy_trims(&stack_trim);
-        let (per_ally_fanout, fanout): (Vec<_>, Vec<_>) = plan
+        let mut copy_trims = self.plan_layer_halo_copy_trims(&stack_trim);
+        let replacing_rules = plan
             .fanout
             .iter()
-            .partition(|fanout| copy_trims.owns(fanout.spec.rule));
+            .filter(|fanout| fanout.replaces_layered_copy())
+            .map(|fanout| fanout.spec.rule)
+            .collect::<Vec<_>>();
+        let (per_ally_fanout, fanout): (Vec<_>, Vec<_>) = plan.fanout.iter().partition(|fanout| {
+            copy_trims.owns(fanout.spec.rule) || replacing_rules.contains(&fanout.spec.rule)
+        });
+        copy_trims.own_copy_replacements(&per_ally_fanout, plan.route.buff_id);
         let fanout = fanout.into_iter().cloned().collect::<Vec<_>>();
         let (per_ally_refreshes, fanout_refreshes): (Vec<_>, Vec<_>) = plan
             .fanout_refreshes
@@ -489,7 +498,7 @@ impl BuffManager {
         change
             .fanout
             .extend(self.commit_fanout_refreshes(&fanout_refreshes));
-        if !copy_trims.is_empty() {
+        if !copy_trims.is_empty() || !per_ally_fanout.is_empty() {
             let carrier_buff_uid = change.added.as_ref().and_then(|added| added.buff.uid);
             change.fanout.extend(self.commit_layer_halo_allies(
                 hp,

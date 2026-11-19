@@ -52,6 +52,7 @@ pub(super) struct FanoutSpec {
     pub(super) rule: crate::engine::skill::rule::DefinitionKey,
     pub(super) source_attack: Option<i32>,
     pub(super) initial_act_info: Vec<sonettobuf::BuffActInfo>,
+    pub(super) snapshot_markers: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -208,6 +209,7 @@ impl BuffManager {
                             rule,
                             source_attack: None,
                             initial_act_info: Vec::new(),
+                            snapshot_markers: false,
                         },
                         uid,
                         replacement_uid: None,
@@ -565,6 +567,7 @@ impl BuffManager {
                         ),
                         source_attack: None,
                         initial_act_info: Vec::new(),
+                        snapshot_markers: false,
                     },
                     replacement_uid,
                 ));
@@ -649,6 +652,7 @@ impl BuffManager {
                         rule,
                         source_attack: None,
                         initial_act_info: Vec::new(),
+                        snapshot_markers: false,
                     },
                     buff_uid,
                     carrier_buff_uid,

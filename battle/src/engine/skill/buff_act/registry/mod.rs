@@ -1325,10 +1325,13 @@ buff_act_definitions! {
         supports: super::each_change_attr_one_way::supports,
         wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(1131, "EachChangeAttrOneWay"), &[EffectType::None as i32]).with_one_way_attr_max_hp());
     (1162, "EachChangeAttrOneWayAfterAdd") => EachChangeAttrOneWayAfterAdd,
+        transactions: [EventKind::BuffRemoved],
+        publication: BeforePublish, frame: CausingFrame,
         stat_read: OnGrant,
+        transaction: super::each_change_attr_one_way_after_add::transaction_rule_ops,
         supports: super::each_change_attr_one_way_after_add::supports,
         state_consumer: true,
-        wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(1162, "EachChangeAttrOneWayAfterAdd"), &[EffectType::None as i32]));
+        wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(1162, "EachChangeAttrOneWayAfterAdd"), &[EffectType::None as i32]).with_one_way_attr_max_hp());
     (836, "ContractCastChannel") => ContractCastChannel,
         transactions: [EventKind::BuffAdded],
         publication: BeforePublish, frame: CausingFrame,

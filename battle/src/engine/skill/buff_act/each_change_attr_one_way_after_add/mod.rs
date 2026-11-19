@@ -2,8 +2,16 @@ use sonettobuf::BuffActInfo;
 
 use crate::engine::{
     entity::attr::AttrId,
-    manager::BattleManagers,
-    skill::buff_act::{self, registry::BuffActKind},
+    event::payload::BattleEvent,
+    manager::{
+        BattleManagers,
+        buff::ActiveBuffFeature,
+        hp::{HpCommand, MaxHpAdjust},
+    },
+    skill::{
+        buff_act::{self, registry::BuffActKind},
+        rule::output::{BattleCommand, RuleOp},
+    },
 };
 
 pub fn supports(args: &[i32]) -> bool {
@@ -71,6 +79,44 @@ pub(crate) fn definition_snapshot(
         })
         .collect::<Vec<_>>();
     (!act_info.is_empty()).then_some(act_info)
+}
+
+pub fn transaction_rule_ops(
+    managers: &BattleManagers,
+    event: &BattleEvent,
+) -> Vec<(ActiveBuffFeature, RuleOp)> {
+    let BattleEvent::BuffRemoved(change) = event else {
+        return Vec::new();
+    };
+    super::changed_features(managers, event, BuffActKind::EachChangeAttrOneWayAfterAdd)
+        .into_iter()
+        .filter(|(feature, _)| {
+            managers
+                .buff
+                .replacement_uid(
+                    feature.source_uid,
+                    feature.owner_uid,
+                    feature.buff_id,
+                    feature.buff_uid,
+                )
+                .and_then(|uid| managers.buff.snapshot(feature.owner_uid, uid))
+                .is_some_and(|replacement| replacement.from_uid == Some(feature.source_uid))
+        })
+        .filter_map(|(feature, _)| {
+            let origin = buff_act::feature_command_origin(&feature)?;
+            Some((
+                feature,
+                RuleOp::Command(BattleCommand::Hp(HpCommand::RemoveReplacedMax(
+                    MaxHpAdjust {
+                        origin,
+                        source_uid: change.source_uid,
+                        target_uid: change.target_uid,
+                        delta: 0,
+                    },
+                ))),
+            ))
+        })
+        .collect()
 }
 
 #[cfg(test)]

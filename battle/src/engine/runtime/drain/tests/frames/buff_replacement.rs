@@ -39,6 +39,16 @@ fn drain_grant_from(
     source_uid: i64,
     buff_id: i32,
 ) -> DrainResult {
+    drain_grant_to(pool, managers, source_uid, 10, buff_id)
+}
+
+fn drain_grant_to(
+    pool: &TargetPool,
+    managers: &mut BattleManagers,
+    source_uid: i64,
+    target_uid: i64,
+    buff_id: i32,
+) -> DrainResult {
     let mut frames = Vec::new();
     let root = push_root(&mut frames, FrameOwner::Command, FrameTrigger::Active);
     let mut queue = VecDeque::from([QueuedOp {
@@ -48,7 +58,7 @@ fn drain_grant_from(
                 key: DefinitionKey::new(1, "AddBuff"),
             },
             source_uid,
-            target_uid: 10,
+            target_uid,
             buff_id,
             amount: None,
             occurrences: 1,
@@ -294,4 +304,101 @@ fn one_way_snapshot_markers_lead_the_add_and_the_replacement() {
             "add"
         ]
     );
+}
+
+#[test]
+fn layered_halo_snapshot_replacement_replaces_each_copy_in_its_own_step() {
+    use sonettobuf::effect_type_enum::EffectType;
+    crate::test_support::init_config();
+    let hero = |uid| FightEntityInfo {
+        uid: Some(uid),
+        team_type: Some(1),
+        current_hp: Some(1000),
+        attr: Some(HeroAttribute {
+            hp: Some(1000),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let fight = Fight {
+        version: Some(7),
+        attacker: Some(FightTeam {
+            entitys: vec![hero(-4), hero(-1), hero(-2)],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    fn collect(steps: &[sonettobuf::FightStep], out: &mut Vec<sonettobuf::ActEffect>) {
+        for step in steps {
+            for effect in &step.act_effect {
+                out.push(effect.clone());
+                if let Some(child) = &effect.fight_step {
+                    collect(std::slice::from_ref(child), out);
+                }
+            }
+        }
+    }
+    let per_copy = |result: &DrainResult| {
+        let mut effects = Vec::new();
+        collect(
+            &crate::engine::packet::timeline::project(&result.frames).unwrap(),
+            &mut effects,
+        );
+        let owners = effects
+            .iter()
+            .filter(|effect| effect.effect_type == Some(EffectType::Buffadd as i32))
+            .filter_map(|effect| Some((effect.buff.as_ref()?.uid?, effect.target_id?)))
+            .collect::<std::collections::HashMap<_, _>>();
+        let mut copies = std::collections::BTreeMap::<i64, Vec<String>>::new();
+        for effect in effects {
+            let effect_type = effect.effect_type.unwrap_or_default();
+            let act = effect.buff_act_id.unwrap_or_default();
+            let (name, target) = if effect_type == EffectType::Buffactinfoupdate as i32
+                && effect.target_id == Some(0)
+            {
+                (
+                    "info",
+                    owners.get(&effect.reserve_id.unwrap_or_default()).copied(),
+                )
+            } else if effect_type == EffectType::Maxhpchange as i32 {
+                ("max", effect.target_id)
+            } else if effect_type == EffectType::Buffdel as i32 {
+                ("del", effect.target_id)
+            } else if effect_type == EffectType::Buffadd as i32 {
+                ("add", effect.target_id)
+            } else {
+                continue;
+            };
+            copies
+                .entry(target.unwrap_or_default())
+                .or_default()
+                .push(if act == 0 {
+                    name.to_owned()
+                } else {
+                    format!("{name}({act})")
+                });
+        }
+        let mut copies = copies.into_iter().collect::<Vec<_>>();
+        copies.sort_by_key(|(target, _)| *target);
+        copies
+    };
+
+    let fresh = drain_grant_to(&pool, &mut managers, -4, -4, 31560152);
+    let replaced = drain_grant_to(&pool, &mut managers, -4, -4, 31560152);
+    let expected = |lines: &[&str]| {
+        [-4, -2, -1]
+            .into_iter()
+            .map(|uid| (uid, lines.iter().map(|line| (*line).to_owned()).collect()))
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(per_copy(&fresh), expected(&["info", "add"]));
+    assert_eq!(
+        per_copy(&replaced),
+        expected(&["info", "max(1162)", "del", "add"])
+    );
+    for uid in [-4, -1, -2] {
+        assert_eq!(managers.buff.buff_id_amount(uid, 31560152), 1);
+    }
 }

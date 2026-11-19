@@ -199,7 +199,7 @@ impl EffectPacket {
         effects
     }
 
-    fn buff_add_pre_markers(change: &BuffApplyResult) -> Vec<ActEffect> {
+    pub fn buff_add_pre_markers(change: &BuffApplyResult) -> Vec<ActEffect> {
         change
             .pre_markers
             .iter()
@@ -218,7 +218,7 @@ impl EffectPacket {
         )
     }
 
-    fn buff_add_body(change: &BuffApplyResult) -> Vec<ActEffect> {
+    pub fn buff_add_body(change: &BuffApplyResult) -> Vec<ActEffect> {
         let mut effects = change
             .pre_effects
             .iter()

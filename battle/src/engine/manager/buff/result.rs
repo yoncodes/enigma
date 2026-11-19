@@ -48,6 +48,8 @@ pub struct BuffFanoutResult {
 #[derive(Debug, Clone, PartialEq)]
 pub struct LayerHaloAllyResult {
     pub target_uid: i64,
+    pub part: super::BuffPublishPart,
+    pub replaced: Vec<BuffRemoveResult>,
     pub trimmed: Vec<BuffRemoveResult>,
     pub trim_refreshed: Vec<BuffUpdateResult>,
     pub added: Option<BuffApplyResult>,

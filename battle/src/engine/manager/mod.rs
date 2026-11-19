@@ -426,7 +426,7 @@ impl BattleManagers {
                 &removed_buff_uids,
             )
         {
-            plan.initialize_added_and_fanout_act_info_without_markers(act_info);
+            plan.initialize_added_and_fanout_snapshot_act_info(act_info);
         }
         if let Some((source_uid, target_uid, buff_id)) = plan.each_change_attr_route() {
             let values = crate::engine::skill::buff_act::each_change_attr::definition_snapshot(

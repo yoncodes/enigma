@@ -589,7 +589,7 @@ impl BuffPlan {
         plan.initial_act_info_markers = Some(Vec::new());
     }
 
-    pub(crate) fn initialize_added_and_fanout_act_info_without_markers(
+    pub(crate) fn initialize_added_and_fanout_snapshot_act_info(
         &mut self,
         values: Vec<BuffActInfo>,
     ) {
@@ -599,11 +599,13 @@ impl BuffPlan {
         };
         for fanout in &mut plan.fanout {
             fanout.spec.initial_act_info.extend(values.iter().cloned());
+            fanout.spec.snapshot_markers = true;
         }
         plan.initial_act_info
             .get_or_insert_with(Vec::new)
-            .extend(values);
-        plan.initial_act_info_markers = Some(Vec::new());
+            .extend(values.iter().cloned());
+        plan.initial_act_info_markers = Some(values);
+        plan.snapshot_markers = true;
     }
 
     pub(crate) fn initialize_added_act_value(

@@ -402,7 +402,18 @@ pub(super) fn drain_command(
             )),
         );
     }
-    let all_event_groups = replacement.as_ref().map(|_| event_groups.clone());
+    let replaced_copy_uids = fanout
+        .iter()
+        .flat_map(|fanout| &fanout.allies)
+        .flat_map(|ally| &ally.replaced)
+        .filter_map(|removed| removed.buff.uid)
+        .collect::<Vec<_>>();
+    let is_replaced_copy = |event: &BattleEvent| {
+        matches!(event, BattleEvent::BuffRemoved(change)
+            if replaced_copy_uids.contains(&change.buff_uid))
+    };
+    let all_event_groups =
+        (replacement.is_some() || !replaced_copy_uids.is_empty()).then(|| event_groups.clone());
     if let Some(parts) = &replacement {
         push_change(
             &mut result.frames,
@@ -452,6 +463,10 @@ pub(super) fn drain_command(
             );
         }
         event_groups = vec![addition_events];
+    }
+
+    for group in &mut event_groups {
+        group.retain(|event| !is_replaced_copy(event));
     }
 
     // BeforePublish reactions run before this outcome is recorded in
@@ -604,12 +619,89 @@ pub(super) fn drain_command(
         .into_iter()
         .partition(|fanout| fanout.precedes_carrier_change());
     for fanout in leading_fanout {
-        push_fanout(
+        let parent = output_frame_path(layer_halo_fanout_output_owner, &event_scope);
+        if fanout.allies.iter().all(|ally| ally.replaced.is_empty()) {
+            push_fanout(&mut result.frames, &parent, fanout, frame_trigger(&trigger));
+            continue;
+        }
+        let fanout_path = push_fanout_frame(
             &mut result.frames,
-            &output_frame_path(layer_halo_fanout_output_owner, &event_scope),
-            fanout,
+            &parent,
+            &fanout,
             frame_trigger(&trigger),
         );
+        let mut lead = fanout;
+        let allies = std::mem::take(&mut lead.allies);
+        for ally in allies {
+            let part = |publish_part| {
+                let mut part = lead.clone();
+                let mut ally = ally.clone();
+                ally.part = publish_part;
+                part.allies = vec![ally];
+                crate::engine::runtime::change::BattleChange::BuffFanout(Box::new(part))
+            };
+            if ally.replaced.is_empty() {
+                push_change(
+                    &mut result.frames,
+                    &fanout_path,
+                    part(crate::engine::manager::buff::BuffPublishPart::Whole),
+                );
+                continue;
+            }
+            push_change(
+                &mut result.frames,
+                &fanout_path,
+                part(crate::engine::manager::buff::BuffPublishPart::Lead),
+            );
+            let removal_events = events
+                .iter()
+                .filter(|event| {
+                    matches!(event, BattleEvent::BuffRemoved(change)
+                        if ally.replaced.iter().any(|removed| removed.buff.uid == Some(change.buff_uid)))
+                })
+                .cloned()
+                .collect::<Vec<_>>();
+            let removal_reactions = dispatch_event_groups(
+                pool,
+                managers,
+                catalog,
+                determinism,
+                state,
+                &[removal_events],
+                &event_scope,
+                &fanout_path,
+                action_scope.as_deref(),
+                &entry_halo_scope,
+                current_skill,
+                false,
+                context.current_round > 0,
+                crate::engine::event::subscription::PublicationPhase::BeforePublish,
+                None,
+                None,
+                None,
+            )?;
+            if !removal_reactions.before_publish.is_empty() {
+                drain_nested_queue(
+                    managers,
+                    pool,
+                    catalog,
+                    determinism,
+                    removal_reactions.before_publish.into(),
+                    result,
+                    state,
+                )?;
+            }
+            push_change(
+                &mut result.frames,
+                &fanout_path,
+                part(crate::engine::manager::buff::BuffPublishPart::Removal),
+            );
+            push_change(
+                &mut result.frames,
+                &fanout_path,
+                part(crate::engine::manager::buff::BuffPublishPart::Addition),
+            );
+        }
     }
     if let RuleOutcome::DeathSettlement(death) = &outcome {
         push_death(&mut result.frames, &frame_path, managers, *death);
@@ -1123,13 +1215,13 @@ pub(super) fn drain_command(
     Ok(())
 }
 
-fn push_fanout(
+fn push_fanout_frame(
     frames: &mut [SemanticFrame],
     parent: &[usize],
-    fanout: crate::engine::manager::buff::BuffFanoutResult,
+    fanout: &crate::engine::manager::buff::BuffFanoutResult,
     trigger: FrameTrigger,
-) {
-    let fanout_path = push_child(
+) -> Vec<usize> {
+    push_child(
         frames,
         parent,
         FrameOwner::BuffRule {
@@ -1139,7 +1231,16 @@ fn push_fanout(
             rule: fanout.rule,
         },
         trigger,
-    );
+    )
+}
+
+fn push_fanout(
+    frames: &mut [SemanticFrame],
+    parent: &[usize],
+    fanout: crate::engine::manager::buff::BuffFanoutResult,
+    trigger: FrameTrigger,
+) {
+    let fanout_path = push_fanout_frame(frames, parent, &fanout, trigger);
     push_change(
         frames,
         &fanout_path,

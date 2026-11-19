@@ -753,6 +753,20 @@ impl BuffManager {
         }
         if let Some(buff_uid) = child.buff.uid {
             self.commit_grant_values(buff_uid, &grant_values);
+            if spec.snapshot_markers {
+                child
+                    .pre_markers
+                    .extend(spec.initial_act_info.iter().filter_map(|info| {
+                        Some(BuffActInfoMarkerResult {
+                            target_uid: 0,
+                            buff_uid,
+                            act_id: info.act_id?,
+                            params: info.param.clone(),
+                            str_param: info.str_param.clone(),
+                            team_type: 0,
+                        })
+                    }));
+            }
         }
         child.buff.duration = Some(spec.duration);
         if let Some(active) = self.buffs.iter_mut().find(|active| {

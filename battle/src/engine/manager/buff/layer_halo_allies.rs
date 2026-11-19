@@ -19,7 +19,27 @@ pub(super) struct CopyTrimPlan {
     trims: Vec<PlannedCopyTrim>,
 }
 
+impl PlannedFanout {
+    pub(super) fn replaces_layered_copy(&self) -> bool {
+        self.replacement_uid.is_some()
+            && crate::engine::skill::buff_act::registry::kind(
+                self.spec.rule.opcode,
+                self.spec.rule.type_name,
+            ) == Some(crate::engine::skill::buff_act::registry::BuffActKind::LayerMasterHalo)
+    }
+}
+
 impl CopyTrimPlan {
+    pub(super) fn own_copy_replacements(&mut self, adds: &[&PlannedFanout], carrier_buff_id: i32) {
+        if self.rule.is_none()
+            && let Some(add) = adds.iter().find(|add| add.replaces_layered_copy())
+        {
+            self.rule = Some(add.spec.rule);
+            self.emitter_uid = add.spec.emitter_uid;
+            self.carrier_buff_id = carrier_buff_id;
+        }
+    }
+
     pub(super) fn is_empty(&self) -> bool {
         self.trims.is_empty()
     }
@@ -131,6 +151,8 @@ impl BuffManager {
         for target_uid in allies {
             let mut ally = LayerHaloAllyResult {
                 target_uid,
+                part: Default::default(),
+                replaced: Vec::new(),
                 trimmed: Vec::new(),
                 trim_refreshed: Vec::new(),
                 added: None,
@@ -149,6 +171,13 @@ impl BuffManager {
                 .iter()
                 .find(|add| add.spec.route.target_uid == target_uid)
             {
+                if let Some(uid) = add.replacement_uid {
+                    ally.replaced
+                        .extend(self.delete(target_uid, uid).into_iter().map(|mut removed| {
+                            removed.buff.duration = Some(0);
+                            removed
+                        }));
+                }
                 ally.added = self.commit_fanout_one(hp, Some(carrier_buff_uid), &add.spec, add.uid);
             }
             if let Some(refresh) = refreshes

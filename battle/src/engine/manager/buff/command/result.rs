@@ -337,6 +337,10 @@ impl BuffChanges {
             for ally in &fanout.allies {
                 for change in [
                     BuffReplaceResult {
+                        removed: ally.replaced.clone(),
+                        ..Default::default()
+                    },
+                    BuffReplaceResult {
                         removed: ally.trimmed.clone(),
                         refreshed: ally.trim_refreshed.clone(),
                         ..Default::default()

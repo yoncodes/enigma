@@ -356,18 +356,7 @@ fn project_change(
                 std::iter::once(EffectPacket::buff_update(&refreshed.update))
                     .chain(refreshed.markers.iter().map(EffectPacket::buff_marker))
             }))
-            .chain(fanout.allies.iter().flat_map(|ally| {
-                ally.trimmed
-                    .iter()
-                    .map(EffectPacket::buff_delete)
-                    .chain(ally.trim_refreshed.iter().map(EffectPacket::buff_update))
-                    .chain(ally.added.iter().flat_map(EffectPacket::buff_add_direct))
-                    .chain(ally.refreshed.iter().flat_map(|refreshed| {
-                        std::iter::once(EffectPacket::buff_update(&refreshed.update))
-                            .chain(refreshed.markers.iter().map(EffectPacket::buff_marker))
-                    }))
-                    .collect::<Vec<_>>()
-            }))
+            .chain(fanout.allies.iter().flat_map(layer_halo_ally_wire))
             .collect(),
         BattleChange::RaspberryCapacity(result) => match result.as_ref() {
             crate::engine::skill::buff_act::raspberry::CapacityResult::Applied(changes) => {
@@ -1497,6 +1486,49 @@ fn project_change(
             vec![EffectPacket::new_change_wave(change.fight.clone())]
         }
     })
+}
+
+fn layer_halo_ally_wire(
+    ally: &crate::engine::manager::buff::LayerHaloAllyResult,
+) -> Vec<ActEffect> {
+    use crate::engine::manager::buff::BuffPublishPart;
+    let leads = !ally.replaced.is_empty();
+    let lead = || {
+        ally.added
+            .iter()
+            .flat_map(EffectPacket::buff_add_pre_markers)
+            .collect::<Vec<_>>()
+    };
+    let removal = || {
+        ally.replaced
+            .iter()
+            .map(EffectPacket::buff_delete)
+            .collect::<Vec<_>>()
+    };
+    let addition = || {
+        ally.trimmed
+            .iter()
+            .map(EffectPacket::buff_delete)
+            .chain(ally.trim_refreshed.iter().map(EffectPacket::buff_update))
+            .chain(ally.added.iter().flat_map(|added| {
+                if leads {
+                    EffectPacket::buff_add_body(added)
+                } else {
+                    EffectPacket::buff_add_direct(added)
+                }
+            }))
+            .chain(ally.refreshed.iter().flat_map(|refreshed| {
+                std::iter::once(EffectPacket::buff_update(&refreshed.update))
+                    .chain(refreshed.markers.iter().map(EffectPacket::buff_marker))
+            }))
+            .collect::<Vec<_>>()
+    };
+    match ally.part {
+        BuffPublishPart::Whole if leads => [lead(), removal(), addition()].concat(),
+        BuffPublishPart::Whole | BuffPublishPart::Addition => addition(),
+        BuffPublishPart::Lead => lead(),
+        BuffPublishPart::Removal => removal(),
+    }
 }
 
 fn apply_absorbed_shield_wire(
