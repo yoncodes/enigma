@@ -29,8 +29,6 @@ pub(crate) fn definition_snapshot(
     managers: &BattleManagers,
     buff_id: i32,
     source_uid: i64,
-    target_uid: i64,
-    removed_buff_uids: &[i64],
 ) -> Option<Vec<BuffActInfo>> {
     let act_info = managers
         .buff
@@ -44,31 +42,7 @@ pub(crate) fn definition_snapshot(
             };
             let source_attr = AttrId::from_raw(*raw_source_attr)?;
             let target_attr = AttrId::from_raw(*raw_target_attr)?;
-            let mut source_value = managers.origin_attribute(source_uid, source_attr);
-            if source_uid == target_uid {
-                source_value = source_value
-                    .saturating_sub(managers.buff.configured_attribute_delta_for_uids(
-                        source_uid,
-                        source_attr,
-                        removed_buff_uids,
-                    ))
-                    .saturating_add(
-                        managers
-                            .buff
-                            .definition_features(buff_id)
-                            .into_iter()
-                            .filter(|candidate| buff_act::is_kind(candidate, BuffActKind::Attr))
-                            .filter_map(|candidate| match candidate.values.as_slice() {
-                                [_, raw_attr, value]
-                                    if AttrId::from_raw(*raw_attr) == Some(source_attr) =>
-                                {
-                                    Some(*value)
-                                }
-                                _ => None,
-                            })
-                            .fold(0, i32::saturating_add),
-                    );
-            }
+            let source_value = managers.origin_attribute(source_uid, source_attr);
             let value = (i64::from(source_value) * i64::from(*rate) / 1000)
                 .clamp(0, i64::from(*cap)) as i32;
             Some(BuffActInfo {

@@ -488,7 +488,7 @@ impl BuffPlan {
         Some((plan.route.source_uid, plan.route.buff_id))
     }
 
-    pub(crate) fn after_add_attribute_route(&self) -> Option<(i64, i64, i32, Vec<i64>)> {
+    pub(crate) fn after_add_attribute_route(&self) -> Option<(i64, i32)> {
         let plan = match &self.action {
             BuffPlanAction::Grant(plan) => plan.as_ref(),
             _ => return None,
@@ -516,15 +516,7 @@ impl BuffPlan {
         {
             return None;
         }
-        let mut removed = plan.excluded_uids.clone();
-        removed.extend(plan.replacement_uids.iter().copied());
-        removed.extend(plan.capacity_eviction_uids.iter().copied());
-        Some((
-            plan.route.source_uid,
-            plan.route.target_uid,
-            plan.route.buff_id,
-            removed,
-        ))
+        Some((plan.route.source_uid, plan.route.buff_id))
     }
 
     pub(crate) fn each_change_attr_route(&self) -> Option<(i64, i64, i32)> {

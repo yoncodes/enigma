@@ -57,23 +57,23 @@ fn captured_state(info: &[BuffActInfo], value: i32) -> bool {
 }
 
 #[test]
-fn snapshots_the_after_add_attribute_into_each_halo_copy() {
+fn first_grant_snapshots_the_current_attribute_into_each_halo_copy() {
     let mut managers = managers();
     let changes = grant(&mut managers);
     let added = changes.change.added.as_ref().expect("field carrier");
 
-    assert!(captured_state(&added.buff.act_info, 750));
+    assert!(captured_state(&added.buff.act_info, 550));
     let copies = &changes.fanout[0].added;
     assert_eq!(copies.len(), 3);
     assert!(
         copies
             .iter()
-            .all(|copy| captured_state(&copy.buff.act_info, 750))
+            .all(|copy| captured_state(&copy.buff.act_info, 550))
     );
     for uid in [-4, -1, -2, -3] {
         assert_eq!(
             managers.buff.fixed_attribute_delta(uid, AttrId::DmgBonus),
-            750
+            550
         );
     }
 }

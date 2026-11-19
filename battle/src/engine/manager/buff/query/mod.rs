@@ -1016,33 +1016,6 @@ impl BuffManager {
             .unwrap_or_default()
     }
 
-    pub(crate) fn configured_attribute_delta_for_uids(
-        &self,
-        owner_uid: i64,
-        attr_id: AttrId,
-        buff_uids: &[i64],
-    ) -> i32 {
-        self.buffs
-            .iter()
-            .filter(|active| {
-                active.effective
-                    && active.owner_uid == owner_uid
-                    && active.buff.uid.is_some_and(|uid| buff_uids.contains(&uid))
-            })
-            .filter_map(|active| {
-                let amount = attribute_amount(&active.buff, active.definition.as_ref());
-                active.definition.as_ref().map(|definition| {
-                    definition
-                        .attribute_deltas()
-                        .iter()
-                        .filter_map(|(actual, value)| (*actual == attr_id).then_some(*value))
-                        .fold(0, i32::saturating_add)
-                        .saturating_mul(amount)
-                })
-            })
-            .fold(0, i32::saturating_add)
-    }
-
     pub fn configured_accepts_explicit_grant_amount(buff_id: i32) -> bool {
         BuffDefinition::get(buff_id)
             .is_some_and(|definition| definition.accepts_explicit_grant_amount())
