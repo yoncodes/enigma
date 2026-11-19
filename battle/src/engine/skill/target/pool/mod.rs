@@ -81,6 +81,7 @@ pub struct TargetContext {
     pub defender_start_round: Option<i32>,
     pub runtime_target_uid: i64,
     pub causing_skill_target_uid: i64,
+    pub card_selected_target_uid: i64,
     pub event_source_uid: i64,
     pub logic_target: i32,
     pub active_skill_id: i32,

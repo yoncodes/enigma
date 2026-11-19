@@ -182,6 +182,14 @@ pub(in crate::engine::runtime) fn emit_ops(
         execution.context.additional_moxie = invocation.additional_moxie;
         execution.context.direct_skill_body = true;
     }
+    execution.context.card_selected_target_uid = match invocation.target {
+        SkillTarget::Explicit(uid)
+            if matches!(trigger, SkillOpTrigger::Active) && invocation.card_index > 0 =>
+        {
+            uid
+        }
+        _ => 0,
+    };
     if let SkillTarget::Explicit(uid) = invocation.target {
         execution.context.runtime_target_uid = uid;
         execution.primary_target_uid.get_or_insert(uid);

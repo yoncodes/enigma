@@ -72,6 +72,60 @@ fn mass_enemy_target_prioritizes_the_causing_skill_target() {
 }
 
 #[test]
+fn non_attack_mass_enemy_card_starts_with_the_selected_enemy() {
+    init_config();
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![entity_at(10, 1)],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![entity_at(-1, 1), entity_at(-2, 2), entity_at(-3, 3)],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let managers = BattleManagers::seeded(&fight);
+    assert!(!managers.catalog().skill_is_attack(30200121));
+    let resolve = |context| {
+        TargetResolver::resolve_with_managers_and_context(
+            &TargetRequest {
+                code: 202,
+                raw: Vec::new(),
+            },
+            30200121,
+            10,
+            &pool,
+            &mut RoundDeterminism::default(),
+            Some(&managers),
+            TargetContext {
+                runtime_target_uid: -2,
+                active_skill_id: 30200121,
+                active_skill_source_uid: 10,
+                ..context
+            },
+        )
+    };
+
+    assert_eq!(
+        resolve(TargetContext {
+            card_selected_target_uid: -2,
+            ..Default::default()
+        }),
+        vec![-2, -1, -3]
+    );
+    assert_eq!(resolve(TargetContext::default()), vec![-1, -2, -3]);
+    assert_eq!(
+        resolve(TargetContext {
+            causing_skill_target_uid: -3,
+            ..Default::default()
+        }),
+        vec![-1, -2, -3]
+    );
+}
+
+#[test]
 fn selected_attack_rejects_an_ally_without_changing_non_attack_selection() {
     let fight = Fight {
         attacker: Some(FightTeam {
