@@ -464,6 +464,7 @@ fn deferred_hit_consumes_the_attack_buff_before_after_hit_completes() {
                     count: Some(1),
                     ..Default::default()
                 }],
+                skill_group1: vec![31260111],
                 ..Default::default()
             }],
             ..Default::default()
@@ -486,7 +487,7 @@ fn deferred_hit_consumes_the_attack_buff_before_after_hit_completes() {
     let mut managers = BattleManagers::seeded(&fight);
     let mut catalog = SkillEffectCatalog::default();
     catalog.insert(ParsedSkillEffect {
-        skill_id: 100,
+        skill_id: 31260171,
         slots: vec![SkillEffectSlot::new(
             ParsedBehavior::from_spec(
                 BehaviorSpec::new(30015, "OriginDamageCanCrit"),
@@ -496,11 +497,11 @@ fn deferred_hit_consumes_the_attack_buff_before_after_hit_completes() {
             TargetRequest::self_only(),
         )],
     });
-    catalog.insert_damage_rate(100, 1_000);
-    catalog.insert_logic_target(100, 1);
+    catalog.insert_damage_rate(31260171, 1_000);
+    catalog.insert_logic_target(31260171, 1);
     let mut invocation: SkillInvocation = SkillRequest {
         source_uid: 10,
-        skill_id: 100,
+        skill_id: 31260171,
     }
     .into();
     invocation.target = SkillTarget::Explicit(-1);

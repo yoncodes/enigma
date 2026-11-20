@@ -146,7 +146,7 @@ fn consumed_attack_attribute_removes_its_exact_instance_at_zero() {
 }
 
 #[test]
-fn incantation_might_waits_for_a_basic_attack_before_consumption() {
+fn incantation_might_leaves_consumption_to_its_action_lifetime() {
     crate::test_support::init_config();
     let fight = Fight {
         attacker: Some(FightTeam {
@@ -165,7 +165,7 @@ fn incantation_might_waits_for_a_basic_attack_before_consumption() {
         }),
         ..Default::default()
     };
-    let mut managers = BattleManagers::seeded(&fight);
+    let managers = BattleManagers::seeded(&fight);
     let morale = feature(vec![113, AttrId::DmgBonus as i32, 200, 1]);
     assert!(applies_to_skill(&morale, true));
     let incantation = ActiveBuffFeature {
@@ -175,13 +175,25 @@ fn incantation_might_waits_for_a_basic_attack_before_consumption() {
     };
     assert!(!applies_to_skill(&incantation, true));
     assert!(applies_to_skill(&incantation, false));
+    assert!(managers.buff.settles_action_lifetime(1, 3));
     assert!(super::super::attack_consumption_rule_ops(&managers, 1, true).is_empty());
-    let ops = super::super::attack_consumption_rule_ops(&managers, 1, false);
-    let [(_, RuleOp::Command(BattleCommand::Buff(command)))] = ops.as_slice() else {
-        panic!("expected one buff consumption command");
+    assert!(super::super::attack_consumption_rule_ops(&managers, 1, false).is_empty());
+    assert!(managers.buff.snapshot(1, 3).is_some());
+}
+
+#[test]
+fn only_plain_attack_consumption_precedes_attacked_reactions() {
+    let plain = feature(vec![113, AttrId::DmgBonus as i32, 500, 1]);
+    assert_eq!(
+        super::super::attack_consumption_timing(&plain),
+        Some(super::super::registry::AttackConsumptionTiming::BeforeAttackedReactions)
+    );
+    let ultimate = ActiveBuffFeature {
+        act_type: "AttrOnlyCalDamageAttackBigSkill".to_owned(),
+        values: vec![1001, AttrId::UltimateMight as i32, 500, 1],
+        ..plain
     };
-    managers.execute_buff(command.clone()).unwrap();
-    assert!(managers.buff.snapshot(1, 3).is_none());
+    assert_eq!(super::super::attack_consumption_timing(&ultimate), None);
 }
 
 #[test]

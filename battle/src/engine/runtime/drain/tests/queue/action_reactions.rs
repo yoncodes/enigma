@@ -826,6 +826,94 @@ fn a_skill_cast_by_another_skill_keeps_its_step_without_effects() {
     assert!(cast.act_effect.is_empty());
 }
 
+fn attack_consumption_order(buff_id: i32, count: i32) -> Vec<i32> {
+    crate::test_support::init_config();
+    let entity = |uid, hp| FightEntityInfo {
+        uid: Some(uid),
+        current_hp: Some(hp),
+        attr: Some(HeroAttribute {
+            attack: Some(1_000),
+            hp: Some(100_000),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                passive_skill: vec![303020011],
+                ..entity(10, 100_000)
+            }],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                buffs: vec![BuffInfo {
+                    uid: Some(40),
+                    buff_id: Some(buff_id),
+                    from_uid: Some(-1),
+                    count: Some(count),
+                    ..Default::default()
+                }],
+                skill_group1: vec![114200311],
+                ..entity(-1, 100_000)
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    let catalog =
+        SkillEffectCatalog::from_roots(config::configs::get(), [114200311, 303020011], []);
+    let mut invocation: SkillInvocation = SkillRequest {
+        source_uid: -1,
+        skill_id: 114200311,
+    }
+    .into();
+    invocation.target = SkillTarget::Explicit(10);
+    invocation.mode = SkillExecutionMode::Active;
+
+    let result = run_action(
+        &mut managers,
+        &pool,
+        &catalog,
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+        [],
+        invocation,
+    )
+    .unwrap();
+
+    fn collect(step: &sonettobuf::FightStep, buff_id: i32, found: &mut Vec<i32>) {
+        if let Some(act_id) = step.act_id
+            && (act_id == buff_id || act_id == 303020011)
+        {
+            found.push(act_id);
+        }
+        for effect in &step.act_effect {
+            if let Some(child) = &effect.fight_step {
+                collect(child, buff_id, found);
+            }
+        }
+    }
+    let mut found = Vec::new();
+    for step in crate::engine::packet::timeline::project(&result.frames).unwrap() {
+        collect(&step, buff_id, &mut found);
+    }
+    found
+}
+
+#[test]
+fn attack_consumption_precedes_the_targets_attacked_reaction() {
+    assert_eq!(attack_consumption_order(304, 2), vec![304, 303020011]);
+}
+
+#[test]
+fn action_lifetime_consumption_follows_the_targets_attacked_reaction() {
+    assert_eq!(attack_consumption_order(430111, 1), vec![303020011, 430111]);
+}
+
 #[test]
 fn hit_damage_reactions_follow_semantic_settlement_phases() {
     crate::test_support::init_config();

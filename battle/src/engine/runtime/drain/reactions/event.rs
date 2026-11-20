@@ -354,9 +354,15 @@ fn dispatch_event_batch_inner(
                     *source_uid,
                     current_skill.is_some_and(|(_, skill_id, _)| catalog.is_big_skill(skill_id)),
                 ) {
-                    reactions
-                        .before_after_hit_observers
-                        .push(queued_buff_act_feature_op(feature, op, event, parent_path)?);
+                    let queue = match crate::engine::skill::buff_act::attack_consumption_timing(
+                        &feature,
+                    ) {
+                        Some(crate::engine::skill::buff_act::registry::AttackConsumptionTiming::BeforeAttackedReactions) => {
+                            &mut reactions.attack_consumptions
+                        }
+                        None => &mut reactions.before_after_hit_observers,
+                    };
+                    queue.push(queued_buff_act_feature_op(feature, op, event, parent_path)?);
                 }
             }
             for target_uid in attacked_targets

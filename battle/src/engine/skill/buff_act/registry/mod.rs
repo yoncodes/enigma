@@ -511,11 +511,17 @@ pub struct BuffActStateDefinition {
     pub read_timing: StatReadTiming,
     pub attack_replacement: Option<AttackReplacementHandler>,
     pub hp_loss: Option<HpLossStateHandler>,
+    pub(crate) attack_consumption: Option<AttackConsumptionTiming>,
     pub(crate) shield_hit: Option<ShieldHitRoute>,
     pub(crate) riposte_damage: Option<(i32, i32)>,
     pub(crate) reserve_promotion: Option<ReservePromotionHandler>,
     pub consumer: bool,
     pub initial: Option<BuffActInitialStateRule>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum AttackConsumptionTiming {
+    BeforeAttackedReactions,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -678,6 +684,7 @@ macro_rules! buff_act_definitions {
             $(, references: $references:expr)?
             $(, attack_replacement: $attack_replacement:expr)?
             $(, hp_loss_state: $hp_loss_state:expr)?
+            $(, attack_consumption: $attack_consumption:ident)?
             $(, shield_hit: $shield_time:path => ($shield_hit:expr, $shield_cast_admission:expr))?
             $(, riposte_damage: ($riposte_time:expr, $riposte_condition:expr))?
             $(, reserve_promotion: $reserve_promotion:expr)?
@@ -732,6 +739,7 @@ macro_rules! buff_act_definitions {
                     read_timing: buff_act_definitions!(@stat_read $($stat_read)?),
                     attack_replacement: buff_act_definitions!(@attack_replacement $($attack_replacement)?),
                     hp_loss: buff_act_definitions!(@hp_loss_state $($hp_loss_state)?),
+                    attack_consumption: buff_act_definitions!(@attack_consumption $($attack_consumption)?),
                     shield_hit: buff_act_definitions!(@shield_hit $($shield_time => ($shield_hit, $shield_cast_admission))?),
                     riposte_damage: buff_act_definitions!(@riposte_damage $(($riposte_time, $riposte_condition))?),
                     reserve_promotion: buff_act_definitions!(@reserve_promotion $($reserve_promotion)?),
@@ -815,6 +823,8 @@ macro_rules! buff_act_definitions {
     (@attack_replacement) => { None };
     (@hp_loss_state $handler:expr) => { Some($handler) };
     (@hp_loss_state) => { None };
+    (@attack_consumption $timing:ident) => { Some(AttackConsumptionTiming::$timing) };
+    (@attack_consumption) => { None };
     (@shield_hit $time:path => ($handler:expr, $admits_cast:expr)) => { Some(ShieldHitRoute { effect_time: $time, handler: $handler, admits_cast: $admits_cast }) };
     (@shield_hit) => { None };
     (@riposte_damage ($time:expr, $condition:expr)) => { Some(($time, $condition)) };
@@ -881,7 +891,9 @@ buff_act_definitions! {
         runtime: |context| super::cure::rule_ops(context.managers, context.subscriber, context.event?),
         supports: |args| super::cure::supports(BuffActKind::AdvancedCure, args), wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(849, "AdvancedCure"), &[EffectType::None as i32]));
     (113, "AttrOnlyCalDamageAttack") => AttrOnlyCalDamageAttack,
-        supports: |args| matches!(args, [_, _, consume, ..] if *consume != 0), state_consumer: true, wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(113, "AttrOnlyCalDamageAttack"), &[EffectType::None as i32]));
+        supports: |args| matches!(args, [_, _, consume, ..] if *consume != 0),
+        attack_consumption: BeforeAttackedReactions,
+        state_consumer: true, wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(113, "AttrOnlyCalDamageAttack"), &[EffectType::None as i32]));
     (1001, "AttrOnlyCalDamageAttackBigSkill") => AttrOnlyCalDamageAttackBigSkill,
         effect_time_subscription: false,
         supports: |args| matches!(args, [_, _, consume, ..] if *consume != 0), state_consumer: true, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(1001, "AttrOnlyCalDamageAttackBigSkill"), &[EffectType::Attr as i32]));

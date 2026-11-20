@@ -137,7 +137,7 @@ fn attack_consumption_keeps_first_hit_entity_order() {
 }
 
 #[test]
-fn attack_consumption_waits_for_hit_reactions() {
+fn plain_attack_consumption_precedes_attacked_reactions() {
     crate::test_support::init_config();
     let fight = Fight {
         attacker: Some(FightTeam {
@@ -145,8 +145,8 @@ fn attack_consumption_waits_for_hit_reactions() {
                 uid: Some(10),
                 buffs: vec![BuffInfo {
                     uid: Some(30),
-                    buff_id: Some(430111),
-                    count: Some(1),
+                    buff_id: Some(304),
+                    count: Some(2),
                     from_uid: Some(10),
                     ..Default::default()
                 }],
@@ -206,21 +206,22 @@ fn attack_consumption_waits_for_hit_reactions() {
     assert!(reactions.after_publish.is_empty());
     assert_eq!(
         reactions
-            .before_after_hit_observers
+            .attack_consumptions
             .iter()
             .filter(|queued| !matches!(queued.op, RuleOp::SubscriberGroupComplete))
             .count(),
         1
     );
     assert!(matches!(
-        reactions.before_after_hit_observers[0].op,
+        reactions.attack_consumptions[0].op,
         RuleOp::Command(BattleCommand::Buff(BuffCommand::Consume(_)))
     ));
     assert!(matches!(
         reactions
-            .before_after_hit_observers
+            .attack_consumptions
             .last()
             .map(|queued| &queued.op),
         Some(RuleOp::SubscriberGroupComplete)
     ));
+    assert!(reactions.before_after_hit_observers.is_empty());
 }

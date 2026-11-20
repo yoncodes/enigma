@@ -92,6 +92,16 @@ pub(crate) struct BuffLifecyclePlan {
 }
 
 impl BuffManager {
+    pub(crate) fn settles_action_lifetime(&self, owner_uid: i64, buff_uid: i64) -> bool {
+        self.buffs.iter().any(|active| {
+            active.owner_uid == owner_uid
+                && active.buff.uid == Some(buff_uid)
+                && active.definition.as_ref().is_some_and(|definition| {
+                    !definition.preserves_action_lifetime() && definition.take_action().is_some()
+                })
+        })
+    }
+
     fn halo_child_emitted_by(&self, child: &ActiveBuff, emitter_uid: i64) -> bool {
         child.fanout_emitter_uid.map_or_else(
             || {
