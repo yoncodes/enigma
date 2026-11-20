@@ -23,7 +23,6 @@ pub(super) type ActionReactionKey = (i64, i32, Option<usize>, DefinitionKey);
 #[derive(Default)]
 pub(super) struct DrainState {
     after_hit: HashMap<FramePath, Vec<QueuedOp>>,
-    attack_consumptions: HashMap<FramePath, Vec<QueuedOp>>,
     attacked_skills: HashMap<FramePath, Vec<QueuedOp>>,
     hp_thresholds: HashMap<FramePath, Vec<QueuedOp>>,
     hit_passive_skills: HashMap<FramePath, Vec<QueuedOp>>,
@@ -165,21 +164,6 @@ impl DrainState {
         defer(&mut self.hp_thresholds, action_path, queued);
     }
 
-    pub(super) fn defer_attack_consumptions(
-        &mut self,
-        action_path: Option<&[usize]>,
-        queued: Vec<QueuedOp>,
-    ) {
-        defer(&mut self.attack_consumptions, action_path, queued);
-    }
-
-    pub(super) fn take_attack_consumptions(
-        &mut self,
-        action_path: Option<&FramePath>,
-    ) -> Option<Vec<QueuedOp>> {
-        action_path.and_then(|path| self.attack_consumptions.remove(path))
-    }
-
     pub(super) fn defer_attacked_skills(
         &mut self,
         action_path: Option<&[usize]>,
@@ -315,11 +299,6 @@ impl DrainState {
         self.action_reactions.remove(action_path);
         self.action_shared_damage.remove(action_path);
         let mut abandoned = self.after_hit.remove(action_path).unwrap_or_default();
-        abandoned.extend(
-            self.attack_consumptions
-                .remove(action_path)
-                .unwrap_or_default(),
-        );
         abandoned.extend(self.attacked_skills.remove(action_path).unwrap_or_default());
         abandoned.extend(self.hp_thresholds.remove(action_path).unwrap_or_default());
         abandoned.extend(

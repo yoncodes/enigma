@@ -800,10 +800,6 @@ pub(super) fn drain_command(
         action_scope.as_deref(),
         std::mem::take(&mut reactions.hp_thresholds),
     );
-    state.defer_attack_consumptions(
-        action_scope.as_deref(),
-        std::mem::take(&mut reactions.attack_consumptions),
-    );
     state.defer_attacked_skills(
         action_scope.as_deref(),
         std::mem::take(&mut reactions.attacked_skills),
@@ -870,13 +866,6 @@ pub(super) fn drain_command(
             None,
         )?;
         hit_buff_acts
-            .attack_consumptions
-            .append(&mut hit_skills.attack_consumptions);
-        state.defer_attack_consumptions(
-            action_scope.as_deref(),
-            std::mem::take(&mut hit_buff_acts.attack_consumptions),
-        );
-        hit_buff_acts
             .attacked_skills
             .append(&mut hit_skills.attacked_skills);
         state.defer_attacked_skills(
@@ -938,11 +927,8 @@ pub(super) fn drain_command(
     let after_settlement = reactions.after_settlement;
     if releases_hit_passive_skills {
         let mut released_hit_passives = state
-            .take_attack_consumptions(action_scope.as_ref())
+            .take_attacked_skills(action_scope.as_ref())
             .unwrap_or_default();
-        if let Some(attacked) = state.take_attacked_skills(action_scope.as_ref()) {
-            released_hit_passives.extend(attacked);
-        }
         if let Some(thresholds) = state.take_hp_thresholds(action_scope.as_ref()) {
             released_hit_passives.extend(thresholds);
         }

@@ -143,11 +143,6 @@ pub fn applies_to_skill(feature: &ActiveBuffFeature, is_big_skill: bool) -> bool
     }
 }
 
-pub fn consumes_before_attacked_reactions(feature: &ActiveBuffFeature) -> bool {
-    super::feature_kind(feature) == Some(super::registry::BuffActKind::AttrOnlyCalDamageAttack)
-        && matches!(feature.values.as_slice(), [_, _, _, _])
-}
-
 pub fn consume_rule_op(managers: &BattleManagers, feature: &ActiveBuffFeature) -> Option<RuleOp> {
     let command = consume_command(managers, feature)?;
     Some(RuleOp::Command(BattleCommand::Buff(command)))
@@ -194,21 +189,6 @@ mod tests {
             raw: String::new(),
             values,
         }
-    }
-
-    #[test]
-    fn only_the_plain_attack_form_consumes_before_attacked_reactions() {
-        crate::test_support::init_config();
-        assert!(consumes_before_attacked_reactions(&feature(vec![
-            113, 205, 500, 1
-        ])));
-        assert!(!consumes_before_attacked_reactions(&feature(vec![
-            113, 214, 200, 1, 0, 1
-        ])));
-        assert!(!consumes_before_attacked_reactions(&ActiveBuffFeature {
-            act_type: "AttrOnlyCalDamageAttackBigSkill".to_owned(),
-            ..feature(vec![1001, 205, 500, 1])
-        }));
     }
 
     #[test]
