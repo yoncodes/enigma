@@ -187,6 +187,14 @@ impl RoundDeterminism {
         self.condition_random_choices.extend(choices);
     }
 
+    pub fn replace_condition_random_choices(
+        &mut self,
+        choices: impl IntoIterator<Item = ConditionRandomChoice>,
+    ) {
+        self.condition_random_choices.clear();
+        self.condition_random_choices.extend(choices);
+    }
+
     pub fn enqueue_hidden_crits(
         &mut self,
         skill_id: i32,

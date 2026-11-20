@@ -148,6 +148,29 @@ impl SkillEffectCatalog {
         RuleLimitOwner::from_slot(owner)
     }
 
+    pub fn random_self_conduit_ex_point_skills(&self) -> Vec<(i32, i32)> {
+        let mut skills = self
+            .effects
+            .values()
+            .filter_map(|effect| {
+                effect.slots.iter().find_map(|slot| {
+                    let definition =
+                        crate::engine::skill::behavior::registry::find(&slot.behavior)?;
+                    if definition.kind != BehaviorKind::AddConduitExPoint
+                        || slot.target.code
+                            != crate::engine::skill::target::request::SOURCE_TARGET_CODE
+                    {
+                        return None;
+                    }
+                    query::find(&slot.conditions, &query::is_random)
+                        .map(|random| (effect.skill_id, random.opcode))
+                })
+            })
+            .collect::<Vec<_>>();
+        skills.sort_unstable();
+        skills
+    }
+
     pub fn random_skill_choice_references(&self, skill_id: i32) -> Vec<i32> {
         let Some(effect) = self.get(skill_id) else {
             return Vec::new();

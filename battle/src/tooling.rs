@@ -133,6 +133,21 @@ pub fn moxie_down_resistance_attribute_id() -> i32 {
     crate::engine::entity::attr::AttrId::MoxieDownResistance.id()
 }
 
+pub fn conduit_ex_point_type() -> i32 {
+    crate::engine::manager::ex_point::ExPointKind::DevicePower.as_wire()
+}
+
+pub fn conduit_ex_point_overflow_bank_act() -> i32 {
+    crate::engine::skill::buff_act::registry::definitions()
+        .find(|definition| {
+            definition.kind
+                == crate::engine::skill::buff_act::registry::BuffActKind::DeviceExPointOverflowBank
+        })
+        .expect("device overflow bank has a registry owner")
+        .key
+        .opcode
+}
+
 pub fn ultimate_ignores_limit(
     catalog: crate::catalog::BattleCatalog,
     fight: &sonettobuf::Fight,

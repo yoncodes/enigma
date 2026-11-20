@@ -294,6 +294,15 @@ impl BattleRuntime {
         self.determinism.replace_shell_moxie_choices(choices);
     }
 
+    /// Seeds observed outcomes of random skill conditions per skill and source, in roll order.
+    /// Each round's seeds replace any the previous round left unused.
+    pub fn seed_condition_random_choices(
+        &mut self,
+        choices: impl IntoIterator<Item = determinism::ConditionRandomChoice>,
+    ) {
+        self.determinism.replace_condition_random_choices(choices);
+    }
+
     pub fn seed_crystal_reuse_choices(
         &mut self,
         choices: impl IntoIterator<Item = determinism::CrystalReuseChoice>,
