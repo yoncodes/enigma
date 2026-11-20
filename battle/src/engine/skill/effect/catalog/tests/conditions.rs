@@ -14,7 +14,7 @@ fn rouge2_card_copy_listens_for_the_committed_action_queue() {
 }
 
 #[test]
-fn rouge2_round_resource_uses_the_configured_multiplier_and_round_boundaries() {
+fn rouge2_round_resource_uses_the_configured_multiplier_and_rolls_only_at_round_start() {
     init_config();
     let catalog = SkillEffectCatalog::from_game_db(config::configs::get());
     let slot = &catalog.get(103377010).unwrap().slots[0];
@@ -22,22 +22,16 @@ fn rouge2_round_resource_uses_the_configured_multiplier_and_round_boundaries() {
     assert!(slot.conditions.iter().any(|condition| {
         condition.kind == ParsedConditionKind::Rouge2AttributeRandom { multiplier: 12 }
     }));
+    assert!(slot.compiled_subscriptions().unwrap().is_empty());
+    let metadata =
+        crate::engine::skill::condition::registry::find_key(1022101, "Rouge2AttrExRand").unwrap();
+    assert!(metadata.companion_setup.is_empty());
     assert_eq!(
-        slot.compiled_subscriptions()
-            .unwrap()
-            .into_iter()
-            .map(|subscription| subscription.event)
-            .collect::<Vec<_>>(),
-        [crate::engine::event::kind::EventKind::RoundEnd]
-    );
-    assert_eq!(
-        crate::engine::skill::condition::registry::find_key(1022101, "Rouge2AttrExRand")
-            .unwrap()
-            .companion_setup,
-        &[(
-            crate::engine::skill::rule::SetupStage::RoundStartCondition,
-            101,
-        )]
+        metadata.role,
+        crate::engine::skill::condition::registry::ConditionRole::Setup {
+            stage: crate::engine::skill::rule::SetupStage::RoundStartCondition,
+            priority: 101,
+        }
     );
 }
 
