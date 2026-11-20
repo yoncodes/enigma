@@ -107,3 +107,84 @@ fn initial_boost_keeps_identity() {
             && effect.reserve_id == Some(0)));
     }
 }
+
+#[test]
+fn shift_moves_right_and_enhances_the_fewest_types_first() {
+    let normal = CardInfo {
+        uid: Some(10),
+        skill_id: Some(100),
+        ..Default::default()
+    };
+    for (hand_size, distance, to_index, levels) in [
+        (6, 3, 3, r#"{"1":2,"2":2,"3":1,"4":1}"#),
+        (6, 1, 5, r#"{"1":1,"2":1,"3":0,"4":0}"#),
+        (2, 4, 0, r#"{"1":2,"2":2,"3":2,"4":2}"#),
+        (0, 4, 0, r#"{"1":2,"2":2,"3":2,"4":2}"#),
+    ] {
+        let mut manager = CardManager::new(vec![normal.clone(); hand_size]);
+        manager
+            .execute_command(CardCommand::InsertSovereign(CardInsertSovereign {
+                origin: CARD_PLAY_ORIGIN,
+                target_uid: 10,
+                skill_id: 31472131,
+                hero_id: 3147,
+                max_position: 9,
+                team_type: 1,
+            }))
+            .unwrap();
+        let changes = manager
+            .execute_command(CardCommand::ShiftSovereign {
+                origin: CARD_PLAY_ORIGIN,
+                owner_uid: 10,
+                distance,
+                team_type: 1,
+            })
+            .unwrap();
+        assert_eq!(changes.kind, CardChangeKind::SovereignShifted);
+        let card = manager.hand()[to_index].clone();
+        assert_eq!(
+            card.card_dataes[0].value,
+            Some(format!(r#"{{"lock":true,"strengthen":{levels}}}"#))
+        );
+        assert_eq!(manager.hand().len(), hand_size + 1);
+        let effects = timeline::project_for_version(
+            &[SemanticFrame {
+                owner: FrameOwner::Command,
+                trigger: FrameTrigger::Active,
+                items: vec![FrameItem::Change(Box::new(BattleChange::Card(Box::new(
+                    changes,
+                ))))],
+            }],
+            7,
+        )
+        .unwrap()[0]
+            .act_effect
+            .clone();
+        let update = effects.last().unwrap();
+        assert_eq!(update.effect_type, Some(EffectType::Updatecarddata as i32));
+        assert_eq!(update.effect_num, Some(to_index as i32 + 1));
+        assert_eq!(update.card_info, Some(card));
+        assert_eq!(effects.len(), 2);
+        assert_eq!(effects[0].effect_type, Some(EffectType::Movecard as i32));
+        assert_eq!(
+            (effects[0].effect_num, effects[0].effect_num1),
+            (Some(hand_size as i32 + 1), Some(to_index as i32 + 1))
+        );
+    }
+}
+
+#[test]
+fn shift_needs_a_held_sovereign_card() {
+    let mut manager = CardManager::new(Vec::new());
+    let before = manager.clone();
+    assert_eq!(
+        manager.execute_command(CardCommand::ShiftSovereign {
+            origin: CARD_PLAY_ORIGIN,
+            owner_uid: 10,
+            distance: 1,
+            team_type: 1,
+        }),
+        Err(CardCommandError::InvalidCommand)
+    );
+    assert_eq!(manager, before);
+}

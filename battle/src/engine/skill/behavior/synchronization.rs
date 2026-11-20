@@ -211,7 +211,7 @@ fn damage_rule_ops(
         target_context.active_skill_mode,
         target_context.extra_skill_kind,
     );
-    let mut attack_attributes = modifiers.attack_attributes.clone();
+    let mut attack_attributes = modifiers.primary_attack_attributes();
     let target_count_damage_bonus =
         crate::engine::skill::buff_act::attr_by_skill_target_count::owner_attribute_delta(
             context.managers,
@@ -227,15 +227,15 @@ fn damage_rule_ops(
         context.pool,
         context.managers,
     );
-    let incoming_reduction = crate::engine::skill::buff_act::incoming_target_attack_attribute_delta(
-        context.managers,
-        context.target_uid,
-        source_damage_type,
-        AttrId::DmgTakenReduction,
+    let is_big_skill = catalog.is_big_skill(context.active_skill_id);
+    attack_attributes.extend(
+        crate::engine::skill::buff_act::incoming_target_attack_attributes(
+            context.managers,
+            context.target_uid,
+            source_damage_type,
+            is_big_skill,
+        ),
     );
-    if incoming_reduction != 0 {
-        attack_attributes.push((AttrId::DmgTakenReduction, incoming_reduction));
-    }
     let assassination = crate::engine::skill::buff_act::assassination::target_modifier(
         context.managers,
         context.source_uid,
@@ -282,10 +282,6 @@ fn damage_rule_ops(
     if converted != 0 {
         attack_attributes.push((AttrId::CriticalDmg, converted));
     }
-    let critical_rate = attack_attributes
-        .iter()
-        .filter_map(|(attr, delta)| (*attr == AttrId::CriticalRate).then_some(*delta))
-        .sum::<i32>();
     let forces_critical = modifiers.force_critical
         || crate::engine::skill::buff_act::must_crit_and_fix_temp_attr::active_forces_critical(
             context.source_uid,
@@ -299,12 +295,13 @@ fn damage_rule_ops(
         if forces_critical {
             1000
         } else {
-            crate::engine::damage::handler::crit_chance(
+            crate::engine::damage::handler::crit_chance_with_attack_attributes(
                 context.source_uid,
                 context.target_uid,
                 context.pool,
                 context.managers,
-            ) + critical_rate
+                &attack_attributes,
+            )
         },
     );
     let rate_terms = modifiers
@@ -333,6 +330,7 @@ fn damage_rule_ops(
             rate,
             rate_terms,
             attack_attributes,
+            attack_bonus: modifiers.caster_attack_bonus,
             career_ratio_bonus: modifiers.career_ratio_bonus,
             attack_career: modifiers.attack_career,
             additional_attack_career: modifiers.additional_attack_career,

@@ -97,6 +97,37 @@ fn entity_entry_reactions_are_siblings_of_the_causing_event_skill() {
 }
 
 #[test]
+fn battle_start_condition_has_distinct_reserve_and_wave_routes() {
+    use crate::engine::skill::{
+        condition::parse_conditions,
+        effect::{ParsedBehavior, SkillEffectSlot},
+        rule::route::ConditionRoute,
+        target::TargetRequest,
+    };
+
+    crate::test_support::init_config();
+    for (raw, transforms) in [("45101#3#3|5", false), ("5", true)] {
+        let mut slot = SkillEffectSlot::new(
+            ParsedBehavior::new(1, "AddBuff", vec![4130045]),
+            TargetRequest::self_only(),
+        );
+        slot.conditions = parse_conditions(config::configs::get(), raw);
+        slot.compiled_route = ConditionRoute::compile(&slot.conditions);
+        let keys = slot.compiled_subscriptions().unwrap();
+        assert!(keys.iter().any(|key| key.event == EventKind::EntityEntered));
+        assert_eq!(
+            keys.iter()
+                .any(|key| key.event == EventKind::EntityTransformed),
+            transforms
+        );
+    }
+    assert_eq!(
+        find_key(5021, "EnterFight").map(|definition| definition.reactivation_events),
+        Some(&[EventKind::ReserveEntry, EventKind::WaveEntry][..])
+    );
+}
+
+#[test]
 fn round_end_frames_target_the_passive_owner() {
     assert_eq!(
         find_key(302, "None").map(|definition| definition.reaction_frame_target),
@@ -1112,6 +1143,25 @@ fn emitter_skill_condition_keeps_its_filtered_action_trigger() {
 }
 
 #[test]
+fn teammate_count_keeps_its_after_damage_route() {
+    assert_eq!(
+        parse(73208, "TeammateAliveNum", &["3".into()]),
+        Some(ParsedConditionKind::EntityCount {
+            scope: super::super::super::parse::EntityCountScope::AliveOtherTeammates,
+            compare: ConditionCompare::Equal,
+            count: 3,
+        })
+    );
+    assert_eq!(
+        find_key(73208, "TeammateAliveNum").map(|definition| definition.role),
+        Some(ConditionRole::Trigger {
+            event: EventKind::SkillAction,
+            phase: Some(SkillPhase::AfterDamage),
+        })
+    );
+}
+
+#[test]
 fn teammate_count_keeps_its_after_hit_route() {
     for count in 0..=3 {
         assert!(matches!(
@@ -1129,5 +1179,36 @@ fn teammate_count_keeps_its_after_hit_route() {
             event: EventKind::SkillAction,
             phase: Some(SkillPhase::AfterHit),
         })
+    );
+}
+
+#[test]
+fn enemy_active_use_marks_the_acting_enemy_as_its_latest_holder() {
+    let definition = find_key(502213, "ActiveUseSkill").unwrap();
+
+    assert_eq!(
+        parse(502213, "ActiveUseSkill", &["0".into()]),
+        Some(ParsedConditionKind::ActiveUseSkillBySource { slot: 0 })
+    );
+    assert_eq!(
+        definition.role,
+        ConditionRole::Trigger {
+            event: EventKind::SkillAction,
+            phase: Some(SkillPhase::HitPassives),
+        }
+    );
+    assert_eq!(
+        definition.skill_action_observer,
+        SkillActionObserver::OpposingTeam
+    );
+    assert!(definition.filters_behavior_targets);
+    assert_eq!(definition.consequence, ConsequencePolicy::LatestHolderGrant);
+    assert_eq!(
+        definition.reaction_frame_target,
+        ReactionFrameTarget::EventSource
+    );
+    assert_eq!(
+        definition.reaction_timing.resolve(Default::default()),
+        ReactionTiming::AfterSkill
     );
 }

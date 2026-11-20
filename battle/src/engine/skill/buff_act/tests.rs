@@ -51,7 +51,9 @@ fn transaction_event(buff_id: i32, before_amount: i32, after_amount: i32) -> Bat
         after_amount,
         act_id: 0,
         act_value: 0,
-        duration_expired: false,
+        replaced_fixed_max_hp: None,
+        replaced_buff_id: None,
+        expiry: crate::engine::event::payload::BuffExpiry::None,
     };
     if after_amount == 0 {
         BattleEvent::BuffRemoved(change)

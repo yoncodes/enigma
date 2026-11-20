@@ -142,7 +142,28 @@ impl CardPacket {
         }
     }
 
-    pub fn use_cards(cards: Vec<CardInfo>) -> ActEffect {
+    pub fn use_cards(actions: &[crate::engine::round::command::PlayerQueuedAction]) -> ActEffect {
+        let cards = actions
+            .iter()
+            .map(|action| match action {
+                crate::engine::round::command::PlayerQueuedAction::Card(card) => {
+                    card.as_ref().clone()
+                }
+                crate::engine::round::command::PlayerQueuedAction::Conduit => CardInfo {
+                    uid: Some(0),
+                    skill_id: Some(0),
+                    temp_card: Some(false),
+                    card_type: Some(sonettobuf::card_info::CardType::Device as i32),
+                    hero_id: Some(0),
+                    status: Some(0),
+                    target_uid: Some(0),
+                    energy: Some(0),
+                    area_red_or_blue: Some(0),
+                    heat_id: Some(0),
+                    ..Default::default()
+                },
+            })
+            .collect();
         ActEffect {
             target_id: Some(0),
             effect_type: Some(EffectType::Usecards as i32),
@@ -412,17 +433,17 @@ impl CardPacket {
         }
     }
 
-    pub fn add_use_card(card_index: i32, card: CardInfo, source_skill_id: i32) -> ActEffect {
+    pub fn add_use_card(queued: &crate::engine::manager::card::QueuedUseCard) -> ActEffect {
         ActEffect {
             target_id: Some(0),
             effect_type: Some(EffectType::Addusecard as i32),
-            effect_num: Some(card_index),
+            effect_num: Some(queued.card_index),
             config_effect: Some(0),
             buff_act_id: Some(0),
-            reserve_id: Some(0),
-            card_info: Some(wire_card(card)),
+            reserve_id: Some(i64::from(queued.reserve_id)),
+            card_info: Some(wire_card(queued.card.clone())),
             team_type: Some(1),
-            effect_num1: Some(source_skill_id),
+            effect_num1: Some(queued.source_skill_id),
             ..Default::default()
         }
     }
@@ -645,11 +666,14 @@ mod tests {
 
     #[test]
     fn card_packets_render_absent_scalar_metadata_as_wire_defaults() {
-        let effect = CardPacket::use_cards(vec![CardInfo {
-            uid: Some(10),
-            skill_id: Some(100),
-            ..Default::default()
-        }]);
+        let effect =
+            CardPacket::use_cards(&[crate::engine::round::command::PlayerQueuedAction::Card(
+                Box::new(CardInfo {
+                    uid: Some(10),
+                    skill_id: Some(100),
+                    ..Default::default()
+                }),
+            )]);
         let card = &effect.card_info_list[0];
 
         assert_eq!(card.card_effect, None);

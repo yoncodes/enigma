@@ -7,6 +7,7 @@ use crate::engine::{
         conduit::{ConduitChange, ConduitError},
         contract::{ContractChange, ContractError},
         emitter::EmitterChange,
+        entity::position::{MoveFrontChanges, MoveFrontError},
         entity::{EntityChanges, EntityCommandError},
         eureka::{EurekaChanges, EurekaCommandError},
         ex_point::{ExPointChanges, ExPointCommandError},
@@ -44,7 +45,7 @@ pub(crate) struct ActionHandSettlement {
 pub(crate) enum RuleOutcome {
     PublishedEvent,
     SkillLifecycle(crate::engine::skill::action::SkillLifecycle),
-    DeathSettlement(crate::engine::manager::hp::DeathTransition),
+    DeathSettlement(crate::engine::manager::hp::PendingDeath),
     SkillActionStarted {
         lifecycle: crate::engine::skill::action::SkillLifecycle,
         cost: ExPointChanges,
@@ -77,6 +78,7 @@ pub(crate) enum RuleOutcome {
     NuoDiKa(crate::engine::mechanic::nuo_di_ka::NuoDiKaChange),
     Emitter(EmitterChange),
     Entity(Box<EntityChanges>),
+    MoveFront(MoveFrontChanges),
     MonsterChange(Box<MonsterChangeChanges>),
     Card(Box<CardChanges>),
     BuffPrecast(Box<BuffPrecastChanges>),
@@ -228,7 +230,7 @@ impl RuleOutcome {
 
     pub(crate) fn injured_targets(&self) -> Vec<i64> {
         let injured =
-            |change: &HpChanges| change.hp.filter(|hp| hp.delta < 0).map(|hp| hp.target_uid);
+            |change: &HpChanges| change.hp.filter(|hp| hp.is_loss()).map(|hp| hp.target_uid);
         match self {
             Self::Hp(execution) => execution
                 .changes
@@ -303,6 +305,13 @@ impl RuleOutcome {
                 .chain(std::iter::once(BattleChange::Hp(Box::new(
                     execution.changes.clone(),
                 ))))
+                .chain(
+                    execution
+                        .after_hp_markers
+                        .iter()
+                        .cloned()
+                        .map(BattleChange::BuffActInfoMarker),
+                )
                 .chain(execution.indicator.clone().map(BattleChange::EffectMarker))
                 .collect(),
             Self::HpBatch(changes) => changes
@@ -316,6 +325,13 @@ impl RuleOutcome {
                         .chain(std::iter::once(BattleChange::Hp(Box::new(
                             execution.changes.clone(),
                         ))))
+                        .chain(
+                            execution
+                                .after_hp_markers
+                                .iter()
+                                .cloned()
+                                .map(BattleChange::BuffActInfoMarker),
+                        )
                         .chain(execution.indicator.clone().map(BattleChange::EffectMarker))
                 })
                 .collect(),
@@ -342,6 +358,7 @@ impl RuleOutcome {
             Self::NuoDiKa(change) => vec![BattleChange::NuoDiKa(*change)],
             Self::Emitter(change) => vec![BattleChange::Emitter(*change)],
             Self::Entity(change) => vec![BattleChange::Entity(change.clone())],
+            Self::MoveFront(change) => vec![BattleChange::MoveFront(change.clone())],
             Self::MonsterChange(changes) => {
                 vec![BattleChange::Entity(Box::new(changes.entity.clone()))]
             }
@@ -433,6 +450,7 @@ pub(crate) enum RuleExecutionError {
     ExPoint(ExPointCommandError),
     Eureka(EurekaCommandError),
     Entity(EntityCommandError),
+    MoveFront(MoveFrontError),
     MonsterChange(MonsterChangeError),
     Gauge(GaugeCommandError),
     BloodtitheSpend(crate::engine::mechanic::bloodtithe::spend::SpendError),
@@ -492,6 +510,12 @@ impl From<EurekaCommandError> for RuleExecutionError {
 impl From<EntityCommandError> for RuleExecutionError {
     fn from(value: EntityCommandError) -> Self {
         Self::Entity(value)
+    }
+}
+
+impl From<MoveFrontError> for RuleExecutionError {
+    fn from(value: MoveFrontError) -> Self {
+        Self::MoveFront(value)
     }
 }
 
@@ -641,6 +665,40 @@ pub(crate) fn execute_rule_op(
     )
 }
 
+#[inline(never)]
+fn move_to_holder_commands(
+    managers: &BattleManagers,
+    grant: crate::engine::manager::buff::BuffGrant,
+) -> Vec<crate::engine::manager::buff::BuffCommand> {
+    use crate::engine::manager::buff::{BuffCommand, BuffRemove, BuffRemoveSelector};
+
+    let mut commands = managers
+        .entity
+        .ordered_uids()
+        .filter(|owner_uid| *owner_uid != grant.target_uid)
+        .flat_map(|owner_uid| {
+            managers
+                .buff
+                .active_for(owner_uid)
+                .filter(|buff| {
+                    buff.buff_id == Some(grant.buff_id) && buff.from_uid == Some(grant.source_uid)
+                })
+                .filter_map(|buff| buff.uid)
+                .map(move |buff_uid| (owner_uid, buff_uid))
+                .collect::<Vec<_>>()
+        })
+        .map(|(target_uid, buff_uid)| {
+            BuffCommand::RemoveAfterTrigger(BuffRemove {
+                origin: grant.origin,
+                target_uid,
+                selector: BuffRemoveSelector::Uid(buff_uid),
+            })
+        })
+        .collect::<Vec<_>>();
+    commands.push(BuffCommand::Grant(grant));
+    commands
+}
+
 pub(crate) fn execute_rule_op_with(
     managers: &mut BattleManagers,
     events: &mut EventBus,
@@ -669,6 +727,14 @@ pub(crate) fn execute_rule_op_with(
             }
             Ok(RuleOutcome::Buff(Box::new(changes)))
         }
+        RuleOp::Command(BattleCommand::BuffMoveToHolder(grant)) => execute_rule_op_with(
+            managers,
+            events,
+            determinism,
+            RuleOp::Command(BattleCommand::BuffBatch(move_to_holder_commands(
+                managers, grant,
+            ))),
+        ),
         RuleOp::Command(BattleCommand::BuffBatch(commands)) => {
             managers.buff.begin_transaction();
             let batch_result = (|| {
@@ -711,6 +777,24 @@ pub(crate) fn execute_rule_op_with(
                 })
                 .collect();
             let batch = managers.execute_rule_hp_batch(commands)?;
+            for execution in &batch {
+                for event in execution.changes.events() {
+                    events.push(event);
+                }
+            }
+            Ok(RuleOutcome::HpBatch(batch))
+        }
+        RuleOp::Command(BattleCommand::LinkedDamage(mut hits)) => {
+            for hit in &mut hits {
+                for command in &mut hit.commands {
+                    *command = crate::engine::skill::buff_act::fixed_hurt::resolve_command(
+                        &managers.buff,
+                        &managers.hp,
+                        *command,
+                    );
+                }
+            }
+            let batch = managers.execute_linked_damage(hits)?;
             for execution in &batch {
                 for event in execution.changes.events() {
                     events.push(event);
@@ -892,6 +976,9 @@ pub(crate) fn execute_rule_op_with(
             }
             Ok(RuleOutcome::Entity(Box::new(changes)))
         }
+        RuleOp::Command(BattleCommand::MoveFront(command)) => Ok(RuleOutcome::MoveFront(
+            managers.execute_move_front(command)?,
+        )),
         RuleOp::Command(BattleCommand::MonsterChange(command)) => {
             let changes = crate::engine::mechanic::monster_change::execute(managers, command)?;
             for event in changes.entity.events() {
@@ -1188,10 +1275,7 @@ pub(crate) fn execute_rule_op_with(
                     .push(crate::engine::event::payload::BattleEvent::AllyAction(
                         action.clone(),
                     )),
-                crate::engine::skill::action::SkillLifecycle::DirectUltimateBodyCompleted {
-                    ..
-                }
-                | crate::engine::skill::action::SkillLifecycle::EmitterAttackStarted(_)
+                crate::engine::skill::action::SkillLifecycle::EmitterAttackStarted(_)
                 | crate::engine::skill::action::SkillLifecycle::EmitterSkillEnded { .. } => {}
             }
             Ok(RuleOutcome::SkillLifecycle(lifecycle))

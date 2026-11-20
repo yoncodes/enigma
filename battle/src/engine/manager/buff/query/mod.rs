@@ -1,3 +1,5 @@
+mod replacement;
+
 use super::update::special_count_value;
 use super::*;
 use crate::engine::skill::buff_act::registry::BuffActKind;
@@ -78,15 +80,19 @@ impl BuffManager {
             })
     }
 
-    pub fn act_common_value(&self, owner_uid: i64, buff_uid: i64, act_id: i32) -> Option<i32> {
-        let raw = self
-            .buffs
+    pub(crate) fn act_common_params(&self, owner_uid: i64, buff_uid: i64) -> Option<&str> {
+        self.buffs
             .iter()
             .find(|active| active.owner_uid == owner_uid && active.buff.uid == Some(buff_uid))?
             .buff
             .act_common_params
-            .as_deref()?;
-        let (actual_act_id, value) = raw.split_once('#')?;
+            .as_deref()
+    }
+
+    pub fn act_common_value(&self, owner_uid: i64, buff_uid: i64, act_id: i32) -> Option<i32> {
+        let (actual_act_id, value) = self
+            .act_common_params(owner_uid, buff_uid)?
+            .split_once('#')?;
         (actual_act_id.parse::<i32>().ok()? == act_id)
             .then(|| value.parse::<i32>().ok())
             .flatten()
@@ -141,6 +147,17 @@ impl BuffManager {
         })
     }
 
+    pub(crate) fn has_active_status(&self, owner_uid: i64, status: BuffStatus) -> bool {
+        self.buffs.iter().any(|active| {
+            active.effective
+                && active.owner_uid == owner_uid
+                && active
+                    .definition
+                    .as_ref()
+                    .is_some_and(|definition| definition.status == status)
+        })
+    }
+
     pub(crate) fn buffs_with_status(&self, owner_uid: i64, status: BuffStatus) -> Vec<(i32, i32)> {
         self.buffs
             .iter()
@@ -188,6 +205,39 @@ impl BuffManager {
                         .any(|feature| feature.kind == Some(kind) && feature.arguments_supported)
                 })
         })
+    }
+
+    pub(crate) fn buff_has_act(&self, owner_uid: i64, buff_uid: i64, kind: BuffActKind) -> bool {
+        self.buffs.iter().any(|active| {
+            active.effective
+                && active.owner_uid == owner_uid
+                && active.buff.uid == Some(buff_uid)
+                && active.definition.as_ref().is_some_and(|definition| {
+                    definition
+                        .features()
+                        .iter()
+                        .any(|feature| feature.kind == Some(kind) && feature.arguments_supported)
+                })
+        })
+    }
+
+    pub(crate) fn active_act_definitions(
+        &self,
+        owner_uid: i64,
+    ) -> impl Iterator<Item = &'static crate::engine::skill::buff_act::registry::BuffActDefinition> + '_
+    {
+        self.buffs
+            .iter()
+            .filter(move |active| active.effective && active.owner_uid == owner_uid)
+            .filter_map(|active| active.definition.as_ref())
+            .flat_map(|definition| definition.features())
+            .filter(|feature| feature.arguments_supported)
+            .filter_map(|feature| {
+                crate::engine::skill::buff_act::registry::find(
+                    *feature.values.first()?,
+                    &feature.act_type,
+                )
+            })
     }
 
     #[cfg(test)]
@@ -475,6 +525,12 @@ impl BuffManager {
             })
             .map(|active| special_count_value(active.buff.act_common_params.as_deref()))
             .sum()
+    }
+
+    pub(crate) fn is_effective(&self, owner_uid: i64, buff_uid: i64) -> bool {
+        self.buffs.iter().any(|active| {
+            active.effective && active.owner_uid == owner_uid && active.buff.uid == Some(buff_uid)
+        })
     }
 
     pub fn active_for(&self, uid: i64) -> impl Iterator<Item = &BuffInfo> {
@@ -767,21 +823,27 @@ impl BuffManager {
             .filter(|active| {
                 active.effective && active.owner_uid == uid && active.type_id == type_id
             })
-            .map(|active| active.buff.layer.unwrap_or_default())
+            .map(stack_layer)
             .sum()
     }
 
+    pub(crate) fn id_or_type_layer(&self, uid: i64, id: i32) -> i32 {
+        self.id_or_type_layers(uid, id).sum()
+    }
+
     pub fn max_id_or_type_layer(&self, uid: i64, id: i32) -> i32 {
+        self.id_or_type_layers(uid, id).max().unwrap_or_default()
+    }
+
+    fn id_or_type_layers(&self, uid: i64, id: i32) -> impl Iterator<Item = i32> + '_ {
         self.buffs
             .iter()
-            .filter(|active| {
+            .filter(move |active| {
                 active.effective
                     && active.owner_uid == uid
                     && (active.type_id == id || active.buff.buff_id == Some(id))
             })
-            .map(|active| active.buff.layer.unwrap_or_default())
-            .max()
-            .unwrap_or_default()
+            .map(stack_layer)
     }
 
     pub fn attribute_delta(&self, uid: i64, attr_id: AttrId) -> i32 {
@@ -798,7 +860,7 @@ impl BuffManager {
                         .iter()
                         .filter_map(|(actual, value)| (*actual == attr_id).then_some(*value))
                         .sum::<i32>()
-                        * attribute_amount(&active.buff)
+                        * attribute_amount(&active.buff, active.definition.as_ref())
                         + definition
                             .features()
                             .iter()
@@ -866,7 +928,7 @@ impl BuffManager {
                             Some(dynamic.saturating_add(fixed))
                         })
                         .sum::<i32>()
-                        * attribute_amount(&active.buff);
+                        * attribute_amount(&active.buff, active.definition.as_ref());
                     (delta != 0).then_some((active.buff.buff_id.unwrap_or_default(), delta))
                 });
             own.chain(team)
@@ -926,7 +988,7 @@ impl BuffManager {
             .filter(|active| active.effective)
             .filter_map(|active| {
                 let buff_uid = active.buff.uid?;
-                let amount = attribute_amount(&active.buff);
+                let amount = attribute_amount(&active.buff, active.definition.as_ref());
                 active
                     .definition
                     .as_ref()?
@@ -952,33 +1014,6 @@ impl BuffManager {
         BuffDefinition::get(buff_id)
             .map(|definition| definition.attribute_deltas().to_vec())
             .unwrap_or_default()
-    }
-
-    pub(crate) fn configured_attribute_delta_for_uids(
-        &self,
-        owner_uid: i64,
-        attr_id: AttrId,
-        buff_uids: &[i64],
-    ) -> i32 {
-        self.buffs
-            .iter()
-            .filter(|active| {
-                active.effective
-                    && active.owner_uid == owner_uid
-                    && active.buff.uid.is_some_and(|uid| buff_uids.contains(&uid))
-            })
-            .filter_map(|active| {
-                let amount = attribute_amount(&active.buff);
-                active.definition.as_ref().map(|definition| {
-                    definition
-                        .attribute_deltas()
-                        .iter()
-                        .filter_map(|(actual, value)| (*actual == attr_id).then_some(*value))
-                        .fold(0, i32::saturating_add)
-                        .saturating_mul(amount)
-                })
-            })
-            .fold(0, i32::saturating_add)
     }
 
     pub fn configured_accepts_explicit_grant_amount(buff_id: i32) -> bool {
@@ -1251,3 +1286,30 @@ fn passive_skill_owner(active: &ActiveBuff) -> i64 {
 
 #[cfg(test)]
 mod tests;
+
+fn stack_layer(active: &super::ActiveBuff) -> i32 {
+    if active
+        .definition
+        .as_ref()
+        .is_some_and(super::BuffDefinition::stacks_as_copies)
+    {
+        1
+    } else {
+        active.buff.layer.unwrap_or_default()
+    }
+}
+
+impl BuffManager {
+    pub(crate) fn configured_attr_hp_permille(&self, buff_id: i32) -> Option<i32> {
+        BuffDefinition::configured(self.catalog().game_data(), buff_id)?
+            .features()
+            .iter()
+            .find_map(|feature| {
+                (feature.arguments_supported
+                    && feature.kind == Some(BuffActKind::Attr)
+                    && feature.values.get(1).copied() == Some(AttrId::Hp.id()))
+                .then(|| feature.values.get(2).copied())
+                .flatten()
+            })
+    }
+}

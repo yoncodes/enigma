@@ -1,4 +1,5 @@
 use super::*;
+use crate::engine::skill::behavior::registry::ConditionRouteOverride;
 
 #[allow(clippy::too_many_arguments)]
 pub(in crate::engine::runtime::drain) fn queued_reactions(
@@ -96,18 +97,14 @@ fn queued_reaction_pass(
                 invocation.reaction_batch_id = Some(*batch_id);
                 invocation.reaction_action_path = action_path.clone();
             }
-            let frame_scope = subscriber
+            let behavior = subscriber
                 .slot_index
                 .and_then(|slot_index| {
                     catalog
                         .get(subscriber.skill_id)
                         .and_then(|effect| effect.slots.get(slot_index))
                 })
-                .and_then(|slot| {
-                    crate::engine::skill::behavior::registry::find(&slot.behavior)
-                        .and_then(|behavior| behavior.reaction_frame_scope)
-                })
-                .unwrap_or(definition.reaction_frame_scope);
+                .and_then(|slot| crate::engine::skill::behavior::registry::find(&slot.behavior));
             let frame_source_uid = match definition.reaction_frame_source {
                 crate::engine::skill::condition::registry::ReactionFrameSource::Subscriber => {
                     subscriber.owner_uid
@@ -128,6 +125,20 @@ fn queued_reaction_pass(
             let reenters_current_skill = reentry_skill.is_some_and(|(owner_uid, skill_id, _)| {
                 owner_uid == subscriber.owner_uid && skill_id == subscriber.skill_id
             });
+            let frame_scope = if reenters_current_skill
+                && matches!(event, BattleEvent::AllyAction(_))
+                && behavior.is_some_and(|behavior| {
+                    behavior.condition_route_override
+                        == Some(ConditionRouteOverride::ActiveCompletion(
+                            subscriber.key.definition,
+                        ))
+                }) {
+                crate::engine::skill::condition::registry::ReactionFrameScope::Causing
+            } else {
+                behavior
+                    .and_then(|behavior| behavior.reaction_frame_scope)
+                    .unwrap_or(definition.reaction_frame_scope)
+            };
             let (frame_path, parent_path) = match frame_scope {
                 crate::engine::skill::condition::registry::ReactionFrameScope::Causing => {
                     (reuse_path.or(parent_path).map(|path| path.to_vec()), None)
@@ -163,6 +174,14 @@ fn queued_reaction_pass(
                     .or_default()
                     .clone()
             });
+            let frame_target = if behavior.is_some_and(|behavior| {
+                behavior.condition_route_override
+                    == Some(ConditionRouteOverride::OwnerFrame(definition.key))
+            }) {
+                crate::engine::skill::condition::registry::ReactionFrameTarget::Owner
+            } else {
+                definition.reaction_frame_target
+            };
             Ok(QueuedOp {
                 op,
                 trigger: SkillOpTrigger::Event(event.clone()),
@@ -186,7 +205,7 @@ fn queued_reaction_pass(
                         pool,
                         event,
                         subscriber.owner_uid,
-                        definition.reaction_frame_target,
+                        frame_target,
                         current_skill_target,
                     )
                     .or(reentry_target),
@@ -400,6 +419,7 @@ pub(in crate::engine::runtime::drain) fn reaction_skill_target(
         ReactionFrameTarget::Counterparty => reaction_counterparty(pool, event, owner_uid),
         ReactionFrameTarget::Owner => Some(owner_uid),
         ReactionFrameTarget::EventTarget => event.target_uid(),
+        ReactionFrameTarget::EventSource => event.source_uid(),
         ReactionFrameTarget::CausingFrame => current_skill_target.or_else(|| event.target_uid()),
     }
 }

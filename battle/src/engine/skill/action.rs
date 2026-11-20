@@ -84,7 +84,6 @@ impl SkillStart {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SkillLifecycle {
-    DirectUltimateBodyCompleted { source_uid: i64 },
     EmitterAttackStarted(crate::engine::manager::emitter::EmitterAttack),
     EmitterSkillEnded { source_uid: i64 },
     PhaseCompleted(SkillActionEvent),
@@ -118,7 +117,14 @@ pub struct SkillActionEvent {
     pub teammate_injury_count_not_reset: i32,
     pub team_injury_count_round: i32,
     pub card_enchants: Vec<i32>,
-    pub buff_additions: Vec<(i32, i32)>,
+    pub buff_additions: Vec<BuffAddition>,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct BuffAddition {
+    pub buff_id: i32,
+    pub stored: i32,
+    pub admitted: i32,
 }
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
@@ -167,12 +173,19 @@ pub enum SkillTrigger {
     Explicit(i32),
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct PaidUltimate {
+    pub cost: crate::engine::manager::ex_point::ExPointChange,
+    pub priority_buff: i32,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SkillInvocation {
     pub plan: SkillRequest,
     pub card_index: i32,
     pub additional_moxie: i32,
     pub moxie_spent: i32,
+    pub(crate) paid_ultimate: Option<PaidUltimate>,
     pub condition_key: Option<DefinitionKey>,
     pub(crate) reaction_multiplicity_key: Option<DefinitionKey>,
     pub condition_slot: Option<usize>,
@@ -195,6 +208,15 @@ pub struct SkillInvocation {
     pub action_hand_settlement: Option<CommandOrigin>,
     pub card_enchants: Vec<i32>,
     pub recorded_skill: Option<SkillRequest>,
+    pub(crate) round_cap: Option<BuffActRoundCap>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct BuffActRoundCap {
+    pub owner_uid: i64,
+    pub buff_uid: i64,
+    pub key: DefinitionKey,
+    pub limit: i32,
 }
 
 impl From<SkillRequest> for SkillInvocation {
@@ -204,6 +226,7 @@ impl From<SkillRequest> for SkillInvocation {
             card_index: 0,
             additional_moxie: 0,
             moxie_spent: 0,
+            paid_ultimate: None,
             condition_key: None,
             reaction_multiplicity_key: None,
             condition_slot: None,
@@ -222,6 +245,7 @@ impl From<SkillRequest> for SkillInvocation {
             action_hand_settlement: None,
             card_enchants: Vec::new(),
             recorded_skill: None,
+            round_cap: None,
         }
     }
 }
@@ -241,6 +265,7 @@ mod invocation_tests {
             card_index: 4,
             additional_moxie: 0,
             moxie_spent: 0,
+            paid_ultimate: None,
             condition_key: Some(DefinitionKey::new(30, "TestCondition")),
             reaction_multiplicity_key: None,
             condition_slot: Some(2),
@@ -259,6 +284,7 @@ mod invocation_tests {
             action_hand_settlement: None,
             card_enchants: Vec::new(),
             recorded_skill: None,
+            round_cap: None,
         };
 
         assert_eq!(invocation.target, SkillTarget::Explicit(-1));
@@ -410,6 +436,8 @@ pub struct PostImmediateTargetBuffModifier {
 pub struct SkillModifiers {
     pub rates: Vec<SkillRateModifier>,
     pub attack_attributes: Vec<(AttrId, i32)>,
+    pub caster_attack_bonus: i32,
+    pub caster_penetration: i32,
     pub shared_attack_attributes: Vec<(AttrId, i32)>,
     pub redirected_damage_targets: Vec<i64>,
     pub force_critical: bool,
@@ -425,9 +453,21 @@ pub struct SkillModifiers {
 }
 
 impl SkillModifiers {
+    pub(crate) fn primary_attack_attributes(&self) -> Vec<(AttrId, i32)> {
+        let mut attributes = self.attack_attributes.clone();
+        if self.caster_penetration != 0 {
+            attributes.push((AttrId::Penetration, self.caster_penetration));
+        }
+        attributes
+    }
+
     pub(crate) fn merge(&mut self, mut other: Self) {
         self.rates.append(&mut other.rates);
         self.attack_attributes.append(&mut other.attack_attributes);
+        self.caster_attack_bonus = self
+            .caster_attack_bonus
+            .saturating_add(other.caster_attack_bonus);
+        self.caster_penetration += other.caster_penetration;
         self.shared_attack_attributes
             .append(&mut other.shared_attack_attributes);
         for target_uid in other.redirected_damage_targets {

@@ -258,6 +258,12 @@ pub struct CardSetAiQueue {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CardRecordAiCast {
+    pub origin: CommandOrigin,
+    pub owner_uid: i64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CardRemoveOwner {
     pub origin: CommandOrigin,
     pub owner_uid: i64,
@@ -300,14 +306,6 @@ pub struct CardInvalidatePlayed {
     pub origin: CommandOrigin,
     pub card_index: i32,
     pub restore: bool,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct CardActionQueue {
-    pub team: i32,
-    pub emitter_uid: i64,
-    pub cards: Vec<CardInfo>,
-    pub deck_num: i32,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -367,6 +365,7 @@ pub struct CardQueueUse {
     pub card: CardInfo,
     pub team_type: i32,
     pub source_skill_id: i32,
+    pub reserve_id: i32,
     pub action: Option<crate::engine::skill::action::SkillInvocation>,
 }
 
@@ -376,6 +375,7 @@ pub struct QueuedUseCard {
     pub card: CardInfo,
     pub team_type: i32,
     pub source_skill_id: i32,
+    pub reserve_id: i32,
     pub action: Option<crate::engine::skill::action::SkillInvocation>,
 }
 
@@ -431,6 +431,12 @@ pub enum CardCommand {
     AddHedone(CardAddHedone),
     InsertSovereign(CardInsertSovereign),
     InitialSovereignBoost(CardInitialSovereignBoost),
+    ShiftSovereign {
+        origin: CommandOrigin,
+        owner_uid: i64,
+        distance: usize,
+        team_type: i32,
+    },
     UnlockSovereign {
         origin: CommandOrigin,
         owner_uid: i64,
@@ -471,6 +477,7 @@ pub enum CardCommand {
     RefreshAiQueue(CardRefreshAiQueue),
     PrepareAiSkill(CardPrepareAiSkill),
     SetAiQueue(CardSetAiQueue),
+    RecordAiCast(CardRecordAiCast),
     SetTeamCards(CardSetTeamCards),
     RemoveOwner(CardRemoveOwner),
     InvalidateAiOwner(CardInvalidateAiOwner),
@@ -505,11 +512,6 @@ pub enum CardCommand {
     },
     RankUpHand(HandCardRankUp),
     RankUpDeckRange(CardDeckRankUpRange),
-    CommitActionQueue {
-        team: i32,
-        emitter_uid: i64,
-        include_device_action: bool,
-    },
     CompleteActionPhase {
         origin: CommandOrigin,
     },
@@ -543,6 +545,7 @@ pub enum CardChangeKind {
     SovereignUnlocked,
     HedoneUnlocked,
     InitialSovereignBoost,
+    SovereignShifted,
     SovereignInserted,
     Setup,
     ConsumedForEffect,
@@ -572,6 +575,7 @@ pub enum CardChangeKind {
     AiQueueRefreshed,
     AiSkillPrepared,
     AiQueueSet,
+    AiCastRecorded,
     TeamCardsSet,
     AiOwnerRemoved,
     AiCardsInvalidated,
@@ -587,7 +591,6 @@ pub enum CardChangeKind {
     QueuedRanksChanged,
     HandRankChanged,
     DeckTopRanksChanged,
-    ActionQueueCommitted,
     ActionPhaseCompleted,
     PostActionRefillStarted,
     PlayedRanksResolved,
@@ -608,7 +611,6 @@ pub struct CardChanges {
     pub drawn: Vec<CardInfo>,
     pub composed_owners: Vec<i64>,
     pub operation: Option<CardChange>,
-    pub action_queue: Option<CardActionQueue>,
     pub queued_use_card: Option<QueuedUseCard>,
     pub rank_results: Vec<CardRankResult>,
     pub consumed_indices: Vec<usize>,
@@ -626,13 +628,6 @@ pub struct CardChanges {
 
 impl CardChanges {
     pub fn events(&self) -> Vec<BattleEvent> {
-        if let Some(queue) = &self.action_queue {
-            return vec![BattleEvent::ActionQueueCommitted {
-                team: queue.team,
-                emitter_uid: queue.emitter_uid,
-                cards: queue.cards.clone(),
-            }];
-        }
         let mut events: Vec<_> = self
             .origin
             .filter(|_| self.before != self.after)
@@ -686,7 +681,6 @@ pub(super) fn execute(
 ) -> Result<CardChanges, CardCommandError> {
     let before = manager.hand().to_vec();
     let mut operation = None;
-    let mut action_queue = None;
     let mut queued_use_card = None;
     let mut rank_results = Vec::new();
     let mut consumed_indices = Vec::new();
@@ -815,6 +809,22 @@ pub(super) fn execute(
             (
                 Some(boost.origin),
                 CardChangeKind::InitialSovereignBoost,
+                None,
+                None,
+                Vec::new(),
+                Vec::new(),
+            )
+        }
+        CardCommand::ShiftSovereign {
+            origin,
+            owner_uid,
+            distance,
+            team_type,
+        } => {
+            sovereign_boost = Some(manager.shift_owner_sovereign(owner_uid, distance, team_type)?);
+            (
+                Some(origin),
+                CardChangeKind::SovereignShifted,
                 None,
                 None,
                 Vec::new(),
@@ -985,6 +995,7 @@ pub(super) fn execute(
                         add.team_type,
                     ),
             };
+            manager.record_opening_temporary(add.kind, &card);
             operation = Some(CardChange::SpCardAdd {
                 target_uid: add.target_uid,
                 skill_id: add.skill_id,
@@ -1314,6 +1325,17 @@ pub(super) fn execute(
                 Vec::new(),
             )
         }
+        CardCommand::RecordAiCast(record) => {
+            manager.ai_casters.push(record.owner_uid);
+            (
+                Some(record.origin),
+                CardChangeKind::AiCastRecorded,
+                None,
+                None,
+                Vec::new(),
+                Vec::new(),
+            )
+        }
         CardCommand::SetTeamCards(set) => {
             manager.set_team_cards(set.cards);
             team_cards = Some(manager.team_cards().to_vec());
@@ -1587,53 +1609,6 @@ pub(super) fn execute(
                 Vec::new(),
             )
         }
-        CardCommand::CommitActionQueue {
-            team,
-            emitter_uid,
-            include_device_action,
-        } => {
-            let mut cards = manager
-                .played()
-                .iter()
-                .map(|played| {
-                    let mut card = played.card.clone();
-                    card.skill_id = Some(played.skill_id);
-                    card
-                })
-                .collect::<Vec<_>>();
-            if include_device_action {
-                cards.push(CardInfo {
-                    uid: Some(0),
-                    skill_id: Some(0),
-                    temp_card: Some(false),
-                    card_type: Some(sonettobuf::card_info::CardType::Device as i32),
-                    hero_id: Some(0),
-                    status: Some(0),
-                    target_uid: Some(0),
-                    energy: Some(0),
-                    area_red_or_blue: Some(0),
-                    heat_id: Some(0),
-                    ..Default::default()
-                });
-            }
-            if team == 0 || cards.is_empty() {
-                return Err(CardCommandError::InvalidCommand);
-            }
-            action_queue = Some(CardActionQueue {
-                team,
-                emitter_uid,
-                cards,
-                deck_num: manager.deck_num(),
-            });
-            (
-                None,
-                CardChangeKind::ActionQueueCommitted,
-                None,
-                None,
-                Vec::new(),
-                Vec::new(),
-            )
-        }
         CardCommand::CompleteActionPhase { origin } => {
             manager.complete_action_phase();
             (
@@ -1724,6 +1699,7 @@ pub(super) fn execute(
                 card: queue.card,
                 team_type: queue.team_type,
                 source_skill_id: queue.source_skill_id,
+                reserve_id: queue.reserve_id,
                 action: queue.action,
             };
             manager.queue_use_card(queued.clone());
@@ -1738,10 +1714,7 @@ pub(super) fn execute(
             )
         }
     };
-    let mut after = manager.hand().to_vec();
-    if kind == CardChangeKind::ActionQueueCommitted {
-        after.extend_from_slice(manager.team_cards());
-    }
+    let after = manager.hand().to_vec();
     manager.record_opening_deal_change(kind, &before, &after, added.as_ref(), &drawn);
     Ok(CardChanges {
         origin,
@@ -1753,7 +1726,6 @@ pub(super) fn execute(
         drawn,
         composed_owners,
         operation,
-        action_queue,
         queued_use_card,
         rank_results,
         consumed_indices,

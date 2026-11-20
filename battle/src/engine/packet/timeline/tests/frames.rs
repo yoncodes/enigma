@@ -29,6 +29,7 @@ fn attr_max_hp_change(
             delta,
             after_current,
             after_max: 100 + delta,
+            replaced_removal: false,
         }),
         hp: None,
         toughness: None,

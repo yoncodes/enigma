@@ -185,16 +185,29 @@ impl BuffManager {
     ) -> Option<String> {
         let feature = definition.features().iter().find(|feature| {
             feature.stat_read_timing == StatReadTiming::OnGrant
-                && feature.kind == Some(BuffActKind::AttrFixFromInjuryBank)
+                && matches!(
+                    feature.kind,
+                    Some(BuffActKind::AttrFixFromInjuryBank | BuffActKind::ModifyAttrByBuffLayer)
+                )
         })?;
-        let [act_id, _attr_id, injury_rate, base, ..] = feature.values.as_slice() else {
+        let [act_id, args @ ..] = feature.values.as_slice() else {
             return None;
         };
-        let injury = self.injury_bank_value(source_uid)?;
-        Some(format!(
-            "{act_id}#{}",
-            base.saturating_add(injury.saturating_mul(*injury_rate) / 1000)
-        ))
+        match (feature.kind, args) {
+            (Some(BuffActKind::ModifyAttrByBuffLayer), _) => {
+                crate::engine::skill::buff_act::modify_attr_by_buff_layer::grant_params(
+                    *act_id, args, source_uid, self,
+                )
+            }
+            (Some(BuffActKind::AttrFixFromInjuryBank), [_attr_id, injury_rate, base, ..]) => {
+                let injury = self.injury_bank_value(source_uid)?;
+                Some(format!(
+                    "{act_id}#{}",
+                    base.saturating_add(injury.saturating_mul(*injury_rate) / 1000)
+                ))
+            }
+            _ => None,
+        }
     }
 
     fn injury_bank_value(&self, owner_uid: i64) -> Option<i32> {

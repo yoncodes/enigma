@@ -105,6 +105,67 @@ fn round_start_executes_each_team_at_its_own_turn_boundary() {
 }
 
 #[test]
+fn version_seven_round_start_buff_acts_precede_the_settlement_step() {
+    init_config();
+    let fight = Fight {
+        version: Some(7),
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                team_type: Some(1),
+                current_hp: Some(100),
+                buffs: vec![BuffInfo {
+                    uid: Some(1),
+                    buff_id: Some(90031),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    let (attacker_round, _, _, _) = run_round_start_after_ai_split(
+        &mut managers,
+        &pool,
+        &SkillEffectCatalog::default(),
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+        &[],
+        3,
+    )
+    .unwrap();
+
+    fn holds_regen(frame: &crate::engine::runtime::record::SemanticFrame) -> bool {
+        matches!(frame.owner, FrameOwner::BuffAct { buff_id: 90031, .. })
+            || frame
+                .items
+                .iter()
+                .any(|item| matches!(item, FrameItem::Child(child) if holds_regen(child)))
+    }
+    let settlement = |frame: &crate::engine::runtime::record::SemanticFrame| {
+        matches!(
+            frame.owner,
+            FrameOwner::RoundPhase(RoundPhase::RoundStartSettlement)
+        )
+    };
+    let regen = attacker_round
+        .frames
+        .iter()
+        .position(holds_regen)
+        .expect("the round-start buff act fires");
+    let settlement = attacker_round
+        .frames
+        .iter()
+        .position(settlement)
+        .expect("attacker round start has a settlement phase");
+    assert!(regen < settlement);
+    assert!(!holds_regen(&attacker_round.frames[settlement]));
+}
+
+#[test]
 fn version_seven_defers_defender_round_start_until_after_ai() {
     let entity = |skill_ids| FightEntityInfo {
         uid: Some(-1),
@@ -612,4 +673,80 @@ fn round_start_runs_buff_sync_rules_again_for_the_new_round() {
     .unwrap();
 
     assert_eq!(managers.ex_point.get(10), 1);
+}
+
+#[test]
+fn version_seven_next_round_start_runs_attacker_passives_before_defender_passives() {
+    init_config();
+    let entity = |uid, team_type, skill_id| FightEntityInfo {
+        uid: Some(uid),
+        team_type: Some(team_type),
+        current_hp: Some(100),
+        ex_point: Some(0),
+        passive_skill: vec![skill_id],
+        ..Default::default()
+    };
+    let fight = Fight {
+        version: Some(7),
+        attacker: Some(FightTeam {
+            entitys: vec![entity(10, 1, 40)],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![entity(-1, 2, 50)],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut catalog = SkillEffectCatalog::default();
+    for skill_id in [40, 50] {
+        let mut slot = SkillEffectSlot::new(
+            ParsedBehavior::from_spec(BehaviorSpec::new(20002, "AddExPoint"), vec![1], Vec::new()),
+            TargetRequest::self_only(),
+        );
+        slot.conditions = vec![ParsedCondition {
+            opcode: 100,
+            type_name: "None".to_owned(),
+            kind: ParsedConditionKind::None(NoneMode::RoundStart),
+            raw_args: Vec::new(),
+        }];
+        slot.compiled_route = ConditionRoute::compile(&slot.conditions);
+        catalog.insert(ParsedSkillEffect {
+            skill_id,
+            slots: vec![slot],
+        });
+    }
+    let mut managers = BattleManagers::seeded(&fight);
+
+    let (round, _, _, _) = run_round_start_after_ai_split(
+        &mut managers,
+        &pool,
+        &catalog,
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+        &[],
+        3,
+    )
+    .unwrap();
+
+    fn skill_ids(steps: &[sonettobuf::FightStep], out: &mut Vec<i32>) {
+        for step in steps {
+            if let Some(id @ (40 | 50)) = step.act_id {
+                out.push(id);
+            }
+            let children = step
+                .act_effect
+                .iter()
+                .filter_map(|effect| effect.fight_step.clone())
+                .collect::<Vec<_>>();
+            skill_ids(&children, out);
+        }
+    }
+    let mut order = Vec::new();
+    skill_ids(
+        &crate::engine::packet::timeline::project(&round.frames).unwrap(),
+        &mut order,
+    );
+    assert_eq!(order, [40, 50]);
 }

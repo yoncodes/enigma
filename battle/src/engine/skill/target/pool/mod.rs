@@ -78,8 +78,10 @@ struct TargetBuff {
 pub struct TargetContext {
     pub battle_id: i32,
     pub current_round: i32,
+    pub defender_start_round: Option<i32>,
     pub runtime_target_uid: i64,
     pub causing_skill_target_uid: i64,
+    pub card_selected_target_uid: i64,
     pub event_source_uid: i64,
     pub logic_target: i32,
     pub active_skill_id: i32,
@@ -139,7 +141,6 @@ pub struct TargetContext {
     pub rejected_buff_id: i32,
     pub rejected_buff_type_id: i32,
     pub buff_overflow_amount: i32,
-    pub owner_played_card: bool,
     pub direct_skill_body: bool,
     pub action_dealt_damage: bool,
     pub action_damage_amount: i32,
@@ -499,7 +500,7 @@ impl TargetPool {
     }
 
     pub fn first_boss_enemy(&self, source_uid: i64) -> Vec<i64> {
-        self.enemies(source_uid, false)
+        self.field_enemies(source_uid)
             .iter()
             .find(|entity| self.boss_model_ids.contains(&entity.model_id))
             .map(|entity| entity.uid)
@@ -529,6 +530,24 @@ impl TargetPool {
             (Some(2), false) => &self.attacker_all,
             _ => &[],
         }
+    }
+
+    /// Enemies a target rule may pick: waiting reserves are not on the field
+    /// until the roster manager promotes them; special-lane entities are.
+    pub fn field_enemies(&self, source_uid: i64) -> Vec<TargetEntity> {
+        self.enemies(source_uid, false)
+            .iter()
+            .filter(|enemy| !self.is_reserve(enemy.uid))
+            .cloned()
+            .collect()
+    }
+
+    pub fn field_allies(&self, source_uid: i64) -> Vec<TargetEntity> {
+        self.allies(source_uid)
+            .iter()
+            .filter(|ally| !self.is_reserve(ally.uid))
+            .cloned()
+            .collect()
     }
 
     pub fn team_type(&self, uid: i64) -> Option<i32> {
@@ -700,6 +719,10 @@ impl TargetEntity {
                 .map(|buff| TargetBuff::from_buff_info(catalog, buff))
                 .collect(),
         })
+    }
+
+    pub(super) fn has_buff_id(&self, id: i32) -> bool {
+        self.buffs.iter().any(|buff| buff.id == id)
     }
 
     pub(super) fn has_buff_type(&self, type_id: i32) -> bool {

@@ -1,31 +1,33 @@
 use sonettobuf::CardInfo;
 use std::collections::HashMap;
 
-use super::input::HeroBuildInput;
+use super::{destiny::Destiny, input::HeroBuildInput};
 
 pub struct Skill;
 
 impl Skill {
-    pub fn get(
-        hero: &HeroBuildInput,
-        is_sub: bool,
-        destiny: Option<&HashMap<i32, i32>>,
-    ) -> (Vec<i32>, Vec<i32>) {
-        Self::groups(
-            crate::catalog::BattleCatalog::global().game_data(),
-            hero,
-            is_sub,
-            destiny,
-        )
+    pub(crate) fn trial(
+        game: &config::GameDB,
+        trial: &config::hero_trial::HeroTrial,
+        rank: i32,
+    ) -> (Vec<i32>, Vec<i32>, i32) {
+        let (mut group1, mut group2, mut ultimate) =
+            Self::active_skills(game, trial.hero_id, rank, trial.ex_skill_lv);
+        if let Some(exchanges) = Destiny::trial_exchanges(game, trial.facets_id, trial.facetslevel)
+        {
+            Self::apply_exchange(&mut group1, &exchanges);
+            Self::apply_exchange(&mut group2, &exchanges);
+            Self::apply_exchange(std::slice::from_mut(&mut ultimate), &exchanges);
+        }
+        (group1, group2, ultimate)
     }
 
     pub(crate) fn loadout(
         game: &config::GameDB,
         hero: &HeroBuildInput,
-        is_sub: bool,
         destiny: Option<&HashMap<i32, i32>>,
     ) -> (Vec<i32>, Vec<i32>, i32) {
-        let (group1, group2) = Self::groups(game, hero, is_sub, destiny);
+        let (group1, group2) = Self::groups(game, hero, destiny);
         let ex_skill = Self::ex(game, hero, destiny);
         (group1, group2, ex_skill)
     }
@@ -33,15 +35,9 @@ impl Skill {
     fn groups(
         game: &config::GameDB,
         hero: &HeroBuildInput,
-        is_sub: bool,
         destiny: Option<&HashMap<i32, i32>>,
     ) -> (Vec<i32>, Vec<i32>) {
-        let (mut sg1, mut sg2) = if is_sub {
-            (
-                Self::get_from_character(game, hero.hero_id, 1),
-                Self::get_from_character(game, hero.hero_id, 2),
-            )
-        } else if let Some(gear) =
+        let (mut sg1, mut sg2) = if let Some(gear) =
             game.equipped_gear(hero.hero_id, &hero.extra_str, hero.ex_skill_level)
         {
             (
@@ -63,14 +59,6 @@ impl Skill {
         }
 
         (sg1, sg2)
-    }
-
-    pub fn get_ex(hero: &HeroBuildInput, destiny: Option<&HashMap<i32, i32>>) -> i32 {
-        Self::ex(
-            crate::catalog::BattleCatalog::global().game_data(),
-            hero,
-            destiny,
-        )
     }
 
     fn ex(
@@ -114,14 +102,6 @@ impl Skill {
             0,
             ex_level,
         )
-    }
-
-    fn get_from_character(game: &config::GameDB, hero_id: i32, group: i32) -> Vec<i32> {
-        let Some(character) = game.character.get(hero_id) else {
-            tracing::warn!("Character {} not found", hero_id);
-            return vec![];
-        };
-        parse_skill_group(&character.skill, group)
     }
 
     pub(crate) fn active_skills(

@@ -148,8 +148,10 @@ fn resolved_hit_additional_damage_precedes_independent_linked_damage() {
         &mut determinism,
         &mut execution,
     )
+    .unwrap()
     .additional_damage
     .into_iter()
+    .flat_map(|hit| hit.commands)
     .filter_map(|command| match command {
         HpCommand::Damage(hit) => Some((hit.source_uid, hit.hurt.is_crit, hit.amount)),
         _ => None,
@@ -261,8 +263,10 @@ fn linked_damage_main_rate_follows_the_explicit_action_target() {
             &mut determinism,
             &mut execution,
         )
+        .unwrap()
         .additional_damage
         .into_iter()
+        .flat_map(|hit| hit.commands)
         .find_map(|command| match command {
             HpCommand::Damage(hit) => Some(hit.amount),
             _ => None,
@@ -403,11 +407,15 @@ fn extra_action_penalties_follow_their_target_and_source_owners() {
             SKILL_ID,
             &mut determinism,
             &mut execution,
-        );
+        )
+        .unwrap();
         let [HpCommand::Damage(main)] = ops.damage.as_slice() else {
             panic!("expected one main damage command")
         };
-        let [HpCommand::Damage(linked)] = ops.additional_damage.as_slice() else {
+        let [hit] = ops.additional_damage.as_slice() else {
+            panic!("expected one linked hit");
+        };
+        let [HpCommand::Damage(linked)] = hit.commands.as_slice() else {
             panic!("expected one linked damage command")
         };
         (main.amount, linked.amount)
@@ -520,7 +528,15 @@ fn a_gust_force_field_extra_action_opens_with_its_cost_and_forced_crit_marker() 
                         _ => None,
                     })
                     .expect("damage phase should contain the main hit");
-                return (ops, execution.pending_additional_damage, main);
+                return (
+                    ops,
+                    execution
+                        .pending_additional_damage
+                        .into_iter()
+                        .flat_map(|hit| hit.commands)
+                        .collect::<Vec<_>>(),
+                    main,
+                );
             }
             next = emission.continuation;
         }

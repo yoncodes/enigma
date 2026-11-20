@@ -16,6 +16,7 @@ use sqlx::SqlitePool;
 use std::collections::{BTreeMap, HashSet};
 
 const ACTIVITY_TYPE_ID: i32 = 222;
+const SETTLE_WIN: i32 = 2;
 const DEFAULT_CHARACTER_CONST_ID: i32 = 1;
 const DEFAULT_POSITION_CONST_ID: i32 = 3;
 const HALL_SIZE_CONST_ID: i32 = 4;
@@ -320,7 +321,7 @@ impl ArcadeOutsideManager {
         if !(1..=3).contains(&settle_type) {
             return Err(AppError::InvalidRequest);
         }
-        let is_win = settle_type == 2;
+        let is_win = settle_type == SETTLE_WIN;
         let activity_id = self.ensure_state(db, tables).await?;
         let difficulty = validate_inside_info(tables, &info, false)?;
         if !self

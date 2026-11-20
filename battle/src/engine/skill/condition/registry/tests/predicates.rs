@@ -166,6 +166,41 @@ fn after_damage_status_condition_filters_behavior_targets() {
 }
 
 #[test]
+fn after_damage_status_absence_keeps_every_configured_category() {
+    let definition = find_key(56208, "NoBuff").unwrap();
+    assert_eq!(
+        definition.role,
+        ConditionRole::Trigger {
+            event: EventKind::SkillAction,
+            phase: Some(SkillPhase::AfterDamage),
+        }
+    );
+    assert!(definition.filters_behavior_targets);
+    assert_eq!(
+        parse(56208, "NoBuff", &["2".into(), "4".into(), "6".into()]),
+        Some(ParsedConditionKind::PrimaryStatusAbsent(vec![
+            crate::engine::manager::buff::BuffStatus::StatsDown,
+            crate::engine::manager::buff::BuffStatus::Control,
+            crate::engine::manager::buff::BuffStatus::NegativeStatus,
+        ]))
+    );
+    assert_eq!(
+        parse(56208, "NoBuff", &["2".into(), "4".into()]),
+        Some(ParsedConditionKind::PrimaryStatusAbsent(vec![
+            crate::engine::manager::buff::BuffStatus::StatsDown,
+            crate::engine::manager::buff::BuffStatus::Control,
+        ]))
+    );
+    assert_eq!(
+        parse(56208, "NoBuff", &["7".into()]),
+        Some(ParsedConditionKind::PrimaryStatusAbsent(vec![
+            crate::engine::manager::buff::BuffStatus::Shield,
+        ]))
+    );
+    assert_eq!(parse(56208, "NoBuff", &["999".into()]), None);
+}
+
+#[test]
 fn control_status_round_start_gate_keeps_its_setup_lane() {
     assert_eq!(
         parse(18301, "HasBuff", &["4".into()]),

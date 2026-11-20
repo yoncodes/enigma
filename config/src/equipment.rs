@@ -36,6 +36,18 @@ impl GameDB {
         self.equip_const.get(16)?.value.parse().ok()
     }
 
+    pub fn equip_refine_cap(&self, equip: &crate::equip::Equip) -> Option<i32> {
+        if equip.is_exp_equip == 0
+            && equip.is_sp_refine == 0
+            && equip.id != self.equip_universal_refine_id()?
+            && equip.rare > self.equip_refine_rarity_threshold()?
+        {
+            self.equip_max_refine_level()
+        } else {
+            None
+        }
+    }
+
     pub fn is_normal_equipment(&self, equip: &crate::equip::Equip) -> bool {
         equip.is_exp_equip == 0
             && equip.is_sp_refine == 0

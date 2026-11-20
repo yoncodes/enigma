@@ -259,6 +259,7 @@ fn committed_card_ranks_scale_the_configured_power_gain() {
                 },
                 team_type: 1,
                 source_skill_id: 370001010,
+                reserve_id: 0,
                 action: None,
             },
         ))

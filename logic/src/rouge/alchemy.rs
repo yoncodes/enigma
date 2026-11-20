@@ -13,6 +13,8 @@ use crate::error::AppError;
 
 const EMPTY_STATE: i32 = 0;
 const ENDED_STATE: i32 = 3;
+const MAIN_MATERIAL: i32 = 1;
+const SUB_MATERIAL: i32 = 2;
 const SUB_MATERIAL_COUNT: i32 = 115;
 const SUPPORTED_SUB_MATERIALS: usize = 1;
 const GENIUS_POINT_GAIN: i32 = 1;
@@ -69,7 +71,7 @@ pub async fn combine(
         let material = tables
             .rouge2_material
             .get(material_id)
-            .filter(|material| material.r#type == 2)
+            .filter(|material| material.r#type == SUB_MATERIAL)
             .ok_or(AppError::InvalidRequest)?;
         sub_effects.push(parse_sub_effect(material_id, &material.effects)?);
         costs.push((material_id, 1));
@@ -119,7 +121,8 @@ fn parse_main_costs(
                 .formula
                 .split('#')
                 .any(|id| id.parse::<i32>() == Ok(formula_id));
-            if material.r#type != 1 || !belongs_to_formula || !seen.insert(material_id) {
+            if material.r#type != MAIN_MATERIAL || !belongs_to_formula || !seen.insert(material_id)
+            {
                 return Err(AppError::Custom(format!(
                     "invalid Rouge2 formula material {material_id}"
                 )));

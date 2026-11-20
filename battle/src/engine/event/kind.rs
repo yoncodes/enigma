@@ -2,6 +2,8 @@
 pub enum EventKind {
     EnterFight,
     EntityEntered,
+    ReserveEntry,
+    WaveEntry,
     EntityTransformed,
     EntityDied,
     BattleTerminalCommitted,
@@ -57,4 +59,13 @@ pub enum EventKind {
     RoundEndAfterSettlement,
     RoundEndAfterOwnerSettlement,
     Riposte,
+}
+
+impl EventKind {
+    pub fn is_entry(self) -> bool {
+        matches!(
+            self,
+            Self::EntityEntered | Self::ReserveEntry | Self::WaveEntry
+        )
+    }
 }

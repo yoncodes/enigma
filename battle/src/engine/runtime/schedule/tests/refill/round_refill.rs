@@ -1,7 +1,7 @@
 use super::*;
 
 #[test]
-fn post_action_refill_replaces_only_action_point_hand_plays() {
+fn post_action_refill_preserves_replacements_and_fills_normal_capacity() {
     init_config();
     let fight = Fight {
         attacker: Some(FightTeam {
@@ -38,8 +38,8 @@ fn post_action_refill_replaces_only_action_point_hand_plays() {
                 card(105),
                 card(106),
             ],
-            draw_pile: vec![card(300)],
-            deck_num: 1,
+            draw_pile: vec![card(300), card(301)],
+            deck_num: 2,
         }))
         .unwrap();
     for _ in 0..2 {
@@ -56,8 +56,9 @@ fn post_action_refill_replaces_only_action_point_hand_plays() {
     }
     managers.card.record_action_point_use(1, true);
     assert_eq!(post_action_replacement_count(&managers), 1);
-    let target = post_action_target_hand_len(&managers, &pool, 5);
-    assert_eq!(target, 7);
+    assert_eq!(post_action_target_hand_len(&managers, &pool, 5), 7);
+    let target = post_action_target_hand_len(&managers, &pool, 8);
+    assert_eq!(target, 8);
 
     run_post_action_refill(
         &mut managers,
@@ -70,8 +71,8 @@ fn post_action_refill_replaces_only_action_point_hand_plays() {
     )
     .unwrap();
 
-    assert_eq!(managers.card.hand().len(), 7);
-    assert_eq!(managers.card.refilled().len(), 1);
+    assert_eq!(managers.card.hand().len(), 8);
+    assert_eq!(managers.card.refilled().len(), 2);
 }
 
 #[test]
@@ -1053,4 +1054,68 @@ fn round_start_refill_waits_for_a_deficit_before_adding_a_newly_ready_ultimate()
             .collect::<Vec<_>>(),
         vec![100]
     );
+}
+
+#[test]
+fn round_start_deals_ready_exempt_ultimate_before_ordinary_draw() {
+    init_config();
+    let fight = Fight {
+        version: Some(7),
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                model_id: Some(3140),
+                current_hp: Some(100),
+                ex_point: Some(4),
+                ex_skill: Some(31402141),
+                expoint_max_add: Some(-1),
+                buffs: [31400000, 31400010]
+                    .into_iter()
+                    .enumerate()
+                    .map(|(index, buff_id)| sonettobuf::BuffInfo {
+                        uid: Some(index as i64 + 20),
+                        buff_id: Some(buff_id),
+                        from_uid: Some(10),
+                        ..Default::default()
+                    })
+                    .collect(),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    managers
+        .execute_card(CardCommand::Setup(CardSetup {
+            hand: Vec::new(),
+            draw_pile: vec![CardInfo {
+                uid: Some(10),
+                skill_id: Some(31402111),
+                ..Default::default()
+            }],
+            deck_num: 1,
+        }))
+        .unwrap();
+    run_round_start_refill(
+        &mut managers,
+        &pool,
+        &SkillEffectCatalog::default(),
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+        1,
+        1,
+    )
+    .unwrap();
+
+    let skills = |cards: &[CardInfo]| {
+        cards
+            .iter()
+            .filter_map(|card| card.skill_id)
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(skills(managers.card.hand()), vec![31402141, 31402111]);
+    assert_eq!(skills(managers.card.refilled()), vec![31402141, 31402111]);
+    assert_eq!(managers.card.deck_num(), 0);
 }

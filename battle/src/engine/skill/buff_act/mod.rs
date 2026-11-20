@@ -17,6 +17,7 @@ pub mod additional_damage;
 pub mod adrenaline_add_card;
 pub mod assassinate_create_additional_damage;
 pub mod assassination;
+pub mod attack_skill_rate_up;
 pub mod attr;
 pub mod attr_and_layer_attr;
 pub mod attr_by_damage_type;
@@ -31,6 +32,7 @@ pub mod attr_only_cal_damage_attack;
 pub mod attr_only_cal_damage_hp_replace_attack;
 pub mod attr_only_cal_damage_replace_attr_ad_creator;
 pub mod be_attack_by_emitter_damage;
+pub mod be_attacked_from_use_skill;
 pub mod bendith;
 pub mod big_skill_no_use_action_point;
 pub mod blood_pool;
@@ -48,6 +50,7 @@ pub mod charge_sovereign_card;
 pub mod conduit_select;
 pub mod consume_and_grant;
 pub mod consume_buff_add_buff_continue_channel;
+pub mod consume_buff_layer_cast_channel;
 pub mod contract_cast_channel;
 pub mod control_team_injury_count_round;
 pub mod count_continue_channel;
@@ -58,6 +61,7 @@ pub mod crit_rate_alter2;
 pub mod crit_rate_alter_by_other_buff;
 pub mod crystal_add_buff;
 pub mod cure;
+pub(crate) mod cycle_to_sub;
 pub mod damage_not_more_than;
 pub mod damage_over_time;
 pub mod deadly_poison;
@@ -89,6 +93,7 @@ pub mod ex_point_del;
 pub mod ex_point_fix;
 pub mod ex_point_overflow_bank;
 pub mod fantasy;
+pub mod fiction_hp;
 pub mod fix_attr_by_sub_buff_layer;
 pub mod fix_attr_by_teammate_injury_count;
 pub mod fix_attr_team_energy;
@@ -131,6 +136,7 @@ pub mod round_start_ex_point;
 pub mod share_hurt;
 pub mod shell;
 pub mod shield;
+pub(crate) mod shield_counter;
 pub mod sleep;
 pub mod special_count_cast_channel;
 pub mod special_count_continue_channel;
@@ -138,7 +144,10 @@ pub mod team_immunity_times;
 pub mod team_per_power_add_buff;
 pub mod team_share_shield;
 pub mod toughness;
+mod toughness_recover;
 pub mod transfer_energy_buff;
+pub(crate) mod ultimate_attribute;
+mod ultimate_cost;
 pub mod unlock_sovereign_card;
 pub mod use_damage_skill_add_to_target;
 pub mod use_skill;
@@ -269,17 +278,44 @@ pub fn feature_reaction_timing(
 pub fn transaction_publication(
     feature: &ActiveBuffFeature,
     op: &RuleOp,
-    event: crate::engine::event::kind::EventKind,
+    event: &BattleEvent,
+    managers: &BattleManagers,
 ) -> Option<crate::engine::event::subscription::PublicationPhase> {
-    use crate::engine::event::subscription::PublicationPhase;
+    use crate::engine::event::{payload::BuffExpiry, subscription::PublicationPhase};
 
     if matches!(op, RuleOp::BuffFeatureMarker { .. }) {
         return Some(PublicationPhase::AfterPublish);
     }
+    if let BattleEvent::BuffRemoved(change) = event
+        && let BuffExpiry::Duration(stage) = change.expiry
+        && let Some(phase) = registry::expiry_publication(
+            &feature.values,
+            &feature.act_type,
+            stage,
+            managers.fight_version(),
+        )
+    {
+        return Some(phase);
+    }
+    let definition = registry::find(feature.act_id()?, &feature.act_type)?;
+    if matches!(event, BattleEvent::BuffRemoved(_))
+        && let Some(phase) = definition.transaction.replacement_publication
+        && managers
+            .buff
+            .replacement_uid(
+                feature.source_uid,
+                feature.owner_uid,
+                feature.buff_id,
+                feature.buff_uid,
+            )
+            .is_some()
+    {
+        return Some(phase);
+    }
     Some(registry::runtime_publication(
         feature.act_id()?,
         &feature.act_type,
-        event,
+        event.kind(),
     ))
 }
 
@@ -296,15 +332,22 @@ pub fn transaction_rule_ops_for(
     accepts: impl Fn(&registry::BuffActDefinition) -> bool,
 ) -> Vec<(ActiveBuffFeature, RuleOp)> {
     let mut ops = Vec::new();
-    for definition in
-        registry::transaction_definitions(event.kind()).filter(|definition| accepts(definition))
-    {
+    let definitions =
+        registry::transaction_definitions(event.kind()).filter(|definition| accepts(definition));
+    let mut emit = |definition: &registry::BuffActDefinition| {
         ops.extend(definition
             .transaction
             .handler
             .expect("a transaction route has a handler")(
             managers, event
         ));
+    };
+    if ultimate_cost::cost_precedes_cap(managers, event) {
+        let mut definitions = definitions.collect::<Vec<_>>();
+        ultimate_cost::order_grant(&mut definitions);
+        definitions.into_iter().for_each(emit);
+    } else {
+        definitions.for_each(&mut emit);
     }
     with_feature_runtime_markers(ops)
 }
@@ -573,6 +616,7 @@ pub fn be_attacked_consumption_rule_ops(
     managers: &BattleManagers,
     target_uid: i64,
     damage_types: &[crate::engine::skill::target::EntityDamageType],
+    is_big_skill: bool,
 ) -> Vec<(ActiveBuffFeature, RuleOp)> {
     managers
         .buff
@@ -580,7 +624,11 @@ pub fn be_attacked_consumption_rule_ops(
         .into_iter()
         .filter(|feature| feature.owner_uid == target_uid)
         .filter(|feature| {
-            attr_only_cal_damage_attack::applies_to_any_incoming_damage(feature, damage_types)
+            attr_only_cal_damage_attack::applies_to_any_incoming_damage(
+                feature,
+                damage_types,
+                is_big_skill,
+            )
         })
         .filter_map(|feature| {
             attr_only_cal_damage_attack::consume_rule_op(managers, &feature).map(|op| (feature, op))
@@ -952,15 +1000,19 @@ fn scoped_rule_ops(
 }
 
 pub fn setup_rule_ops(
+    pool: &crate::engine::skill::target::TargetPool,
     managers: &BattleManagers,
     catalog: &crate::engine::skill::effect::SkillEffectCatalog,
     subscriber: &crate::engine::skill::subscriber::BuffActSetupSubscriber,
+    defender_start_round: Option<i32>,
 ) -> Option<Vec<RuleOp>> {
     let definition = registry::find(subscriber.key.opcode, subscriber.key.type_name)?;
     definition.setup.handler?(&registry::SetupContext {
+        pool,
         managers,
         catalog,
         subscriber,
+        defender_start_round,
     })
 }
 
@@ -1005,6 +1057,7 @@ pub fn incoming_target_attack_attribute_delta(
     managers: &BattleManagers,
     target_uid: i64,
     damage_type: crate::engine::skill::target::EntityDamageType,
+    is_big_skill: bool,
     attr_id: AttrId,
 ) -> i32 {
     managers
@@ -1014,8 +1067,34 @@ pub fn incoming_target_attack_attribute_delta(
         .filter(|feature| feature.owner_uid == target_uid)
         .map(|feature| {
             attr_only_cal_damage_attack::incoming_attribute_delta(&feature, damage_type, attr_id)
+                + attr_only_cal_damage_attack::basic_attacked_attribute_delta(
+                    &feature,
+                    attr_id,
+                    is_big_skill,
+                )
         })
         .sum()
+}
+
+pub fn incoming_target_attack_attributes(
+    managers: &BattleManagers,
+    target_uid: i64,
+    damage_type: crate::engine::skill::target::EntityDamageType,
+    is_big_skill: bool,
+) -> Vec<(AttrId, i32)> {
+    [AttrId::CriticalResistRate, AttrId::DmgTakenReduction]
+        .into_iter()
+        .filter_map(|attr_id| {
+            let delta = incoming_target_attack_attribute_delta(
+                managers,
+                target_uid,
+                damage_type,
+                is_big_skill,
+                attr_id,
+            );
+            (delta != 0).then_some((attr_id, delta))
+        })
+        .collect()
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1116,15 +1195,17 @@ pub fn target_attack_attribute_delta(
 pub struct HpLossStateUpdate {
     pub command: crate::engine::manager::buff::BuffCommand,
     pub marker: crate::engine::manager::buff::BuffActInfoMarkerResult,
+    pub after_hp: bool,
 }
 
 pub fn hp_loss_state_updates(
     managers: &BattleManagers,
     target_uid: i64,
     amount: i32,
+    mut resolved: Option<HpLossStateUpdate>,
 ) -> Option<Vec<HpLossStateUpdate>> {
     if amount <= 0 {
-        return Some(Vec::new());
+        return Some(resolved.into_iter().collect());
     }
     let mut features = managers
         .buff
@@ -1141,9 +1222,16 @@ pub fn hp_loss_state_updates(
     features.sort_by_key(|(feature, _)| feature.buff_uid);
     let mut updates = Vec::new();
     for (feature, handler) in features {
-        updates.extend(handler(managers, &feature, amount)?);
+        if resolved.as_ref().is_some_and(|update| {
+            update.marker.buff_uid == feature.buff_uid
+                && Some(update.marker.act_id) == feature.act_id()
+        }) {
+            updates.extend(resolved.take());
+        } else {
+            updates.extend(handler(managers, &feature, amount)?);
+        }
     }
-    Some(updates)
+    resolved.is_none().then_some(updates)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

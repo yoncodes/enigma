@@ -303,21 +303,46 @@ fn version_seven_opening_deals_before_composition_and_hands_after() {
 }
 
 #[test]
-fn opening_card_push_includes_post_deal_additions_without_changing_the_round_snapshot() {
+fn opening_deal_records_setup_additions_but_not_round_start_insertions() {
     crate::test_support::init_config();
     let fight = Fight {
         version: Some(7),
         attacker: Some(FightTeam {
-            entitys: vec![FightEntityInfo {
-                uid: Some(10),
-                model_id: Some(3156),
-                level: Some(60),
-                position: Some(1),
-                team_type: Some(1),
-                current_hp: Some(100),
-                passive_skill: vec![31560140],
-                ..Default::default()
-            }],
+            entitys: vec![
+                FightEntityInfo {
+                    uid: Some(10),
+                    model_id: Some(3156),
+                    level: Some(60),
+                    position: Some(1),
+                    team_type: Some(1),
+                    current_hp: Some(100),
+                    passive_skill: vec![31560140],
+                    ..Default::default()
+                },
+                FightEntityInfo {
+                    uid: Some(11),
+                    model_id: Some(3114),
+                    position: Some(2),
+                    team_type: Some(1),
+                    current_hp: Some(100),
+                    skill_group1: vec![31140111],
+                    skill_group2: vec![311401211],
+                    passive_skill: vec![311401441],
+                    ..Default::default()
+                },
+                FightEntityInfo {
+                    uid: Some(12),
+                    model_id: Some(3147),
+                    position: Some(3),
+                    team_type: Some(1),
+                    current_hp: Some(100),
+                    skill_group1: vec![31470111],
+                    skill_group2: vec![31473121],
+                    passive_skill: vec![31471152, 31470153, 31471154, 31472151],
+                    ex_skill: Some(31473141),
+                    ..Default::default()
+                },
+            ],
             ..Default::default()
         }),
         ..Default::default()
@@ -344,6 +369,32 @@ fn opening_card_push_includes_post_deal_additions_without_changing_the_round_sna
             .iter()
             .any(|card| card.skill_id == Some(31560181))
     );
+    let deal = runtime.managers.card.opening_deal().unwrap();
+    for skill_id in [311401511, 31472131] {
+        assert!(
+            runtime
+                .managers
+                .card
+                .hand()
+                .iter()
+                .any(|card| card.skill_id == Some(skill_id)),
+            "opening hand should contain {skill_id}"
+        );
+        assert!(
+            deal.iter().all(|card| card.skill_id != Some(skill_id)),
+            "opening deal should exclude {skill_id}"
+        );
+        assert!(
+            push.deal_card_group
+                .iter()
+                .all(|card| card.skill_id != Some(skill_id))
+        );
+        assert!(
+            push.card_group
+                .iter()
+                .any(|card| card.skill_id == Some(skill_id))
+        );
+    }
 }
 
 #[test]

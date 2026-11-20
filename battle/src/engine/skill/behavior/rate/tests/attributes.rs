@@ -1,25 +1,24 @@
 use super::*;
 
 #[test]
-fn attr_fix_emits_a_typed_attack_attribute() {
-    let mut modifiers = crate::engine::skill::action::SkillModifiers::default();
-
-    assert!(emit(
-        &mut modifiers,
-        10,
-        10,
-        None,
-        30630122,
-        0,
-        &ParsedBehavior::from_spec(
-            crate::engine::skill::behavior::classify::BehaviorSpec::new(10004, "AttrFix"),
-            vec![AttrId::Penetration as i32, 250],
-            Vec::new(),
-        ),
-    ));
+fn attr_fix_keeps_caster_and_target_penetration_separate() {
+    let mut modifiers = SkillModifiers::default();
+    for (target_uid, delta) in [(10, 250), (20, 100)] {
+        assert!(emit(
+            &mut modifiers,
+            10,
+            target_uid,
+            None,
+            30630122,
+            0,
+            &ParsedBehavior::new(10004, "AttrFix", vec![AttrId::Penetration as i32, delta]),
+        ));
+    }
+    assert_eq!(modifiers.caster_penetration, 250);
+    assert_eq!(modifiers.attack_attributes, [(AttrId::Penetration, 100)]);
     assert_eq!(
-        modifiers.attack_attributes,
-        vec![(AttrId::Penetration, 250)]
+        modifiers.primary_attack_attributes(),
+        [(AttrId::Penetration, 100), (AttrId::Penetration, 250)]
     );
 }
 

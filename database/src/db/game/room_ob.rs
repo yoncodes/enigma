@@ -6,6 +6,7 @@ use std::collections::HashMap;
 
 // Live schedules the next room-faith refresh ten minutes after a hero is placed.
 const FAITH_REFRESH_SECONDS: i32 = 10 * 60;
+const PRODUCT_LINE_LOGIC: i32 = 1;
 
 pub async fn get_formulas(pool: &SqlitePool, user_id: i64) -> Result<Vec<RoomFormula>> {
     Ok(sqlx::query_as(
@@ -527,7 +528,7 @@ fn refresh_production_line(line: &mut RoomProductionLine, now: i32) -> bool {
 fn production_timing(line_id: i32, formula_id: i32, level: i32) -> Option<(i32, i32)> {
     let game = config::configs::get();
     let line = game.production_line.get(line_id)?;
-    if line.logic != 1 || level <= 0 {
+    if line.logic != PRODUCT_LINE_LOGIC || level <= 0 {
         return None;
     }
     let formula = game.formula.get(formula_id)?;

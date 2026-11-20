@@ -1,4 +1,3 @@
-use super::shared_blood_pool_tag_owner_count;
 use crate::engine::{
     event::payload::GaugeChangeEvent,
     manager::{
@@ -8,14 +7,17 @@ use crate::engine::{
         gauge::{GaugeChangeKind, GaugeCommand, GaugeKey, GaugeKind, GaugeOperation, GaugeOwner},
     },
     skill::{
-        buff_act::{self, registry::BuffActKind},
+        buff_act,
         rule::{
             CommandOrigin,
             output::{BattleCommand, RuleOp},
         },
+        target::TargetPool,
     },
 };
-use std::collections::BTreeSet;
+
+// character_battle_tag 111 "Bloodtithe"
+const BLOODTITHE_BATTLE_TAG: i32 = 111;
 
 pub const fn key(team: i32) -> GaugeKey {
     GaugeKey {
@@ -26,8 +28,8 @@ pub const fn key(team: i32) -> GaugeKey {
 
 pub fn enable_rule_op(
     managers: &BattleManagers,
+    pool: &TargetPool,
     enabler: &ActiveBuffFeature,
-    features: &[ActiveBuffFeature],
 ) -> Option<RuleOp> {
     let team = enabler.team_type;
     if managers
@@ -40,8 +42,15 @@ pub fn enable_rule_op(
     {
         return None;
     }
-    let enablers = shared_blood_pool_tag_owner_count(team, features);
-    if enablers <= 0 {
+    if !managers
+        .buff
+        .alive_team_uids(team, &managers.hp)
+        .into_iter()
+        .any(|uid| {
+            pool.entity(uid)
+                .is_some_and(|entity| entity.battle_tags.contains(&BLOODTITHE_BATTLE_TAG))
+        })
+    {
         return None;
     }
     let origin = buff_act::feature_command_origin(enabler)?;
@@ -52,26 +61,6 @@ pub fn enable_rule_op(
             max: Some(team_max_hp(managers, team)),
         },
     ))))
-}
-
-pub fn enable_rule_ops(managers: &BattleManagers, features: &[ActiveBuffFeature]) -> Vec<RuleOp> {
-    features
-        .iter()
-        .filter(|feature| buff_act::is_kind(feature, BuffActKind::BloodPoolTag))
-        .map(|feature| feature.team_type)
-        .collect::<BTreeSet<_>>()
-        .into_iter()
-        .filter_map(|team| {
-            features
-                .iter()
-                .filter(|feature| {
-                    feature.team_type == team
-                        && buff_act::is_kind(feature, BuffActKind::BloodPoolTag)
-                })
-                .min_by_key(|feature| (feature.owner_uid, feature.buff_uid))
-        })
-        .filter_map(|feature| enable_rule_op(managers, feature, features))
-        .collect()
 }
 
 pub fn sync_base_max_rule_op(
@@ -215,13 +204,12 @@ mod tests {
         ));
     }
 
-    #[test]
-    fn sole_blood_pool_tag_owner_emits_enable_rule_without_overriding_lingering_glow() {
-        let feature = ActiveBuffFeature {
-            owner_uid: 10,
-            source_uid: 10,
-            buff_uid: 20,
-            buff_id: 6270501,
+    fn tag_feature(owner_uid: i64, buff_uid: i64, buff_id: i32) -> ActiveBuffFeature {
+        ActiveBuffFeature {
+            owner_uid,
+            source_uid: owner_uid,
+            buff_uid,
+            buff_id,
             amount: 1,
             team_type: 1,
             owner_alive: true,
@@ -230,23 +218,71 @@ mod tests {
             effect_condition: 0,
             raw: "953".to_owned(),
             values: vec![953],
+        }
+    }
+
+    fn team(heroes: &[(i64, i32, i32)]) -> (BattleManagers, TargetPool) {
+        crate::test_support::init_config();
+        let fight = sonettobuf::Fight {
+            version: Some(7),
+            attacker: Some(sonettobuf::FightTeam {
+                entitys: heroes
+                    .iter()
+                    .map(
+                        |&(uid, model_id, destiny_stone)| sonettobuf::FightEntityInfo {
+                            uid: Some(uid),
+                            model_id: Some(model_id),
+                            team_type: Some(1),
+                            current_hp: Some(100),
+                            destiny_stone: Some(destiny_stone),
+                            destiny_rank: Some(i32::from(destiny_stone > 0)),
+                            ..Default::default()
+                        },
+                    )
+                    .collect(),
+                ..Default::default()
+            }),
+            ..Default::default()
         };
-        let features = [feature];
+        (
+            BattleManagers::seeded(&fight),
+            TargetPool::from_fight(&fight),
+        )
+    }
 
-        let managers = BattleManagers::default();
-        assert!(matches!(
-            enable_rule_ops(&managers, &features).as_slice(),
-            [RuleOp::Command(BattleCommand::Gauge(GaugeCommand {
-                key: GaugeKey {
-                    kind: GaugeKind::Bloodtithe,
-                    owner: GaugeOwner::Team(1),
-                },
-                operation: GaugeOperation::Enable { .. },
-                ..
-            }))]
-        ));
+    #[test]
+    fn bloodtithe_tagged_allies_enable_the_gauge_whatever_marker_buff_they_carry() {
+        let (managers, pool) = team(&[(10, 3120, 0), (11, 3126, 0)]);
 
-        let mut managers = BattleManagers::default();
+        for marker in [tag_feature(10, 20, 6270501), tag_feature(11, 21, 31260221)] {
+            assert!(matches!(
+                enable_rule_op(&managers, &pool, &marker),
+                Some(RuleOp::Command(BattleCommand::Gauge(GaugeCommand {
+                    key: GaugeKey {
+                        kind: GaugeKind::Bloodtithe,
+                        owner: GaugeOwner::Team(1),
+                    },
+                    operation: GaugeOperation::Enable { .. },
+                    ..
+                })))
+            ));
+        }
+    }
+
+    #[test]
+    fn marker_without_a_bloodtithe_tagged_ally_does_not_enable_the_gauge() {
+        let marker = tag_feature(10, 20, 6270501);
+
+        let (managers, pool) = team(&[(10, 3088, 0)]);
+        assert!(enable_rule_op(&managers, &pool, &marker).is_none());
+
+        let (managers, pool) = team(&[(10, 3088, 308801)]);
+        assert!(enable_rule_op(&managers, &pool, &marker).is_some());
+    }
+
+    #[test]
+    fn enabled_lingering_glow_blocks_the_bloodtithe_gauge() {
+        let (mut managers, pool) = team(&[(10, 3120, 0)]);
         managers
             .gauge
             .execute_command(GaugeCommand::new(
@@ -258,6 +294,7 @@ mod tests {
                 GaugeOperation::Enable { max: Some(1) },
             ))
             .unwrap();
-        assert!(enable_rule_ops(&managers, &features).is_empty());
+
+        assert!(enable_rule_op(&managers, &pool, &tag_feature(10, 20, 6270501)).is_none());
     }
 }

@@ -15,7 +15,8 @@ pub const ROUND_START_DURATION: i32 = 103;
 pub const ROUND_START_AFTER_REACTION_DURATION: i32 = 104;
 pub const ROUND_START_DURATION_STAGES: [i32; 2] =
     [ROUND_START_DURATION, ROUND_START_AFTER_REACTION_DURATION];
-pub const ROUND_START_CARD_STAGES: [i32; 2] = [105, 106];
+pub const ROUND_START_CARD_SETTLED_DURATION: i32 = 106;
+pub const ROUND_START_CARD_STAGES: [i32; 2] = [105, ROUND_START_CARD_SETTLED_DURATION];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum BuffActEvent {
@@ -53,6 +54,8 @@ macro_rules! effect_time_definitions {
     (@phase $phase:expr) => { Some($phase) };
 }
 
+pub(super) const RIPOSTE: i32 = 401;
+
 effect_time_definitions! {
     0 => BuffActEvent::StaticRead,
     12 => BuffActEvent::Runtime(EventKind::EntityDied),
@@ -62,7 +65,7 @@ effect_time_definitions! {
     103 => BuffActEvent::Runtime(EventKind::RoundStart),
     104 => BuffActEvent::Runtime(EventKind::RoundStart),
     105 => BuffActEvent::Runtime(EventKind::RoundStartCard),
-    106 => BuffActEvent::Runtime(EventKind::RoundStartCard),
+    ROUND_START_CARD_SETTLED_DURATION => BuffActEvent::Runtime(EventKind::RoundStartCard),
     107 => BuffActEvent::Runtime(EventKind::ActionQueueCommitted),
     201 => BuffActEvent::Runtime(EventKind::SkillAction); SkillPhase::Immediate,
     210 => BuffActEvent::Runtime(EventKind::SkillAction); SkillPhase::AfterHit,
@@ -82,7 +85,7 @@ effect_time_definitions! {
     ROUND_END_ENTITY_SETTLEMENT => BuffActEvent::Runtime(EventKind::RoundEndEntitySettlement),
     ROUND_END_FINAL_SETTLEMENT => BuffActEvent::Runtime(EventKind::RoundEndFinalSettlement),
     ROUND_END_AFTER_SETTLEMENT => BuffActEvent::Runtime(EventKind::RoundEndAfterSettlement),
-    401 => BuffActEvent::Runtime(EventKind::Riposte),
+    RIPOSTE => BuffActEvent::Runtime(EventKind::Riposte),
     202 => BuffActEvent::DamageCalculation,
     203 => BuffActEvent::DamageCalculation,
     204 => BuffActEvent::DamageCalculation,

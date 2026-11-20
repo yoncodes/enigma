@@ -43,6 +43,11 @@ pub fn parse_use_ex_skill(_: i32, _: &str, args: &[String]) -> Option<ParsedCond
         .then_some(ParsedConditionKind::UseExSkill { slot: 0 })
 }
 
+pub fn after_ultimate(_: i32, _: &str, args: &[String]) -> Option<ParsedConditionKind> {
+    args.is_empty()
+        .then_some(ParsedConditionKind::AfterUltimate)
+}
+
 pub fn parse_use_ex_skill_slot(_: i32, _: &str, args: &[String]) -> Option<ParsedConditionKind> {
     let slot = match args {
         [] => 0,
@@ -72,13 +77,10 @@ mod tests {
             Some(ParsedConditionKind::TargetAttacked)
         );
         assert_eq!(
-            parse_use_ex_skill(25210, "UseExSkill", &[]),
-            Some(ParsedConditionKind::UseExSkill { slot: 0 })
+            after_ultimate(25210, "UseExSkill", &[]),
+            Some(ParsedConditionKind::AfterUltimate)
         );
-        assert_eq!(
-            parse_use_ex_skill(25210, "UseExSkill", &["1".to_owned()]),
-            None
-        );
+        assert_eq!(after_ultimate(25210, "UseExSkill", &["1".to_owned()]), None);
         assert_eq!(
             parse_teammate_use_ex_skill(720212, "TeammateUseExSkill", &[]),
             Some(ParsedConditionKind::TeammateUseExSkill)

@@ -46,7 +46,23 @@ pub struct BuffChangeEvent {
     pub after_amount: i32,
     pub act_id: i32,
     pub act_value: i32,
-    pub duration_expired: bool,
+    pub replaced_fixed_max_hp: Option<i32>,
+    pub replaced_buff_id: Option<i32>,
+    pub expiry: BuffExpiry,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum BuffExpiry {
+    #[default]
+    None,
+    Forced,
+    Duration(i32),
+}
+
+impl BuffExpiry {
+    pub fn expired(self) -> bool {
+        self != Self::None
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -203,11 +219,29 @@ pub struct ShellChangeEvent {
     pub settles_transaction: bool,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EntityEntry {
+    Summoned,
+    Reserve,
+    Wave,
+}
+
+impl EntityEntry {
+    fn activation(self) -> Option<EventKind> {
+        match self {
+            Self::Summoned => None,
+            Self::Reserve => Some(EventKind::ReserveEntry),
+            Self::Wave => Some(EventKind::WaveEntry),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum BattleEvent {
     EnterFight,
     EntityEntered {
         target_uid: i64,
+        entry: EntityEntry,
     },
     EntityTransformed {
         target_uid: i64,
@@ -217,6 +251,7 @@ pub enum BattleEvent {
         team: i32,
         emitter_uid: i64,
         cards: Vec<CardInfo>,
+        action_count: usize,
     },
     PlayerActionsResolved {
         team: i32,
@@ -343,7 +378,7 @@ impl BattleEvent {
 
     pub fn target_uid(&self) -> Option<i64> {
         match self {
-            Self::EntityEntered { target_uid }
+            Self::EntityEntered { target_uid, .. }
             | Self::EntityTransformed { target_uid }
             | Self::HpLost { target_uid, .. }
             | Self::DamageShared { target_uid, .. }
@@ -440,6 +475,10 @@ impl BattleEvent {
             );
         [
             publishes_target_attacked.then_some(self.kind()),
+            match self {
+                Self::EntityEntered { entry, .. } => entry.activation(),
+                _ => None,
+            },
             matches!(self, Self::Hit(_)).then_some(EventKind::BeAttacked),
             matches!(self, Self::Hit(_)).then_some(EventKind::Riposte),
             matches!(
@@ -565,7 +604,9 @@ mod tests {
             after_amount: 2,
             act_id: 0,
             act_value: 0,
-            duration_expired: false,
+            replaced_fixed_max_hp: None,
+            replaced_buff_id: None,
+            expiry: BuffExpiry::None,
         };
 
         assert_eq!(BattleEvent::BuffAdded(change).kind(), EventKind::BuffAdded);

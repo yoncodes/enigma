@@ -929,3 +929,73 @@ fn round_start_card_event_runs_buff_gated_skill_rules() {
     .unwrap();
     assert_buff_gated_generic_temp_card(&managers, &next_round);
 }
+
+#[test]
+fn round_start_removes_hp_restored_above_the_dissonance_value() {
+    init_config();
+    let fight = Fight {
+        version: Some(7),
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                position: Some(1),
+                team_type: Some(1),
+                current_hp: Some(900),
+                attr: Some(sonettobuf::HeroAttribute {
+                    hp: Some(1_000),
+                    ..Default::default()
+                }),
+                buffs: vec![BuffInfo {
+                    uid: Some(1000),
+                    buff_id: Some(108_300_002),
+                    from_uid: Some(0),
+                    layer: Some(1),
+                    act_info: vec![sonettobuf::BuffActInfo {
+                        act_id: Some(1059),
+                        param: vec![700],
+                        str_param: Some(String::new()),
+                    }],
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(-1),
+                team_type: Some(2),
+                current_hp: Some(100),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    let catalog = SkillEffectCatalog::from_fight(config::configs::get(), &fight);
+
+    let (round, _, _, _) = run_round_start_after_ai_split(
+        &mut managers,
+        &pool,
+        &catalog,
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+        &[],
+        0,
+    )
+    .unwrap();
+
+    assert_eq!(managers.hp.current(10), 700);
+    let trims = round
+        .outcomes
+        .iter()
+        .filter_map(|outcome| match outcome {
+            RuleOutcome::Hp(execution) => execution.changes.hp,
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(trims.len(), 1);
+    assert_eq!((trims[0].before, trims[0].after), (900, 700));
+}

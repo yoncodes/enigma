@@ -45,8 +45,10 @@ pub fn rule_ops(
         }
         _ => {}
     }
+    // A holder killed by the hit is not healed back; revival is its own act.
     if attacked
         && (event.target_uid() != Some(subscriber.owner_uid)
+            || managers.hp.current(subscriber.owner_uid) <= 0
             || managers
                 .hp
                 .current(subscriber.owner_uid)
@@ -321,6 +323,13 @@ mod tests {
         });
         assert!(matches!(
             rule_ops(&managers, &inactive, &inactive_event),
+            Some(ops) if ops.is_empty()
+        ));
+
+        let mut killed = managers;
+        killed.hp.lose(20, 300, 0);
+        assert!(matches!(
+            rule_ops(&killed, &subscriber, &event),
             Some(ops) if ops.is_empty()
         ));
     }

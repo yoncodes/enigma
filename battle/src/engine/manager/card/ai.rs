@@ -10,7 +10,7 @@ use crate::engine::{
     runtime::determinism::RoundDeterminism,
     skill::{
         effect::SkillEffectCatalog,
-        target::{TargetContext, TargetPool, TargetRequest, TargetResolver},
+        target::{TargetContext, TargetPool, TargetResolver},
     },
 };
 
@@ -126,18 +126,16 @@ pub(crate) fn resolve_targets(
                 "generated AI skill {skill_id} is missing from the effect catalog"
             ));
         }
-        let code = catalog.logic_target(skill_id);
-        if code == 0 {
+        let request = catalog.logic_request(skill_id);
+        if request.code == 0 {
             return Err(format!(
                 "generated AI skill {skill_id} has no configured target"
             ));
         }
+        let code = request.code;
         let attack = catalog.is_attack(skill_id);
         let candidates = TargetResolver::resolve_primary_candidates(
-            &TargetRequest {
-                code,
-                raw: Vec::new(),
-            },
+            request,
             skill_id,
             source_uid,
             &runtime_pool,

@@ -101,7 +101,12 @@ fn modifier_rates(source_uid: i64, target_uid: i64, managers: &BattleManagers) -
     let healing_done = managers.attribute.get(source_uid, AttrId::HealingDone)
         + managers
             .buff
-            .attribute_delta(source_uid, AttrId::HealingDone);
+            .attribute_delta(source_uid, AttrId::HealingDone)
+        + crate::engine::skill::buff_act::attr_from_entity::active_delta(
+            managers,
+            source_uid,
+            AttrId::HealingDone,
+        );
     let target = managers.hp.get(target_uid);
     let missing_permille = if target.max > 0 {
         ((i64::from((target.max - target.current).max(0)) * 1000) / i64::from(target.max))
@@ -184,34 +189,5 @@ pub(super) fn amount(
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn healing_modifiers_settle_before_the_final_multiplier() {
-        let mut managers = BattleManagers::default();
-
-        assert_eq!(
-            modified_fraction(
-                733,
-                1,
-                10,
-                11,
-                &managers,
-                super::super::critical::CriticalHealMultiplier::IDENTITY,
-            ),
-            733
-        );
-        let boosted = super::super::critical::CriticalHealMultiplier::from_permille(1_200);
-        assert_eq!(modified_fraction(733, 1, 10, 11, &managers, boosted), 879);
-
-        managers.attribute.override_sp(
-            10,
-            &sonettobuf::HeroSpAttribute {
-                heal: Some(1),
-                ..Default::default()
-            },
-        );
-        assert_eq!(modified_fraction(733, 1, 10, 11, &managers, boosted), 879);
-    }
-}
+#[path = "heal/tests.rs"]
+mod tests;

@@ -56,6 +56,14 @@ pub struct HpChange {
     pub display_amount: Option<i32>,
 }
 
+impl HpChange {
+    // A CURRENTHPCHANGE correction removes temporary HP; it is not damage taken.
+    pub(crate) fn is_loss(&self) -> bool {
+        self.delta < 0
+            && self.effect_type != sonettobuf::effect_type_enum::EffectType::Currenthpchange as i32
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ShieldChange {
     pub target_uid: i64,
@@ -79,6 +87,12 @@ pub enum DamageEffectKind {
     Critical,
     Genesis,
     Avoided,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LinkedHit {
+    pub(crate) target_uid: i64,
+    pub(crate) commands: Vec<HpCommand>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -231,6 +245,9 @@ pub enum HpCommand {
     SetCurrent(CurrentHpSet),
     GrantShield(ShieldGrant),
     AdjustMax(MaxHpAdjust),
+    RestoreMax(MaxHpAdjust),
+    RemoveReplacedMax(MaxHpAdjust),
+    AdjustCapacity(MaxHpAdjust),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -259,6 +276,7 @@ pub struct MaxHpChange {
     pub delta: i32,
     pub after_current: i32,
     pub after_max: i32,
+    pub replaced_removal: bool,
 }
 
 /// A hit split by ShareHurt before it landed: the consumed stack and each ally's share.
@@ -336,7 +354,7 @@ impl HpChanges {
                 .unwrap_or_default()
             + self
                 .hp
-                .filter(|change| change.delta < 0)
+                .filter(HpChange::is_loss)
                 .map(|change| change.delta.saturating_abs())
                 .unwrap_or_default()
     }
@@ -385,7 +403,7 @@ impl HpChanges {
             }
         }
         if self.kill.is_none()
-            && let Some(change) = self.hp.filter(|change| change.delta < 0)
+            && let Some(change) = self.hp.filter(HpChange::is_loss)
         {
             events.push(BattleEvent::HpLost {
                 origin: self.origin,
@@ -478,6 +496,7 @@ pub enum HpCommandError {
 #[derive(Debug, Clone, Default)]
 pub struct HpManager {
     states: HashMap<i64, HpState>,
+    stat_max: HashMap<i64, i32>,
     revisions: HashMap<i64, u64>,
     action_start: HashMap<(i64, i32), HpState>,
     shields: HashMap<i64, i32>,

@@ -228,24 +228,49 @@ impl RaspberryBuffAct {
         buff: &BuffInfo,
         fallback_cap: i32,
     ) -> (i32, i32) {
-        let parsed = buff
-            .act_common_params
-            .as_deref()
-            .and_then(parse_capacity)
-            .or_else(|| {
-                buff.act_info
-                    .iter()
-                    .find(|info| {
-                        info.act_id.is_some_and(|act_id| {
-                            catalog.is_some_and(|catalog| is_raspberry_act_id(catalog, act_id))
-                        })
-                    })
-                    .and_then(|info| Some((*info.param.first()?, *info.param.get(1)?)))
-            });
-        parsed
+        recorded_capacity(catalog, buff)
             .map(|(current, cap)| (current, if cap > 0 { cap } else { fallback_cap }))
             .unwrap_or((0, fallback_cap))
     }
+}
+
+fn recorded_capacity(catalog: Option<BattleCatalog>, buff: &BuffInfo) -> Option<(i32, i32)> {
+    buff.act_common_params
+        .as_deref()
+        .and_then(parse_capacity)
+        .or_else(|| {
+            buff.act_info
+                .iter()
+                .find(|info| {
+                    info.act_id.is_some_and(|act_id| {
+                        catalog.is_some_and(|catalog| is_raspberry_act_id(catalog, act_id))
+                    })
+                })
+                .and_then(|info| Some((*info.param.first()?, *info.param.get(1)?)))
+        })
+}
+
+pub(crate) fn cloak_hp(managers: &BattleManagers, owner_uid: i64) -> i64 {
+    let catalog = managers.catalog();
+    managers
+        .buff
+        .active_for(owner_uid)
+        .filter(|buff| {
+            buff.uid
+                .is_some_and(|uid| managers.buff.is_effective(owner_uid, uid))
+        })
+        .filter_map(|buff| {
+            let features = managers.buff.definition_features(buff.buff_id?);
+            if !features
+                .iter()
+                .any(|feature| is_kind(feature, BuffActKind::Raspberry))
+            {
+                return None;
+            }
+            let (current, _) = recorded_capacity(Some(catalog), buff)?;
+            Some(i64::from(current.max(0)))
+        })
+        .sum()
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -466,7 +491,7 @@ pub(crate) fn execute_capacity(
             str_param: Some(String::new()),
         }]),
     }))?;
-    let hp = managers.execute_hp(HpCommand::AdjustMax(MaxHpAdjust {
+    let hp = managers.execute_hp(HpCommand::AdjustCapacity(MaxHpAdjust {
         origin: command.origin,
         source_uid: command.source_uid,
         target_uid: command.target_uid,

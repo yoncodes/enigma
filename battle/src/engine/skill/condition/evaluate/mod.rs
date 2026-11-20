@@ -407,11 +407,12 @@ pub(crate) fn condition_matches(
     );
     if crate::engine::diagnostics::enabled(crate::engine::diagnostics::TraceArea::Condition) {
         eprintln!(
-            "condition {} {} args={:?} source={source_uid} targets={condition_targets:?} skill={} buff_added={}/{}x{} on {} matched={matched}",
+            "condition {} {} args={:?} source={source_uid} targets={condition_targets:?} skill={} random_roll={:?} buff_added={}/{}x{} on {} matched={matched}",
             condition.opcode,
             condition.type_name,
             condition.raw_args,
             context.active_skill_id,
+            context.condition_random_roll,
             context.added_buff_id,
             context.added_buff_type_id,
             context.added_buff_amount,
@@ -460,11 +461,17 @@ fn condition_kind_matches(
         ParsedConditionKind::RoundInterval {
             start_round,
             period,
-        } => {
-            *period > 0
-                && context.current_round >= *start_round
-                && (context.current_round - *start_round) % *period == 0
-        }
+        } => super::lifecycle::interval_matches(context.current_round, *start_round, *period),
+        ParsedConditionKind::RoundStartInterval {
+            start_round,
+            period,
+        } => super::lifecycle::interval_matches(
+            context
+                .defender_start_round
+                .unwrap_or(context.current_round),
+            *start_round,
+            *period,
+        ),
         ParsedConditionKind::ActionOrder(order) => context.action_order == *order,
         ParsedConditionKind::ActionOrderRange { start, count } => {
             *count > 0
@@ -682,6 +689,13 @@ fn condition_kind_matches(
                 .sum();
             compare_value(amount, *compare, *threshold)
         }),
+        ParsedConditionKind::PrimaryStatusAbsent(statuses) => managers.is_some_and(|managers| {
+            condition_targets.iter().all(|uid| {
+                statuses
+                    .iter()
+                    .all(|status| !managers.buff.has_active_status(*uid, *status))
+            })
+        }),
         ParsedConditionKind::VisibleBuffStatusTypeCount {
             status_ids,
             compare,
@@ -893,6 +907,29 @@ fn condition_kind_matches(
         ParsedConditionKind::Random { threshold } => context
             .condition_random_roll
             .is_some_and(|roll| roll < *threshold),
+        ParsedConditionKind::Rouge2AttributeRandom { multiplier } => {
+            managers.is_some_and(|managers| {
+                context.condition_random_roll.is_some_and(|roll| {
+                    // attr999 (rouge2_relics_attr type 3): the leader career's recommended attributes
+                    let career = managers.buff.mode_career();
+                    let attributes = managers
+                        .catalog()
+                        .rouge2_recommended_attributes(career)
+                        .into_iter()
+                        .map(|id| managers.buff.mode_attribute(id))
+                        .fold(0i32, i32::saturating_add);
+                    let threshold = attributes.saturating_mul(*multiplier).clamp(0, 1000);
+                    if crate::engine::diagnostics::enabled(
+                        crate::engine::diagnostics::TraceArea::Condition,
+                    ) {
+                        eprintln!(
+                            "rouge2 chance career={career} attributes={attributes} multiplier={multiplier} threshold={threshold} roll={roll}"
+                        );
+                    }
+                    roll < threshold
+                })
+            })
+        }
         ParsedConditionKind::ExPointDecrease { threshold } => {
             context.ex_point_changed_uid != 0
                 && context.ex_point_delta < 0
@@ -1133,6 +1170,19 @@ fn condition_kind_matches(
                 && active_skill_has_real_source(pool, context)
                 && (*slot == 0 || context.active_skill_slot == *slot)
         }
+        ParsedConditionKind::ActiveUseSkillBySource { slot } => {
+            context.direct_skill_body
+                && matches!(
+                    context.active_skill_mode,
+                    crate::engine::skill::action::SkillExecutionMode::Active
+                        | crate::engine::skill::action::SkillExecutionMode::DirectBig
+                        | crate::engine::skill::action::SkillExecutionMode::Device
+                )
+                && context.extra_skill_kind == 0
+                && active_skill_has_real_source(pool, context)
+                && (*slot == 0 || context.active_skill_slot == *slot)
+                && condition_targets.contains(&context.active_skill_source_uid)
+        }
         ParsedConditionKind::UseSkillRank(ranks) => {
             context.active_skill_source_uid == source_uid
                 && context.active_skill_rank != 0
@@ -1162,21 +1212,19 @@ fn condition_kind_matches(
         ),
         ParsedConditionKind::UseExSkill { slot } => {
             (*slot == 0 || context.active_skill_slot == *slot)
-                && pool
-                    .entity(if context.active_skill_source_uid != 0 {
-                        context.active_skill_source_uid
-                    } else {
-                        source_uid
-                    })
-                    .is_some_and(|source| {
-                        managers.is_some_and(|managers| {
-                            crate::engine::mechanic::card::CardMechanic.is_ultimate_skill(
-                                managers,
-                                context.active_skill_id,
-                                source,
-                            )
-                        })
-                    })
+                && card_ultimate(source_uid, pool, managers, context)
+        }
+        ParsedConditionKind::AfterUltimate => {
+            if context.active_skill_mode == crate::engine::skill::action::SkillExecutionMode::Device
+            {
+                managers.is_some_and(|managers| {
+                    managers
+                        .conduit
+                        .is_unique_skill(action_owner(source_uid, context), context.active_skill_id)
+                })
+            } else {
+                card_ultimate(source_uid, pool, managers, context)
+            }
         }
         ParsedConditionKind::TeammateUseExSkill => pool.allies(source_uid).iter().any(|ally| {
             ally.uid != source_uid
@@ -1353,6 +1401,10 @@ fn condition_kind_matches(
                             && context.active_skill_source_uid != source_uid
                             && condition_targets.contains(&context.active_skill_source_uid)
                     }
+                    super::extra::ExtraActionConditionMode::TargetedActor => {
+                        context.active_skill_source_uid != 0
+                            && condition_targets.contains(&context.active_skill_source_uid)
+                    }
                     _ => true,
                 }
         }
@@ -1378,9 +1430,37 @@ fn condition_kind_matches(
         ParsedConditionKind::MasterHalo => condition_targets
             .iter()
             .any(|uid| has_master_halo(*uid, managers)),
-        ParsedConditionKind::NoActionRound => !context.owner_played_card,
+        ParsedConditionKind::NoActionRound => {
+            managers.is_some_and(|managers| !managers.card.acted_this_round(source_uid))
+        }
         ParsedConditionKind::Unsupported(_) => false,
     }
+}
+
+fn action_owner(source_uid: i64, context: TargetContext) -> i64 {
+    if context.active_skill_source_uid != 0 {
+        context.active_skill_source_uid
+    } else {
+        source_uid
+    }
+}
+
+fn card_ultimate(
+    source_uid: i64,
+    pool: &TargetPool,
+    managers: Option<&BattleManagers>,
+    context: TargetContext,
+) -> bool {
+    pool.entity(action_owner(source_uid, context))
+        .is_some_and(|source| {
+            managers.is_some_and(|managers| {
+                crate::engine::mechanic::card::CardMechanic.is_ultimate_skill(
+                    managers,
+                    context.active_skill_id,
+                    source,
+                )
+            })
+        })
 }
 
 fn card_anchor_matches(

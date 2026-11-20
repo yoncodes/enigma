@@ -47,7 +47,7 @@ fn final_settlement_advances_final_stage_durations() {
         .enumerate()
         .find_map(|(index, event)| match event {
             BattleEvent::BuffRemoved(change) if change.buff_id == 109320002 => {
-                Some((index, change.duration_expired))
+                Some((index, change.expiry.expired()))
             }
             _ => None,
         })

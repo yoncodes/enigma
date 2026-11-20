@@ -552,7 +552,9 @@ fn replay_auto_inputs(
         let request = auto_round_request(&input.request)?;
         outcomes.push(AutoOutcome {
             captured: input.reply.clone(),
-            generated: runtime.plan_auto_round(&request),
+            generated: runtime
+                .try_plan_auto_round(&request)
+                .map_err(anyhow::Error::msg)?,
         });
     }
     Ok(())

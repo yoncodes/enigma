@@ -25,18 +25,17 @@ pub mod types;
 
 pub use change::CardChange;
 pub use command::{
-    CARD_ENERGY_CLEAR_ORIGIN, CARD_PLAY_ORIGIN, CardActionQueue, CardAddCrystal, CardAddGenerated,
-    CardAddHedone, CardAddPrecast, CardAddTemporary, CardAddUniversal, CardChangeKind,
-    CardChangeToTemporary, CardChanges, CardCommand, CardCommandError, CardConsumeForEffect,
-    CardConsumptionKind, CardDeckRankUpRange, CardDraw, CardEnchantHand, CardEnergyAllocation,
-    CardEnergyChange, CardHandLimitChange, CardInitialSovereignBoost, CardInsertSovereign,
-    CardInvalidateAiOwner, CardInvalidatePlayed, CardInvalidatedAi, CardMarkTemporary,
-    CardOpeningDraw, CardOwnerRemoval, CardPersistTemporary, CardPlay, CardQueueUse,
-    CardRankChange, CardRankFailure, CardRankResult, CardRecordCastChannel, CardRedealKeepRanks,
-    CardRefillOne, CardRefillStage, CardRefreshAiQueue, CardRemoveOwner, CardReplaceOwnerSkills,
-    CardSetAiQueue, CardSetTeamCards, CardSetUltimateAvailability, CardSetup, CardUnlockHedone,
-    CardUseUniversal, HandCardRankUp, QueuedCardRankChange, QueuedCardRankUp, QueuedUseCard,
-    SovereignBoostChange, TemporaryCardKind,
+    CARD_ENERGY_CLEAR_ORIGIN, CARD_PLAY_ORIGIN, CardAddCrystal, CardAddGenerated, CardAddHedone,
+    CardAddPrecast, CardAddTemporary, CardAddUniversal, CardChangeKind, CardChangeToTemporary,
+    CardChanges, CardCommand, CardCommandError, CardConsumeForEffect, CardConsumptionKind,
+    CardDeckRankUpRange, CardDraw, CardEnchantHand, CardEnergyAllocation, CardEnergyChange,
+    CardHandLimitChange, CardInitialSovereignBoost, CardInsertSovereign, CardInvalidateAiOwner,
+    CardInvalidatePlayed, CardInvalidatedAi, CardMarkTemporary, CardOpeningDraw, CardOwnerRemoval,
+    CardPersistTemporary, CardPlay, CardQueueUse, CardRankChange, CardRankFailure, CardRankResult,
+    CardRecordAiCast, CardRecordCastChannel, CardRedealKeepRanks, CardRefillOne, CardRefillStage,
+    CardRefreshAiQueue, CardRemoveOwner, CardReplaceOwnerSkills, CardSetAiQueue, CardSetTeamCards,
+    CardSetUltimateAvailability, CardSetup, CardUnlockHedone, CardUseUniversal, HandCardRankUp,
+    QueuedCardRankChange, QueuedCardRankUp, QueuedUseCard, SovereignBoostChange, TemporaryCardKind,
 };
 pub use deck::CardDeck;
 use deck::CardInstanceId;
@@ -65,6 +64,7 @@ pub struct CardManager {
     prepared_ai_skills: Vec<PreparedAiSkill>,
     cleaned_owners: HashSet<i64>,
     played: Vec<PlayedCard>,
+    ai_casters: Vec<i64>,
     committed_hand: Vec<CardInfo>,
     refilled: Vec<CardInfo>,
     action_phase: action_phase::ActionPhaseCards,
@@ -94,6 +94,13 @@ pub struct CardStateSnapshot {
     pub team_type: i32,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct ActionQueueCardState {
+    pub hand: Vec<CardInfo>,
+    pub deck_num: i32,
+    pub team_type: i32,
+}
+
 struct DeckRankUpStep {
     deck_index: usize,
     owner_uid: i64,
@@ -109,6 +116,14 @@ enum PlaySource {
 }
 
 impl CardManager {
+    pub fn action_queue_state(&self, team_type: i32) -> ActionQueueCardState {
+        ActionQueueCardState {
+            hand: self.visible_cards().cloned().collect(),
+            deck_num: self.deck_num(),
+            team_type,
+        }
+    }
+
     pub fn state_snapshot(&self, team_type: i32) -> CardStateSnapshot {
         CardStateSnapshot {
             hand: self.hand().to_vec(),
@@ -152,6 +167,7 @@ impl CardManager {
             prepared_ai_skills: Vec::new(),
             cleaned_owners: HashSet::new(),
             played: Vec::new(),
+            ai_casters: Vec::new(),
             committed_hand: Vec::new(),
             refilled: Vec::new(),
             action_phase: action_phase::ActionPhaseCards::default(),
@@ -179,6 +195,7 @@ impl CardManager {
             prepared_ai_skills: Vec::new(),
             cleaned_owners: HashSet::new(),
             played: Vec::new(),
+            ai_casters: Vec::new(),
             committed_hand: Vec::new(),
             refilled: Vec::new(),
             action_phase: action_phase::ActionPhaseCards::default(),
@@ -261,10 +278,12 @@ impl CardManager {
         &self.team_cards
     }
 
+    pub(crate) fn visible_cards(&self) -> impl Iterator<Item = &CardInfo> {
+        self.hand().iter().chain(self.team_cards())
+    }
+
     pub(crate) fn visible_card(&self, index: usize) -> Option<&CardInfo> {
-        self.hand()
-            .get(index)
-            .or_else(|| self.team_cards.get(index.checked_sub(self.hand().len())?))
+        self.visible_cards().nth(index)
     }
 
     fn set_team_cards(&mut self, cards: Vec<CardInfo>) {
@@ -386,6 +405,7 @@ impl CardManager {
         self.deck_num = deck_num;
         self.deck_capacity = deck_num;
         self.played.clear();
+        self.ai_casters.clear();
         self.committed_hand.clear();
         self.refilled.clear();
         self.clear_action_phase();
@@ -408,6 +428,7 @@ impl CardManager {
 
     pub(super) fn begin_round(&mut self) {
         self.played.clear();
+        self.ai_casters.clear();
         self.committed_hand.clear();
         self.refilled.clear();
         self.clear_action_phase();
@@ -496,6 +517,14 @@ impl CardManager {
 
     pub fn played(&self) -> &[PlayedCard] {
         &self.played
+    }
+
+    pub(crate) fn acted_this_round(&self, owner_uid: i64) -> bool {
+        self.ai_casters.contains(&owner_uid)
+            || self
+                .played
+                .iter()
+                .any(|played| played.caster_uid == owner_uid)
     }
 
     pub(crate) fn committed_hand(&self) -> &[CardInfo] {

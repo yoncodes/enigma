@@ -19,6 +19,12 @@ pub enum RoundCardSnapshotPolicy {
     CurrentOnly,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ActionRound {
+    Standard,
+    AlliedExtra,
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct RoundState {
     pub act_point: i32,
@@ -29,6 +35,7 @@ pub struct RoundState {
     pub hero_sp_attributes: Vec<FightHeroSpAttributeInfo>,
     pub last_change_hero_uid: Option<i64>,
     pub(crate) extra_rounds: usize,
+    pub(crate) defender_starts: i32,
 }
 
 impl RoundState {
@@ -56,12 +63,27 @@ impl RoundState {
         self.extra_rounds += 1;
     }
 
-    pub fn begin_round(&mut self) {
+    pub(crate) fn next_round_number(&self) -> i32 {
         if self.extra_rounds == 0 {
-            self.cur_round += 1;
+            self.cur_round.saturating_add(1)
         } else {
-            self.extra_rounds -= 1;
+            self.cur_round
         }
+    }
+
+    pub(crate) fn begin_round(&mut self) -> ActionRound {
+        self.cur_round = self.next_round_number();
+        if self.extra_rounds > 0 {
+            self.extra_rounds -= 1;
+            ActionRound::AlliedExtra
+        } else {
+            ActionRound::Standard
+        }
+    }
+
+    pub(crate) fn start_defender_round(&mut self) -> i32 {
+        self.defender_starts = self.defender_starts.saturating_add(1);
+        self.defender_starts
     }
 }
 

@@ -19,11 +19,10 @@ pub struct EntityBuilder {
     stats: Option<Stats>,
     position: i32,
     team_type: i32,
-    is_sub: bool,
 }
 
 impl EntityBuilder {
-    pub fn new(hero: HeroBuildInput, position: i32, team_type: i32, is_sub: bool) -> Self {
+    pub fn new(hero: HeroBuildInput, position: i32, team_type: i32) -> Self {
         Self {
             catalog: None,
             hero,
@@ -31,7 +30,6 @@ impl EntityBuilder {
             stats: None,
             position,
             team_type,
-            is_sub,
         }
     }
 
@@ -79,8 +77,7 @@ impl EntityBuilder {
             .stats
             .map(Stats::base)
             .unwrap_or_else(|| Attr::get(hero, &self.equips));
-        let (sg1, sg2, configured_ex_skill) =
-            Skill::loadout(game, hero, self.is_sub, destiny.as_ref());
+        let (sg1, sg2, configured_ex_skill) = Skill::loadout(game, hero, destiny.as_ref());
         let (ex_point_type, ex_point_max) = Self::ex_point_spec(
             game,
             hero.hero_id,
@@ -236,8 +233,7 @@ impl EntityBuilder {
                 );
         }
         let attr = stats.base();
-        let (skill_group1, skill_group2, configured_ex_skill) =
-            Skill::active_skills(tables, trial.hero_id, rank, trial.ex_skill_lv);
+        let (skill_group1, skill_group2, configured_ex_skill) = Skill::trial(tables, trial, rank);
         let (ex_point_type, ex_point_max) = Self::ex_point_spec(
             tables,
             trial.hero_id,
@@ -515,11 +511,11 @@ mod tests {
             refine_level: 1,
         }];
         let stats = Stats::build_for_loadout(&hero, &equips);
-        let legacy = EntityBuilder::new(hero.clone(), 1, 1, false)
+        let legacy = EntityBuilder::new(hero.clone(), 1, 1)
             .with_equips(equips.clone())
             .build()
             .unwrap();
-        let explicit = EntityBuilder::new(hero, 1, 1, false)
+        let explicit = EntityBuilder::new(hero, 1, 1)
             .with_catalog(crate::catalog::BattleCatalog::new(
                 crate::test_support::game_data(),
             ))
@@ -571,9 +567,7 @@ mod tests {
             ..Default::default()
         };
 
-        let lit = EntityBuilder::new(hero.clone(), 1, 1, false)
-            .build()
-            .unwrap();
+        let lit = EntityBuilder::new(hero.clone(), 1, 1).build().unwrap();
         assert_eq!(lit.skill_group1, vec![312451115, 312451125, 312451135]);
         assert_eq!(lit.skill_group2, vec![312431212, 312431222, 312431232]);
         assert_eq!(lit.ex_skill, Some(312451031));
@@ -592,7 +586,6 @@ mod tests {
             },
             1,
             1,
-            false,
         )
         .build()
         .unwrap();
@@ -607,7 +600,6 @@ mod tests {
             },
             1,
             1,
-            false,
         )
         .build()
         .unwrap();
@@ -631,9 +623,7 @@ mod tests {
             ..Default::default()
         };
 
-        let geared = EntityBuilder::new(hero.clone(), 1, 1, false)
-            .build()
-            .unwrap();
+        let geared = EntityBuilder::new(hero.clone(), 1, 1).build().unwrap();
         assert_eq!(geared.skill_group1, vec![312301142, 312301152, 312301162]);
         assert_eq!(geared.skill_group2, vec![312301242, 312301252, 312301262]);
         assert_eq!(geared.ex_skill, Some(312301313));
@@ -646,7 +636,6 @@ mod tests {
             },
             1,
             1,
-            false,
         )
         .build()
         .unwrap();
@@ -689,7 +678,6 @@ mod tests {
             },
             1,
             1,
-            false,
         )
         .build()
         .unwrap();
@@ -720,7 +708,6 @@ mod tests {
             },
             1,
             1,
-            false,
         )
         .build()
         .unwrap();
@@ -742,9 +729,7 @@ mod tests {
             ex_skill_level: 3,
             ..Default::default()
         };
-        let plain = EntityBuilder::new(hero.clone(), 1, 1, false)
-            .build()
-            .unwrap();
+        let plain = EntityBuilder::new(hero.clone(), 1, 1).build().unwrap();
         let enhanced = EntityBuilder::new(
             HeroBuildInput {
                 destiny_stone: 305301,
@@ -753,7 +738,6 @@ mod tests {
             },
             1,
             1,
-            false,
         )
         .build()
         .unwrap();

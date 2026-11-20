@@ -1,4 +1,5 @@
 use super::*;
+use crate::engine::skill::rule::RuleDomain;
 
 impl EffectPacket {
     pub fn buff_add(change: &BuffApplyResult) -> Vec<ActEffect> {
@@ -13,7 +14,7 @@ impl EffectPacket {
         change: &crate::engine::manager::buff::BuffReplaceResult,
     ) -> Vec<ActEffect> {
         if let Some(rejected) = &change.rejected {
-            return std::iter::once(Self::buff_reject(rejected))
+            return std::iter::once(Self::buff_reject(rejected, 1))
                 .chain(change.removed.iter().flat_map(Self::buff_delete_effects))
                 .chain(change.refreshed.iter().map(Self::buff_update))
                 .collect();
@@ -88,18 +89,28 @@ impl EffectPacket {
         }
         let change = &changes.change;
         if let Some(rejected) = &change.rejected {
-            return std::iter::once(Self::buff_reject(rejected))
+            let config_effect = match changes.origin.domain {
+                RuleDomain::Behavior if !rejected.resisted => changes.origin.key.opcode,
+                _ => 1,
+            };
+            return std::iter::once(Self::buff_reject(rejected, config_effect))
                 .chain(change.removed.iter().flat_map(Self::buff_delete_effects))
                 .chain(change.refreshed.iter().map(Self::buff_update))
                 .collect();
         }
+        use crate::engine::manager::buff::BuffPublishPart;
+        let part = changes.publish_part;
+        let leads = matches!(part, BuffPublishPart::Whole | BuffPublishPart::Lead);
+        let removes = matches!(part, BuffPublishPart::Whole | BuffPublishPart::Removal);
+        let adds = matches!(part, BuffPublishPart::Whole | BuffPublishPart::Addition);
         let mut effects = Vec::new();
-        if changes.pre_add_markers_before_remove
+        if leads
+            && changes.pre_add_markers_before_remove
             && let Some(added) = &change.added
         {
             effects.extend(Self::buff_add_pre_markers(added));
         }
-        for removed in &change.removed {
+        for removed in change.removed.iter().filter(|_| removes) {
             if let Some(reason) = Self::buff_delete_reason(removed) {
                 effects.push(reason);
             }
@@ -111,6 +122,9 @@ impl EffectPacket {
             {
                 effects.push(Self::shield_delete(shield.target_uid, shield.value));
             }
+        }
+        if !adds {
+            return effects;
         }
         effects.extend(Self::recorded_buff_refreshes(
             changes,
@@ -185,7 +199,7 @@ impl EffectPacket {
         effects
     }
 
-    fn buff_add_pre_markers(change: &BuffApplyResult) -> Vec<ActEffect> {
+    pub fn buff_add_pre_markers(change: &BuffApplyResult) -> Vec<ActEffect> {
         change
             .pre_markers
             .iter()
@@ -204,7 +218,7 @@ impl EffectPacket {
         )
     }
 
-    fn buff_add_body(change: &BuffApplyResult) -> Vec<ActEffect> {
+    pub fn buff_add_body(change: &BuffApplyResult) -> Vec<ActEffect> {
         let mut effects = change
             .pre_effects
             .iter()
@@ -258,7 +272,7 @@ impl EffectPacket {
         }
     }
 
-    pub fn buff_reject(change: &BuffRejectResult) -> ActEffect {
+    fn buff_reject(change: &BuffRejectResult, config_effect: i32) -> ActEffect {
         ActEffect {
             target_id: Some(change.target_uid),
             effect_type: Some(if change.resisted {
@@ -268,7 +282,7 @@ impl EffectPacket {
             }),
             effect_num: Some(change.blocker_buff_id),
             buff: Some(change.buff.clone()),
-            config_effect: Some(1),
+            config_effect: Some(config_effect),
             buff_act_id: Some(0),
             reserve_id: Some(0),
             team_type: Some(0),

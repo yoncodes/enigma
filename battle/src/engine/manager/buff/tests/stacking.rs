@@ -304,19 +304,12 @@ fn explicit_replacement_policy_still_replaces_permanent_positive_status() {
 }
 
 #[test]
-fn include_type_four_stores_timed_attribute_grants_as_separate_copies() {
+fn include_type_four_stores_one_timed_copy_per_buff_id() {
     init_config();
     let policy = BuffPolicy::for_buff_id(30600101).expect("timed attribute definition");
 
-    assert_eq!(policy.storage, BuffStorage::SeparateCopies);
-    assert_eq!(policy.on_duplicate, DuplicateGrant::AddSeparateCopy);
-
-    let hp = HpManager::default();
-    let mut manager = BuffManager::default();
-    manager.add_replacing_excluded(&hp, 10, 10, 30600101, 0);
-    manager.add_replacing_excluded(&hp, 10, 10, 30600101, 0);
-
-    assert_eq!(manager.active_for(10).count(), 2);
+    assert_eq!(policy.storage, BuffStorage::Single);
+    assert_eq!(policy.on_duplicate, DuplicateGrant::ReplaceExisting);
 }
 
 #[test]
@@ -366,6 +359,73 @@ fn shared_type_family_replaces_the_resident_variant() {
 }
 
 #[test]
+fn replace_rank_type_rule_replaces_only_the_held_rank_of_its_type() {
+    use crate::engine::entity::attr::AttrId;
+
+    init_config();
+    let hp = HpManager::default();
+    let mut manager = BuffManager::default();
+    let low_atk = 31460111;
+    let high_atk = 31460113;
+    let hp_up = 31460121;
+    manager.add_replacing_excluded(&hp, 10, 10, hp_up, 0);
+    manager.add_replacing_excluded(&hp, 11, 11, high_atk, 0);
+    let low_uid = manager
+        .add_replacing_excluded(&hp, 10, 10, low_atk, 0)
+        .added
+        .unwrap()
+        .buff
+        .uid;
+    let raised = manager.add_replacing_excluded(&hp, 10, 10, high_atk, 0);
+    assert_eq!(raised.removed.len(), 1);
+    assert_eq!(raised.removed[0].buff.uid, low_uid);
+    assert_eq!(raised.added.as_ref().unwrap().buff.duration, Some(3));
+    assert_eq!(manager.attribute_delta(10, AttrId::Attack), 140);
+    let lowered = manager.add_replacing_excluded(&hp, 10, 10, low_atk, 0);
+    assert_eq!(lowered.removed.len(), 1);
+    assert_eq!(lowered.removed[0].buff.uid, raised.added.unwrap().buff.uid);
+    assert_eq!(manager.attribute_delta(10, AttrId::Attack), 120);
+    assert!(!manager.has_buff_id(10, high_atk));
+    assert!(manager.has_buff_id(10, hp_up));
+    assert!(manager.has_buff_id(11, high_atk));
+    let raised_hp = manager.add_replacing_excluded(&hp, 10, 10, 31460122, 0);
+    assert_eq!(raised_hp.removed.len(), 1);
+    assert!(!manager.has_buff_id(10, hp_up));
+    assert!(manager.has_buff_id(10, 31460122));
+
+    manager.add_replacing_excluded(&hp, 10, 10, 215033301, 0);
+    let plumage = manager.add_replacing_excluded(&hp, 10, 10, 8290506, 0);
+    assert!(plumage.removed.is_empty());
+    assert!(manager.has_buff_id(10, 215033301));
+    assert!(manager.has_buff_id(10, 8290506));
+}
+
+#[test]
+fn include_type_four_regrant_replaces_the_held_copy_from_any_source() {
+    init_config();
+    let hp = HpManager::default();
+    let mut manager = BuffManager::default();
+    // Corrode 420404 (other source) and DMG Taken Reduction Up 31430171 (same source) are bare
+    // include type 4; live deletes the held copy and adds a new UID on each re-grant.
+    for (buff_id, first_source, next_source) in [(420404, 11, 12), (31430171, 11, 11)] {
+        let first = manager
+            .add_replacing_excluded(&hp, first_source, 10, buff_id, 0)
+            .added
+            .unwrap()
+            .buff;
+        let next = manager.add_replacing_excluded(&hp, next_source, 10, buff_id, 0);
+        assert_eq!(next.removed.len(), 1, "{buff_id}");
+        assert_eq!(next.removed[0].buff.uid, first.uid);
+        assert!(manager.snapshot(10, first.uid.unwrap()).is_none());
+
+        let added = next.added.unwrap().buff;
+        assert_ne!(added.uid, first.uid);
+        assert_eq!(added.from_uid, Some(next_source));
+        assert_eq!(manager.buff_id_amount(10, buff_id), 1);
+    }
+}
+
+#[test]
 fn include_type_seventeen_stores_capped_separate_counter_instances() {
     init_config();
     let policy = BuffPolicy::for_buff_id(23390015).expect("Manifest Dream counter definition");
@@ -391,6 +451,63 @@ fn include_type_seventeen_stores_capped_separate_counter_instances() {
 }
 
 #[test]
+fn include_type_fourteen_keeps_each_stack_as_a_capped_copy() {
+    init_config();
+    let policy = BuffPolicy::for_buff_id(11410011).expect("Poison Feather definition");
+
+    assert_eq!(policy.storage, BuffStorage::SeparateCopies);
+    assert_eq!(policy.on_duplicate, DuplicateGrant::AddSeparateCopy);
+    assert_eq!(policy.instance_limit, Some(2));
+    assert!(super::super::grants_stacks_as_copies(11410011));
+
+    let hp = HpManager::default();
+    let mut manager = BuffManager::default();
+    for _ in 0..2 {
+        let change = manager.add_replacing_excluded(&hp, -1, -1, 11410011, 0);
+        let added = change.added.expect("a fresh copy below the cap");
+        assert_eq!(added.buff.layer.unwrap_or_default(), 0);
+    }
+    let capped = manager.add_replacing_excluded(&hp, -1, -1, 11410011, 0);
+
+    assert_eq!(manager.active_for(-1).count(), 2);
+    assert!(capped.added.is_none());
+    assert!(capped.refreshed.is_empty());
+    assert_eq!(manager.buff_id_amount(-1, 11410011), 2);
+    assert_eq!(manager.buff_type_layer(-1, 11410011), 2);
+    assert_eq!(
+        manager.attribute_delta(-1, crate::engine::entity::attr::AttrId::DmgTakenReduction),
+        200
+    );
+}
+
+#[test]
+fn capped_include_fourteen_grant_still_spends_a_normal_uid() {
+    init_config();
+    let hp = HpManager::default();
+    let next_uid = |refused: bool| {
+        let mut manager = BuffManager::default();
+        for _ in 0..2 {
+            manager.add_replacing_excluded(&hp, -1, -1, 11410011, 0);
+        }
+        if refused {
+            assert!(
+                manager
+                    .add_replacing_excluded(&hp, -1, -1, 11410011, 0)
+                    .added
+                    .is_none()
+            );
+        }
+        manager
+            .add_replacing_excluded(&hp, -2, -1, 304, 0)
+            .added
+            .and_then(|added| added.buff.uid)
+            .unwrap()
+    };
+
+    assert_eq!(next_uid(true), next_uid(false) + 2);
+}
+
+#[test]
 fn value_bearing_type_seven_evicts_the_oldest_same_type_instance() {
     init_config();
     let policy = BuffPolicy::for_buff_id(6200501).expect("Incantation Might definition");
@@ -409,6 +526,7 @@ fn value_bearing_type_seven_evicts_the_oldest_same_type_instance() {
         type_id: definition.effective_type_id(),
         definition: Some(definition),
         fanout_emitter_uid: None,
+        fanout_carrier_uid: None,
         effective: true,
         buff: BuffInfo {
             buff_id: Some(6200599),

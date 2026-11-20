@@ -152,6 +152,72 @@ fn scheduled_defender_cleanup_policy_keeps_player_cleanup_in_the_death_frame() {
 }
 
 #[test]
+fn defeated_conduit_owner_waits_for_round_end_roster_refresh() {
+    crate::test_support::init_config();
+    let entity = |uid, model_id| FightEntityInfo {
+        uid: Some(uid),
+        model_id: Some(model_id),
+        team_type: Some(1),
+        current_hp: Some(100),
+        attr: Some(HeroAttribute {
+            hp: Some(100),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![entity(10, 3144), entity(11, 3156)],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    let result = run(
+        &mut managers,
+        &pool,
+        &SkillEffectCatalog::default(),
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+        [RuleOp::Command(BattleCommand::Hp(
+            crate::engine::manager::hp::HpCommand::Kill(crate::engine::manager::hp::HpKill {
+                origin: CommandOrigin {
+                    domain: RuleDomain::Lifecycle,
+                    key: DefinitionKey::new(0, "TestConduitDeath"),
+                },
+                source_uid: -1,
+                target_uid: 10,
+                config_effect: 1,
+            }),
+        ))],
+    )
+    .unwrap();
+
+    assert_eq!(managers.conduit.selected_group(10), Some(1));
+    assert_eq!(managers.conduit.selected_group(11), Some(1));
+    assert!(!managers.conduit.selected_skills(11).unwrap().is_empty());
+    assert!(!result.outcomes.iter().any(|outcome| matches!(
+        outcome,
+        crate::engine::runtime::executor::RuleOutcome::Conduit(
+            crate::engine::manager::conduit::ConduitChange::RosterRefreshed(_)
+        )
+    )));
+
+    fn has_init_device(effects: &[sonettobuf::ActEffect]) -> bool {
+        effects.iter().any(|effect| {
+            effect.effect_type == Some(sonettobuf::effect_type_enum::EffectType::Initdevice as i32)
+                || effect
+                    .fight_step
+                    .as_ref()
+                    .is_some_and(|step| has_init_device(&step.act_effect))
+        })
+    }
+    let steps = crate::engine::packet::timeline::project(&result.frames).unwrap();
+    assert!(!steps.iter().any(|step| has_init_device(&step.act_effect)));
+}
+
+#[test]
 fn non_action_death_settles_after_its_reaction_and_card_cleanup() {
     crate::test_support::init_config();
     let fight = Fight {
@@ -249,6 +315,7 @@ fn non_action_death_settles_after_its_reaction_and_card_cleanup() {
 
 #[test]
 fn subscriber_group_finishes_before_death_settlement() {
+    crate::test_support::init_config();
     let fight = Fight {
         attacker: Some(FightTeam {
             entitys: vec![
@@ -266,11 +333,20 @@ fn subscriber_group_finishes_before_death_settlement() {
             ..Default::default()
         }),
         defender: Some(FightTeam {
-            entitys: vec![FightEntityInfo {
-                uid: Some(-1),
-                current_hp: Some(1),
-                ..Default::default()
-            }],
+            entitys: vec![
+                FightEntityInfo {
+                    uid: Some(-1),
+                    model_id: Some(3144),
+                    current_hp: Some(1),
+                    ..Default::default()
+                },
+                FightEntityInfo {
+                    uid: Some(-2),
+                    model_id: Some(3156),
+                    current_hp: Some(100),
+                    ..Default::default()
+                },
+            ],
             ..Default::default()
         }),
         ..Default::default()
@@ -409,7 +485,7 @@ fn subscriber_group_finishes_before_death_settlement() {
             .iter()
             .filter_map(|outcome| match outcome {
                 crate::engine::runtime::executor::RuleOutcome::DeathSettlement(death) => {
-                    Some(*death)
+                    Some(death.transition())
                 }
                 _ => None,
             })
@@ -419,10 +495,19 @@ fn subscriber_group_finishes_before_death_settlement() {
             target_uid: -1,
         }]
     );
+    assert_eq!(managers.conduit.selected_group(-1), Some(1));
+    assert_eq!(managers.conduit.selected_group(-2), Some(1));
+    assert!(!result.outcomes.iter().any(|outcome| matches!(
+        outcome,
+        crate::engine::runtime::executor::RuleOutcome::Conduit(
+            crate::engine::manager::conduit::ConduitChange::RosterRefreshed(_)
+        )
+    )));
 }
 
 #[test]
 fn subscriber_group_does_not_settle_a_revived_target() {
+    crate::test_support::init_config();
     let fight = Fight {
         attacker: Some(FightTeam {
             entitys: vec![FightEntityInfo {
@@ -433,11 +518,20 @@ fn subscriber_group_does_not_settle_a_revived_target() {
             ..Default::default()
         }),
         defender: Some(FightTeam {
-            entitys: vec![FightEntityInfo {
-                uid: Some(-1),
-                current_hp: Some(1),
-                ..Default::default()
-            }],
+            entitys: vec![
+                FightEntityInfo {
+                    uid: Some(-1),
+                    model_id: Some(3144),
+                    current_hp: Some(1),
+                    ..Default::default()
+                },
+                FightEntityInfo {
+                    uid: Some(-2),
+                    model_id: Some(3156),
+                    current_hp: Some(100),
+                    ..Default::default()
+                },
+            ],
             ..Default::default()
         }),
         ..Default::default()
@@ -502,5 +596,13 @@ fn subscriber_group_does_not_settle_a_revived_target() {
     assert!(!result.outcomes.iter().any(|outcome| matches!(
         outcome,
         crate::engine::runtime::executor::RuleOutcome::DeathSettlement(_)
+    )));
+    assert_eq!(managers.conduit.selected_group(-1), Some(1));
+    assert_eq!(managers.conduit.selected_group(-2), Some(1));
+    assert!(!result.outcomes.iter().any(|outcome| matches!(
+        outcome,
+        crate::engine::runtime::executor::RuleOutcome::Conduit(
+            crate::engine::manager::conduit::ConduitChange::RosterRefreshed(_)
+        )
     )));
 }

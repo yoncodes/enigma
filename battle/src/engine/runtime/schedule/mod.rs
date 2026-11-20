@@ -2,7 +2,10 @@
 //! Scheduling orders semantic work; it does not define rule meaning or mutate protobuf output.
 
 use crate::engine::{
-    event::{kind::EventKind, payload::BattleEvent},
+    event::{
+        kind::EventKind,
+        payload::{BattleEvent, EntityEntry},
+    },
     manager::{
         BattleManagers,
         buff::{BuffCommand, BuffDurationAdvance},
@@ -16,7 +19,7 @@ use crate::engine::{
         ex_point::{ExPointChange, ExPointCommand},
     },
     mechanic::impromptu,
-    round::command::RoundCommand,
+    round::{command::RoundCommand, state::ActionRound},
     runtime::{
         change::BattleChange,
         determinism::{AiSkillChoice, RoundDeterminism},
@@ -93,6 +96,7 @@ const ROUND_START_VERSION6_SYNC_SETUP: &[(SetupStage, i32)] =
 
 mod ai;
 mod card_rewards;
+mod duration;
 mod player;
 mod refill;
 mod resolution;
@@ -101,6 +105,7 @@ mod sovereign;
 mod start;
 
 use ai::run_ai_preparation;
+use duration::*;
 pub(crate) use player::card_skill_is_blocked;
 pub use player::*;
 use player::{
@@ -286,30 +291,44 @@ fn append_to_event(items: &mut Vec<FrameItem>, frame: SemanticFrame, event: &Bat
 }
 
 pub(crate) struct AiTurnPlan {
-    choices: Vec<AiSkillChoice>,
+    choices: Option<Vec<AiSkillChoice>>,
 }
 
 impl AiTurnPlan {
     pub(crate) fn new(
+        round: ActionRound,
         captured: Option<Vec<AiSkillChoice>>,
         cards: &[sonettobuf::CardInfo],
-    ) -> Self {
-        let choices = captured.unwrap_or_else(|| {
-            cards
-                .iter()
-                .filter_map(|card| {
-                    Some(AiSkillChoice {
-                        source_uid: card.uid?,
-                        skill_id: card.skill_id?,
-                        target_uid: card.target_uid.unwrap_or_default(),
+    ) -> Result<Self, String> {
+        // Enemies do not act in an allied extra round, so a captured enemy action there has no owner.
+        if round == ActionRound::AlliedExtra
+            && let Some(captured) = captured.as_ref().filter(|choices| !choices.is_empty())
+        {
+            return Err(format!(
+                "captured enemy actions in an allied extra round: {captured:?}"
+            ));
+        }
+        let choices = (round == ActionRound::Standard).then(|| {
+            captured.unwrap_or_else(|| {
+                cards
+                    .iter()
+                    .filter_map(|card| {
+                        Some(AiSkillChoice {
+                            source_uid: card.uid?,
+                            skill_id: card.skill_id?,
+                            target_uid: card.target_uid.unwrap_or_default(),
+                        })
                     })
-                })
-                .collect()
+                    .collect()
+            })
         });
-        Self { choices }
+        Ok(Self { choices })
     }
 
     pub(crate) fn observe(&mut self, result: &DrainResult) {
+        let Some(choices) = &mut self.choices else {
+            return;
+        };
         let mut canceled_owners = Vec::new();
         for outcome in &result.outcomes {
             let changes = match outcome {
@@ -329,11 +348,10 @@ impl AiTurnPlan {
                     .filter_map(|invalidated| invalidated.card.uid),
             );
         }
-        self.choices
-            .retain(|choice| !canceled_owners.contains(&choice.source_uid));
+        choices.retain(|choice| !canceled_owners.contains(&choice.source_uid));
     }
 
-    pub(crate) fn into_choices(self) -> Vec<AiSkillChoice> {
+    pub(crate) fn into_choices(self) -> Option<Vec<AiSkillChoice>> {
         self.choices
     }
 }
@@ -492,6 +510,17 @@ pub fn run_ai_actions(
             );
             continue;
         }
+        managers
+            .execute_card(CardCommand::RecordAiCast(
+                crate::engine::manager::card::CardRecordAiCast {
+                    origin: CommandOrigin {
+                        domain: RuleDomain::Lifecycle,
+                        key: DefinitionKey::new(0, "AiActionCast"),
+                    },
+                    owner_uid: choice.source_uid,
+                },
+            ))
+            .map_err(|error| DrainError::Command(error.into()))?;
         let mut invocation: crate::engine::skill::action::SkillInvocation =
             crate::engine::skill::action::SkillRequest {
                 source_uid: choice.source_uid,
@@ -537,12 +566,6 @@ pub fn run_no_action_round(
 ) -> Result<DrainResult, DrainError> {
     let mut result = DrainResult::default();
     for &owner_uid in owner_uids {
-        let mut owner_context = context;
-        owner_context.owner_played_card = managers
-            .card
-            .played()
-            .iter()
-            .any(|played| played.caster_uid == owner_uid);
         append(
             &mut result,
             drain::run_group_event(
@@ -550,7 +573,7 @@ pub fn run_no_action_round(
                 pool,
                 catalog,
                 determinism,
-                owner_context,
+                context,
                 BattleEvent::Kind(EventKind::NoActionRound),
                 drain::ReactionLane::Skills,
                 Some(std::slice::from_ref(&owner_uid)),
@@ -567,11 +590,12 @@ pub fn run_promotions(
     catalog: &SkillEffectCatalog,
     determinism: &mut RoundDeterminism,
     context: TargetContext,
-    promotions: impl IntoIterator<Item = crate::engine::fight::reserve::Promotion>,
+    promotions: &crate::engine::fight::reserve::PromotionBatch,
 ) -> Result<DrainResult, DrainError> {
     let pool = pool.runtime_view(managers);
     let mut result = DrainResult::default();
-    for promotion in promotions {
+    let mut retire = Vec::new();
+    for mut promotion in promotions.promotions().iter().cloned() {
         let entering_uid = promotion.entering_uid;
         let origin = CommandOrigin {
             domain: RuleDomain::Lifecycle,
@@ -632,9 +656,18 @@ pub fn run_promotions(
             .expect("a promotion command group owns one root frame");
         debug_assert!(promoted.frames.is_empty());
         let mut items = vec![FrameItem::Child(Box::new(command_frame))];
+        let queued = promotion.queued_reserve.take();
+        if queued.is_some() {
+            retire.push(promotion.defeated_uid);
+        }
         items.push(FrameItem::Change(Box::new(BattleChange::EntityPromotion(
             Box::new(promotion),
         ))));
+        if let Some(queued) = queued {
+            items.push(FrameItem::Change(Box::new(BattleChange::ReserveQueued(
+                Box::new(queued),
+            ))));
+        }
         let entered = drain::run_owner_event(
             managers,
             &pool,
@@ -643,6 +676,7 @@ pub fn run_promotions(
             context,
             BattleEvent::EntityEntered {
                 target_uid: entering_uid,
+                entry: EntityEntry::Reserve,
             },
             std::slice::from_ref(&entering_uid),
         )?;
@@ -661,6 +695,20 @@ pub fn run_promotions(
         promoted.events.extend(entered.events);
         append(&mut result, promoted);
     }
+    for uid in retire {
+        let retired = managers
+            .entity
+            .retire_reserve(uid)
+            .map_err(|error| DrainError::Command(error.into()))?;
+        result
+            .frames
+            .last_mut()
+            .expect("reserve retirement follows a promotion")
+            .items
+            .push(FrameItem::Change(Box::new(BattleChange::ReserveRetired(
+                retired,
+            ))));
+    }
     Ok(result)
 }
 
@@ -676,6 +724,7 @@ pub fn run_wave_entry_setup(
     for &entering_uid in owner_uids {
         let event = BattleEvent::EntityEntered {
             target_uid: entering_uid,
+            entry: EntityEntry::Wave,
         };
         append_entry_event(
             &mut result,

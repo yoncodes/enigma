@@ -49,7 +49,6 @@ pub enum HedoneCardFailure {
     AmbiguousState,
     InvalidState,
     MissingEnergyConfig,
-    UnprovenOverflow,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -185,7 +184,7 @@ fn selected_cards(
         .card
         .conduit_energy_cards()
         .ok_or_else(|| error(subscriber, HedoneCardFailure::MissingEnergyConfig))?;
-    hedone_energy::absorb(
+    Ok(hedone_energy::absorb(
         HedoneEnergyRule {
             card_limit: state.config.card_limit as usize,
             absorption_start_limit: state.config.absorption_start_limit,
@@ -197,8 +196,7 @@ fn selected_cards(
             unlocked: state.unlocked,
         },
         candidates,
-    )
-    .map_err(|_| error(subscriber, HedoneCardFailure::UnprovenOverflow))
+    ))
 }
 
 fn rule_ops(

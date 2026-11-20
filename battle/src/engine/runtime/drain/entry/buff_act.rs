@@ -12,23 +12,29 @@ pub fn run_buff_act_setup_stage_for_owners(
     owner_uids: &[i64],
 ) -> Result<DrainResult, DrainError> {
     let trigger = FrameTrigger::Setup { stage, priority };
-    let operations = dispatcher::dispatch_buff_act_setup(managers, catalog, stage, priority)
-        .into_iter()
-        .filter(|(subscriber, _)| owner_uids.contains(&subscriber.feature.owner_uid))
-        .map(|(subscriber, operations)| {
-            let operations =
-                operations.ok_or(DrainError::MissingBuffActOp(subscriber.key.opcode))?;
-            Ok((
-                FrameOwner::BuffAct {
-                    owner_uid: subscriber.feature.owner_uid,
-                    source_uid: subscriber.feature.source_uid,
-                    buff_uid: subscriber.feature.buff_uid,
-                    buff_id: subscriber.feature.buff_id,
-                    key: subscriber.key,
-                },
-                operations,
-            ))
-        });
+    let operations = dispatcher::dispatch_buff_act_setup(
+        pool,
+        managers,
+        catalog,
+        stage,
+        priority,
+        context.defender_start_round,
+    )
+    .into_iter()
+    .filter(|(subscriber, _)| owner_uids.contains(&subscriber.feature.owner_uid))
+    .map(|(subscriber, operations)| {
+        let operations = operations.ok_or(DrainError::MissingBuffActOp(subscriber.key.opcode))?;
+        Ok((
+            FrameOwner::BuffAct {
+                owner_uid: subscriber.feature.owner_uid,
+                source_uid: subscriber.feature.source_uid,
+                buff_uid: subscriber.feature.buff_uid,
+                buff_id: subscriber.feature.buff_id,
+                key: subscriber.key,
+            },
+            operations,
+        ))
+    });
     run_owned_buff_act_groups(
         managers,
         pool,

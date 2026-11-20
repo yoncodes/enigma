@@ -9,8 +9,10 @@ use crate::engine::manager::hp::HpManager;
 mod apply;
 mod command;
 mod definition;
+mod family_priority;
 mod feature;
 mod grant_plan;
+mod layer_halo_allies;
 mod lifecycle;
 mod query;
 mod result;
@@ -18,32 +20,36 @@ mod resync;
 mod rules;
 mod state;
 mod status;
+mod type_rule;
 mod uid;
 mod uid_policy;
 mod update;
 
 pub use crate::engine::skill::rule::CommandOrigin;
-pub(crate) use command::BuffPlan;
 pub use command::{
     BuffAccumulateActValue, BuffAccumulateCappedActState, BuffAmount, BuffChangeDuration,
     BuffChanges, BuffChildUidReservation, BuffCommand, BuffCommandError, BuffConsume, BuffConvert,
     BuffDispel, BuffDurationAdvance, BuffEntryHaloFanout, BuffGrant, BuffGrantChild,
-    BuffGrantRelation, BuffGrantUidReservation, BuffLifecycleTransition, BuffRefreshDuration,
-    BuffRefreshDurationBySelector, BuffRefreshWire, BuffRemove, BuffRemoveSelector, BuffReplace,
-    BuffRoundStartDurationSync, BuffSelector, BuffSetAmount, BuffSetState, BuffSpecialCount,
-    BuffStateSnapshotWire, DepletedBuff, RelatedBuffGrant, SourceRelativeBuffGrant,
+    BuffGrantRelation, BuffGrantUidReservation, BuffLifecycleTransition, BuffPublishPart,
+    BuffRefreshDuration, BuffRefreshDurationBySelector, BuffRefreshWire, BuffRemove,
+    BuffRemoveSelector, BuffReplace, BuffReplacementParts, BuffRoundStartDurationSync,
+    BuffSelector, BuffSetAmount, BuffSetState, BuffSpecialCount, BuffStateSnapshotWire,
+    DepletedBuff, RelatedBuffGrant, SourceRelativeBuffGrant,
 };
+pub(crate) use command::{BuffPlan, BurnApplication};
 use definition::BuffDefinition;
 pub use feature::BuffPassiveSkillLink;
 pub use feature::{ActiveBuffFeature, BuffHpMaxAddRate, BuffPowerMaxAdd};
 use feature::{active_feature, hp_max_add_rate, passive_skill_links, power_max_add};
-pub(crate) use lifecycle::{BuffDurationTarget, BuffTakeAction};
+pub(crate) use lifecycle::{
+    BuffDurationTarget, BuffTakeAction, BuffTakeActionTrigger, rouge2_event_type, rouge2_mode,
+};
 pub use query::SpecialCountOutput;
 pub use result::{
     BuffActInfoMarkerResult, BuffActTriggerResult, BuffApplyResult, BuffDeleteReason,
     BuffFanoutResult, BuffFanoutUpdateResult, BuffMarkerResult, BuffRejectResult, BuffRemoveResult,
     BuffReplaceResult, BuffShieldRemoveResult, BuffSyncResult, BuffUpdateResult,
-    BuffWireEffectResult,
+    BuffWireEffectResult, LayerHaloAllyResult,
 };
 pub use rules::{
     BuffExclusions, BuffLifetime, BuffPolicy, BuffPolicyError, BuffStorage, DuplicateGrant,
@@ -77,6 +83,7 @@ pub struct BuffManager {
     grant_values: HashMap<(i64, i32), i32>,
     attr_snapshots: HashMap<(i64, i64, AttrId), i32>,
     mode_attributes: HashMap<i32, i32>,
+    mode_career: i32,
     transition_progress: HashMap<(i64, i32), i32>,
     reserved_grant_uids: HashMap<(i64, i32), VecDeque<i64>>,
     transaction: BuffTransactionState,
@@ -100,6 +107,7 @@ impl Default for BuffManager {
             grant_values: HashMap::new(),
             attr_snapshots: HashMap::new(),
             mode_attributes: HashMap::new(),
+            mode_career: 0,
             transition_progress: HashMap::new(),
             reserved_grant_uids: HashMap::new(),
             transaction: BuffTransactionState::default(),
@@ -217,6 +225,7 @@ struct ActiveBuff {
     type_id: i32,
     definition: Option<BuffDefinition>,
     fanout_emitter_uid: Option<i64>,
+    fanout_carrier_uid: Option<i64>,
     effective: bool,
     buff: BuffInfo,
 }
@@ -287,7 +296,10 @@ impl BuffAddArgs {
     }
 }
 
-fn attribute_amount(buff: &BuffInfo) -> i32 {
+fn attribute_amount(buff: &BuffInfo, definition: Option<&BuffDefinition>) -> i32 {
+    if definition.is_some_and(BuffDefinition::stacks_as_copies) {
+        return 1;
+    }
     buff.layer
         .filter(|layer| *layer > 0)
         .or_else(|| buff.count.filter(|count| *count > 0))
@@ -322,6 +334,22 @@ fn is_layer_halo_slave(buff: &BuffInfo) -> bool {
     buff.r#type == Some(LayerHaloWireType::Slave as i32)
 }
 
+fn layer_halo_carrier_uid(active: &ActiveBuff) -> Option<i64> {
+    active
+        .fanout_carrier_uid
+        .filter(|_| is_layer_halo_slave(&active.buff))
+}
+
+impl BuffManager {
+    fn follows_layer_halo_master(&self, active: &ActiveBuff) -> bool {
+        layer_halo_carrier_uid(active).is_some_and(|carrier_uid| {
+            self.buffs
+                .iter()
+                .any(|master| master.buff.uid == Some(carrier_uid))
+        })
+    }
+}
+
 fn fallback_type_id(buff: &BuffInfo) -> i32 {
     buff.buff_id
         .filter(|id| *id != 0)
@@ -336,6 +364,7 @@ fn count_or_layer(buff: &BuffInfo) -> i32 {
 
 fn count_or_layer_from(buff: &BuffInfo, definition: Option<&BuffDefinition>) -> i32 {
     match definition {
+        Some(definition) if definition.stacks_as_copies() => 1,
         Some(definition) if definition.uses_stack_layer() => buff.layer.unwrap_or_default().max(0),
         Some(definition) if definition.uses_typed_count() => buff.count.unwrap_or_default().max(0),
         _ => buff
@@ -443,6 +472,10 @@ fn typed_count_repeat(
     } else {
         1
     }
+}
+
+pub(crate) fn grants_stacks_as_copies(buff_id: i32) -> bool {
+    BuffDefinition::get(buff_id).is_some_and(|definition| definition.stacks_as_copies())
 }
 
 pub(crate) fn emits_existing_layer_on_refresh(buff_id: i32) -> bool {

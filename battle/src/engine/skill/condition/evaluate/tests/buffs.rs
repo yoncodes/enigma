@@ -147,6 +147,71 @@ fn repeated_absence_conditions_require_every_buff_to_be_absent() {
 }
 
 #[test]
+fn status_absence_rejects_any_matching_category() {
+    init_config();
+    let matches = |statuses, buffs| {
+        let fight = Fight {
+            defender: Some(FightTeam {
+                entitys: vec![FightEntityInfo {
+                    uid: Some(-1),
+                    current_hp: Some(1),
+                    buffs,
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let managers = BattleManagers::seeded(&fight);
+        let condition = ParsedCondition {
+            opcode: 56208,
+            type_name: "NoBuff".into(),
+            kind: ParsedConditionKind::PrimaryStatusAbsent(statuses),
+            raw_args: Vec::new(),
+        };
+        conditions_match(
+            std::slice::from_ref(&condition),
+            -1,
+            &[-1],
+            Some(&managers),
+            &TargetPool::from_fight(&fight),
+            TargetContext::default(),
+        )
+    };
+
+    let debuffs = vec![
+        crate::engine::manager::buff::BuffStatus::StatsDown,
+        crate::engine::manager::buff::BuffStatus::Control,
+        crate::engine::manager::buff::BuffStatus::NegativeStatus,
+    ];
+    assert!(matches(debuffs.clone(), Vec::new()));
+    assert!(matches(
+        debuffs.clone(),
+        vec![BuffInfo {
+            buff_id: Some(31340007),
+            uid: Some(1),
+            ..Default::default()
+        }]
+    ));
+    assert!(!matches(
+        debuffs,
+        vec![BuffInfo {
+            buff_id: Some(4031),
+            uid: Some(1),
+            ..Default::default()
+        }]
+    ));
+    assert!(!matches(
+        vec![crate::engine::manager::buff::BuffStatus::Shield],
+        vec![BuffInfo {
+            buff_id: Some(2130047),
+            uid: Some(1),
+            ..Default::default()
+        }]
+    ));
+}
+
+#[test]
 fn master_halo_requires_an_owned_master_instance() {
     init_config();
     let fight_with = |buffs| Fight {

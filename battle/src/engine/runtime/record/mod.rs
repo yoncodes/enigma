@@ -32,6 +32,8 @@ pub enum FrameOwner {
         device_index: i32,
         skill_position: i32,
     },
+    PlayerActionCommit,
+    ConduitSelectionCommit,
     BuffAct {
         owner_uid: i64,
         source_uid: i64,
@@ -84,6 +86,8 @@ pub enum RoundPhase {
     RoundStartSync,
     RoundEndFinalSettlement,
     RoundEndAfterFinalSettlement,
+    TerminalConduitRosterRefresh,
+    PostSettlementConduitRosterRefresh,
     EntitySettlement,
     EntityBuffCleanup,
     EntityCardCleanup,
@@ -143,11 +147,6 @@ pub enum RoundCue {
         round: i32,
     },
     ExtraRoundGranted,
-    ClientConduitSelectionConfirmed {
-        source_uid: i64,
-        team: i32,
-        group: i32,
-    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -282,7 +281,7 @@ fn setup_entity_scope_path(frames: &[SemanticFrame], path: &[usize]) -> Option<F
     setup_entity
 }
 
-fn frame_at<'a>(frames: &'a [SemanticFrame], path: &[usize]) -> &'a SemanticFrame {
+pub(crate) fn frame_at<'a>(frames: &'a [SemanticFrame], path: &[usize]) -> &'a SemanticFrame {
     let (&root, children) = path.split_first().expect("a frame path has a root");
     let mut frame = frames.get(root).expect("frame root exists");
     for &child in children {

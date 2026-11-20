@@ -76,7 +76,7 @@ pub fn for_entity(
 
 pub fn active_skills(pool: &TargetPool, managers: &BattleManagers) -> Vec<(i64, i32)> {
     let mut skills = Vec::new();
-    for entity in pool.active_entities() {
+    for entity in subscriber_entities(pool) {
         skills.extend(entity_skill_owners(entity, pool, managers));
     }
     skills.extend(
@@ -410,7 +410,7 @@ fn collect_event_skills(
     subscriptions: impl Fn(i32) -> Result<Vec<(Option<usize>, SubscriptionKey)>, RouteError>,
 ) -> Result<Vec<SkillSubscriber>, SubscriberError> {
     let mut skills = Vec::new();
-    for entity in pool.active_entities() {
+    for entity in subscriber_entities(pool) {
         for (owner_uid, skill_id) in entity_skill_owners(entity, pool, managers) {
             push_skill_subscribers(
                 &mut skills,
@@ -455,10 +455,19 @@ fn push_skill_subscribers(
         }
         let keys = subscriptions(skill_id)
             .map_err(|route| SubscriberError::UncompiledRoute { skill_id, route })?;
+        let mut entry_slot = None;
         for (slot_index, mut key) in keys
             .into_iter()
             .filter(|(_, key)| events.contains(&key.event))
         {
+            if key.event.is_entry()
+                && let Some(slot_index) = slot_index
+            {
+                if entry_slot == Some(slot_index) {
+                    continue;
+                }
+                entry_slot = Some(slot_index);
+            }
             if let Some(definition) =
                 condition_registry::find_key(key.timing_policy.opcode, key.timing_policy.type_name)
             {
@@ -493,12 +502,15 @@ pub(crate) fn for_compiled_skill_event(
         catalog,
         &[event],
         &|skill_id| {
-            catalog.compiled_subscription_lanes(skill_id).map(|lanes| {
-                lanes
-                    .into_iter()
-                    .map(|(slot, key)| (Some(slot), key))
-                    .collect()
-            })
+            let lanes = if event == EventKind::AllyAction {
+                catalog.completion_lanes(skill_id)
+            } else {
+                catalog.compiled_subscription_lanes(skill_id)
+            }?;
+            Ok(lanes
+                .into_iter()
+                .map(|(slot, key)| (Some(slot), key))
+                .collect())
         },
         managers.entity.passive_source(owner_uid, skill_id),
     )?;
@@ -558,7 +570,7 @@ fn collect_setup_stage(
     mut keys: impl FnMut(&SkillEffectSlot) -> Result<Vec<DefinitionKey>, RouteError>,
 ) -> Result<Vec<SetupSubscriber>, SubscriberError> {
     let mut skills = Vec::new();
-    for entity in pool.active_entities() {
+    for entity in subscriber_entities(pool) {
         skills.extend(entity_skill_owners(entity, pool, managers));
     }
     skills.extend(
@@ -593,6 +605,11 @@ fn collect_setup_stage(
     }
     subscribers.sort_by_key(|subscriber| !pool.source_is_attacker(subscriber.owner_uid));
     Ok(subscribers)
+}
+
+fn subscriber_entities(pool: &TargetPool) -> impl Iterator<Item = &TargetEntity> {
+    pool.entities()
+        .filter(|entity| !pool.is_reserve(entity.uid))
 }
 
 fn entity_skill_owners(

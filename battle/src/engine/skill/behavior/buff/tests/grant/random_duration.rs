@@ -3,13 +3,29 @@ use super::*;
 #[test]
 fn random_pool_add_emits_distinct_configured_buff_commands() {
     crate::test_support::init_config();
-    let behavior = ParsedBehavior::from_spec(
+    let mut behavior = ParsedBehavior::from_spec(
         crate::engine::skill::behavior::classify::BehaviorSpec::new(20021, "AddBuffRanId"),
         vec![30630111, 2],
         Vec::new(),
     );
+    behavior.effect_id = 30630151;
+    behavior.slot = 1;
     let managers = BattleManagers::default();
     let mut determinism = RoundDeterminism::default();
+    determinism.replace_random_buff_pools([
+        crate::engine::runtime::determinism::RandomBuffChoice {
+            rule: crate::engine::skill::rule::ConfiguredRuleKey::new(
+                behavior.effect_id,
+                behavior.slot,
+                super::super::super::super::registry::find(&behavior)
+                    .unwrap()
+                    .key,
+            ),
+            source_uid: 10,
+            target_uid: 10,
+            buff_ids: vec![30630114, 30630112],
+        },
+    ]);
     let mut modifiers = crate::engine::skill::action::SkillModifiers::default();
     let mut target = crate::engine::skill::target::TargetContext::default();
 
@@ -38,9 +54,7 @@ fn random_pool_add_emits_distinct_configured_buff_commands() {
         })
         .collect::<Vec<_>>();
 
-    assert_eq!(buff_ids.len(), 2);
-    assert_ne!(buff_ids[0], buff_ids[1]);
-    assert!(buff_ids.iter().all(|id| (30630112..=30630115).contains(id)));
+    assert_eq!(buff_ids, [30630114, 30630112]);
 }
 
 #[test]
@@ -89,23 +103,89 @@ fn random_type_pool_replays_the_captured_configured_choice() {
 #[test]
 fn random_pool_arguments_require_a_configured_distinct_draw() {
     crate::test_support::init_config();
-    let behavior = |args| {
+    let behavior = |opcode, type_name, args| {
         ParsedBehavior::from_spec(
-            crate::engine::skill::behavior::classify::BehaviorSpec::new(20021, "AddBuffRanId"),
+            crate::engine::skill::behavior::classify::BehaviorSpec::new(opcode, type_name),
             args,
             Vec::new(),
         )
     };
 
-    assert!(super::super::grant::supports_random_pool(&behavior(vec![
-        22301851, 5
-    ])));
-    assert!(!super::super::grant::supports_random_pool(&behavior(vec![
-        22301851, 0
-    ])));
-    assert!(!super::super::grant::supports_random_pool(&behavior(vec![
-        0, 5
-    ])));
+    assert!(super::super::grant::supports_random_pool(&behavior(
+        20021,
+        "AddBuffRanId",
+        vec![22301851, 5]
+    )));
+    assert!(!super::super::grant::supports_random_pool(&behavior(
+        20021,
+        "AddBuffRanId",
+        vec![90311, 10]
+    )));
+    assert!(super::super::grant::supports_random_pool(&behavior(
+        20022,
+        "AddBuffRanTypeId",
+        vec![90311, 10]
+    )));
+    assert!(!super::super::grant::supports_random_pool(&behavior(
+        20021,
+        "AddBuffRanId",
+        vec![22301851, 0]
+    )));
+    assert!(!super::super::grant::supports_random_pool(&behavior(
+        20021,
+        "AddBuffRanId",
+        vec![0, 5]
+    )));
+}
+
+#[test]
+fn random_pool_draw_count_is_capped_by_the_configured_pool() {
+    crate::test_support::init_config();
+    let behavior = ParsedBehavior::from_spec(
+        crate::engine::skill::behavior::classify::BehaviorSpec::new(20022, "AddBuffRanTypeId"),
+        vec![90311, 10],
+        Vec::new(),
+    );
+    let managers = BattleManagers::default();
+    let mut determinism = RoundDeterminism::default();
+    let mut modifiers = crate::engine::skill::action::SkillModifiers::default();
+    let mut target = crate::engine::skill::target::TargetContext::default();
+
+    let ops = super::super::super::super::rule_ops(
+        BehaviorOpContext {
+            source_uid: 10,
+            source_team: 1,
+            target_uid: 20,
+            active_skill_id: 103370082,
+            transfer_count: 1,
+            event: None,
+            managers: &managers,
+            pool: &TargetPool::default(),
+            determinism: &mut determinism,
+            modifiers: &mut modifiers,
+            target: &mut target,
+        },
+        &behavior,
+    )
+    .unwrap();
+    let grants = ops
+        .iter()
+        .filter_map(|op| match op {
+            RuleOp::Command(BattleCommand::Buff(BuffCommand::Grant(grant))) => Some(grant),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    let buff_ids = grants
+        .iter()
+        .map(|grant| grant.buff_id)
+        .collect::<std::collections::HashSet<_>>();
+
+    assert_eq!(grants.len(), 6);
+    assert!(grants.iter().all(|grant| grant.target_uid == 20));
+    assert_eq!(
+        buff_ids,
+        std::collections::HashSet::from([90001, 90011, 90021, 90031, 90041, 90281])
+    );
 }
 
 #[test]
@@ -188,7 +268,9 @@ fn enemy_burn_conversion_uses_the_settlement_transaction() {
             after_amount: 5,
             act_id: 0,
             act_value: 0,
-            duration_expired: false,
+            replaced_fixed_max_hp: None,
+            replaced_buff_id: None,
+            expiry: crate::engine::event::payload::BuffExpiry::None,
         },
     ]);
     let behavior = ParsedBehavior::from_spec(
@@ -385,4 +467,42 @@ fn add_buff_duration_refreshes_matching_buff_types_to_the_configured_duration() 
     assert_eq!(changes.change.refreshed.len(), 2);
     assert_eq!(changes.change.refreshed[0].before.duration, Some(3));
     assert_eq!(changes.change.refreshed[0].after.duration, Some(3));
+}
+
+#[test]
+fn stacks_granted_as_copies_split_into_a_normal_then_child_grant() {
+    crate::test_support::init_config();
+    let grant = |buff_id, amount| BuffGrant {
+        origin: CommandOrigin {
+            domain: RuleDomain::Behavior,
+            key: crate::engine::skill::rule::DefinitionKey::new(1, "AddBuff"),
+        },
+        source_uid: -1,
+        target_uid: -1,
+        buff_id,
+        amount,
+        occurrences: 1,
+        child_uid_reservations: 0,
+    };
+
+    let BattleCommand::BuffBatch(commands) =
+        super::super::grant::stacks_as_copies(BuffCommand::Grant(grant(11410011, Some(2))))
+    else {
+        panic!("two Poison Feather stacks are two grants");
+    };
+    assert_eq!(
+        commands,
+        vec![
+            BuffCommand::Grant(grant(11410011, None)),
+            BuffCommand::GrantUsingChildUid(grant(11410011, None)),
+        ]
+    );
+    assert_eq!(
+        super::super::grant::stacks_as_copies(BuffCommand::Grant(grant(11410011, None))),
+        BattleCommand::Buff(BuffCommand::Grant(grant(11410011, None)))
+    );
+    assert_eq!(
+        super::super::grant::stacks_as_copies(BuffCommand::Grant(grant(30061, Some(2)))),
+        BattleCommand::Buff(BuffCommand::Grant(grant(30061, Some(2))))
+    );
 }

@@ -8,8 +8,29 @@ pub fn run_command_group(
     context: TargetContext,
     operations: impl IntoIterator<Item = RuleOp>,
 ) -> Result<DrainResult, DrainError> {
+    run_command_group_as(
+        managers,
+        pool,
+        catalog,
+        determinism,
+        context,
+        FrameOwner::Command,
+        operations,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn run_command_group_as(
+    managers: &mut BattleManagers,
+    pool: &TargetPool,
+    catalog: &SkillEffectCatalog,
+    determinism: &mut RoundDeterminism,
+    context: TargetContext,
+    owner: FrameOwner,
+    operations: impl IntoIterator<Item = RuleOp>,
+) -> Result<DrainResult, DrainError> {
     let mut frames = Vec::new();
-    let root = push_root(&mut frames, FrameOwner::Command, FrameTrigger::Active);
+    let root = push_root(&mut frames, owner, FrameTrigger::Active);
     let mut queue = operations
         .into_iter()
         .map(|op| {

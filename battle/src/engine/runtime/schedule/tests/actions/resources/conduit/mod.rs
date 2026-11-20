@@ -1,5 +1,6 @@
 use super::*;
 
+mod cleanse;
 mod completion;
 mod device_ultimate;
 mod everecho;

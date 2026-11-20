@@ -421,12 +421,29 @@ fn bloodtithe_and_lingering_glow_cannot_both_enable_for_one_team() {
             vec![951, 31340161, 31340163],
         ),
     ];
-    let blood_features = vec![
+    let blood_features = [
         feature(10, 1, 30, 6270501, "BloodPoolTag", vec![953]),
         feature(11, 1, 31, 6270501, "BloodPoolTag", vec![953]),
     ];
 
-    let mut glow_first = BattleManagers::default();
+    crate::test_support::init_config();
+    let fight = sonettobuf::Fight {
+        version: Some(7),
+        attacker: Some(sonettobuf::FightTeam {
+            entitys: vec![sonettobuf::FightEntityInfo {
+                uid: Some(10),
+                model_id: Some(3120),
+                team_type: Some(1),
+                current_hp: Some(100),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = crate::engine::skill::target::TargetPool::from_fight(&fight);
+
+    let mut glow_first = BattleManagers::seeded(&fight);
     let enable = enable_rule_ops(&glow_first.gauge, &glow_features, &catalog)
         .pop()
         .unwrap();
@@ -434,15 +451,11 @@ fn bloodtithe_and_lingering_glow_cannot_both_enable_for_one_team() {
         panic!("gauge command");
     };
     glow_first.execute_gauge(command).unwrap();
-    assert!(
-        bloodtithe::rule::enable_rule_op(&glow_first, &blood_features[0], &blood_features)
-            .is_none()
-    );
+    assert!(bloodtithe::rule::enable_rule_op(&glow_first, &pool, &blood_features[0]).is_none());
 
-    let mut blood_first = BattleManagers::default();
+    let mut blood_first = BattleManagers::seeded(&fight);
     let RuleOp::Command(BattleCommand::Gauge(command)) =
-        bloodtithe::rule::enable_rule_op(&blood_first, &blood_features[0], &blood_features)
-            .unwrap()
+        bloodtithe::rule::enable_rule_op(&blood_first, &pool, &blood_features[0]).unwrap()
     else {
         panic!("gauge command");
     };

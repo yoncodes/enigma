@@ -1,4 +1,4 @@
-use super::ensure_act128_activity;
+use super::{ensure_act128_activity, preserve_max_total_latest_in_transaction};
 use crate::{error::AppError, profile::ProfileManager};
 use database::{
     db::game::{
@@ -41,7 +41,7 @@ pub(super) async fn set(
     };
     let projected = validate_and_project(db, player_id, activity_id, &stored).await?;
     let ext = serde_json::to_string(&stored)?;
-    activity_state::set(
+    save(
         db,
         player_id,
         activity_id,
@@ -69,7 +69,7 @@ pub(super) async fn reset(
     boss_id: i32,
 ) -> Result<ResetAct128TeamReply, AppError> {
     validate_route(activity_id, boss_id)?;
-    activity_state::set(
+    save(
         db,
         player_id,
         activity_id,
@@ -89,6 +89,19 @@ pub(super) async fn reset(
         act_mode_team: Some(Default::default()),
         latest_point: Some(0),
     })
+}
+
+async fn save(
+    db: &SqlitePool,
+    player_id: i64,
+    activity_id: i32,
+    state: ActivityStateSet<'_>,
+) -> Result<(), AppError> {
+    let mut tx = db.begin().await?;
+    preserve_max_total_latest_in_transaction(&mut tx, player_id, activity_id).await?;
+    activity_state::set_in_transaction(&mut tx, player_id, activity_id, state).await?;
+    tx.commit().await?;
+    Ok(())
 }
 
 pub(super) async fn from_state(
@@ -142,40 +155,27 @@ async fn project(
         .into_iter()
         .map(|id| id as i64)
         .collect::<HashSet<_>>();
-    let mut seen = HashSet::new();
-    let mut hero_ids = HashSet::new();
-    let mut bond_heroes = Vec::new();
-    let mut assist_count = 0;
-    let front_hero_infos = project_slots(
-        db,
-        player_id,
-        &stored.front,
-        &friend_ids,
-        &mut seen,
-        &mut hero_ids,
-        &mut bond_heroes,
-        &mut assist_count,
-    )
-    .await?;
-    let back_hero_infos = project_slots(
-        db,
-        player_id,
-        &stored.back,
-        &friend_ids,
-        &mut seen,
-        &mut hero_ids,
-        &mut bond_heroes,
-        &mut assist_count,
-    )
-    .await?;
+    let mut roster = TeamRoster::default();
+    let front_hero_infos =
+        project_slots(db, player_id, &stored.front, &friend_ids, &mut roster).await?;
+    let back_hero_infos =
+        project_slots(db, player_id, &stored.back, &friend_ids, &mut roster).await?;
     Ok(Projection {
         team: Act128ActModeTeam {
             front_hero_infos,
             back_hero_infos,
             add_bond_group_id: Some(stored.add_bond_group_id),
         },
-        bond_heroes,
+        bond_heroes: roster.bond_heroes,
     })
+}
+
+#[derive(Default)]
+struct TeamRoster {
+    seen: HashSet<i64>,
+    hero_ids: HashSet<i32>,
+    bond_heroes: Vec<config::Activity128BondHero>,
+    assist_count: usize,
 }
 
 async fn project_slots(
@@ -183,10 +183,7 @@ async fn project_slots(
     player_id: i64,
     slots: &[Act128ActModeHeroSlot],
     friend_ids: &HashSet<i64>,
-    seen: &mut HashSet<i64>,
-    hero_ids: &mut HashSet<i32>,
-    bond_heroes: &mut Vec<config::Activity128BondHero>,
-    assist_count: &mut usize,
+    roster: &mut TeamRoster,
 ) -> Result<Vec<Act128ActModeHeroInfo>, AppError> {
     let mut infos = Vec::with_capacity(slots.len());
     for slot in slots {
@@ -206,23 +203,23 @@ async fn project_slots(
             });
             continue;
         }
-        if uid < 0 || !seen.insert(uid) {
+        if uid < 0 || !roster.seen.insert(uid) {
             return Err(AppError::InvalidRequest);
         }
         let hero = get_hero_by_uid(db, uid)
             .await
             .map_err(|_| AppError::InvalidRequest)?;
-        if !hero_ids.insert(hero.record.hero_id) {
+        if !roster.hero_ids.insert(hero.record.hero_id) {
             return Err(AppError::InvalidRequest);
         }
-        bond_heroes.push(
+        roster.bond_heroes.push(
             config::configs::get()
                 .activity128_bond_hero(hero.record.hero_id, hero.record.destiny_stone)
                 .ok_or(AppError::InvalidRequest)?,
         );
         let assist_hero_info = if external {
-            *assist_count += 1;
-            if *assist_count > 1
+            roster.assist_count += 1;
+            if roster.assist_count > 1
                 || owner_id <= 0
                 || owner_id == player_id
                 || hero.record.user_id != owner_id

@@ -11,7 +11,8 @@ mod normalize;
 mod replay_rng;
 
 pub use attributes::{
-    build_metadata_source, loadout_diffs, preview_attributes, preview_attributes_with_request,
+    build_metadata_source, loadout_diffs, opening_card_push_path, preview_attributes,
+    preview_attributes_with_request,
 };
 pub use compression::expand_compressed_fight_steps;
 pub use normalize::normalize_live_json;

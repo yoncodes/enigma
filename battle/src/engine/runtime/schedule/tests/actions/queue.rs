@@ -1,5 +1,26 @@
 use super::*;
 
+fn queue_from_played(
+    managers: &BattleManagers,
+    team: i32,
+    emitter_uid: i64,
+) -> crate::engine::round::command::PlayerActionQueue {
+    crate::engine::round::command::PlayerActionQueue {
+        team,
+        emitter_uid,
+        actions: managers
+            .card
+            .played()
+            .iter()
+            .map(|played| {
+                let mut card = played.card.clone();
+                card.skill_id = Some(played.skill_id);
+                crate::engine::round::command::PlayerQueuedAction::Card(Box::new(card))
+            })
+            .collect(),
+    }
+}
+
 #[test]
 fn action_queue_commit_selects_everecho_group_for_its_enabling_buff() {
     init_config();
@@ -64,6 +85,7 @@ fn action_queue_commit_selects_everecho_group_for_its_enabling_buff() {
             )
             .unwrap();
         let catalog = SkillEffectCatalog::from_fight(config::configs::get(), &fight);
+        let queue = queue_from_played(&managers, 1, 99_998);
 
         let result = run_action_queue_committed(
             &mut managers,
@@ -71,9 +93,8 @@ fn action_queue_commit_selects_everecho_group_for_its_enabling_buff() {
             &catalog,
             &mut RoundDeterminism::default(),
             TargetContext::default(),
-            1,
-            99_998,
-            false,
+            queue,
+            &Default::default(),
         )
         .unwrap();
 
@@ -170,15 +191,15 @@ fn action_queue_commit_records_cards_in_an_independent_buff_act_frame() {
         }))
         .unwrap();
 
+    let queue = queue_from_played(&managers, 1, 99_998);
     let result = run_action_queue_committed(
         &mut managers,
         &pool,
         &SkillEffectCatalog::default(),
         &mut RoundDeterminism::default(),
         TargetContext::default(),
-        1,
-        99_998,
-        false,
+        queue,
+        &Default::default(),
     )
     .unwrap();
     let steps = crate::engine::packet::timeline::project(&result.frames).unwrap();
@@ -248,15 +269,15 @@ fn action_queue_commit_expires_the_committed_teams_before_ap_buffs() {
         }))
         .unwrap();
 
+    let queue = queue_from_played(&managers, 1, 99_998);
     let result = run_action_queue_committed(
         &mut managers,
         &pool,
         &SkillEffectCatalog::default(),
         &mut RoundDeterminism::default(),
         TargetContext::default(),
-        1,
-        99_998,
-        false,
+        queue,
+        &Default::default(),
     )
     .unwrap();
 
@@ -534,7 +555,7 @@ fn cards_without_a_living_current_enemy_resolve_support_effects_or_only_grant_mo
                 chosen_skill_id: None,
                 recorded_skill: None,
             }],
-            Vec::new(),
+            &[],
             1,
             0,
         )
@@ -663,7 +684,7 @@ fn terminal_player_action_stops_the_remaining_action_queue() {
                 recorded_skill: None,
             },
         ],
-        Vec::new(),
+        &[],
         1,
         0,
     )
@@ -755,7 +776,7 @@ fn side_owned_support_card_reports_defeated_opponents_during_wave_transition() {
             chosen_skill_id: None,
             recorded_skill: None,
         }],
-        Vec::new(),
+        &[],
         1,
         0,
     )
@@ -858,7 +879,7 @@ fn repeated_play_index_tracks_the_composed_mutating_hand() {
                 recorded_skill: None,
             },
         ],
-        Vec::new(),
+        &[],
         1,
         0,
     )
@@ -880,7 +901,7 @@ fn repeated_play_index_tracks_the_composed_mutating_hand() {
 }
 
 #[test]
-fn queued_move_projects_composition_reward_before_the_triggering_skill() {
+fn queued_move_settles_moxie_in_input_order() {
     init_config();
     let entity = |uid, skills| FightEntityInfo {
         uid: Some(uid),
@@ -893,35 +914,27 @@ fn queued_move_projects_composition_reward_before_the_triggering_skill() {
     let fight = Fight {
         attacker: Some(FightTeam {
             entitys: vec![entity(10, vec![100]), entity(20, vec![200, 201])],
+            assist_boss: Some(entity(-100, vec![100])),
+            assist_boss_info: Some(sonettobuf::AssistBossInfo {
+                skills: vec![sonettobuf::AssistBossSkillInfo {
+                    skill_id: Some(100),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }),
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(-1),
+                current_hp: Some(100),
+                ..Default::default()
+            }],
             ..Default::default()
         }),
         ..Default::default()
     };
     let pool = TargetPool::from_fight(&fight);
-    let mut managers = BattleManagers::seeded(&fight);
-    managers
-        .execute_card(CardCommand::Setup(CardSetup {
-            hand: vec![
-                CardInfo {
-                    uid: Some(20),
-                    skill_id: Some(200),
-                    ..Default::default()
-                },
-                CardInfo {
-                    uid: Some(10),
-                    skill_id: Some(100),
-                    ..Default::default()
-                },
-                CardInfo {
-                    uid: Some(20),
-                    skill_id: Some(200),
-                    ..Default::default()
-                },
-            ],
-            draw_pile: Vec::new(),
-            deck_num: 30,
-        }))
-        .unwrap();
     let mut catalog = SkillEffectCatalog::default();
     catalog.insert(ParsedSkillEffect {
         skill_id: 100,
@@ -931,44 +944,186 @@ fn queued_move_projects_composition_reward_before_the_triggering_skill() {
         )],
     });
 
-    let result = run_player_commands(
-        &mut managers,
-        &pool,
-        &catalog,
-        &mut RoundDeterminism::default(),
-        TargetContext::default(),
-        [
-            RoundCommand::MoveCard {
-                from_index: 0,
-                to_index: 1,
-            },
+    for (move_first, assist) in [(true, false), (false, false), (true, true)] {
+        let mut managers = BattleManagers::seeded(&fight);
+        managers
+            .execute_card(CardCommand::Setup(CardSetup {
+                hand: [(20, 200), (10, 101), (20, 200), (10, 100)]
+                    .into_iter()
+                    .map(|(uid, skill_id)| CardInfo {
+                        uid: Some(uid),
+                        skill_id: Some(skill_id),
+                        ..Default::default()
+                    })
+                    .collect(),
+                draw_pile: Vec::new(),
+                deck_num: 30,
+            }))
+            .unwrap();
+        let move_card = RoundCommand::MoveCard {
+            from_index: 0,
+            to_index: 1,
+        };
+        let play_card = if assist {
+            RoundCommand::UseAssistBoss {
+                skill_id: 100,
+                target_uid: None,
+            }
+        } else {
             RoundCommand::PlayCard {
-                card_index: 0,
+                card_index: if move_first { 2 } else { 3 },
                 target_uid: None,
                 chosen_skill_id: None,
                 recorded_skill: None,
-            },
-        ],
-        1,
-        crate::engine::manager::emitter::UID,
-    )
-    .unwrap();
-    let steps = crate::engine::packet::timeline::project(&result.frames).unwrap();
+            }
+        };
+        let commands = if move_first {
+            [move_card, play_card]
+        } else {
+            [play_card, move_card]
+        };
+        let result = run_player_phase(
+            &fight,
+            &mut managers,
+            &pool,
+            &catalog,
+            &mut RoundDeterminism::default(),
+            TargetContext::default(),
+            commands,
+            &[],
+            1,
+            crate::engine::manager::emitter::UID,
+        )
+        .unwrap()
+        .drain;
+        let steps = crate::engine::packet::timeline::project(&result.frames).unwrap();
+        let skill = steps
+            .iter()
+            .position(|step| step.act_id == Some(100))
+            .unwrap();
+        let reward = steps
+            .iter()
+            .position(|step| {
+                step.act_effect.iter().any(|effect| {
+                    effect.effect_type
+                        == Some(sonettobuf::effect_type_enum::EffectType::Expointchange as i32)
+                        && effect.target_id == Some(20)
+                        && effect.effect_num == Some(2)
+                })
+            })
+            .unwrap();
+        assert_eq!(reward < skill, move_first);
+        assert_eq!(managers.ex_point.get(20), 2);
+        assert_eq!(managers.card.hand()[1].skill_id, Some(201));
+    }
+}
 
-    assert_eq!(steps.len(), 4);
-    assert_eq!(
-        steps[0].act_effect[0].effect_type,
-        Some(sonettobuf::effect_type_enum::EffectType::Usecards as i32)
-    );
-    assert_eq!(
-        steps[1].act_effect[0].effect_type,
-        Some(sonettobuf::effect_type_enum::EffectType::Expointchange as i32)
-    );
-    assert_eq!(steps[1].act_effect[0].target_id, Some(20));
-    assert_eq!(steps[1].act_effect[0].effect_num, Some(2));
-    assert_eq!(steps[3].act_id, Some(100));
-    assert_eq!(managers.ex_point.get(20), 2);
-    assert_eq!(managers.card.hand()[0].skill_id, Some(201));
+#[test]
+fn terminal_player_action_settles_the_trailing_move() {
+    init_config();
+    let entity = |uid, hp| FightEntityInfo {
+        uid: Some(uid),
+        current_hp: Some(hp),
+        attr: Some(HeroAttribute {
+            hp: Some(hp),
+            attack: Some(1_000),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let card = |uid, skill_id| CardInfo {
+        uid: Some(uid),
+        skill_id: Some(skill_id),
+        ..Default::default()
+    };
+    let mut catalog = SkillEffectCatalog::default();
+    for skill_id in [100, 200, 31130151] {
+        catalog.insert(ParsedSkillEffect {
+            skill_id,
+            slots: Vec::new(),
+        });
+    }
+    catalog.insert_logic_target(100, 201);
+    catalog.insert_damage_rate(100, 1_000);
+
+    for generated in [false, true] {
+        let mut caster = entity(10, 1_000);
+        if generated {
+            caster.buffs.push(BuffInfo {
+                uid: Some(30),
+                buff_id: Some(31130131),
+                from_uid: Some(10),
+                ..Default::default()
+            });
+        }
+        let fight = Fight {
+            attacker: Some(FightTeam {
+                entitys: vec![caster, entity(20, 1_000)],
+                ..Default::default()
+            }),
+            defender: Some(FightTeam {
+                entitys: vec![entity(-1, 1)],
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let pool = TargetPool::from_fight(&fight);
+        let mut managers = BattleManagers::seeded(&fight);
+        managers
+            .execute_card(CardCommand::Setup(CardSetup {
+                hand: vec![card(10, 100), card(20, 200), card(10, 101)],
+                draw_pile: Vec::new(),
+                deck_num: 0,
+            }))
+            .unwrap();
+        if generated {
+            managers
+                .execute_card(CardCommand::RecordCastChannel(
+                    crate::engine::manager::card::CardRecordCastChannel {
+                        origin: CARD_PLAY_ORIGIN,
+                        buff_uid: 30,
+                        cards: vec![card(20, 200)],
+                    },
+                ))
+                .unwrap();
+        }
+        let result = run_player_phase(
+            &fight,
+            &mut managers,
+            &pool,
+            &catalog,
+            &mut RoundDeterminism::default(),
+            TargetContext::default(),
+            [
+                RoundCommand::PlayCard {
+                    card_index: 0,
+                    target_uid: Some(-1),
+                    chosen_skill_id: None,
+                    recorded_skill: None,
+                },
+                RoundCommand::MoveCard {
+                    from_index: 0,
+                    to_index: 1,
+                },
+            ],
+            &[],
+            1,
+            0,
+        )
+        .unwrap()
+        .drain;
+        assert_eq!(
+            managers.card.queued_use_cards().len(),
+            usize::from(generated)
+        );
+        assert_eq!(managers.hp.current(-1), 0);
+        assert_eq!(managers.ex_point.get(20), 1);
+        assert!(!result.outcomes.iter().any(|outcome| matches!(
+            outcome,
+            RuleOutcome::SkillLifecycle(crate::engine::skill::action::SkillLifecycle::ActionCompleted(action))
+                if action.skill_id == 200
+        )));
+    }
 }
 
 #[test]

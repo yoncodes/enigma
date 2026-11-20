@@ -26,12 +26,14 @@ use crate::engine::{
     skill::rule::{CommandOrigin, DefinitionKey, RuleDomain},
 };
 
+mod buff_rejection;
 mod cards;
 mod counters;
 mod entities;
 mod field_and_wave;
 mod frames;
 mod gauges;
+mod layer_halo_trim;
 mod progress;
 mod shield;
 mod temporary_cards;

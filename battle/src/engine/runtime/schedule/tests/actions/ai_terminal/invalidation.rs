@@ -2,6 +2,7 @@ use super::*;
 
 fn scheduled_enemy_turn() -> AiTurnPlan {
     AiTurnPlan::new(
+        ActionRound::Standard,
         Some(vec![
             AiSkillChoice {
                 source_uid: -7,
@@ -21,6 +22,23 @@ fn scheduled_enemy_turn() -> AiTurnPlan {
         ]),
         &[],
     )
+    .unwrap()
+}
+
+#[test]
+fn captured_enemy_actions_in_an_allied_extra_round_fail_loudly() {
+    let choice = AiSkillChoice {
+        source_uid: -7,
+        skill_id: 251401,
+        target_uid: 10,
+    };
+    assert!(AiTurnPlan::new(ActionRound::AlliedExtra, Some(vec![choice]), &[]).is_err());
+    assert!(
+        AiTurnPlan::new(ActionRound::AlliedExtra, Some(Vec::new()), &[])
+            .unwrap()
+            .into_choices()
+            .is_none()
+    );
 }
 
 fn managers_with_scheduled_enemy_card() -> BattleManagers {
@@ -77,11 +95,11 @@ fn card_invalidation_cancels_only_the_matching_scheduled_enemy() {
 
     assert_eq!(
         plan.into_choices(),
-        vec![AiSkillChoice {
+        Some(vec![AiSkillChoice {
             source_uid: -8,
             skill_id: 251403,
             target_uid: 10,
-        }]
+        }])
     );
 }
 
@@ -114,10 +132,10 @@ fn monster_change_invalidation_cancels_only_the_matching_scheduled_enemy() {
 
     assert_eq!(
         plan.into_choices(),
-        vec![AiSkillChoice {
+        Some(vec![AiSkillChoice {
             source_uid: -8,
             skill_id: 251403,
             target_uid: 10,
-        }]
+        }])
     );
 }

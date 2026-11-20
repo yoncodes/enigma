@@ -150,9 +150,9 @@ fn each_change_attr_one_way_hp_replacement_releases_before_buff_deletion() {
                 FightEntityInfo {
                     uid: Some(11),
                     team_type: Some(1),
-                    current_hp: Some(1_000),
+                    current_hp: Some(300),
                     attr: Some(HeroAttribute {
-                        hp: Some(1_000),
+                        hp: Some(2_000),
                         attack: Some(1_000),
                         ..Default::default()
                     }),
@@ -181,7 +181,7 @@ fn each_change_attr_one_way_hp_replacement_releases_before_buff_deletion() {
             child_uid_reservations: 0,
         })))
     };
-    run(
+    let first = run(
         &mut managers,
         &pool,
         &catalog,
@@ -190,6 +190,19 @@ fn each_change_attr_one_way_hp_replacement_releases_before_buff_deletion() {
         [grant()],
     )
     .unwrap();
+
+    assert_eq!(managers.hp.current(11), 1550);
+    assert_eq!(managers.hp.max(11), 3250);
+    let current_hp = sonettobuf::effect_type_enum::EffectType::Currenthpchange as i32;
+    let grant_hp_reports: Vec<_> =
+        crate::engine::packet::timeline::project_for_version(&first.frames, 7)
+            .unwrap()
+            .into_iter()
+            .flat_map(|step| step.act_effect)
+            .filter(|effect| effect.target_id == Some(11) && effect.effect_type == Some(current_hp))
+            .map(|effect| effect.effect_num)
+            .collect();
+    assert_eq!(grant_hp_reports, [Some(1550)]);
 
     let replaced = run(
         &mut managers,
@@ -200,6 +213,8 @@ fn each_change_attr_one_way_hp_replacement_releases_before_buff_deletion() {
         [grant()],
     )
     .unwrap();
+    assert_eq!(managers.hp.current(11), 1550);
+    assert_eq!(managers.hp.max(11), 3250);
     let relevant = crate::engine::packet::timeline::project_for_version(&replaced.frames, 7)
         .unwrap()
         .into_iter()
@@ -208,6 +223,7 @@ fn each_change_attr_one_way_hp_replacement_releases_before_buff_deletion() {
             effect.target_id == Some(11)
                 && (effect.effect_type
                     == Some(sonettobuf::effect_type_enum::EffectType::Buffdel as i32)
+                    || effect.effect_type == Some(current_hp)
                     || effect.effect_type
                         == Some(sonettobuf::effect_type_enum::EffectType::Maxhpchange as i32)
                         && effect.buff_act_id == Some(1131))
@@ -227,7 +243,7 @@ fn each_change_attr_one_way_hp_replacement_releases_before_buff_deletion() {
     assert!(
         relevant[..2]
             .iter()
-            .all(|effect| { effect.effect_num == Some(1_000) && effect.buff_act_id == Some(1131) })
+            .all(|effect| { effect.effect_num == Some(2_000) && effect.buff_act_id == Some(1131) })
     );
 }
 

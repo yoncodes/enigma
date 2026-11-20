@@ -1,4 +1,5 @@
 use crate::engine::{
+    damage::scale_permille_stacks,
     entity::attr::AttrId,
     event::{kind::EventKind, payload::BattleEvent},
     skill::{
@@ -15,13 +16,7 @@ impl BehaviorHandler for Handler {
     const VALIDATES_ARGUMENTS: bool = true;
 
     fn supports(behavior: &ParsedBehavior) -> bool {
-        matches!(
-            behavior.args.as_slice(),
-            [1, raw_attr, amount, maximum]
-                if AttrId::from_raw(*raw_attr).is_some()
-                    && *amount != 0
-                    && (*maximum == -1 || *maximum > 0)
-        )
+        attack_bonus_args(behavior).is_some()
     }
 
     fn emit_ops(context: BehaviorOpContext<'_>, _: &ParsedBehavior) -> Option<Vec<RuleOp>> {
@@ -56,27 +51,28 @@ impl BehaviorHandler for Handler {
         context: AttackModifierContext<'_>,
         behavior: &ParsedBehavior,
     ) -> bool {
-        let [_, raw_attr, amount, maximum] = behavior.args.as_slice() else {
+        let Some((rate, cap)) = attack_bonus_args(behavior) else {
             return false;
         };
-        let Some(attr) = AttrId::from_raw(*raw_attr) else {
-            return false;
-        };
-        let stacks = burn_stacks(context.operation.managers, context.operation.source_uid);
-        let stacks = if *maximum < 0 {
-            stacks
-        } else {
-            stacks.min(*maximum)
-        };
+        let managers = context.operation.managers;
+        let source_uid = context.operation.source_uid;
+        let stacks = burn_stacks(managers, source_uid);
+        let stacks = if cap < 0 { stacks } else { stacks.min(cap) };
         if context.operation.active_skill_id != 0 && stacks > 0 {
-            context
-                .operation
-                .modifiers
-                .attack_attributes
-                .push((attr, amount.saturating_mul(stacks)));
+            let base = managers.attribute.base(source_uid, AttrId::Attack);
+            let bonus = scale_permille_stacks(base, rate, stacks);
+            let attack_bonus = &mut context.operation.modifiers.caster_attack_bonus;
+            *attack_bonus = attack_bonus.saturating_add(bonus);
         }
         true
     }
+}
+
+fn attack_bonus_args(behavior: &ParsedBehavior) -> Option<(i32, i32)> {
+    let [1, attr, rate, cap] = behavior.args.as_slice() else {
+        return None;
+    };
+    (*attr == AttrId::Attack.id() && *rate > 0 && (*cap == -1 || *cap > 0)).then_some((*rate, *cap))
 }
 
 fn burn_stacks(managers: &crate::engine::manager::BattleManagers, owner_uid: i64) -> i32 {
@@ -174,7 +170,8 @@ mod tests {
             },
             &behavior,
         ));
-        assert_eq!(modifiers.attack_attributes, vec![(AttrId::Attack, 30)]);
+        assert!(modifiers.attack_attributes.is_empty());
+        assert_eq!(modifiers.caster_attack_bonus, 49);
 
         let event = BattleEvent::SkillAction(SkillActionEvent {
             source_uid: 10,

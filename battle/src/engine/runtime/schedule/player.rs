@@ -1,6 +1,8 @@
 use super::*;
 use std::collections::{HashMap, HashSet};
 
+mod selection;
+
 pub struct PlayerPhaseResult {
     pub drain: DrainResult,
     pub card_energy_finalized: bool,
@@ -22,30 +24,59 @@ pub fn run_card_energy_allocation(
 }
 
 #[allow(clippy::too_many_arguments)]
-pub fn run_action_queue_committed(
+pub(super) fn run_action_queue_committed(
     managers: &mut BattleManagers,
     pool: &TargetPool,
     catalog: &SkillEffectCatalog,
     determinism: &mut RoundDeterminism,
     context: TargetContext,
-    team: i32,
-    emitter_uid: i64,
-    include_device_action: bool,
+    mut queue: crate::engine::round::command::PlayerActionQueue,
+    selections: &selection::Selection,
 ) -> Result<DrainResult, DrainError> {
-    drain::run(
-        managers,
-        pool,
-        catalog,
-        determinism,
-        context,
-        [RuleOp::Command(BattleCommand::Card(
-            CardCommand::CommitActionQueue {
-                team,
-                emitter_uid,
-                include_device_action,
-            },
-        ))],
-    )
+    if !selections.is_empty() {
+        queue
+            .actions
+            .push(crate::engine::round::command::PlayerQueuedAction::Conduit);
+    }
+    let team = queue.team;
+    let committed_event = BattleEvent::ActionQueueCommitted {
+        team,
+        emitter_uid: queue.emitter_uid,
+        cards: queue.cards(),
+        action_count: queue.action_count(),
+    };
+    let card_state = managers.card.action_queue_state(team);
+    let mut result = DrainResult {
+        frames: vec![SemanticFrame {
+            owner: FrameOwner::PlayerActionCommit,
+            trigger: FrameTrigger::Active,
+            items: vec![
+                FrameItem::Change(Box::new(
+                    crate::engine::runtime::change::BattleChange::PlayerActionQueue(queue),
+                )),
+                FrameItem::Change(Box::new(
+                    crate::engine::runtime::change::BattleChange::ActionQueueCardState(card_state),
+                )),
+            ],
+        }],
+        ..Default::default()
+    };
+    append(
+        &mut result,
+        selections.commit(managers, pool, catalog, determinism, context)?,
+    );
+    append(
+        &mut result,
+        drain::run_event(
+            managers,
+            pool,
+            catalog,
+            determinism,
+            context,
+            committed_event,
+        )?,
+    );
+    Ok(result)
 }
 
 pub fn run_action_phase_start(
@@ -162,43 +193,20 @@ pub fn run_conduit_phase(
             let mut ran = false;
             let mut stop_emitted_this_pass = false;
             for (position, skill) in skills.into_iter().enumerate() {
-                let cost_modifier = crate::engine::skill::buff_act::device_cost_reduce::modifier(
-                    managers,
-                    source_uid,
-                    skill.skill_id,
-                );
-                let cost_reduction = cost_modifier
-                    .as_ref()
-                    .map(|(reduction, _)| *reduction)
-                    .unwrap_or_default();
-                let invocation: crate::engine::skill::action::SkillInvocation =
-                    crate::engine::skill::action::SkillRequest {
-                        source_uid,
-                        skill_id: skill.skill_id,
-                    }
-                    .into();
                 let current_pool = pool.runtime_view(managers);
-                let unavailable = (skill.cost_value <= 0
-                    && used_free_skills.contains(&(source_uid, skill.skill_id)))
-                    || (catalog.is_big_skill(skill.skill_id)
-                        && crate::engine::manager::ex_point::ExPointKind::from_wire(
-                            managers.ex_point.kind(source_uid),
-                        ) == crate::engine::manager::ex_point::ExPointKind::DevicePower
-                        && !managers.ex_point.is_full(source_uid))
-                    || !managers.conduit.can_begin_skill(
-                        source_uid,
-                        skill.skill_id,
-                        cost_reduction,
-                    )
-                    || drain::attack_has_no_target(
-                        &invocation,
-                        catalog,
-                        &current_pool,
-                        managers,
-                        determinism,
-                        context,
-                    );
-                if unavailable {
+                let admission = crate::engine::runtime::conduit::admit(
+                    managers,
+                    &current_pool,
+                    catalog,
+                    determinism,
+                    context,
+                    source_uid,
+                    skill,
+                    used_free_skills.contains(&(source_uid, skill.skill_id)),
+                );
+                let Some(admission) =
+                    admission.filter(|admission| admission.runtime_ready && admission.funded)
+                else {
                     if !crate::engine::round::outcome::battle_ended(fight, pool, managers)
                         || !stop_emitted_this_pass
                     {
@@ -218,16 +226,15 @@ pub fn run_conduit_phase(
                         stop_emitted_this_pass = true;
                     }
                     continue;
-                }
-                let frame_target_uid = (catalog.logic_target(skill.skill_id)
-                    == crate::engine::skill::target::request::SOURCE_TARGET_CODE)
-                    .then(|| {
-                        current_pool
-                            .main_allies(source_uid)
-                            .first()
-                            .map(|entity| entity.uid)
-                    })
-                    .flatten();
+                };
+                let cost_modifier = admission.cost_modifier;
+                let frame_target_uid =
+                    crate::engine::skill::target::TargetResolver::self_skill_anchor(
+                        catalog,
+                        &current_pool,
+                        source_uid,
+                        skill.skill_id,
+                    );
                 let action = drain::run_conduit_action(
                     managers,
                     pool,
@@ -325,7 +332,7 @@ pub fn run_player_action_queue(
         team,
         emitter_uid,
         None,
-        Vec::new(),
+        &[],
     )
 }
 
@@ -398,7 +405,7 @@ pub fn run_player_commands(
         team,
         emitter_uid,
         None,
-        Vec::new(),
+        &[],
     )
 }
 
@@ -411,7 +418,7 @@ pub fn run_player_phase(
     determinism: &mut RoundDeterminism,
     context: TargetContext,
     commands: impl IntoIterator<Item = RoundCommand>,
-    before_actions: Vec<SemanticFrame>,
+    device_operations: &[sonettobuf::FightDeviceOper],
     team: i32,
     emitter_uid: i64,
 ) -> Result<PlayerPhaseResult, DrainError> {
@@ -430,7 +437,7 @@ pub fn run_player_phase(
         team,
         emitter_uid,
         Some(fight),
-        before_actions,
+        device_operations,
     )?;
     let impromptu = run_impromptu(
         managers,
@@ -547,10 +554,10 @@ fn run_player_card_ops(
     team: i32,
     emitter_uid: i64,
     fight: Option<&sonettobuf::Fight>,
-    before_actions: Vec<SemanticFrame>,
+    device_operations: &[sonettobuf::FightDeviceOper],
 ) -> Result<DrainResult, DrainError> {
-    let include_device_action = has_committed_client_conduit_selection(&before_actions);
     let mut result = DrainResult::default();
+    let selections = selection::Selection::from_operations(device_operations);
     let mut skills = Vec::new();
     let mut pending_rewards = Vec::new();
     for op in ops {
@@ -616,7 +623,7 @@ fn run_player_card_ops(
                 grants_ex_point: false,
                 grant_after_action: false,
                 composed_owners: Vec::new(),
-                before_rewards: Vec::new(),
+                before_rewards: std::mem::take(&mut pending_rewards),
                 prelude,
             });
             continue;
@@ -800,27 +807,33 @@ fn run_player_card_ops(
                 std::mem::take(&mut pending_rewards),
             )?,
         );
-        if !include_device_action {
-            result.frames.extend(before_actions);
+        if selections.is_empty() {
             return Ok(result);
         }
     }
-    if !pending_rewards.is_empty() {
-        skills
-            .last_mut()
-            .expect("a non-empty action queue has a final skill")
-            .before_rewards
-            .extend(pending_rewards);
-    }
+    let submitted_actions = skills.len();
+    let actions = managers
+        .card
+        .played()
+        .iter()
+        .map(|played| {
+            let mut card = played.card.clone();
+            card.skill_id = Some(played.skill_id);
+            crate::engine::round::command::PlayerQueuedAction::Card(Box::new(card))
+        })
+        .collect::<Vec<_>>();
     let committed = run_action_queue_committed(
         managers,
         pool,
         catalog,
         determinism,
         context,
-        team,
-        emitter_uid,
-        include_device_action,
+        crate::engine::round::command::PlayerActionQueue {
+            team,
+            emitter_uid,
+            actions,
+        },
+        &selections,
     )?;
     skills.extend(committed.outcomes.iter().filter_map(|outcome| {
         let RuleOutcome::Card(changes) = outcome else {
@@ -838,7 +851,6 @@ fn run_player_card_ops(
         })
     }));
     append(&mut result, committed);
-    result.frames.extend(before_actions);
     let queue_preparation = queue_preparation_ops(managers, pool, catalog, context, &skills);
     if !queue_preparation.is_empty() {
         append(
@@ -868,11 +880,29 @@ fn run_player_card_ops(
             ))],
         )?,
     );
-    for queued in skills {
+    let mut skills = skills.into_iter();
+    for position in 0..=skills.len() {
+        if position == submitted_actions && !pending_rewards.is_empty() {
+            append(
+                &mut result,
+                run_card_composition_rewards(
+                    managers,
+                    pool,
+                    catalog,
+                    determinism,
+                    context,
+                    CARD_PLAY_ORIGIN,
+                    std::mem::take(&mut pending_rewards),
+                )?,
+            );
+        }
+        let Some(queued) = skills.next() else {
+            break;
+        };
         if fight
             .is_some_and(|fight| crate::engine::round::outcome::battle_ended(fight, pool, managers))
         {
-            break;
+            return Ok(result);
         }
         let current_pool = pool
             .roster_changed(managers)
@@ -1063,27 +1093,6 @@ fn run_player_card_ops(
         );
     }
     Ok(result)
-}
-
-fn has_committed_client_conduit_selection(frames: &[SemanticFrame]) -> bool {
-    fn contains(frame: &SemanticFrame) -> bool {
-        frame.items.iter().any(|item| match item {
-            FrameItem::Change(change)
-                if matches!(
-                    change.as_ref(),
-                    BattleChange::Conduit(
-                        crate::engine::manager::conduit::ConduitChange::GroupSelected { .. }
-                    )
-                ) =>
-            {
-                true
-            }
-            FrameItem::Child(child) => contains(child),
-            FrameItem::Change(_) | FrameItem::Cue(_) => false,
-        })
-    }
-
-    frames.iter().any(contains)
 }
 
 fn queue_preparation_ops(

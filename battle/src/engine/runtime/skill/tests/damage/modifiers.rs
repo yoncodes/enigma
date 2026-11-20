@@ -69,7 +69,8 @@ fn target_passive_and_attack_local_attribute_are_applied_to_damage() {
         SKILL_ID,
         &mut determinism,
         &mut execution,
-    );
+    )
+    .unwrap();
 
     assert!(matches!(
         damage.damage.as_slice(),
@@ -144,7 +145,8 @@ fn source_passive_attack_modifier_is_collected_by_runtime_damage() {
         SKILL_ID,
         &mut RoundDeterminism::default(),
         &mut execution,
-    );
+    )
+    .unwrap();
 
     assert!(matches!(
         damage.damage.as_slice(),
@@ -573,11 +575,15 @@ fn linked_damage_uses_its_credited_sources_damage_type() {
             SKILL_ID,
             &mut RoundDeterminism::default(),
             &mut execution,
-        );
+        )
+        .unwrap();
         let [HpCommand::Damage(main)] = damage.damage.as_slice() else {
             panic!("expected main damage")
         };
-        let [HpCommand::Damage(linked)] = damage.additional_damage.as_slice() else {
+        let [hit] = damage.additional_damage.as_slice() else {
+            panic!("expected one linked hit");
+        };
+        let [HpCommand::Damage(linked)] = hit.commands.as_slice() else {
             panic!("expected linked damage")
         };
         (main.amount, linked.amount)
@@ -696,8 +702,10 @@ fn captured_additional_target_order_does_not_control_damage() {
         &mut determinism,
         &mut execution,
     )
+    .unwrap()
     .additional_damage
     .into_iter()
+    .flat_map(|hit| hit.commands)
     .filter_map(|command| match command {
         HpCommand::Damage(hit) => Some((hit.target_uid, hit.hurt.is_crit)),
         _ => None,
@@ -827,11 +835,15 @@ fn assassination_damage_pair(
         SKILL_ID,
         &mut RoundDeterminism::default(),
         &mut execution,
-    );
+    )
+    .unwrap();
     let [HpCommand::Damage(main)] = damage.damage.as_slice() else {
         panic!("expected one main damage command")
     };
-    let [HpCommand::Damage(linked)] = damage.additional_damage.as_slice() else {
+    let [hit] = damage.additional_damage.as_slice() else {
+        panic!("expected one linked hit");
+    };
+    let [HpCommand::Damage(linked)] = hit.commands.as_slice() else {
         panic!("expected one linked damage command")
     };
     [
@@ -871,26 +883,46 @@ fn target_owned_riposte_damage_bonus_applies_to_main_and_linked_damage() {
 }
 
 #[test]
-fn linked_attack_attributes_keep_temporary_critical_damage_source_owned() {
+fn linked_attack_inputs_keep_the_caster_bonus_source_owned() {
     let local = vec![
         (AttrId::DmgBonus, 200),
+        (AttrId::CriticalRate, 1_000),
         (AttrId::CriticalDmg, 500),
         (AttrId::IncantationMight, 300),
         (AttrId::UltimateIncantationMightMultiplier, 1_000),
     ];
-    let shared = vec![(AttrId::CriticalDmg, -700)];
+    let shared = vec![
+        (AttrId::CriticalResistRate, 300),
+        (AttrId::CriticalDmg, -700),
+        (AttrId::Penetration, 100),
+    ];
 
     assert_eq!(
-        plan::LinkedDamagePlan::attack_attributes(&local, &shared, 10, 10),
-        vec![
-            (AttrId::DmgBonus, 200),
-            (AttrId::CriticalDmg, 500),
-            (AttrId::CriticalDmg, -700)
-        ]
+        plan::LinkedDamagePlan::attack_inputs(&local, &shared, 80, 300, 10, 10, 10),
+        (
+            vec![
+                (AttrId::DmgBonus, 200),
+                (AttrId::CriticalRate, 1_000),
+                (AttrId::CriticalDmg, 500),
+                (AttrId::CriticalResistRate, 300),
+                (AttrId::CriticalDmg, -700),
+                (AttrId::Penetration, 100),
+                (AttrId::Penetration, 300),
+            ],
+            80
+        )
     );
     assert_eq!(
-        plan::LinkedDamagePlan::attack_attributes(&local, &shared, 10, 11),
-        vec![(AttrId::DmgBonus, 200), (AttrId::CriticalDmg, -700)]
+        plan::LinkedDamagePlan::attack_inputs(&local, &shared, 80, 300, 10, 10, 11),
+        (
+            vec![
+                (AttrId::DmgBonus, 200),
+                (AttrId::CriticalResistRate, 300),
+                (AttrId::CriticalDmg, -700),
+                (AttrId::Penetration, 100),
+            ],
+            0
+        )
     );
 }
 
@@ -976,11 +1008,15 @@ fn hedone_fix_attr_damage(skill_id: i32, target_buff: Option<i32>) -> (i32, i32)
         skill_id,
         &mut RoundDeterminism::default(),
         &mut execution,
-    );
+    )
+    .unwrap();
     let [HpCommand::Damage(main)] = damage.damage.as_slice() else {
         panic!("expected one main damage command")
     };
-    let [HpCommand::Damage(linked)] = damage.additional_damage.as_slice() else {
+    let [hit] = damage.additional_damage.as_slice() else {
+        panic!("expected one linked hit");
+    };
+    let [HpCommand::Damage(linked)] = hit.commands.as_slice() else {
         panic!("expected one linked damage command")
     };
     (main.amount, linked.amount)
@@ -1061,7 +1097,7 @@ fn linked_damage_plan_resolves_committed_credited_source_state() {
     managers.attribute.override_ex(
         11,
         &HeroExAttribute {
-            cri: Some(1_500),
+            cri: Some(0),
             cri_dmg: Some(1_500),
             ..Default::default()
         },
@@ -1081,6 +1117,10 @@ fn linked_damage_plan_resolves_committed_credited_source_state() {
         .modifiers
         .attack_attributes
         .push((AttrId::CriticalDmg, 500));
+    execution
+        .modifiers
+        .attack_attributes
+        .push((AttrId::CriticalRate, 1_000));
     for activation in plan::LinkedDamagePlan::activations(&invocation, &managers, &execution) {
         execution.activate_additional_damage(activation.additional);
     }
@@ -1097,7 +1137,6 @@ fn linked_damage_plan_resolves_committed_credited_source_state() {
 
     let mut determinism = RoundDeterminism::default();
     determinism.enqueue_hidden_crits(SKILL_ID, 10, [false]);
-    determinism.enqueue_additional_crits(SKILL_ID, 10, -1, [true]);
     let damage = plan::damage_ops(
         &invocation,
         &managers,
@@ -1106,11 +1145,16 @@ fn linked_damage_plan_resolves_committed_credited_source_state() {
         SKILL_ID,
         &mut determinism,
         &mut execution,
-    );
-    let [HpCommand::Damage(linked)] = damage.additional_damage.as_slice() else {
+    )
+    .unwrap();
+    let [hit] = damage.additional_damage.as_slice() else {
+        panic!("expected one linked hit");
+    };
+    let [HpCommand::Damage(linked)] = hit.commands.as_slice() else {
         panic!("expected one linked damage command")
     };
 
     assert_eq!(linked.source_uid, 11);
-    assert_eq!(linked.amount, 493);
+    assert!(!linked.hurt.is_crit);
+    assert_eq!(linked.amount, 300);
 }

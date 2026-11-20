@@ -9,76 +9,55 @@ pub fn supports(args: &[i32]) -> bool {
         [tracked_buff_id, 1, raw_attr, per_layer, max_layers]
             if *tracked_buff_id > 0
                 && AttrId::from_raw(*raw_attr).is_some()
-                && *per_layer != 0
+                && *per_layer > 0
                 && *max_layers > 0
     )
 }
 
+pub(crate) fn grant_params(
+    act_id: i32,
+    args: &[i32],
+    source_uid: i64,
+    buffs: &BuffManager,
+) -> Option<String> {
+    if !supports(args) {
+        return None;
+    }
+    let [tracked_buff_id, _, _, per_layer, max_layers] = args else {
+        return None;
+    };
+    let value = buffs
+        .buff_id_or_type_amount(source_uid, *tracked_buff_id)
+        .clamp(0, *max_layers)
+        .saturating_mul(*per_layer);
+    Some(format!("{act_id}#{}.{}", value / 10, value % 10))
+}
+
 pub fn attribute_delta(feature: &ActiveBuffFeature, attr_id: AttrId, buffs: &BuffManager) -> i32 {
-    let [_, tracked_buff_id, 1, raw_attr, per_layer, max_layers] = feature.values.as_slice() else {
+    let [act_id, _, 1, raw_attr, _, _] = feature.values.as_slice() else {
         return 0;
     };
     if AttrId::from_raw(*raw_attr) != Some(attr_id) {
         return 0;
     }
-    let tracker_uid = if feature.source_uid != 0 {
-        feature.source_uid
-    } else {
-        feature.owner_uid
-    };
     buffs
-        .buff_id_or_type_amount(tracker_uid, *tracked_buff_id)
-        .min(*max_layers)
-        .saturating_mul(*per_layer)
+        .act_common_params(feature.owner_uid, feature.buff_uid)
+        .and_then(|params| read_value(params, *act_id))
+        .unwrap_or_default()
+}
+
+fn read_value(params: &str, act_id: i32) -> Option<i32> {
+    let (actual, percent) = params.split_once('#')?;
+    if actual.parse::<i32>().ok()? != act_id {
+        return None;
+    }
+    let (whole, tenth) = percent.split_once('.')?;
+    let [digit @ b'0'..=b'9'] = tenth.as_bytes() else {
+        return None;
+    };
+    let whole = whole.parse::<i32>().ok().filter(|n| *n >= 0)?;
+    whole.checked_mul(10)?.checked_add(i32::from(*digit - b'0'))
 }
 
 #[cfg(test)]
-mod tests {
-    use sonettobuf::{BuffInfo, Fight, FightEntityInfo, FightTeam};
-
-    use super::*;
-
-    #[test]
-    fn ally_bonus_reads_the_appliers_layers_and_honors_the_cap() {
-        crate::test_support::init_config();
-        let mut buffs = BuffManager::default();
-        buffs.seed(&Fight {
-            attacker: Some(FightTeam {
-                entitys: vec![
-                    FightEntityInfo {
-                        uid: Some(10),
-                        buffs: vec![BuffInfo {
-                            buff_id: Some(4150001),
-                            layer: Some(6),
-                            ..Default::default()
-                        }],
-                        ..Default::default()
-                    },
-                    FightEntityInfo {
-                        uid: Some(20),
-                        ..Default::default()
-                    },
-                ],
-                ..Default::default()
-            }),
-            ..Default::default()
-        });
-        let feature = ActiveBuffFeature {
-            owner_uid: 20,
-            source_uid: 10,
-            buff_uid: 1,
-            buff_id: 30940111,
-            amount: 1,
-            team_type: 1,
-            owner_alive: true,
-            act_type: "ModifyAttrByBuffLayer".into(),
-            effect_time: 0,
-            effect_condition: 0,
-            raw: "790#4150001#1#205#10#4".into(),
-            values: vec![790, 4150001, 1, 205, 10, 4],
-        };
-
-        assert_eq!(attribute_delta(&feature, AttrId::DmgBonus, &buffs), 40);
-        assert_eq!(attribute_delta(&feature, AttrId::CriticalDmg, &buffs), 0);
-    }
-}
+mod tests;

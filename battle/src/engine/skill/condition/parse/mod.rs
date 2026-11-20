@@ -1,5 +1,6 @@
 use config::GameDB;
 
+use crate::engine::manager::buff::BuffStatus;
 use crate::engine::skill::condition::{
     buff::BuffConditionMode, card, extra::ExtraActionConditionMode, lifecycle::LifecycleMode,
     none::NoneMode, registry,
@@ -37,6 +38,10 @@ pub enum ParsedConditionKind {
     Not(Box<ParsedConditionKind>),
     Lifecycle(LifecycleMode),
     RoundInterval {
+        start_round: i32,
+        period: i32,
+    },
+    RoundStartInterval {
         start_round: i32,
         period: i32,
     },
@@ -110,6 +115,7 @@ pub enum ParsedConditionKind {
         compare: ConditionCompare,
         threshold: i32,
     },
+    PrimaryStatusAbsent(Vec<BuffStatus>),
     VisibleBuffStatusTypeCount {
         status_ids: Vec<i32>,
         compare: ConditionCompare,
@@ -197,6 +203,9 @@ pub enum ParsedConditionKind {
     },
     Random {
         threshold: i32,
+    },
+    Rouge2AttributeRandom {
+        multiplier: i32,
     },
     PowerCompare {
         compare_code: i32,
@@ -316,6 +325,9 @@ pub enum ParsedConditionKind {
     ActiveAllyUseSkill {
         slot: i32,
     },
+    ActiveUseSkillBySource {
+        slot: i32,
+    },
     UseSkillRank(Vec<i32>),
     UseHurtSkill,
     UseDeviceSkill,
@@ -330,6 +342,7 @@ pub enum ParsedConditionKind {
     UseExSkill {
         slot: i32,
     },
+    AfterUltimate,
     TeammateUseExSkill,
     ActiveSkillSourceIsTarget,
     ActiveSkillRank {
@@ -562,6 +575,16 @@ pub(super) fn hp_more(_: i32, _: &str, raw_args: &[String]) -> Option<ParsedCond
 pub(super) fn random(_: i32, _: &str, raw_args: &[String]) -> Option<ParsedConditionKind> {
     Some(ParsedConditionKind::Random {
         threshold: first_i32(raw_args)?.clamp(0, 1000),
+    })
+}
+
+pub(super) fn rouge2_attribute_random(
+    _: i32,
+    _: &str,
+    raw_args: &[String],
+) -> Option<ParsedConditionKind> {
+    Some(ParsedConditionKind::Rouge2AttributeRandom {
+        multiplier: first_i32(raw_args)?,
     })
 }
 

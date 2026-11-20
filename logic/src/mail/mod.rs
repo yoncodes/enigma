@@ -10,6 +10,8 @@ use sonettobuf::{
 };
 use sqlx::SqlitePool;
 
+const MAIL_READ: i32 = 1;
+
 #[derive(Default)]
 pub struct MailClaimOutcome {
     pub incr_ids: Vec<i64>,
@@ -97,7 +99,7 @@ impl MailManager {
             return Err(AppError::InvalidRequest);
         };
 
-        let outcome = if mail.state == 1 {
+        let outcome = if mail.state == MAIL_READ {
             MailClaimOutcome {
                 incr_ids: vec![incr_id],
                 ..Default::default()

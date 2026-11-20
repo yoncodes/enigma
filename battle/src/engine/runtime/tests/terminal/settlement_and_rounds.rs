@@ -231,6 +231,92 @@ fn version_seven_terminal_round_does_not_advance_to_an_unplayed_round() {
 }
 
 #[test]
+fn attacker_settlement_defeat_retires_the_last_conduit() {
+    crate::test_support::init_config();
+    let entity = |uid, model_id, team_type, hp| FightEntityInfo {
+        uid: Some(uid),
+        model_id: Some(model_id),
+        team_type: Some(team_type),
+        position: Some(1),
+        current_hp: Some(hp),
+        attr: Some(sonettobuf::HeroAttribute {
+            hp: Some(hp),
+            attack: Some(1000),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let owner = entity(10, 3144, 1, 100);
+    let mut runtime = runtime(Fight {
+        battle_id: Some(2514),
+        cur_wave: Some(1),
+        cur_round: Some(1),
+        version: Some(7),
+        attacker: Some(FightTeam {
+            entitys: vec![owner],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![entity(-1, 1001, 2, 100)],
+            ..Default::default()
+        }),
+        ..Default::default()
+    });
+
+    let skill_id = 9_900_081;
+    let mut slot = SkillEffectSlot::new(
+        ParsedBehavior::new(60015, "Kill", Vec::new()),
+        TargetRequest::self_only(),
+    );
+    slot.conditions =
+        crate::engine::skill::condition::parse_conditions(config::configs::get(), "304");
+    slot.compiled_route = ConditionRoute::compile(&slot.conditions);
+    runtime.catalog.insert(ParsedSkillEffect {
+        skill_id,
+        slots: vec![slot],
+    });
+    runtime.managers.battle_rule.extend_owned_skills([
+        crate::engine::fight::rules::OwnedBattleSkill {
+            owner_uid: 10,
+            skill_id,
+        },
+    ]);
+
+    let round = runtime
+        .build_begin_round_from_schedule(&BeginRoundRequest::default())
+        .unwrap();
+
+    assert_eq!(round.is_finish, Some(true));
+    assert_eq!(
+        runtime.managers.terminal_outcome(),
+        Some(crate::engine::round::outcome::BattleOutcome::Defeat)
+    );
+    assert_eq!(runtime.managers.conduit.selected_group(10), None);
+    use sonettobuf::effect_type_enum::EffectType;
+    let boundary = round
+        .fight_step
+        .iter()
+        .flat_map(|step| &step.act_effect)
+        .filter_map(|effect| {
+            let kind = EffectType::try_from(effect.effect_type?).ok()?;
+            matches!(
+                kind,
+                EffectType::Smallroundend | EffectType::Initdevice | EffectType::Clearuniversalcard
+            )
+            .then_some(kind)
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        boundary,
+        [
+            EffectType::Smallroundend,
+            EffectType::Initdevice,
+            EffectType::Clearuniversalcard
+        ]
+    );
+}
+
+#[test]
 fn terminal_round_keeps_the_unplayed_enemy_ai_queue() {
     crate::test_support::init_config();
     let entity = |uid, team_type| FightEntityInfo {

@@ -7,8 +7,9 @@ use std::{
 use battle::tooling::replay::ReplayBattle;
 use battle_preview::{
     array_len_diff_lines, battle_inputs, build_metadata_source, canonical_comparison,
-    comparable_json, first_diff_path, loadout_diffs, normalize_live_json, opening_determinism,
-    preview_attributes, preview_output_text, render_json_with_capture_conventions, tower_plan_id,
+    comparable_json, first_diff_path, loadout_diffs, normalize_live_json, opening_card_push_path,
+    opening_determinism, preview_attributes, preview_output_text,
+    render_json_with_capture_conventions, tower_plan_id,
 };
 use sonettobuf::{CardInfoPush, Fight, FightRound, StartDungeonReply};
 
@@ -182,10 +183,9 @@ fn generate_reply(
 }
 
 fn compare_card_push(path: &Path, generated: CardInfoPush) -> anyhow::Result<Option<bool>> {
-    let capture = path.with_file_name("CardInfoPush_1.json");
-    if !capture.exists() {
+    let Some(capture) = opening_card_push_path(path)? else {
         return Ok(None);
-    }
+    };
     let captured = comparable_json(serde_json::from_str(&fs::read_to_string(capture)?)?);
     let generated = comparable_json(serde_json::to_value(generated)?);
     let matches = generated == captured;

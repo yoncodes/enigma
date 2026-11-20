@@ -86,7 +86,7 @@ fn ops(
 ) -> Vec<RuleOp> {
     let mut modifiers = SkillModifiers::default();
     let mut target = TargetContext::default();
-    Handler::emit_ops(
+    crate::engine::skill::behavior::rule_ops(
         BehaviorOpContext {
             source_uid: -1,
             source_team: 1,
@@ -184,16 +184,13 @@ fn invalid_carriers_fail_in_the_runtime_without_granting_power() {
 
 #[test]
 fn grammar_requires_one_positive_power_type() {
-    assert!(Handler::supports(&ParsedBehavior::new(
-        60334,
-        "HedoneAddDevicePower",
-        vec![1],
-    )));
+    let mut behavior = behavior();
+    assert!(Handler::supports(&behavior));
+    behavior.raw_args.push("malformed".to_owned());
+    assert!(!Handler::supports(&behavior));
     for args in [vec![], vec![0], vec![-1], vec![1, 1]] {
-        assert!(!Handler::supports(&ParsedBehavior::new(
-            60334,
-            "HedoneAddDevicePower",
-            args,
-        )));
+        behavior.raw_args = args.iter().map(ToString::to_string).collect();
+        behavior.args = args;
+        assert!(!Handler::supports(&behavior));
     }
 }

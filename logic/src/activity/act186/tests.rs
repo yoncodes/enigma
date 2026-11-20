@@ -76,11 +76,10 @@ async fn task_events_update_only_the_active_activity() {
         Some((0, active.max_progress))
     );
     assert!(
-        activity_state::get(&db, 7, expired.activity_id, ActivityStateKind::Act186Task)
+        !activity_state::get(&db, 7, expired.activity_id, ActivityStateKind::Act186Task)
             .await
             .unwrap()
-            .get(&expired.id)
-            .is_none()
+            .contains_key(&expired.id)
     );
 }
 

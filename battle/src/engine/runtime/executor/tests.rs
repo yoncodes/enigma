@@ -772,3 +772,59 @@ fn moxie_reduction_resistance_keeps_the_resource_unchanged() {
 
     assert!(outcomes.contains(&true) && outcomes.contains(&false));
 }
+
+#[test]
+fn moving_a_mark_removes_it_from_the_sources_previous_holder() {
+    crate::test_support::init_config();
+    let ally = |uid, buffs| FightEntityInfo {
+        uid: Some(uid),
+        current_hp: Some(100),
+        buffs,
+        ..Default::default()
+    };
+    let mark = |uid, from_uid| sonettobuf::BuffInfo {
+        uid: Some(uid),
+        buff_id: Some(11410111),
+        from_uid: Some(from_uid),
+        ..Default::default()
+    };
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![
+                ally(10, vec![mark(1, -1)]),
+                ally(20, vec![mark(2, -2)]),
+                ally(30, vec![]),
+            ],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![ally(-1, vec![]), ally(-2, vec![])],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let mut managers = BattleManagers::seeded(&fight);
+    let mut events = EventBus::default();
+
+    execute_rule_op(
+        &mut managers,
+        &mut events,
+        RuleOp::Command(BattleCommand::BuffMoveToHolder(BuffGrant {
+            origin: CommandOrigin {
+                domain: RuleDomain::Behavior,
+                key: DefinitionKey::new(1, "AddBuff"),
+            },
+            source_uid: -1,
+            target_uid: 30,
+            buff_id: 11410111,
+            amount: None,
+            occurrences: 1,
+            child_uid_reservations: 0,
+        })),
+    )
+    .unwrap();
+
+    assert!(!managers.buff.has_buff_id(10, 11410111));
+    assert!(managers.buff.has_buff_id(20, 11410111));
+    assert!(managers.buff.has_buff_id(30, 11410111));
+}

@@ -23,6 +23,8 @@ use parse::{choose_weighted, parse_ids, parse_up_heroes, parse_weighted};
 pub(crate) use pool::build_gacha_pool;
 use pool::{GachaResult, GachaRules, GachaState, SummonType};
 
+const NEWBIE_POOL_TYPE: i32 = 1;
+
 #[derive(Clone, Copy, Debug)]
 pub struct SummonManager {
     player_id: i64,
@@ -111,7 +113,7 @@ fn visible_pools_at(now_sec: i32) -> Vec<database::models::game::summon::SummonP
         .into_iter()
         .filter(|visible| {
             tables.summon_pool.get(visible.pool_id).is_some_and(|pool| {
-                pool.r#type == 1 || summon_version(&pool.prefab_path) == version
+                pool.r#type == NEWBIE_POOL_TYPE || summon_version(&pool.prefab_path) == version
             })
         })
         .map(|pool| (pool.pool_id, pool))
@@ -148,7 +150,7 @@ fn scheduled_pools() -> Vec<database::models::game::summon::SummonPoolWindow> {
         let Some(pool) = tables.summon_pool.get(pool_id) else {
             continue;
         };
-        let (online_time, offline_time) = if pool.r#type == 1 {
+        let (online_time, offline_time) = if pool.r#type == NEWBIE_POOL_TYPE {
             (0, i32::MAX)
         } else {
             let (Some(online), Some(offline)) = (

@@ -1,9 +1,6 @@
 use crate::engine::{
     event::payload::BattleEvent,
-    manager::{
-        buff::{BuffCommand, BuffRemove, BuffRemoveSelector},
-        hp::HurtDamageFromType,
-    },
+    manager::buff::{BuffCommand, BuffRemove, BuffRemoveSelector},
     skill::{
         action::{SkillInvocation, SkillRequest, SkillTarget},
         buff_act::registry::BuffActKind,
@@ -13,42 +10,6 @@ use crate::engine::{
         target::TargetPool,
     },
 };
-
-pub fn shielded_ally_rule_ops(
-    pool: &TargetPool,
-    subscriber: &BuffActSubscriber,
-    event: &BattleEvent,
-) -> Option<Vec<RuleOp>> {
-    if !super::subscriber_is_kind(subscriber, BuffActKind::BeatBackByCounter) {
-        return None;
-    }
-    let BattleEvent::Hit(hit) = event else {
-        return Some(Vec::new());
-    };
-    if !subscriber.owner_alive
-        || hit.ignore_riposte
-        || pool.source_is_attacker(hit.source_uid) == pool.source_is_attacker(subscriber.owner_uid)
-        || pool.source_is_attacker(hit.target_uid) != pool.source_is_attacker(subscriber.owner_uid)
-        || hit.damage_from != HurtDamageFromType::Skill
-        || hit.shield_absorbed <= 0
-    {
-        return Some(Vec::new());
-    }
-    let [skill_id] = subscriber.args.as_slice() else {
-        return None;
-    };
-    if *skill_id <= 0 {
-        return None;
-    }
-    let mut invocation: SkillInvocation = SkillRequest {
-        source_uid: subscriber.owner_uid,
-        skill_id: *skill_id,
-    }
-    .into();
-    invocation.target = SkillTarget::Explicit(hit.source_uid);
-    invocation.extra_skill_kind = Some(ExtraSkillKind::Riposte);
-    Some(vec![RuleOp::Skill(invocation)])
-}
 
 pub fn rule_ops(
     pool: &TargetPool,
@@ -179,11 +140,10 @@ mod tests {
 
     use super::*;
     use crate::engine::{
-        event::{kind::EventKind, payload::HitEvent, subscription::SubscriptionKey},
-        manager::hp::HurtDamageFromType,
+        event::{kind::EventKind, subscription::SubscriptionKey},
         skill::{
             action::{SkillActionEvent, SkillPhase},
-            rule::{CommandOrigin, DefinitionKey, RuleDomain},
+            rule::DefinitionKey,
         },
     };
     use crate::test_support::init_config;
@@ -230,47 +190,6 @@ mod tests {
             args: vec![0, 222001751],
             raw: "302#0#222001751".into(),
         }
-    }
-
-    fn shield_counter_subscriber() -> BuffActSubscriber {
-        BuffActSubscriber {
-            owner_uid: 10,
-            source_uid: 10,
-            buff_uid: 22,
-            buff_id: 30940182,
-            team_type: 1,
-            owner_alive: true,
-            amount: 1,
-            key: SubscriptionKey::new(
-                EventKind::Riposte,
-                DefinitionKey::new(802, "BeatBackByCounter"),
-            ),
-            act_type: "BeatBackByCounter".into(),
-            effect_time: 401,
-            effect_condition: 0,
-            args: vec![30940172],
-            raw: "802#30940172".into(),
-        }
-    }
-
-    fn hit(source_uid: i64, target_uid: i64) -> BattleEvent {
-        BattleEvent::Hit(HitEvent {
-            origin: CommandOrigin {
-                domain: RuleDomain::Skill,
-                key: DefinitionKey::new(1, "SkillDamage"),
-            },
-            source_uid,
-            target_uid,
-            skill_id: 1,
-            amount: 10,
-            resolved_damage: 10,
-            shield_absorbed: 0,
-            career_restraint: false,
-            damage_from: HurtDamageFromType::Skill,
-            share_count: 0,
-            assassinate: false,
-            ignore_riposte: false,
-        })
     }
 
     fn attack(attacked_target_uids: Vec<i64>, damage_amount: i32) -> BattleEvent {
@@ -478,89 +397,6 @@ mod tests {
                 && invocation.target == SkillTarget::Explicit(-1)
                 && invocation.extra_skill_kind == Some(ExtraSkillKind::Riposte)
         ));
-    }
-
-    #[test]
-    fn shield_counter_uses_the_configured_skill_when_the_hit_absorbed_a_shield() {
-        init_config();
-        let fight = Fight {
-            attacker: Some(FightTeam {
-                entitys: vec![
-                    FightEntityInfo {
-                        uid: Some(10),
-                        current_hp: Some(100),
-                        ..Default::default()
-                    },
-                    FightEntityInfo {
-                        uid: Some(11),
-                        current_hp: Some(100),
-                        ..Default::default()
-                    },
-                ],
-                ..Default::default()
-            }),
-            defender: Some(FightTeam {
-                entitys: vec![FightEntityInfo {
-                    uid: Some(-1),
-                    current_hp: Some(100),
-                    ..Default::default()
-                }],
-                ..Default::default()
-            }),
-            ..Default::default()
-        };
-        let pool = TargetPool::from_fight(&fight);
-        let mut shielded_hit = hit(-1, 11);
-        let BattleEvent::Hit(shielded) = &mut shielded_hit else {
-            unreachable!()
-        };
-        shielded.shield_absorbed = 20;
-
-        let output =
-            shielded_ally_rule_ops(&pool, &shield_counter_subscriber(), &shielded_hit).unwrap();
-        let [RuleOp::Skill(invocation)] = output.as_slice() else {
-            panic!("expected one shield counter, got {output:?}");
-        };
-        assert_eq!(invocation.plan.skill_id, 30940172);
-        assert_eq!(invocation.target, SkillTarget::Explicit(-1));
-        assert_eq!(invocation.extra_skill_kind, Some(ExtraSkillKind::Riposte));
-
-        let mut ignored_hit = shielded_hit.clone();
-        let BattleEvent::Hit(ignored) = &mut ignored_hit else {
-            unreachable!()
-        };
-        ignored.ignore_riposte = true;
-        assert!(
-            shielded_ally_rule_ops(&pool, &shield_counter_subscriber(), &ignored_hit)
-                .unwrap()
-                .is_empty()
-        );
-
-        assert!(
-            shielded_ally_rule_ops(&pool, &shield_counter_subscriber(), &hit(-1, 11))
-                .unwrap()
-                .is_empty()
-        );
-        let mut effect_hit = shielded_hit.clone();
-        let BattleEvent::Hit(effect) = &mut effect_hit else {
-            unreachable!()
-        };
-        effect.damage_from = HurtDamageFromType::SkillEffect;
-        assert!(
-            shielded_ally_rule_ops(&pool, &shield_counter_subscriber(), &effect_hit)
-                .unwrap()
-                .is_empty()
-        );
-        let mut allied_hit = hit(10, 11);
-        let BattleEvent::Hit(allied) = &mut allied_hit else {
-            unreachable!()
-        };
-        allied.shield_absorbed = 20;
-        assert!(
-            shielded_ally_rule_ops(&pool, &shield_counter_subscriber(), &allied_hit)
-                .unwrap()
-                .is_empty()
-        );
     }
 
     #[test]

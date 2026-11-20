@@ -77,6 +77,12 @@ pub enum CardPlayRole {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ConditionRouteOverride {
+    ActiveCompletion(DefinitionKey),
+    OwnerFrame(DefinitionKey),
+    ActiveBuffPresence {
+        key: DefinitionKey,
+        phase: SkillPhase,
+    },
     Trigger {
         key: DefinitionKey,
         event: EventKind,
@@ -700,6 +706,7 @@ behavior_definitions! {
     [60070] "AddUseSkillCard" => super::card::Handler, AddQueuedSkillCard, Immediate, destination, super::card::supports_queued_skill_card;
     [50031] "AddSpTempCard" => super::card::Handler, AddSpTempCard, Immediate, destination, @route(ConditionRouteOverride::Trigger { key: DefinitionKey::new(19106, "HasBuffId"), event: EventKind::RoundStartCard, phase: None }), super::card::supports_temporary_skill_card;
     [60300] "AddSpTempCard2" => super::card::Handler, AddSpTempCard2, Immediate, destination, super::card::supports_temporary_skill_card;
+    [100024] "UseCardCopy" => super::card_copy::Handler, UseCardCopy, Immediate, destination, super::card_copy::supports_arguments;
     [100018] "ConsumeBuffCreateTempCardOrder" => super::precast::Handler, ConsumeBuffCreatePrecast, Immediate, destination, super::precast::supports_arguments;
     [50036] "ConsumePowerDirectUseSkill" => super::use_skill::Handler, ConsumePowerDirectUseSkill, Immediate, destination, super::use_skill::supports_consume_power_direct_skill;
     [60262] "PerConsumeExPointDirectUseSkill" => super::use_skill::Handler, PerConsumeExPointDirectUseSkill, Immediate, destination, super::use_skill::supports_per_consume_ex_point_direct_use_skill;
@@ -709,7 +716,7 @@ behavior_definitions! {
     [60311] "ConsumeBuffUseSkill3" => super::use_skill::Handler, ConsumeBuffUseSkill3, Immediate, once_destination, super::use_skill::supports_consume_buff_use_skill3;
     [100007] "EzioReuse" => super::use_skill::Handler, ConsumeTargetBuffUseSkill, Immediate, destination, super::use_skill::supports_consume_target_buff_use_skill;
     [50018] "RemoveBuffUseSkill" => super::use_skill::Handler, RemoveBuffUseSkill, AfterDamage, destination, super::use_skill::supports_remove_buff_use_skill;
-    [50008] "DirectUseSkill" => super::use_skill::Handler, DirectUseSkill, Immediate, destination, arguments::at_least_one;
+    [50008] "DirectUseSkill" => super::use_skill::Handler, DirectUseSkill, Immediate, destination, @route(ConditionRouteOverride::OwnerFrame(DefinitionKey::new(19307, "HasBuffId"))), arguments::at_least_one;
     [60053] "DirectUseSkill2" => super::use_skill::Handler, DirectUseSkill2, Immediate, destination, super::use_skill::supports_direct_use_skill_two;
     [60014] "DirectUseSkillPrev" => super::use_skill::Handler, DirectUseSkillPrev, Immediate, destination, arguments::none;
     [50039] "DirectUseSkillCard" => super::use_skill::Handler, DirectUseSkillCard, Immediate, plain, super::use_skill::supports_direct_skill_card;
@@ -719,6 +726,7 @@ behavior_definitions! {
     [60225] "RandomUseSkill" => super::use_skill::Handler, RandomUseSkill, Immediate, destination, super::use_skill::supports_random_skill;
     [60172] "Drive" => super::use_skill::Handler, Drive, Immediate, destination, super::use_skill::supports_drive;
     [60175] "DirectUseBigSkill" => super::use_skill::Handler, DirectUseBigSkill, Immediate, parent_destination, arguments::none;
+    [60196] "DirectUseExSkillNoConsumeExPoint" => super::use_skill::Handler, FreeUltimate, Immediate, destination, arguments::none;
     [50010] "DirectUseGroupAndStarSkill" => super::use_skill::Handler, DirectUseGroupAndStarSkill, Immediate, destination, super::use_skill::supports_group_and_star_skill;
     [50015] "UseExtraSkill" => super::prepare_skill::Handler, UseExtraSkill, Immediate, destination;
     [60242] "CrystalReuse" => super::use_skill::Handler, CrystalReuse, Immediate, destination, super::use_skill::supports_crystal_reuse;
@@ -726,7 +734,7 @@ behavior_definitions! {
     [60112] "AddTargetBuffByPoison" => super::buff::Handler, AddTargetBuffByPoison, AfterDamage, destination, super::buff::supports_add_target_buff_by_poison;
     [60142] "ConsumePowerAddBuff" => super::buff::Handler, ConsumePowerAddBuff, Immediate, destination, super::buff::supports_consume_power_add_buff;
     [60150] "ConsumePowerAddMultiBuff1" => super::buff::Handler, ConsumePowerAddMultiBuff1, Immediate, destination, super::buff::supports_consume_power_add_multi_buff;
-    [1] "AddBuff" => super::buff::Handler, AddBuff, Immediate, aggregated_modifier, arguments::at_least_one;
+    [1] "AddBuff" => super::buff::Handler, AddBuff, Immediate, aggregated_modifier, @route(ConditionRouteOverride::ActiveBuffPresence { key: DefinitionKey::new(19210, "HasBuffId"), phase: SkillPhase::AfterHit }), arguments::at_least_one;
     [2] "AddBuffPowerUse" => super::buff::Handler, AddBuffPowerUse, AfterDamage, aggregated_destination, arguments::at_least_one;
     [1210001] "AddBuff" => super::buff::Handler, AddBuff, AfterDamage, aggregated_destination;
     [1210002] "AddBuff" => super::buff::Handler, AddBuff, AfterDamage, aggregated_destination;
@@ -747,7 +755,7 @@ behavior_definitions! {
     [30009] "Disperse2" => super::buff::Handler, Disperse2, Immediate, destination, super::buff::supports_exact_buff_dispel;
     [90002] "Disperse2" => super::buff::Handler, DisperseTypeId, Immediate, destination, super::buff::supports_type_family_dispel;
     [60060] "DisperseExclude" => super::buff::Handler, DisperseExclude, Immediate, destination, super::buff::supports_excluded_dispel;
-    [60010] "DisperseForce2" => super::buff::Handler, DisperseForce2, Immediate, destination, super::buff::supports_disperse_force;
+    [60010] "DisperseForce2" => super::buff::Handler, DisperseForce2, Immediate, destination, @route(ConditionRouteOverride::ActiveCompletion(DefinitionKey::new(212, "None"))), super::buff::supports_disperse_force;
     [60252] "DisperseForce3" => super::buff::Handler, DisperseForce3, Immediate, destination, super::buff::supports_disperse_force3;
     [20003] "Purify1" => super::buff::Handler, Purify1, Immediate, destination, super::buff::supports_dispel;
     [20004] "Purify2" => super::buff::Handler, Purify2, Immediate, destination, super::buff::supports_exact_buff_dispel;
@@ -759,9 +767,9 @@ behavior_definitions! {
     [60248] "BuffSpread" => super::buff::Handler, BuffSpread, AfterDamage, destination, arguments::exactly_two;
     [60022] "BuffCountMulti" => super::buff::Handler, BuffCountMulti, AfterDamage, destination, super::buff::supports_count_multiplier;
     [50032] "ReplaceBuff" => super::buff::Handler, ReplaceBuff, Immediate, destination, arguments::exactly_four;
-    [60176] "ReplaceBuff2" => super::buff::Handler, ReplaceBuff2, Immediate, destination;
+    [60176] "ReplaceBuff2" => super::buff::Handler, ReplaceBuff2, Immediate, destination, super::buff::supports_layer_reward;
     [50035] "AddBuffBasedOnEnemyBurnUseCount" => super::buff::Handler, AddBuffBasedOnEnemyBurnUseCount, Immediate, destination, arguments::exactly_two;
-    [60059] "AddBurnBySkillAddBurnCount" => super::buff::Handler, AddBuffBySkillBuffAdditions, Immediate, destination, arguments::at_least_one;
+    [60059] "AddBurnBySkillAddBurnCount" => super::buff::Handler, AddBuffBySkillBuffAdditions, Immediate, destination, super::buff::supports_burn_return;
     [60068] "AddBuffByBuffLayer" => super::buff::Handler, AddBuffByBuffLayer, Immediate, destination, arguments::exactly_three;
     [60124] "AddBuffByBuffLayerRange" => super::buff::Handler, AddBuffByBuffLayerRange, Immediate, destination, super::buff::supports_layer_range;
     [60261] "PerBuffTypeIdAddRateBuffId" => super::buff::Handler, PerBuffTypeIdAddRateBuffId, Immediate, destination, super::buff::supports_team_layer;
@@ -789,6 +797,7 @@ behavior_definitions! {
     [40012] "RemoveSummoned" => super::summon::Handler, RemoveSummoned, Immediate, destination, super::summon::supports_remove_summoned;
     [60008] "Summon" => super::summon::Handler, Summon, Immediate, destination, super::summon::supports_combatant;
     [60056] "SummonSp2" => super::summon::Handler, SummonSp2, AfterDamage, destination, super::summon::supports_special;
+    [60061] "MoveFront" => super::position::Handler, MoveFront, AfterDamage, destination;
     [60015] "Kill" => super::kill::Handler, Kill, Immediate, destination, super::kill::supports;
     [60018] "Kill" => super::kill::Handler, LethalHpLoss, Immediate, destination, super::kill::supports;
     [60019] "KillTargets" => super::kill::Handler, KillTargets, AfterDamage, destination, super::kill::supports_targets;

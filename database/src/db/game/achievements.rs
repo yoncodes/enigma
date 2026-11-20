@@ -46,6 +46,22 @@ pub async fn reconcile_snapshot(pool: &SqlitePool, user_id: i64) -> Result<()> {
     Ok(())
 }
 
+pub async fn complete_all(pool: &SqlitePool, user_id: i64) -> Result<Vec<Achievement>> {
+    let mut tx = pool.begin().await?;
+    for task in config::configs::get().achievement_task.iter() {
+        set_snapshot_progress(
+            &mut tx,
+            user_id,
+            task.id,
+            task.max_progress,
+            task.max_progress,
+        )
+        .await?;
+    }
+    tx.commit().await?;
+    get_achievements(pool, user_id).await
+}
+
 pub async fn sync_event(
     pool: &SqlitePool,
     user_id: i64,

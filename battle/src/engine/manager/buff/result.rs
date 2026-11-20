@@ -1,7 +1,9 @@
 use sonettobuf::BuffInfo;
 
 use crate::engine::{
-    event::payload::{BattleEvent, BuffChangeEvent, BuffRejectedEvent, BuffStateChangeEvent},
+    event::payload::{
+        BattleEvent, BuffChangeEvent, BuffExpiry, BuffRejectedEvent, BuffStateChangeEvent,
+    },
     skill::rule::DefinitionKey,
 };
 
@@ -40,6 +42,25 @@ pub struct BuffFanoutResult {
     pub carrier_buff_id: i32,
     pub added: Vec<BuffApplyResult>,
     pub refreshed: Vec<BuffFanoutUpdateResult>,
+    pub allies: Vec<LayerHaloAllyResult>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct LayerHaloAllyResult {
+    pub target_uid: i64,
+    pub part: super::BuffPublishPart,
+    pub replaced: Vec<BuffRemoveResult>,
+    pub trimmed: Vec<BuffRemoveResult>,
+    pub trim_refreshed: Vec<BuffUpdateResult>,
+    pub added: Option<BuffApplyResult>,
+    pub refreshed: Option<BuffFanoutUpdateResult>,
+}
+
+impl BuffFanoutResult {
+    pub fn precedes_carrier_change(&self) -> bool {
+        crate::engine::skill::buff_act::registry::kind(self.rule.opcode, self.rule.type_name)
+            == Some(crate::engine::skill::buff_act::registry::BuffActKind::LayerMasterHalo)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -91,6 +112,7 @@ pub struct BuffRemoveResult {
     pub delete_reason: Option<BuffDeleteReason>,
     pub depleted: bool,
     pub fixed_max_hp_delta: i32,
+    pub expiry: BuffExpiry,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -124,7 +146,11 @@ impl BuffReplaceResult {
         &self,
         pre_add_refreshes: usize,
     ) -> Vec<BattleEvent> {
-        fn push_added(events: &mut Vec<BattleEvent>, applied: &BuffApplyResult) {
+        fn push_added(
+            events: &mut Vec<BattleEvent>,
+            applied: &BuffApplyResult,
+            replaced_fixed_max_hp: Option<i32>,
+        ) {
             let buff = &applied.buff;
             events.push(BattleEvent::BuffAdded(BuffChangeEvent {
                 source_uid: applied.source_uid,
@@ -144,10 +170,12 @@ impl BuffReplaceResult {
                     .and_then(|info| info.param.first())
                     .copied()
                     .unwrap_or_default(),
-                duration_expired: false,
+                replaced_fixed_max_hp,
+                replaced_buff_id: None,
+                expiry: BuffExpiry::None,
             }));
             for fanout in &applied.fanout {
-                push_added(events, fanout);
+                push_added(events, fanout, None);
             }
         }
 
@@ -176,7 +204,9 @@ impl BuffReplaceResult {
                             .and_then(|info| info.param.first())
                             .copied()
                             .unwrap_or_default(),
-                        duration_expired: false,
+                        replaced_fixed_max_hp: None,
+                        replaced_buff_id: None,
+                        expiry: BuffExpiry::None,
                     },
                 ))
             }));
@@ -226,13 +256,26 @@ impl BuffReplaceResult {
                             .copied()
                             .unwrap_or_default()
                     },
-                    duration_expired: false,
+                    replaced_fixed_max_hp: None,
+                    replaced_buff_id: None,
+                    expiry: removed.expiry,
                 })
             })
             .collect::<Vec<_>>();
         push_refreshes(&mut events, &self.refreshed[..split]);
         if let Some(added) = &self.added {
-            push_added(&mut events, added);
+            let mut replacements = self.removed.iter().filter(|old| {
+                added.effective
+                    && old.effective
+                    && old.target_uid == added.target_uid
+                    && old.buff.from_uid == Some(added.source_uid)
+                    && old.buff.buff_id == added.buff.buff_id
+            });
+            let previous = replacements
+                .next()
+                .filter(|_| replacements.next().is_none())
+                .map(|old| old.fixed_max_hp_delta);
+            push_added(&mut events, added, previous);
         }
         push_refreshes(&mut events, &self.refreshed[split..]);
         if let Some(rejected) = &self.rejected {

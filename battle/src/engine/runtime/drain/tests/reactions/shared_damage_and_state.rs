@@ -560,6 +560,13 @@ fn after_hit_passive_uses_the_active_skills_successful_buff_additions() {
                 uid: Some(10),
                 current_hp: Some(100),
                 passive_skill: vec![200],
+                buffs: vec![BuffInfo {
+                    uid: Some(20),
+                    buff_id: Some(4150001),
+                    from_uid: Some(10),
+                    layer: Some(2),
+                    ..Default::default()
+                }],
                 ..Default::default()
             }],
             ..Default::default()
@@ -577,59 +584,77 @@ fn after_hit_passive_uses_the_active_skills_successful_buff_additions() {
         }),
         ..Default::default()
     };
-    let pool = TargetPool::from_fight(&fight);
-    let mut managers = BattleManagers::seeded(&fight);
-    let mut passive_slot = SkillEffectSlot::new(
-        ParsedBehavior::from_spec(
-            BehaviorSpec::new(60059, "AddBurnBySkillAddBurnCount"),
-            vec![4150001],
-            Vec::new(),
-        ),
-        TargetRequest::self_only(),
-    );
-    passive_slot.conditions = vec![ParsedCondition {
-        opcode: 210,
-        type_name: "None".to_owned(),
-        kind: ParsedConditionKind::None(NoneMode::SkillActionAfterHit),
-        raw_args: Vec::new(),
-    }];
-    passive_slot.compiled_route = ConditionRoute::compile(&passive_slot.conditions);
-    let mut catalog = SkillEffectCatalog::default();
-    catalog.insert(ParsedSkillEffect {
-        skill_id: 100,
-        slots: vec![SkillEffectSlot::new(
-            ParsedBehavior::from_spec(BehaviorSpec::new(1, "AddBuff"), vec![4150001], Vec::new()),
-            TargetRequest {
-                code: 202,
-                raw: Vec::new(),
-            },
-        )],
-    });
-    catalog.insert(ParsedSkillEffect {
-        skill_id: 200,
-        slots: vec![passive_slot],
-    });
+    for (args, expected) in [
+        (vec![4150001], &[(20, 2, 5)][..]),
+        (vec![4150001, 1], &[(20, 2, 3), (20, 3, 4), (20, 4, 5)][..]),
+    ] {
+        let pool = TargetPool::from_fight(&fight);
+        let mut managers = BattleManagers::seeded(&fight);
+        let mut passive_slot = SkillEffectSlot::new(
+            ParsedBehavior::new(60059, "AddBurnBySkillAddBurnCount", args),
+            TargetRequest::self_only(),
+        );
+        passive_slot.conditions = vec![ParsedCondition {
+            opcode: 210,
+            type_name: "None".to_owned(),
+            kind: ParsedConditionKind::None(NoneMode::SkillActionAfterHit),
+            raw_args: Vec::new(),
+        }];
+        passive_slot.compiled_route = ConditionRoute::compile(&passive_slot.conditions);
+        let mut catalog = SkillEffectCatalog::default();
+        catalog.insert(ParsedSkillEffect {
+            skill_id: 100,
+            slots: vec![SkillEffectSlot::new(
+                ParsedBehavior::from_spec(
+                    BehaviorSpec::new(1, "AddBuff"),
+                    vec![4150001],
+                    Vec::new(),
+                ),
+                TargetRequest {
+                    code: 202,
+                    raw: Vec::new(),
+                },
+            )],
+        });
+        catalog.insert(ParsedSkillEffect {
+            skill_id: 200,
+            slots: vec![passive_slot],
+        });
 
-    run(
-        &mut managers,
-        &pool,
-        &catalog,
-        &mut RoundDeterminism::default(),
-        TargetContext::default(),
-        [RuleOp::Skill(
-            SkillRequest {
-                source_uid: 10,
-                skill_id: 100,
-            }
-            .into(),
-        )],
-    )
-    .unwrap();
+        let result = run(
+            &mut managers,
+            &pool,
+            &catalog,
+            &mut RoundDeterminism::default(),
+            TargetContext::default(),
+            [RuleOp::Skill(
+                SkillRequest {
+                    source_uid: 10,
+                    skill_id: 100,
+                }
+                .into(),
+            )],
+        )
+        .unwrap();
 
-    assert_eq!(managers.buff.max_id_or_type_layer(10, 4150001), 3);
-    assert!(managers.buff.has_buff_id(-1, 4150001));
-    assert!(managers.buff.has_buff_id(-2, 4150001));
-    assert!(managers.buff.has_buff_id(-3, 4150001));
+        let changes = result
+            .events
+            .iter()
+            .filter_map(|event| match event {
+                BattleEvent::BuffChanged(change)
+                    if change.target_uid == 10 && change.buff_id == 4150001 =>
+                {
+                    Some((change.buff_uid, change.before_amount, change.after_amount))
+                }
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(changes, expected);
+        assert_eq!(managers.buff.max_id_or_type_layer(10, 4150001), 5);
+        assert!(managers.buff.has_buff_id(-1, 4150001));
+        assert!(managers.buff.has_buff_id(-2, 4150001));
+        assert!(managers.buff.has_buff_id(-3, 4150001));
+    }
 }
 
 #[test]

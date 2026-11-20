@@ -140,7 +140,7 @@ mod tests {
         let activity_id = 13805;
         let event_start = ::common::activity_schedule()
             .iter()
-            .find(|schedule| schedule.id == activity_id)
+            .find(|schedule| schedule.id == activity_id && schedule.enabled)
             .unwrap()
             .start_time as i64;
         sqlx::query(

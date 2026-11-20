@@ -363,6 +363,7 @@ pub enum BuffCommand {
     Remove(BuffRemove),
     ForceExpire(BuffRemove),
     RemoveAfterTrigger(BuffRemove),
+    LoseStack(BuffRemove),
     EndChannel(BuffRemove),
     CompleteSelection(BuffRemove),
     Deactivate(BuffRemove),
@@ -487,7 +488,7 @@ impl BuffPlan {
         Some((plan.route.source_uid, plan.route.buff_id))
     }
 
-    pub(crate) fn after_add_attribute_route(&self) -> Option<(i64, i64, i32, Vec<i64>)> {
+    pub(crate) fn after_add_attribute_route(&self) -> Option<(i64, i32)> {
         let plan = match &self.action {
             BuffPlanAction::Grant(plan) => plan.as_ref(),
             _ => return None,
@@ -515,15 +516,7 @@ impl BuffPlan {
         {
             return None;
         }
-        let mut removed = plan.excluded_uids.clone();
-        removed.extend(plan.replacement_uids.iter().copied());
-        removed.extend(plan.capacity_eviction_uids.iter().copied());
-        Some((
-            plan.route.source_uid,
-            plan.route.target_uid,
-            plan.route.buff_id,
-            removed,
-        ))
+        Some((plan.route.source_uid, plan.route.buff_id))
     }
 
     pub(crate) fn each_change_attr_route(&self) -> Option<(i64, i64, i32)> {
@@ -559,6 +552,21 @@ impl BuffPlan {
         plan.attr_snapshots.extend(values);
     }
 
+    pub(crate) fn initialize_added_snapshot_act_info(&mut self, values: Vec<BuffActInfo>) {
+        if values.is_empty() {
+            return;
+        }
+        let plan = match &mut self.action {
+            BuffPlanAction::Grant(plan) => plan.as_mut(),
+            _ => return,
+        };
+        plan.initial_act_info
+            .get_or_insert_with(Vec::new)
+            .extend(values.iter().cloned());
+        plan.initial_act_info_markers = Some(values);
+        plan.snapshot_markers = true;
+    }
+
     pub(crate) fn initialize_added_act_info_without_markers(&mut self, values: Vec<BuffActInfo>) {
         if values.is_empty() {
             return;
@@ -573,7 +581,7 @@ impl BuffPlan {
         plan.initial_act_info_markers = Some(Vec::new());
     }
 
-    pub(crate) fn initialize_added_and_fanout_act_info_without_markers(
+    pub(crate) fn initialize_added_and_fanout_snapshot_act_info(
         &mut self,
         values: Vec<BuffActInfo>,
     ) {
@@ -583,11 +591,13 @@ impl BuffPlan {
         };
         for fanout in &mut plan.fanout {
             fanout.spec.initial_act_info.extend(values.iter().cloned());
+            fanout.spec.snapshot_markers = true;
         }
         plan.initial_act_info
             .get_or_insert_with(Vec::new)
-            .extend(values);
-        plan.initial_act_info_markers = Some(Vec::new());
+            .extend(values.iter().cloned());
+        plan.initial_act_info_markers = Some(values);
+        plan.snapshot_markers = true;
     }
 
     pub(crate) fn initialize_added_act_value(
@@ -734,6 +744,7 @@ enum RemoveSnapshot {
     ClearAmount,
     ClearCount,
     ClearDuration,
+    MarkExpired,
 }
 
 #[derive(Debug, Clone)]
@@ -829,6 +840,7 @@ pub(super) struct GrantPlan {
     initial_params: Option<String>,
     initial_act_info: Option<Vec<BuffActInfo>>,
     initial_act_info_markers: Option<Vec<BuffActInfo>>,
+    snapshot_markers: bool,
     dot_snapshots: Vec<super::state::DotSnapshotPlan>,
     grant_values: Vec<(i32, i32)>,
     attr_snapshots: Vec<(i64, crate::engine::entity::attr::AttrId, i32)>,
@@ -855,11 +867,16 @@ pub enum BuffCommandError {
     UnsupportedOccurrences(u32),
 }
 
+mod burn;
 mod commit;
 mod plan;
 mod result;
+pub(crate) use burn::BurnApplication;
 
-pub use result::{BuffChanges, BuffLifecycleTransition, BuffRefreshWire, BuffStateSnapshotWire};
+pub use result::{
+    BuffChanges, BuffLifecycleTransition, BuffPublishPart, BuffRefreshWire, BuffReplacementParts,
+    BuffStateSnapshotWire,
+};
 
 #[cfg(test)]
 mod tests;

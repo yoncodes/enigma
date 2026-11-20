@@ -17,7 +17,8 @@ pub(super) fn permits(card: &CardInfo, restriction: i32) -> bool {
 }
 
 pub(crate) fn consumes_action_point(card: &CardInfo) -> bool {
-    permits(card, NOT_USE_ACTION_POINT)
+    card.card_type != Some(sonettobuf::card_info::CardType::Skill3 as i32)
+        && permits(card, NOT_USE_ACTION_POINT)
 }
 
 impl CardManager {

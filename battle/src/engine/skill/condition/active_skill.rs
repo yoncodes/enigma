@@ -14,6 +14,12 @@ pub fn active_ally_use(_: i32, _: &str, args: &[String]) -> Option<ParsedConditi
     })
 }
 
+pub fn active_source_use(_: i32, _: &str, args: &[String]) -> Option<ParsedConditionKind> {
+    Some(ParsedConditionKind::ActiveUseSkillBySource {
+        slot: first_i32(args)?,
+    })
+}
+
 pub fn use_skill(_: i32, _: &str, args: &[String]) -> Option<ParsedConditionKind> {
     Some(ParsedConditionKind::UseSkillRank(parse_i32_list(
         args.first()?,

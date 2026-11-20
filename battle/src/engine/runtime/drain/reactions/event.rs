@@ -10,7 +10,7 @@ pub(super) fn queued_entity_entry_halo_fanout(
     entry_scope: Option<&[usize]>,
     parent_path: Option<&[usize]>,
 ) -> Option<QueuedOp> {
-    let BattleEvent::EntityEntered { target_uid } = event else {
+    let BattleEvent::EntityEntered { target_uid, .. } = event else {
         return None;
     };
     let (frame_path, parent_path) = match entry_scope {
@@ -56,10 +56,7 @@ fn queued_invalid_ultimate_removal(
         .card
         .hand()
         .iter()
-        .find(|card| {
-            !crate::engine::manager::card::CardManager::is_sovereign(card)
-                && mechanic.is_ultimate(managers, card, entity)
-        })
+        .find(|card| mechanic.is_dealt_ultimate(managers, card, entity))
         .cloned();
     if mechanic.ultimate_ready(managers, entity) {
         return None;
@@ -386,6 +383,8 @@ fn dispatch_event_batch_inner(
                         managers,
                         *target_uid,
                         &damage_types,
+                        current_skill
+                            .is_some_and(|(_, skill_id, _)| catalog.is_big_skill(skill_id)),
                     )
                 {
                     reactions.after_publish.push(queued_buff_act_feature_op(
@@ -403,6 +402,7 @@ fn dispatch_event_batch_inner(
                 event.kind(),
                 crate::engine::event::kind::EventKind::BuffAdded
                     | crate::engine::event::kind::EventKind::BuffRejected
+                    | crate::engine::event::kind::EventKind::AllyAction
             )
         });
         let mut multiplicity = crate::engine::event::dispatcher::DispatchMultiplicity {
@@ -417,17 +417,19 @@ fn dispatch_event_batch_inner(
             managers,
             catalog,
             determinism,
-            event,
-            Some(parent_path),
-            Some(reuse_path),
-            action_path,
-            entry_halo_scope,
-            reentry_skill,
-            current_skill_target,
-            lane,
-            owner_uids,
-            execute_unscoped_after_action,
-            Some(publication_phase),
+            ReactionDispatch {
+                event,
+                parent_path: Some(parent_path),
+                reuse_path: Some(reuse_path),
+                action_path,
+                entry_halo_scope,
+                reentry_skill,
+                current_skill_target,
+                lane,
+                owner_uids,
+                execute_unscoped_after_action,
+                publication_phase: Some(publication_phase),
+            },
             Some(&mut multiplicity),
         )?;
         reactions.append(dispatched);

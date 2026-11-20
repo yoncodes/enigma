@@ -170,13 +170,17 @@ fn converted_type_drives_defense_dodge_mitigation_consumption_and_critical_attri
             &converted,
             -2,
             converted_type,
+            false,
             AttrId::DmgTakenReduction,
         ),
         300
     );
-    assert!(super::super::be_attacked_consumption_rule_ops(&base, -2, &[base_type]).is_empty());
+    assert!(
+        super::super::be_attacked_consumption_rule_ops(&base, -2, &[base_type], false).is_empty()
+    );
     assert_eq!(
-        super::super::be_attacked_consumption_rule_ops(&converted, -2, &[converted_type]).len(),
+        super::super::be_attacked_consumption_rule_ops(&converted, -2, &[converted_type], false,)
+            .len(),
         1
     );
     assert_eq!(
@@ -198,6 +202,7 @@ fn converted_type_drives_defense_dodge_mitigation_consumption_and_critical_attri
                 skill_id: 2240001,
                 rate: 1_000,
                 rate_terms: Vec::new(),
+                attack_bonus: 0,
                 attack_attributes: Vec::new(),
                 career_ratio_bonus: 0,
                 attack_career: None,

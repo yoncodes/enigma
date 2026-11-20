@@ -7,6 +7,31 @@ fn parses_hash_cells_as_opcode_and_args() {
 }
 
 #[test]
+fn burn_return_keeps_exact_argument_arity() {
+    init_config();
+    let parse = |behavior| {
+        parse_slot(
+            config::configs::get(),
+            RawSlot {
+                behavior,
+                target: "103",
+                condition: "210",
+                condition_target: "103",
+                logic_target: "103",
+                limit: 0,
+                round_limit: 0,
+            },
+        )
+    };
+    for raw in ["60059#4150001", "60059#4150001#1"] {
+        assert!(parse(raw).is_ok(), "{raw}");
+    }
+    for raw in ["60059#4150001#", "60059#4150001##1", "60059#4150001#2"] {
+        assert_eq!(parse(raw), Err(SlotParseError::Behavior), "{raw}");
+    }
+}
+
+#[test]
 fn parses_target_code_and_raw_args() {
     let target = parse_target("103#7").unwrap();
 
@@ -16,6 +41,70 @@ fn parses_target_code_and_raw_args() {
     for raw in ["bad", "bad#103", "103#bad", "103##7", "103#"] {
         assert_eq!(parse_target(raw), None, "{raw}");
     }
+}
+
+#[test]
+fn predicate_grants_after_an_after_damage_slot_follow_its_reactions() {
+    init_config();
+    let db = config::configs::get();
+    let phases = |effect_id: i32| {
+        let mut catalog = SkillEffectCatalog::default();
+        catalog.insert_configured_effect(db, db.skill_effect.get(effect_id).unwrap());
+        catalog
+            .get(effect_id)
+            .unwrap()
+            .slots
+            .iter()
+            .map(|slot| slot.active_phases().unwrap())
+            .collect::<Vec<_>>()
+    };
+    let after_hit = vec![crate::engine::skill::action::SkillPhase::AfterHit];
+
+    assert_eq!(phases(30870331)[4], after_hit);
+    assert_eq!(
+        phases(308801211)[1..],
+        [after_hit.clone(), after_hit.clone()]
+    );
+    assert_eq!(phases(30630181)[3..5], [after_hit.clone(), after_hit]);
+    assert!(phases(30030209).iter().all(Vec::is_empty));
+}
+
+#[test]
+fn delegated_card_settles_moxie_grant_in_the_cast_phase() {
+    init_config();
+    let db = config::configs::get();
+    let skill = db.skill.get(311401511).unwrap();
+    let row = db.skill_effect.get(skill.skill_effect).unwrap();
+
+    let mut catalog = SkillEffectCatalog::default();
+    catalog.insert_configured_effect(db, row);
+    let [cast, reward] = catalog.get(row.id).unwrap().slots.as_slice() else {
+        panic!("Flood of Fiction should parse as cast + grant");
+    };
+    let cast_phases = cast.active_phases().unwrap();
+    assert_eq!(cast_phases.len(), 1);
+    assert_eq!(reward.active_phases().unwrap(), cast_phases);
+
+    let reward_phase = |edit: fn(&mut config::skill_effect::SkillEffect)| {
+        let mut variant = row.clone();
+        edit(&mut variant);
+        let mut catalog = SkillEffectCatalog::default();
+        catalog.insert_configured_effect(db, &variant);
+        catalog.get(row.id).unwrap().slots[1].delegated_reward_phase
+    };
+    // The grant follows the cast whatever gates it or whom it targets.
+    let bound = Some(cast_phases[0]);
+    assert_eq!(reward_phase(|row| row.condition2.clear()), bound);
+    assert_eq!(
+        reward_phase(|row| row.behavior_target2.push_str("#7")),
+        bound
+    );
+    // Without the delegated cast, or for a non-Moxie slot, nothing is bound.
+    assert_eq!(
+        reward_phase(|row| row.logic_target = "101".to_owned()),
+        None
+    );
+    assert_eq!(reward_phase(|row| row.behavior2 = "60175".to_owned()), None);
 }
 
 #[test]
@@ -323,6 +412,11 @@ fn slot_parser_applies_registry_contract_to_numeric_behaviors() {
     assert!(parse("60019#0#102").is_ok());
     assert!(parse("60019#0#103").is_ok());
     assert!(parse("60056#151415").is_ok());
+    assert!(parse("40006#119381111#1000#1#").is_ok());
+    assert!(parse("60334#1").is_ok());
+    for raw in ["60334##1", "60334#1#", "60334# #1"] {
+        assert_eq!(parse(raw), Err(SlotParseError::Behavior), "{raw}");
+    }
     assert!(parse("60056#151416").is_ok());
     for raw in [
         "60056",

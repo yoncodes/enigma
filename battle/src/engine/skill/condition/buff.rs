@@ -174,6 +174,17 @@ pub fn first_status_absent(_: i32, _: &str, raw_args: &[String]) -> Option<Parse
     })
 }
 
+pub fn status_absent(_: i32, _: &str, raw_args: &[String]) -> Option<ParsedConditionKind> {
+    let statuses = parse_buff_ids(raw_args)?
+        .into_iter()
+        .map(crate::engine::manager::buff::BuffStatus::from_id)
+        .collect::<Vec<_>>();
+    statuses
+        .iter()
+        .all(|status| *status != crate::engine::manager::buff::BuffStatus::Unknown)
+        .then_some(ParsedConditionKind::PrimaryStatusAbsent(statuses))
+}
+
 fn status_count(status_ids: Vec<i32>, threshold: i32) -> Option<ParsedConditionKind> {
     Some(ParsedConditionKind::BuffStatusCount {
         status_ids,

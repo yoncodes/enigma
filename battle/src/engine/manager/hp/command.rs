@@ -17,13 +17,28 @@ impl HpManager {
         command: HpCommand,
     ) -> Result<HpChanges, HpCommandError> {
         self.validate_command(command)?;
-        Ok(self.commit_validated_command_with_team_shared(command, None))
+        Ok(self.commit_validated_command(command, None, None))
     }
 
-    pub(crate) fn commit_validated_command_with_team_shared(
+    /// Damage left for HP after the team-shared shield and the target's own shield absorb theirs.
+    pub(crate) fn damage_after_shields(
+        &self,
+        target_uid: i64,
+        amount: i32,
+        team_shared: Option<TeamSharedShieldPlan>,
+    ) -> i32 {
+        let after_team_shared = amount
+            - team_shared
+                .and_then(|plan| plan.absorption(amount))
+                .map_or(0, |change| change.absorbed);
+        after_team_shared - after_team_shared.max(0).min(self.shield(target_uid))
+    }
+
+    pub(crate) fn commit_validated_command(
         &mut self,
         command: HpCommand,
         team_shared: Option<TeamSharedShieldPlan>,
+        loss_limit: Option<i32>,
     ) -> HpChanges {
         debug_assert!(self.validate_command(command).is_ok());
         let (origin, source_uid, target_uid, _) = Self::command_context(command);
@@ -56,6 +71,7 @@ impl HpManager {
                     ignore_riposte: value.ignore_riposte,
                     hurt: value.hurt,
                 });
+                let remaining = self.damage_after_shields(target_uid, value.amount, team_shared);
                 changes.team_shared_shield_absorbed = team_shared.and_then(|plan| {
                     self.absorb_team_shared_shield(plan, target_uid, value.amount)
                 });
@@ -65,21 +81,16 @@ impl HpManager {
                         .map(|change| change.absorbed)
                         .unwrap_or_default();
                 changes.shield_absorbed = self.absorb_shield(target_uid, after_team_shared);
-                let remaining = value.amount
-                    - changes
-                        .team_shared_shield_absorbed
-                        .map(|change| change.absorbed)
-                        .unwrap_or_default()
-                    - changes
-                        .shield_absorbed
-                        .map(|change| change.absorbed)
-                        .unwrap_or_default();
-                if remaining > 0 {
+                let loss = loss_limit.map_or(remaining, |limit| remaining.min(limit));
+                if loss > 0 {
                     let mut hurt = value.hurt;
                     hurt.from_uid = source_uid;
                     hurt.is_crit = value.effect_kind == DamageEffectKind::Critical;
+                    if loss < remaining {
+                        hurt.display_amount.get_or_insert(remaining);
+                    }
                     changes.hp =
-                        self.lose_with_hurt(target_uid, remaining, value.config_effect, Some(hurt));
+                        self.lose_with_hurt(target_uid, loss, value.config_effect, Some(hurt));
                     if let Some(change) = &mut changes.hp {
                         change.assassinate = value.assassinate;
                     }
@@ -126,15 +137,30 @@ impl HpManager {
                 if let Some(change) = &mut changes.hp {
                     change.effect_type = value.effect_type;
                     change.display_amount = Some(change.after);
+                    if change.delta < 0
+                        && !change.is_loss()
+                        && let Some(taken) = self.damage_taken.get_mut(&target_uid)
+                    {
+                        *taken += change.delta;
+                    }
                 }
             }
             HpCommand::GrantShield(value) => {
                 let gain = self.add_shield(target_uid, value.amount, value.max);
                 changes.shield_granted = (gain.added != 0).then_some(gain);
             }
-            HpCommand::AdjustMax(value) => {
+            HpCommand::AdjustMax(value)
+            | HpCommand::RestoreMax(value)
+            | HpCommand::RemoveReplacedMax(value)
+            | HpCommand::AdjustCapacity(value) => {
                 let before = self.get(target_uid);
-                let after = self.add_max_snapshot(target_uid, value.delta);
+                let after = match command {
+                    HpCommand::AdjustCapacity(_) => self.adjust_capacity(target_uid, value.delta),
+                    HpCommand::RestoreMax(_) => {
+                        self.change_max_snapshot(target_uid, value.delta, 0)
+                    }
+                    _ => self.add_max_snapshot(target_uid, value.delta),
+                };
                 if crate::engine::diagnostics::enabled(
                     crate::engine::diagnostics::TraceArea::Damage,
                 ) {
@@ -155,6 +181,7 @@ impl HpManager {
                     delta: after.max - before.max,
                     after_current: after.current,
                     after_max: after.max,
+                    replaced_removal: matches!(command, HpCommand::RemoveReplacedMax(_)),
                 });
             }
         }
@@ -225,11 +252,23 @@ impl HpManager {
                 value.target_uid,
                 value.amount > 0 && value.max > 0,
             ),
-            HpCommand::AdjustMax(value) => (
+            HpCommand::AdjustMax(value) | HpCommand::AdjustCapacity(value) => (
                 value.origin,
                 value.source_uid,
                 value.target_uid,
                 value.delta != 0,
+            ),
+            HpCommand::RemoveReplacedMax(value) => (
+                value.origin,
+                value.source_uid,
+                value.target_uid,
+                value.delta <= 0,
+            ),
+            HpCommand::RestoreMax(value) => (
+                value.origin,
+                value.source_uid,
+                value.target_uid,
+                value.delta > 0,
             ),
         }
     }

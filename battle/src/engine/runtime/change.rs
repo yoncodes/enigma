@@ -20,6 +20,7 @@ use crate::engine::manager::{
 #[derive(Debug, Clone, PartialEq)]
 pub enum BattleChange {
     SkillLifecycle(crate::engine::skill::action::SkillLifecycle),
+    UltimateDelegated { caster_uid: i64 },
     Buff(Box<BuffChanges>),
     BuffFanout(Box<BuffFanoutResult>),
     BuffFeatureMarker(crate::engine::manager::buff::BuffMarkerResult),
@@ -38,8 +39,11 @@ pub enum BattleChange {
     NuoDiKa(crate::engine::mechanic::nuo_di_ka::NuoDiKaChange),
     Emitter(EmitterChange),
     Entity(Box<EntityChanges>),
+    MoveFront(crate::engine::manager::entity::position::MoveFrontChanges),
     Card(Box<CardChanges>),
     CardStateSnapshot(crate::engine::manager::card::CardStateSnapshot),
+    ActionQueueCardState(crate::engine::manager::card::ActionQueueCardState),
+    PlayerActionQueue(crate::engine::round::command::PlayerActionQueue),
     Conduit(ConduitChange),
     Contract(ContractChange),
     Field(FieldChange),
@@ -53,5 +57,7 @@ pub enum BattleChange {
     ToughnessRecovered(crate::engine::manager::toughness::ToughnessRecovery),
     UpgradeApplied(Box<crate::engine::manager::upgrade::UpgradeApplied>),
     EntityPromotion(Box<crate::engine::fight::reserve::Promotion>),
+    ReserveQueued(Box<crate::engine::fight::reserve::ReserveQueued>),
+    ReserveRetired(crate::engine::fight::reserve::ReserveRetired),
     WaveAdvanced(Box<crate::engine::manager::wave::WaveAdvanced>),
 }

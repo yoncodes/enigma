@@ -19,7 +19,7 @@ pub struct SkillEffectCatalog {
     effects: HashMap<i32, ParsedSkillEffect>,
     aliases: HashMap<i32, i32>,
     effect_tags: HashMap<i32, i32>,
-    logic_targets: HashMap<i32, i32>,
+    logic_targets: HashMap<i32, TargetRequest>,
     damage_rates: HashMap<i32, i32>,
     skill_types: HashMap<i32, i32>,
     skill_effect_types: HashMap<i32, i32>,
@@ -93,7 +93,13 @@ impl SkillEffectCatalog {
     }
 
     pub fn insert_logic_target(&mut self, effect_id: i32, logic_target: i32) {
-        self.logic_targets.insert(effect_id, logic_target);
+        self.logic_targets.insert(
+            effect_id,
+            TargetRequest {
+                code: logic_target,
+                raw: Vec::new(),
+            },
+        );
     }
 
     pub fn insert_damage_rate(&mut self, effect_id: i32, damage_rate: i32) {
@@ -140,6 +146,29 @@ impl SkillEffectCatalog {
             })
             .unwrap_or(slot_index);
         RuleLimitOwner::from_slot(owner)
+    }
+
+    pub fn random_self_conduit_ex_point_skills(&self) -> Vec<(i32, i32)> {
+        let mut skills = self
+            .effects
+            .values()
+            .filter_map(|effect| {
+                effect.slots.iter().find_map(|slot| {
+                    let definition =
+                        crate::engine::skill::behavior::registry::find(&slot.behavior)?;
+                    if definition.kind != BehaviorKind::AddConduitExPoint
+                        || slot.target.code
+                            != crate::engine::skill::target::request::SOURCE_TARGET_CODE
+                    {
+                        return None;
+                    }
+                    query::find(&slot.conditions, &query::is_random)
+                        .map(|random| (effect.skill_id, random.opcode))
+                })
+            })
+            .collect::<Vec<_>>();
+        skills.sort_unstable();
+        skills
     }
 
     pub fn random_skill_choice_references(&self, skill_id: i32) -> Vec<i32> {
@@ -197,48 +226,6 @@ impl SkillEffectCatalog {
         target_codes
             .all(|candidate| candidate == target_code)
             .then_some(target_code)
-    }
-
-    pub fn random_condition_keys(&self) -> Vec<(i32, i32)> {
-        fn append(
-            conditions: &[crate::engine::skill::condition::ParsedCondition],
-            skill_id: i32,
-            keys: &mut Vec<(i32, i32)>,
-        ) {
-            for condition in conditions {
-                match &condition.kind {
-                    ParsedConditionKind::Random { .. } => {
-                        let key = (skill_id, condition.opcode);
-                        if !keys.contains(&key) {
-                            keys.push(key);
-                        }
-                    }
-                    ParsedConditionKind::Any(groups) => {
-                        for group in groups {
-                            append(group, skill_id, keys);
-                        }
-                    }
-                    ParsedConditionKind::Not(inner) => {
-                        let nested = crate::engine::skill::condition::ParsedCondition {
-                            opcode: condition.opcode,
-                            type_name: condition.type_name.clone(),
-                            kind: *inner.clone(),
-                            raw_args: condition.raw_args.clone(),
-                        };
-                        append(std::slice::from_ref(&nested), skill_id, keys);
-                    }
-                    _ => {}
-                }
-            }
-        }
-
-        let mut keys = Vec::new();
-        for effect in self.effects.values() {
-            for slot in &effect.slots {
-                append(&slot.conditions, effect.skill_id, &mut keys);
-            }
-        }
-        keys
     }
 
     pub fn effect_tag(&self, skill_id: i32) -> i32 {
@@ -304,11 +291,16 @@ impl SkillEffectCatalog {
     }
 
     pub fn logic_target(&self, skill_id: i32) -> i32 {
+        self.logic_request(skill_id).code
+    }
+
+    pub(crate) fn logic_request(&self, skill_id: i32) -> &TargetRequest {
+        static DEFAULT: TargetRequest = TargetRequest {
+            code: 0,
+            raw: Vec::new(),
+        };
         let effect_id = self.aliases.get(&skill_id).copied().unwrap_or(skill_id);
-        self.logic_targets
-            .get(&effect_id)
-            .copied()
-            .unwrap_or_default()
+        self.logic_targets.get(&effect_id).unwrap_or(&DEFAULT)
     }
 
     pub fn damage_rate(&self, skill_id: i32) -> i32 {
@@ -488,6 +480,23 @@ impl SkillEffectCatalog {
                     })
                 {
                     lanes.push((slot_index, subscription));
+                }
+            }
+        }
+        Ok(lanes)
+    }
+
+    pub(crate) fn completion_lanes(
+        &self,
+        skill_id: i32,
+    ) -> Result<Vec<(usize, SubscriptionKey)>, crate::engine::skill::rule::route::RouteError> {
+        let mut lanes = Vec::new();
+        if let Some(effect) = self.get(skill_id) {
+            for (index, slot) in effect.slots.iter().enumerate() {
+                if crate::engine::skill::behavior::is_slot_supported(slot)
+                    && let Some(key) = slot.completion()?
+                {
+                    lanes.push((index, key));
                 }
             }
         }

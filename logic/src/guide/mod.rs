@@ -6,6 +6,8 @@ use database::{
 use sonettobuf::{FinishGuideReply, GetGuideInfoReply, GuideInfo, UpdateHeroGroupSnapshotPush};
 use sqlx::SqlitePool;
 
+const FINISHED_STEP: i32 = -1;
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 #[repr(i32)]
 enum GuideActionKind {
@@ -89,7 +91,7 @@ fn stored_step_after(guide_id: i32, step_id: i32) -> i32 {
     {
         step_id
     } else {
-        -1
+        FINISHED_STEP
     }
 }
 
@@ -175,7 +177,7 @@ impl GuideManager {
             .into_iter()
             .map(|guide_id| GuideInfo {
                 guide_id,
-                step_id: -1,
+                step_id: FINISHED_STEP,
             })
             .collect())
     }
@@ -189,7 +191,7 @@ impl GuideManager {
             .ok_or(AppError::InvalidRequest)?;
         let initial_complete = guides::get_guide_progress(db, self.player_id, guide.id)
             .await?
-            .is_some_and(|progress| progress.step_id == -1);
+            .is_some_and(|progress| progress.step_id == FINISHED_STEP);
         let (completion_step, mut skipped) =
             apply_guide_world_progress(db, self.player_id, guide.id).await?;
         if !initial_complete {
@@ -227,7 +229,7 @@ impl GuideManager {
                 apply_guide_world_progress(db, self.player_id, prerequisite.id).await?;
             skipped.rewards.extend(world.rewards);
             skipped.material_changes.extend(world.material_changes);
-            if progress.is_none_or(|progress| progress.step_id != -1) {
+            if progress.is_none_or(|progress| progress.step_id != FINISHED_STEP) {
                 skipped.extend(self.finish(db, prerequisite.id, completion_step).await?);
             }
         }
@@ -240,7 +242,7 @@ impl GuideManager {
             let progress = guides::get_guide_progress(db, self.player_id, teaching.id).await?;
             if progress
                 .as_ref()
-                .is_some_and(|progress| progress.step_id == -1)
+                .is_some_and(|progress| progress.step_id == FINISHED_STEP)
             {
                 continue;
             }
@@ -311,7 +313,7 @@ impl GuideManager {
         let previous = guides::get_guide_progress(db, self.player_id, guide_id).await?;
         let first_completion = previous
             .as_ref()
-            .is_none_or(|progress| progress.step_id != -1 && progress.step_id < step_id);
+            .is_none_or(|progress| progress.step_id != FINISHED_STEP && progress.step_id < step_id);
         let stored_step_id = stored_step_after(guide_id, step_id);
         let hero_id = required_story.and_then(|_| hero_reward_after_step(guide_id, step_id));
         let common_group = if hero_id.is_some() {

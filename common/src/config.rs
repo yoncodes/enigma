@@ -148,6 +148,12 @@ pub struct ActivitySchedule {
     pub start_time: u64,
     pub end_time: u64,
     pub is_unlock: bool,
+    #[serde(default = "enabled_by_default")]
+    pub enabled: bool,
+}
+
+fn enabled_by_default() -> bool {
+    true
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -524,5 +530,20 @@ mod tests {
 
         assert_eq!(activity.hero_story_schedule.len(), 1);
         assert_eq!(activity.hero_story_schedule[0].story_id, 99);
+    }
+
+    #[test]
+    fn activity_schedule_defaults_to_enabled_and_accepts_explicit_disable() {
+        let enabled: ActivityConfig = toml::from_str(
+            "schedule = [{ id = 1, start_time = 10, end_time = 20, is_unlock = true }]",
+        )
+        .unwrap();
+        let disabled: ActivityConfig = toml::from_str(
+            "schedule = [{ id = 1, start_time = 10, end_time = 20, is_unlock = true, enabled = false }]",
+        )
+        .unwrap();
+
+        assert!(enabled.schedule[0].enabled);
+        assert!(!disabled.schedule[0].enabled);
     }
 }

@@ -46,12 +46,17 @@ pub fn rule_ops(
             team,
             emitter_uid,
             cards,
-        } if *team == subscriber.team_type => {
-            impromptu::action_queue_committed_rule_ops(managers, *team, *emitter_uid, cards)
-                .into_iter()
-                .map(BuffActRuleOp::separate_independent_command)
-                .collect()
-        }
+            action_count,
+        } if *team == subscriber.team_type => impromptu::action_queue_committed_rule_ops(
+            managers,
+            *team,
+            *emitter_uid,
+            cards,
+            *action_count,
+        )
+        .into_iter()
+        .map(BuffActRuleOp::separate_independent_command)
+        .collect(),
         BattleEvent::ImpromptuResolved {
             team, emitter_uid, ..
         } if *team == subscriber.team_type => {

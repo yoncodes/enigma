@@ -73,7 +73,12 @@ pub fn rule_ops(
     subscriber: &BuffActSubscriber,
     event: &BattleEvent,
 ) -> Option<Vec<RuleOp>> {
-    let BattleEvent::ActionQueueCommitted { cards, .. } = event else {
+    let BattleEvent::ActionQueueCommitted {
+        cards: _,
+        action_count,
+        ..
+    } = event
+    else {
         return None;
     };
     let [release_skill, _, 1] = subscriber.args.as_slice() else {
@@ -92,7 +97,7 @@ pub fn rule_ops(
         .into(),
     )];
     for (offset, card) in remembered.iter().cloned().enumerate() {
-        let card_index = cards.len() as i32 + offset as i32 + 1;
+        let card_index = *action_count as i32 + offset as i32 + 1;
         let mut action: SkillInvocation = SkillRequest {
             source_uid: card.uid?,
             skill_id: card.skill_id?,
@@ -107,6 +112,7 @@ pub fn rule_ops(
                 card,
                 team_type: subscriber.team_type,
                 source_skill_id: *release_skill,
+                reserve_id: 0,
                 action: Some(action),
             }),
         )));
@@ -224,6 +230,7 @@ mod tests {
             team: 1,
             emitter_uid: 99998,
             cards: vec![CardInfo::default(); 3],
+            action_count: 3,
         };
 
         let ops = rule_ops(&managers, &subscriber, &event).unwrap();

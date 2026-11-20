@@ -72,14 +72,21 @@ pub(super) fn resource_fire_count(
         return Some(0);
     }
     let Some(random) = query::find(conditions, &|condition| {
-        matches!(condition.kind, ParsedConditionKind::Random { .. })
+        matches!(
+            condition.kind,
+            ParsedConditionKind::Random { .. } | ParsedConditionKind::Rouge2AttributeRandom { .. }
+        )
     }) else {
         return Some(count);
     };
     Some(resource::event_conditions_count(
         conditions,
         ResourceConditionContext {
-            random_roll: Some(determinism.condition_random_roll(skill_id, random.opcode)),
+            random_roll: Some(determinism.condition_random_roll(
+                skill_id,
+                context.source_uid,
+                random.opcode,
+            )),
             ..context
         },
     ))
@@ -134,7 +141,7 @@ pub(super) fn apply_event_context(
             context.runtime_target_uid = change.target_uid;
             context.removed_buff_id = change.buff_id;
             context.removed_buff_target_uid = change.target_uid;
-            context.removed_buff_duration_expired = change.duration_expired;
+            context.removed_buff_duration_expired = change.expiry.expired();
         }
         BattleEvent::BuffRejected(change) => {
             context.runtime_target_uid = change.target_uid;
@@ -206,7 +213,7 @@ pub(super) fn apply_event_context(
             context.runtime_target_uid = change.owner_uid;
         }
         BattleEvent::EntityDied(death) => context.runtime_target_uid = death.target_uid,
-        BattleEvent::EntityEntered { target_uid }
+        BattleEvent::EntityEntered { target_uid, .. }
         | BattleEvent::EntityTransformed { target_uid } => context.runtime_target_uid = *target_uid,
         BattleEvent::ExPointChanged(change) | BattleEvent::ExPointOverflow(change) => {
             context.runtime_target_uid = change.target_uid;

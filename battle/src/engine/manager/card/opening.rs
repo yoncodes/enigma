@@ -1,6 +1,6 @@
 use sonettobuf::CardInfo;
 
-use super::{CardChangeKind, CardManager};
+use super::{CardChangeKind, CardManager, TemporaryCardKind};
 
 #[derive(Debug, Clone, Default, PartialEq)]
 pub(super) struct OpeningDeal {
@@ -34,14 +34,9 @@ impl OpeningDeal {
             return;
         }
         match kind {
-            CardChangeKind::SovereignInserted
-            | CardChangeKind::GeneratedAdded
+            CardChangeKind::GeneratedAdded
             | CardChangeKind::OwnedGeneratedAdded
             | CardChangeKind::HedoneAdded
-            | CardChangeKind::GenericTemporaryAdded
-            | CardChangeKind::TemporaryAdded
-            | CardChangeKind::ConfiguredSkill3Added
-            | CardChangeKind::HeroTemporaryAdded
             | CardChangeKind::CrystalAdded
             | CardChangeKind::PrecastAdded
             | CardChangeKind::UltimateAvailabilityChanged => {
@@ -75,6 +70,16 @@ impl CardManager {
 
     pub fn opening_deal(&self) -> Option<&[CardInfo]> {
         self.opening_deal.cards()
+    }
+
+    pub(super) fn record_opening_temporary(&mut self, kind: TemporaryCardKind, card: &CardInfo) {
+        match kind {
+            TemporaryCardKind::ConfiguredSkill => {}
+            TemporaryCardKind::GenericSkill
+            | TemporaryCardKind::PrecastSkill
+            | TemporaryCardKind::ConfiguredSkill3
+            | TemporaryCardKind::HeroSkill => self.opening_deal.record(card),
+        }
     }
 
     pub(super) fn record_opening_deal_change(

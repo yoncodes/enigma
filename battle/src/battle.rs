@@ -1,13 +1,13 @@
 use sonettobuf::{
-    AutoRoundReply, AutoRoundRequest, CardInfo, CardInfoPush, Fight, FightRound, FightStatistics,
-    RedealCardInfoPush, UseClothSkillReply, UseClothSkillRequest,
+    CardInfo, CardInfoPush, Fight, FightRound, FightStatistics, RedealCardInfoPush,
+    UseClothSkillReply, UseClothSkillRequest,
 };
 
 use crate::{
     BattleOutcome,
     catalog::BattleCatalog,
     dungeon::BuiltFight,
-    engine::runtime::{BattleRuntime, determinism::RoundDeterminism},
+    engine::runtime::{AutoRoundPlanner, BattleRuntime, determinism::RoundDeterminism},
 };
 
 /// One authoritative battle simulation exposed through server-facing operations.
@@ -74,8 +74,8 @@ impl Battle {
         self.runtime.attack_statistics()
     }
 
-    pub fn plan_auto_round(&self, request: &AutoRoundRequest) -> AutoRoundReply {
-        self.runtime.plan_auto_round(request)
+    pub fn auto_round_planner(&self) -> AutoRoundPlanner {
+        self.runtime.auto_round_planner()
     }
 
     pub fn use_cloth_skill(&mut self, request: UseClothSkillRequest) -> Option<UseClothSkillReply> {

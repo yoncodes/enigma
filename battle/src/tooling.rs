@@ -15,11 +15,14 @@ pub mod replay {
         runtime::{
             BattleRuntime as ReplayBattle, ClothSkillType,
             determinism::{
-                CrystalReuseChoice, HandRankChoice, MoxieReductionResistanceChoice,
-                RoundDeterminism, SkillTargetChoice,
+                ConditionRandomChoice, CrystalReuseChoice, HandRankChoice,
+                MoxieReductionResistanceChoice, RandomBuffChoice, RoundDeterminism,
+                SkillTargetChoice,
             },
         },
     };
+
+    pub use crate::engine::skill::rule::ConfiguredRuleKey;
 
     pub fn seed_observed_redeal(
         runtime: &mut ReplayBattle,
@@ -37,7 +40,7 @@ pub mod scan {
             condition::{ConditionTiming, ParsedCondition, ParsedConditionKind, parse_conditions},
             effect::{ParsedBehavior, ParsedSkillEffect, SkillEffectCatalog, SkillEffectSlot},
             rule::route::{ConditionDriver, ConditionRoute, RouteError},
-            target::{TargetRequest, is_mapped_target_code},
+            target::{TargetRequest, is_supported_target},
         },
     };
 
@@ -50,12 +53,13 @@ pub mod scan {
     }
 
     pub mod behavior {
+        pub use crate::engine::skill::behavior::buff::random_buff_pool;
         pub use crate::engine::skill::behavior::{
             has_destination, is_slot_supported, is_supported,
         };
 
         pub mod classify {
-            pub use crate::engine::skill::behavior::classify::BehaviorSpec;
+            pub use crate::engine::skill::behavior::classify::{BehaviorKind, BehaviorSpec};
         }
 
         pub mod registry {
@@ -127,6 +131,21 @@ pub fn configured_opening_cards(game_data: &config::GameDB, episode_id: i32) -> 
 
 pub fn moxie_down_resistance_attribute_id() -> i32 {
     crate::engine::entity::attr::AttrId::MoxieDownResistance.id()
+}
+
+pub fn conduit_ex_point_type() -> i32 {
+    crate::engine::manager::ex_point::ExPointKind::DevicePower.as_wire()
+}
+
+pub fn conduit_ex_point_overflow_bank_act() -> i32 {
+    crate::engine::skill::buff_act::registry::definitions()
+        .find(|definition| {
+            definition.kind
+                == crate::engine::skill::buff_act::registry::BuffActKind::DeviceExPointOverflowBank
+        })
+        .expect("device overflow bank has a registry owner")
+        .key
+        .opcode
 }
 
 pub fn ultimate_ignores_limit(

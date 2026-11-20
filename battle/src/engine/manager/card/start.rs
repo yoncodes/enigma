@@ -278,6 +278,7 @@ pub(crate) struct ConfiguredStartDecks {
     pub ai: Vec<CardInfo>,
     pub player: Vec<CardInfo>,
     pub used_capture: bool,
+    used_ai_capture: bool,
 }
 
 pub(crate) fn configured_start_decks(
@@ -313,7 +314,7 @@ pub(crate) fn configured_start_decks(
             )
         },
     );
-    if !decks.used_capture {
+    if !decks.used_ai_capture {
         resolve_configured_targets(fight, managers, skill_catalog, determinism, &mut decks.ai)?;
     }
     Ok(decks)
@@ -382,54 +383,73 @@ fn start_decks_from(
                 .any(|candidate| same_card(card, candidate))
         });
         ai_candidates.extend_from_slice(prepared);
-        if captured_ai.len() == expected_ai_count
-            && prepared_present
-            && ordinary_valid
-            && captured_player.as_ref().is_none_or(|player| {
-                player.len().checked_add(reserved_ultimate_slots) == Some(hand_size)
+        let ai_valid = captured_ai.len() == expected_ai_count && prepared_present && ordinary_valid;
+        let ai = ai_valid
+            .then(|| {
+                captured_ai
+                    .iter()
+                    .map(|captured| {
+                        let mut candidate = ai_candidates
+                            .iter()
+                            .find(|candidate| {
+                                captured.uid == candidate.uid
+                                    && captured.skill_id == candidate.skill_id
+                            })?
+                            .clone();
+                        // V7 snapshots may retain a defeated roster UID even when skill targeting is source-owned.
+                        candidate.target_uid = captured
+                            .target_uid
+                            .filter(|uid| valid_target_uids.contains(uid))
+                            .or(candidate.target_uid);
+                        Some(candidate)
+                    })
+                    .collect::<Option<Vec<_>>>()
             })
-        {
-            let ai = captured_ai
+            .flatten();
+        let player_size_valid = captured_player.as_ref().is_none_or(|player| {
+            player.len().checked_add(reserved_ultimate_slots) == Some(hand_size)
+        });
+        let player = match captured_player.as_ref() {
+            None => Some(Vec::new()),
+            Some(cards) if player_size_valid => cards
                 .iter()
                 .map(|captured| {
-                    let mut candidate = ai_candidates
+                    captured_candidates
                         .iter()
                         .find(|candidate| {
                             captured.uid == candidate.uid && captured.skill_id == candidate.skill_id
-                        })?
-                        .clone();
-                    // V7 snapshots may retain a defeated roster UID even when skill targeting is source-owned.
-                    candidate.target_uid = captured
-                        .target_uid
-                        .filter(|uid| valid_target_uids.contains(uid))
-                        .or(candidate.target_uid);
-                    Some(candidate)
-                })
-                .collect::<Option<Vec<_>>>();
-            let player = captured_player
-                .as_ref()
-                .map(|cards| {
-                    cards
-                        .iter()
-                        .map(|captured| {
-                            captured_candidates
-                                .iter()
-                                .find(|candidate| {
-                                    captured.uid == candidate.uid
-                                        && captured.skill_id == candidate.skill_id
-                                })
-                                .cloned()
                         })
-                        .collect::<Option<Vec<_>>>()
+                        .cloned()
                 })
-                .unwrap_or_else(|| Some(Vec::new()));
-            if let (Some(ai), Some(player)) = (ai, player) {
-                return ConfiguredStartDecks {
-                    ai,
-                    player,
-                    used_capture: true,
-                };
-            }
+                .collect::<Option<Vec<_>>>(),
+            Some(_) => None,
+        };
+        if let (Some(ai), Some(player)) = (ai, player.as_ref()) {
+            return ConfiguredStartDecks {
+                ai,
+                player: player.clone(),
+                used_capture: true,
+                used_ai_capture: true,
+            };
+        }
+        if captured_player.is_some()
+            && player_size_valid
+            && let Some(player) = player
+        {
+            let mut ai = generate_ai_deck_with_extra_actions(
+                fight,
+                ex_point,
+                eureka,
+                extra_ai_actions,
+                &mut rng,
+            );
+            ai.extend_from_slice(prepared);
+            return ConfiguredStartDecks {
+                ai,
+                player,
+                used_capture: true,
+                used_ai_capture: false,
+            };
         }
     }
 
@@ -442,6 +462,7 @@ fn start_decks_from(
         ai,
         player,
         used_capture: false,
+        used_ai_capture: false,
     }
 }
 
@@ -746,6 +767,72 @@ mod tests {
     }
 
     #[test]
+    fn captured_player_opening_is_independent_from_the_ai_snapshot() {
+        let fight = Fight {
+            attacker: Some(FightTeam {
+                entitys: vec![entity(12, 1002, 1, &[202], &[203])],
+                ..Default::default()
+            }),
+            defender: Some(FightTeam {
+                entitys: vec![entity(-2, 2002, 1, &[302], &[303])],
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let player = CardInfo {
+            uid: Some(12),
+            skill_id: Some(202),
+            ..Default::default()
+        };
+
+        let managers = crate::engine::manager::BattleManagers::seeded(&fight);
+        let mut skill_catalog = crate::engine::skill::effect::SkillEffectCatalog::default();
+        for skill_id in [302, 303] {
+            skill_catalog.insert(crate::engine::skill::effect::slot::ParsedSkillEffect {
+                skill_id,
+                slots: Vec::new(),
+            });
+            skill_catalog.insert_logic_target(skill_id, 201);
+        }
+        let configured = configured_start_decks(
+            &fight,
+            &managers,
+            &skill_catalog,
+            &crate::engine::runtime::determinism::RoundDeterminism::default(),
+            0,
+            0,
+            Some(CapturedDeckSeed::Opening {
+                ai: vec![
+                    CardInfo {
+                        uid: Some(-2),
+                        skill_id: Some(302),
+                        ..Default::default()
+                    },
+                    CardInfo {
+                        uid: Some(-2),
+                        skill_id: Some(303),
+                        ..Default::default()
+                    },
+                ],
+                player: vec![player.clone(); hand_size(&fight)],
+                reserved_ultimate_slots: 0,
+            }),
+        )
+        .unwrap();
+
+        assert!(configured.used_capture);
+        assert!(!configured.used_ai_capture);
+        assert_eq!(configured.ai.len(), 1);
+        assert_eq!(configured.ai[0].target_uid, Some(12));
+        assert!(
+            configured
+                .player
+                .iter()
+                .all(|card| card.skill_id == Some(202))
+        );
+    }
+
+    #[test]
     fn captured_next_ai_snapshot_validates_without_a_player_hand() {
         let fight = Fight {
             attacker: Some(FightTeam {
@@ -864,7 +951,7 @@ mod tests {
     }
 
     #[test]
-    fn captured_start_decks_reject_count_or_identity_mismatch_as_a_whole() {
+    fn captured_player_opening_rejects_count_or_identity_mismatch() {
         let fight = Fight {
             attacker: Some(FightTeam {
                 entitys: vec![entity(12, 1002, 1, &[202], &[203])],
@@ -886,7 +973,6 @@ mod tests {
             skill_id: Some(202),
             ..Default::default()
         };
-        let valid_player = || vec![player_card(); hand_size(&fight)];
         let normal = {
             let mut ex_point = crate::engine::manager::ex_point::ExPointManager::default();
             ex_point.seed(&fight);
@@ -904,12 +990,6 @@ mod tests {
         };
 
         for captured in [
-            (vec![ai_card(302)], valid_player()),
-            (
-                vec![ai_card(302), ai_card(303), ai_card(302)],
-                valid_player(),
-            ),
-            (vec![ai_card(302), ai_card(999)], valid_player()),
             (vec![ai_card(302), ai_card(303)], vec![player_card()]),
             (
                 vec![ai_card(302), ai_card(303)],

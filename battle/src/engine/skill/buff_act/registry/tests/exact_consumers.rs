@@ -548,6 +548,9 @@ fn foundation_counter_is_an_exact_snapshotted_state_consumer() {
         Some(BuffActInitialStateRule::FoundationCounter)
     );
     assert!(definition.state.consumer);
+    assert!(definition.accepts_route(203, 0));
+    assert!(!definition.accepts_route(202, 0));
+    assert!(!definition.accepts_route(203, 1));
     assert_eq!(
         destination(1147, "FoundationCounter", &[5000, 1000, 1000]),
         Some(BuffActDestination::StateConsumer)

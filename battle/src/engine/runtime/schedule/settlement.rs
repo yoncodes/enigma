@@ -239,6 +239,30 @@ pub fn run_finished_attacker_settlement(
     Ok(result)
 }
 
+pub(in crate::engine::runtime) fn run_terminal_attacker_transition(
+    managers: &mut BattleManagers,
+    pool: &TargetPool,
+    catalog: &SkillEffectCatalog,
+    determinism: &mut RoundDeterminism,
+    context: TargetContext,
+) -> Result<DrainResult, DrainError> {
+    let refresh = run_committed_terminal_conduit_roster_refresh(
+        managers,
+        pool,
+        catalog,
+        determinism,
+        context,
+    )?;
+    if refresh.frames.is_empty() {
+        return Ok(refresh);
+    }
+    let mut result = DrainResult::default();
+    push_cue(&mut result.frames, RoundCue::SmallRoundEnd { team_type: 1 });
+    append(&mut result, refresh);
+    push_cue(&mut result.frames, RoundCue::ClearUniversalCard);
+    Ok(result)
+}
+
 #[allow(clippy::too_many_arguments)]
 fn run_duration_advances_for_event(
     managers: &mut BattleManagers,
@@ -344,7 +368,13 @@ fn run_round_end_transition(
     push_cue(&mut result.frames, RoundCue::SmallRoundEnd { team_type: 1 });
     append(
         &mut result,
-        run_terminal_conduit_roster_refresh(managers, pool, catalog, determinism, context)?,
+        run_committed_terminal_conduit_roster_refresh(
+            managers,
+            pool,
+            catalog,
+            determinism,
+            context,
+        )?,
     );
     push_cue(&mut result.frames, RoundCue::ClearUniversalCard);
     append(
@@ -358,14 +388,16 @@ fn run_round_end_transition(
             settled_buffs,
         )?,
     );
-    append(
-        &mut result,
-        run_terminal_conduit_roster_refresh(managers, pool, catalog, determinism, context)?,
-    );
+    let refresh = run_conduit_roster_refresh(managers, pool, catalog, determinism, context)?;
+    if !refresh.frames.is_empty() {
+        let mut phase = begin_round_phase(RoundPhase::PostSettlementConduitRosterRefresh);
+        append_round_phase(&mut phase, refresh);
+        append(&mut result, phase);
+    }
     Ok(result)
 }
 
-pub(crate) fn run_terminal_conduit_roster_refresh(
+fn run_committed_terminal_conduit_roster_refresh(
     managers: &mut BattleManagers,
     pool: &TargetPool,
     catalog: &SkillEffectCatalog,
@@ -375,18 +407,31 @@ pub(crate) fn run_terminal_conduit_roster_refresh(
     if managers.terminal_outcome().is_none() {
         return Ok(DrainResult::default());
     }
-    let defeated_uids = managers
-        .conduit
-        .selections()
-        .into_iter()
-        .map(|(uid, _)| uid)
-        .filter(|uid| managers.hp.current(*uid) == 0)
-        .collect::<Vec<_>>();
+    let refresh = run_conduit_roster_refresh(managers, pool, catalog, determinism, context)?;
+    if refresh.frames.is_empty() {
+        return Ok(refresh);
+    }
+    let mut result = begin_round_phase(RoundPhase::TerminalConduitRosterRefresh);
+    append_round_phase(&mut result, refresh);
+    Ok(result)
+}
+
+fn run_conduit_roster_refresh(
+    managers: &mut BattleManagers,
+    pool: &TargetPool,
+    catalog: &SkillEffectCatalog,
+    determinism: &mut RoundDeterminism,
+    context: TargetContext,
+) -> Result<DrainResult, DrainError> {
     let commands = managers
         .conduit
-        .terminal_roster_refresh_commands(&defeated_uids)
+        .roster_refresh_commands(&managers.hp)
         .into_iter()
-        .map(|command| RuleOp::Command(BattleCommand::Conduit(command)));
+        .map(|command| RuleOp::Command(BattleCommand::Conduit(command)))
+        .collect::<Vec<_>>();
+    if commands.is_empty() {
+        return Ok(DrainResult::default());
+    }
     drain::run_command_group(managers, pool, catalog, determinism, context, commands)
 }
 
@@ -671,36 +716,6 @@ pub fn run_round_end_final_settlement(
     append_round_phase(&mut after_phase, after_skills);
     append(&mut result, after_phase);
     Ok(result)
-}
-
-#[allow(clippy::too_many_arguments)]
-fn run_owned_duration_advances(
-    managers: &mut BattleManagers,
-    pool: &TargetPool,
-    catalog: &SkillEffectCatalog,
-    determinism: &mut RoundDeterminism,
-    context: TargetContext,
-    take_stage: i32,
-    targets: Vec<crate::engine::manager::buff::BuffDurationTarget>,
-) -> Result<DrainResult, DrainError> {
-    let operations = targets.into_iter().map(|target| {
-        let owner = FrameOwner::BuffDuration {
-            owner_uid: target.owner_uid,
-            buff_uid: target.buff_uid,
-            take_stage,
-        };
-        let advance = BuffDurationAdvance::new(
-            take_stage,
-            vec![target.owner_uid],
-            Some(vec![target.buff_uid]),
-        )
-        .expect("final settlement duration stage is registered");
-        (
-            owner,
-            RuleOp::Command(BattleCommand::Buff(BuffCommand::AdvanceDuration(advance))),
-        )
-    });
-    drain::run_owned_command_group(managers, pool, catalog, determinism, context, operations)
 }
 
 fn final_settlement_owner_order(pool: &TargetPool, managers: &BattleManagers) -> Vec<i64> {

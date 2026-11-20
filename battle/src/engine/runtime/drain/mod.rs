@@ -34,7 +34,9 @@ mod command_dispatch;
 mod command_prepare;
 mod entry;
 mod model;
+mod paid_ultimate;
 mod reactions;
+mod shield_counter;
 mod skill_dispatch;
 mod state;
 
@@ -49,12 +51,14 @@ use model::{
     queued_defeated_owner_card_cleanup, queued_terminal_settlement, required_buff_act_definition,
 };
 pub use model::{DrainError, DrainResult, ReactionLane};
+use reactions::{
+    ReactionDispatch, dispatch_event_groups, dispatch_owner_reactions, dispatch_reactions,
+};
 #[cfg(test)]
 use reactions::{
     dispatch_event_batch, ordered_hit_entities, queued_reactions, reaction_counterparty,
     reaction_skill_target,
 };
-use reactions::{dispatch_event_groups, dispatch_owner_reactions, dispatch_reactions};
 use skill_dispatch::drain_skill;
 use state::DrainState;
 
@@ -62,8 +66,13 @@ fn push_death(
     frames: &mut [SemanticFrame],
     path: &[usize],
     managers: &mut BattleManagers,
-    death: crate::engine::manager::hp::DeathTransition,
+    death: crate::engine::manager::hp::PendingDeath,
 ) {
+    if !managers.hp.is_current_death(death) {
+        return;
+    }
+    managers.conduit.record_death(death);
+    let death = death.transition();
     if let Some(change) = managers.fight_task.record_kill(death.target_uid, 1) {
         push_change(
             frames,
@@ -413,7 +422,7 @@ fn drain_queue_with_deferred(
                     catalog,
                     determinism,
                     context,
-                    promotions,
+                    &promotions,
                 )?;
                 for frame in promoted.frames.drain(..) {
                     push_frame_child(&mut result.frames, parent_path, frame);
@@ -433,7 +442,7 @@ fn drain_queue_with_deferred(
                         queued_defeated_entity_halo_cleanup(managers, transition, parent_path)
                             .into_iter()
                             .collect::<Vec<_>>();
-                    settlements.push(queued_death_event_group_settlement(transition, parent_path));
+                    settlements.push(queued_death_event_group_settlement(death, parent_path));
                     prepend(queue, settlements);
                 }
             }
@@ -446,18 +455,20 @@ fn drain_queue_with_deferred(
                     .take_subscriber_deaths(group)
                     .into_iter()
                     .filter(|(death, _)| managers.hp.is_current_death(*death))
-                    .map(|(death, parent_path)| (death.transition(), parent_path))
                     .collect::<Vec<_>>();
                 let mut settlements = Vec::new();
                 for (death, parent_path) in &deaths {
-                    if let Some(cleanup) =
-                        queued_defeated_entity_halo_cleanup(managers, *death, parent_path)
-                    {
+                    if let Some(cleanup) = queued_defeated_entity_halo_cleanup(
+                        managers,
+                        death.transition(),
+                        parent_path,
+                    ) {
                         settlements.push(cleanup);
                     }
                     settlements.push(queued_death_settlement(*death, parent_path));
                 }
                 if let Some((death, parent_path)) = deaths.first() {
+                    let death = death.transition();
                     settlements.push(queued_terminal_settlement(
                         BattleEvent::EntityDied(crate::engine::event::payload::EntityDiedEvent {
                             source_uid: death.source_uid,
@@ -471,26 +482,35 @@ fn drain_queue_with_deferred(
             RuleOp::TerminalSettlement => {
                 commit_terminal(managers, base_pool, context, state, &mut result.events);
             }
-            RuleOp::Skill(invocation) => drain_skill(
-                managers,
-                base_pool,
-                pool,
-                catalog,
-                determinism,
-                context,
-                queue,
-                &mut result,
-                state,
-                invocation,
-                trigger,
-                skill_execution,
-                frame_path,
-                parent_path,
-                frame_group,
-                frame_owner,
-                subscriber,
-                caster_frame,
-            )?,
+            RuleOp::Skill(invocation)
+                if invocation.round_cap.is_some_and(|cap| {
+                    !managers.can_fire_buff_act(cap.owner_uid, cap.buff_uid, cap.key, cap.limit)
+                }) => {}
+            RuleOp::Skill(mut invocation) => {
+                if let Some(cap) = invocation.round_cap.take() {
+                    managers.mark_buff_act_fired(cap.owner_uid, cap.buff_uid, cap.key);
+                }
+                drain_skill(
+                    managers,
+                    base_pool,
+                    pool,
+                    catalog,
+                    determinism,
+                    context,
+                    queue,
+                    &mut result,
+                    state,
+                    invocation,
+                    trigger,
+                    skill_execution,
+                    frame_path,
+                    parent_path,
+                    frame_group,
+                    frame_owner,
+                    subscriber,
+                    caster_frame,
+                )?
+            }
             RuleOp::FreezeActiveSkillRates => {
                 let frame_path = frame_path.ok_or(DrainError::MissingActiveSkillContext)?;
                 let execution = queue
@@ -733,6 +753,13 @@ fn attach_buff_grant_relation(
     use crate::engine::skill::rule::output::BattleCommand;
 
     match op {
+        RuleOp::Command(BattleCommand::Buff(crate::engine::manager::buff::BuffCommand::Grant(
+            grant,
+        ))) if consequence
+            == crate::engine::skill::condition::registry::ConsequencePolicy::LatestHolderGrant =>
+        {
+            RuleOp::Command(BattleCommand::BuffMoveToHolder(grant))
+        }
         RuleOp::Command(BattleCommand::Buff(command)) => {
             RuleOp::Command(BattleCommand::Buff(attach_relation(command, consequence)))
         }
