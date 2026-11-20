@@ -9,6 +9,14 @@ use crate::engine::{
 
 const VILA: i64 = 30;
 
+#[test]
+fn reaction_waits_for_attacked_skills() {
+    assert_eq!(
+        super::super::registry::reaction_timing(10010, "BeAttackedFromUseSkill"),
+        crate::engine::event::subscription::ReactionTiming::HpThresholds
+    );
+}
+
 fn ally(uid: i64, current_hp: i32) -> FightEntityInfo {
     FightEntityInfo {
         uid: Some(uid),
