@@ -426,6 +426,12 @@ fn active_skill_status_thresholds_preserve_strictness() {
         SkillActionTriggerPolicy::SkipEnergyCards
     );
     assert_eq!(
+        find_key(42203, "HasTypeBuffMoreThan")
+            .unwrap()
+            .reaction_frame_target,
+        ReactionFrameTarget::CausingFrame
+    );
+    assert_eq!(
         find_key(43203, "HasTypeBuffLessThan").unwrap().role,
         ConditionRole::Predicate
     );
