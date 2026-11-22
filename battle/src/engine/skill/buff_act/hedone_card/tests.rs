@@ -1,3 +1,4 @@
+use crate::test_support::effects;
 use sonettobuf::{
     ActEffect, BuffActInfo, BuffInfo, CardExtraInfo, CardInfo, Fight, FightEntityInfo, FightStep,
     FightTeam, effect_type_enum::EffectType,
@@ -19,17 +20,6 @@ use crate::engine::{
 };
 
 use super::*;
-
-fn effects<'a>(steps: &'a [FightStep], output: &mut Vec<&'a ActEffect>) {
-    for step in steps {
-        for effect in &step.act_effect {
-            output.push(effect);
-            if let Some(child) = &effect.fight_step {
-                effects(std::slice::from_ref(child), output);
-            }
-        }
-    }
-}
 
 fn card(owner_uid: i64, skill_id: i32) -> CardInfo {
     CardInfo {

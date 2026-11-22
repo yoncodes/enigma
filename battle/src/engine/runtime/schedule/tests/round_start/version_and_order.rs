@@ -1,4 +1,5 @@
 use super::*;
+use crate::test_support::frame_contains_skill;
 
 #[test]
 fn version_seven_round_start_event_schedule_runs_each_owners_buff_gate() {
@@ -418,18 +419,11 @@ fn version_seven_runs_late_setup_before_priority_three_setup() {
     assert_eq!(managers.ex_point.get(10), 5);
     assert_eq!(managers.ex_point.get(11), 3);
     assert!(!managers.buff.has_buff_id(10, 2112021));
-    fn contains_skill(frame: &SemanticFrame, skill_id: i32) -> bool {
-        matches!(frame.owner, FrameOwner::Skill { skill_id: current, .. } if current == skill_id)
-            || frame.items.iter().any(|item| match item {
-                FrameItem::Child(child) => contains_skill(child, skill_id),
-                FrameItem::Change(_) | FrameItem::Cue(_) => false,
-            })
-    }
     let root_for_skill = |skill_id| {
         round
             .frames
             .iter()
-            .position(|frame| contains_skill(frame, skill_id))
+            .position(|frame| frame_contains_skill(frame, skill_id))
             .expect("round-start skill has a semantic owner")
     };
     let settlement = round
@@ -466,7 +460,8 @@ fn version_seven_runs_late_setup_before_priority_three_setup() {
         .iter()
         .find_map(|item| match item {
             FrameItem::Child(child)
-                if matches!(child.owner, FrameOwner::SetupSide(_)) && contains_skill(child, 40) =>
+                if matches!(child.owner, FrameOwner::SetupSide(_))
+                    && frame_contains_skill(child, 40) =>
             {
                 Some(child)
             }
@@ -486,7 +481,9 @@ fn version_seven_runs_late_setup_before_priority_three_setup() {
         .items
         .iter()
         .filter_map(|item| match item {
-            FrameItem::Child(child) if contains_skill(child, 60) || contains_skill(child, 80) => {
+            FrameItem::Child(child)
+                if frame_contains_skill(child, 60) || frame_contains_skill(child, 80) =>
+            {
                 Some(child)
             }
             FrameItem::Change(_) | FrameItem::Cue(_) | FrameItem::Child(_) => None,
@@ -496,7 +493,7 @@ fn version_seven_runs_late_setup_before_priority_three_setup() {
     assert!(
         event_children
             .iter()
-            .all(|child| contains_skill(child, 60) != contains_skill(child, 80))
+            .all(|child| frame_contains_skill(child, 60) != frame_contains_skill(child, 80))
     );
     fn contains_change(
         frame: &SemanticFrame,
