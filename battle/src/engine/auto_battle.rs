@@ -46,6 +46,7 @@ struct Candidate {
     free: bool,
     ultimate: bool,
     conduit_priority: conduit::Priority,
+    opening_skill_two: bool,
     first_for_owner: bool,
     support: Support,
     strength: Option<(i32, i32)>,
@@ -183,6 +184,21 @@ fn plan_cards_inner(
         return prefix.map(|_| None);
     }
     let live_pool = pool.runtime_view(managers);
+    let basic_opening = fight.cur_round == Some(1)
+        && request.opers.is_empty()
+        && planned_devices.is_empty()
+        && fight.attacker.as_ref().is_some_and(|team| {
+            team.device_area
+                .as_ref()
+                .is_none_or(|area| area.devices.is_empty() && area.powers.is_empty())
+        })
+        && cards.visible_cards().all(|card| {
+            !card.temp_card.unwrap_or_default()
+                && card_choice_options(card, managers).is_empty()
+                && card_identity(card, None).is_some_and(|(uid, skill_id)| {
+                    matches!(live_pool.skill_slot(managers, uid, skill_id), 1 | 2)
+                })
+        });
     let selected_power_types = conduit::selected_power_types(managers, planned_devices);
     let mut opers = assist_boss_operation(
         fight,
@@ -220,6 +236,7 @@ fn plan_cards_inner(
             determinism,
             &selected_power_types,
             &mut reported_unsupported,
+            basic_opening && opers.is_empty(),
         )?
         else {
             break;
@@ -538,6 +555,7 @@ fn best_candidate(
     determinism: &RoundDeterminism,
     selected_power_types: &HashSet<(i32, i32)>,
     reported_unsupported: &mut HashSet<i32>,
+    opening: bool,
 ) -> Result<Option<Candidate>, AutoBattleError> {
     let candidates = cards
         .visible_cards()
@@ -693,6 +711,8 @@ fn best_candidate(
                     temporary,
                     source.position,
                 ),
+                opening_skill_two: opening
+                    && live_pool.skill_slot(managers, source_uid, skill_id) == 2,
                 first_for_owner: energy.is_none()
                     && !played_owners.contains(&source_uid)
                     && support != Support::Unneeded,
@@ -716,6 +736,7 @@ fn best_candidate(
             // Give every hero a card before any hero plays a second one when utility is equal.
             candidate.first_for_owner,
             candidate.support,
+            candidate.opening_skill_two,
             candidate.strength,
             Reverse(candidate.lineup_position),
             Reverse(candidate.card_index),

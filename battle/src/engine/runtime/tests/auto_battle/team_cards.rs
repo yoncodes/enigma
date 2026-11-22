@@ -1,6 +1,26 @@
 use super::*;
 
 #[test]
+fn auto_round_leads_with_the_second_incantation_in_the_opening() {
+    let beryl = team_hero(10, 3134, 1_000, [31340111, 31340121]);
+    let mut runtime = team_runtime(
+        vec![beryl],
+        vec![
+            hand_card(10, 31340111, false),
+            hand_card(10, 31340121, false),
+        ],
+    );
+    runtime.fight.cur_round = Some(1);
+    let opening = runtime.plan_auto_round(&AutoRoundRequest::default());
+    assert_eq!(opening.opers[0].param1, Some(2));
+
+    runtime.fight.cur_round = Some(2);
+    runtime.round_state.cur_round = 2;
+    let later = runtime.plan_auto_round(&AutoRoundRequest::default());
+    assert_eq!(later.opers[0].param1, Some(1));
+}
+
+#[test]
 fn auto_round_plays_a_ready_team_ultimate_at_its_visible_index() {
     let mut lorentz = team_hero(10, 3139, 1_000, [31390111, 31390121]);
     lorentz.ex_point = Some(5);
