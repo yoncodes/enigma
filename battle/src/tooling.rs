@@ -1,5 +1,9 @@
 //! Explicit diagnostic surface for Battle Preview and BattleCheck.
 
+pub mod damage {
+    pub use crate::engine::damage::export::collect;
+}
+
 pub mod entity {
     pub use crate::engine::entity::{
         builder::EntityBuilder,

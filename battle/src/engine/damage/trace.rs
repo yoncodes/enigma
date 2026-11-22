@@ -130,9 +130,12 @@ pub(super) struct HitTrace<'a> {
 
 impl HitTrace<'_> {
     pub fn emit(&self) {
-        match serde_json::to_string(self) {
-            Ok(json) => eprintln!("damage-json {json}"),
-            Err(error) => eprintln!("damage-json error: {error}"),
+        super::export::record("calculation", self);
+        if enabled() {
+            match serde_json::to_string(self) {
+                Ok(json) => eprintln!("damage-json {json}"),
+                Err(error) => eprintln!("damage-json error: {error}"),
+            }
         }
     }
 }

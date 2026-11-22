@@ -686,12 +686,16 @@ fn depleted_team_shared_shield_removes_its_exact_carrier_before_reseed() {
         })
     };
 
+    let (rejected, records) =
+        crate::tooling::damage::collect(|| managers.execute_hp_batch(vec![damage(1), damage(999)]))
+            .unwrap();
     assert_eq!(
-        managers.execute_hp_batch(vec![damage(1), damage(999)]),
+        rejected,
         Err(crate::engine::manager::hp::HpCommandError::MissingTarget(
             999
         ))
     );
+    assert!(records.is_empty());
     assert_eq!(managers.hp.current(1), 1_000);
     assert!(managers.buff.has_buff_id(1, 31430144));
     assert_eq!(
@@ -707,9 +711,17 @@ fn depleted_team_shared_shield_removes_its_exact_carrier_before_reseed() {
         vec![100]
     );
 
-    let changes = managers.execute_hp(damage(1)).unwrap();
+    let (changes, records) =
+        crate::tooling::damage::collect(|| managers.execute_hp(damage(1))).unwrap();
+    let changes = changes.unwrap();
+    assert_eq!(records.len(), 1);
+    let record: serde_json::Value = serde_json::from_str(&records[0]).unwrap();
+    assert_eq!(record["kind"], "settlement");
+    assert_eq!(record["data"]["input_reduce_hp"], 0);
+    assert_eq!(record["data"]["reduce_hp"], changes.hp.unwrap().delta);
 
     let absorption = changes.team_shared_shield_absorbed.unwrap();
+    assert_eq!(record["data"]["team_shield_absorbed"], absorption.absorbed);
     assert_eq!((absorption.before, absorption.after), (100, 0));
     let removed = changes.team_shared_shield_removed.as_ref().unwrap();
     assert_eq!(removed.change.removed[0].buff.uid, Some(50));

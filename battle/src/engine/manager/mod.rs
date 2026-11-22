@@ -804,7 +804,11 @@ impl BattleManagers {
             let shares = share
                 .shares
                 .into_iter()
-                .map(|share| self.hp.commit_validated_command(share, None, None))
+                .map(|share| {
+                    let changes = self.hp.commit_validated_command(share, None, None);
+                    crate::engine::damage::export::settlement(share, &changes, &self.hp, None);
+                    changes
+                })
                 .collect();
             Box::new(hp::SharedHurt { consumed, shares })
         });
@@ -835,6 +839,7 @@ impl BattleManagers {
                 .shield_carrier_uid(changes.target_uid)
                 .unwrap_or_default();
         }
+        crate::engine::damage::export::settlement(plan.command, &changes, &self.hp, loss_limit);
         HpCommit {
             changes,
             shield_counter_credits: plan.shield_counter_credits,
