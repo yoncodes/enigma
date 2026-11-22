@@ -1422,7 +1422,7 @@ pub(in crate::engine::runtime) fn emit_ops(
             });
         }
     }
-    if continuation.is_none() && invocation.mode.completes_action() {
+    if continuation.is_none() && invocation.mode.publishes_completion() {
         outputs.push(SkillEmissionOp {
             op: RuleOp::SkillLifecycle(
                 crate::engine::skill::action::SkillLifecycle::ActionCompleted(

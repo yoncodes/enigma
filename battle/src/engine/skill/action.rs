@@ -50,6 +50,10 @@ impl SkillExecutionMode {
         )
     }
 
+    pub(crate) fn publishes_completion(self) -> bool {
+        self.completes_action() || self == Self::NestedExtra
+    }
+
     pub(crate) fn finishes_selected_conduit_phase(self) -> bool {
         self == Self::Device
     }
