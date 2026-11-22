@@ -1596,12 +1596,12 @@ impl BattleManagers {
         self.round_rule_fires.clear();
         self.buff_act_fires.clear();
         self.configured_rule_progress.begin_round_start();
+        self.hp.begin_round();
     }
 
     pub(crate) fn begin_action_round(&mut self) {
         self.configured_rule_progress.begin_action_round();
         self.card.begin_round();
-        self.hp.begin_round();
         self.injury.begin_round();
         self.gauge.begin_combat_round();
         self.field.begin_round();
