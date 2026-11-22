@@ -492,6 +492,9 @@ impl BattleRuntime {
             self.managers.card.ai_queue(),
         );
         self.managers.sync_entities(&mut self.fight);
+        if skill_type == ClothSkillType::ClothSkill {
+            round.ex_point_info = self.managers.ex_point_info(&self.fight);
+        }
         let hero_sp_attributes = self.managers.hero_sp_attributes(&self.fight);
         if hero_sp_attributes == self.round_state.hero_sp_attributes {
             round.hero_sp_attributes.clear();

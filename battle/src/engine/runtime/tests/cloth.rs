@@ -77,6 +77,10 @@ fn configured_cloth_skills_drive_universal_and_redeal_card_rules() {
     let universal = universal.round.unwrap();
     assert_eq!(universal.power, Some(59));
     assert_eq!(
+        universal.ex_point_info,
+        runtime.managers.ex_point_info(&runtime.fight)
+    );
+    assert_eq!(
         universal
             .skill_infos
             .iter()
@@ -128,6 +132,10 @@ fn configured_cloth_skills_drive_universal_and_redeal_card_rules() {
         .round
         .unwrap();
     assert_eq!(redeal.power, Some(9));
+    assert_eq!(
+        redeal.ex_point_info,
+        runtime.managers.ex_point_info(&runtime.fight)
+    );
     assert_eq!(redeal.fight_step.len(), 2);
     assert_eq!(
         redeal.fight_step[0].act_effect[0].effect_type,
