@@ -21,6 +21,82 @@ fn auto_round_leads_with_the_second_incantation_in_the_opening() {
 }
 
 #[test]
+fn auto_round_aims_source_buffs_at_the_selected_enemy() {
+    let beryl = team_hero(10, 3134, 1_000, [31340111, 31340121]);
+    let mut runtime = team_runtime_against(
+        vec![beryl],
+        vec![enemy(-1, 1_000), enemy(-2, 1_000)],
+        vec![hand_card(10, 31340121, false)],
+    );
+    let default = runtime.plan_auto_round(&AutoRoundRequest::default());
+    assert_eq!(default.opers[0].to_id, Some(-1));
+
+    let reply = runtime.plan_auto_round(&AutoRoundRequest {
+        to_id: Some(-2),
+        ..Default::default()
+    });
+    assert_eq!(reply.opers[0].to_id, Some(-2));
+    let round = runtime
+        .advance_round(BeginRoundRequest {
+            opers: reply.opers,
+            auto_oper: Some(true),
+            ..Default::default()
+        })
+        .unwrap();
+    let cast = round
+        .fight_step
+        .iter()
+        .find(|step| step.act_id == Some(31340121))
+        .unwrap();
+    assert!(cast.act_effect.iter().any(|effect| {
+        effect.target_id == Some(10)
+            && effect
+                .buff
+                .as_ref()
+                .is_some_and(|buff| buff.buff_id == Some(31340002))
+    }));
+}
+
+#[test]
+fn auto_round_source_buff_aim_respects_the_enemy_selection_gate() {
+    let beryl = team_hero(10, 3134, 1_000, [31340111, 31340121]);
+    let mut runtime = team_runtime_against(
+        vec![beryl],
+        vec![enemy(-1, 1_000), enemy(-2, 1_000), enemy(-3, 1_000)],
+        vec![
+            hand_card(10, 31340121, false),
+            hand_card(10, 31340111, false),
+        ],
+    );
+    runtime.fight.cur_round = Some(1);
+    runtime.round_state.act_point = 2;
+    grant_buff(&mut runtime, -1, -1, 24211);
+    grant_buff(&mut runtime, -2, -2, 11410101);
+
+    let planner = runtime.auto_round_planner();
+    let mut request = AutoRoundRequest {
+        to_id: Some(-2),
+        ..Default::default()
+    };
+    let planned = planner.plan(&request).unwrap();
+    assert_eq!(planned.opers[0].param1, Some(1));
+    assert_eq!(planned.opers[0].to_id, Some(-3));
+
+    request.opers = vec![BeginRoundOper {
+        oper_type: Some(CardOpType::PlayCard.id()),
+        param1: Some(1),
+        to_id: Some(-3),
+        ..Default::default()
+    }];
+    assert_eq!(planner.plan(&request).unwrap().opers.len(), 1);
+
+    for target in [-1, -2] {
+        request.opers[0].to_id = Some(target);
+        assert!(planner.plan(&request).unwrap().opers.is_empty());
+    }
+}
+
+#[test]
 fn auto_round_plays_a_ready_team_ultimate_at_its_visible_index() {
     let mut lorentz = team_hero(10, 3139, 1_000, [31390111, 31390121]);
     lorentz.ex_point = Some(5);

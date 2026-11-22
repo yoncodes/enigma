@@ -694,6 +694,18 @@ fn best_candidate(
                     })
                 })
                 .flatten()
+                .or_else(|| {
+                    if energy.is_some() || device {
+                        return None;
+                    }
+                    CardSelectionResolver::source_buff_aim(
+                        catalog,
+                        skill_id,
+                        source_uid,
+                        live_pool,
+                        preferred_target,
+                    )
+                })
                 .unwrap_or(resolved_target_uid);
             Some(Ok(Candidate {
                 card_index,

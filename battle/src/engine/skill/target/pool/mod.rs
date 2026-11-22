@@ -725,6 +725,22 @@ impl TargetEntity {
         self.buffs.iter().any(|buff| buff.id == id)
     }
 
+    pub(super) fn can_receive_enemy_aim(&self, catalog: crate::catalog::BattleCatalog) -> bool {
+        self.current_hp > 0
+            && !self
+                .buffs
+                .iter()
+                .flat_map(|buff| &buff.features)
+                .any(|feature| {
+                    feature
+                        .split('#')
+                        .next()
+                        .and_then(|opcode| opcode.parse().ok())
+                        .and_then(|opcode| catalog.buff_act_name(opcode))
+                        .is_some_and(|name| matches!(name, "CantSelect" | "CantSelectEx"))
+                })
+    }
+
     pub(super) fn has_buff_type(&self, type_id: i32) -> bool {
         self.buffs
             .iter()
