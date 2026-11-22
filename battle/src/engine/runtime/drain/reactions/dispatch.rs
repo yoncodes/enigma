@@ -21,6 +21,7 @@ pub(in crate::engine::runtime::drain) struct ReactionDispatch<'a> {
     pub owner_uids: Option<&'a [i64]>,
     pub execute_unscoped_after_action: bool,
     pub publication_phase: Option<PublicationPhase>,
+    pub hit_passives_pending: bool,
 }
 
 impl<'a> ReactionDispatch<'a> {
@@ -38,6 +39,7 @@ impl<'a> ReactionDispatch<'a> {
             owner_uids: None,
             execute_unscoped_after_action: false,
             publication_phase: None,
+            hit_passives_pending: false,
         }
     }
 }
@@ -62,6 +64,7 @@ pub(in crate::engine::runtime::drain) fn dispatch_reactions(
         owner_uids,
         execute_unscoped_after_action,
         publication_phase,
+        ..
     } = dispatch;
     let mut reactions = ReactionBatch::default();
     let lifecycle_pool = matches!(
@@ -451,6 +454,7 @@ fn queued_selected_timing(
             completing_skill: selected_completion,
             lane,
             timing,
+            hit_passives_pending: dispatch.hit_passives_pending,
         },
         multiplicity,
     )?;

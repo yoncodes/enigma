@@ -173,8 +173,10 @@ pub(in crate::engine::runtime::drain) fn dispatch_event_groups(
         ..Default::default()
     };
     let mut unscoped_reactions = super::super::state::ActionReactions::default();
+    let action_open = action_path.is_some_and(|path| drain_state.action_in_progress(path));
     let action_reactions =
         action_path.map_or(&mut unscoped_reactions, |path| drain_state.reactions(path));
+    state.hit_passives_pending = action_open && !action_reactions.hit_passives_released;
     let mut reactions = ReactionBatch::default();
     let mut scheduled_death_completions = Vec::<crate::engine::manager::hp::PendingDeath>::new();
     let mut event_offset = 0;
@@ -284,6 +286,7 @@ pub(in crate::engine::runtime::drain) fn dispatch_event_batch(
 struct EventBatchState {
     batch_id: u64,
     queued_attack_consumption: bool,
+    hit_passives_pending: bool,
     fired_once_per_batch_target:
         std::collections::HashSet<crate::engine::event::dispatcher::OncePerTargetKey>,
     fired_once_per_event_batch:
@@ -427,6 +430,7 @@ fn dispatch_event_batch_inner(
                 owner_uids,
                 execute_unscoped_after_action,
                 publication_phase: Some(publication_phase),
+                hit_passives_pending: state.hit_passives_pending,
             },
             Some(&mut multiplicity),
         )?;

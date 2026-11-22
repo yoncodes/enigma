@@ -52,6 +52,7 @@ pub(crate) struct DispatchSelection<'a> {
     pub completing_skill: Option<(i64, i32)>,
     pub lane: Option<ReactionLane>,
     pub timing: crate::engine::event::subscription::ReactionTiming,
+    pub hit_passives_pending: bool,
 }
 
 pub(crate) type ReactionMultiplicityKey = (
@@ -327,6 +328,7 @@ pub(crate) fn dispatch_selected_event(
         selection.timing,
         event,
         matches!(selection.lane, Some(ReactionLane::Skills)),
+        selection.hit_passives_pending,
     );
     Ok(if let Some(multiplicity) = multiplicity {
         dispatch_subscribers_with_multiplicity(
@@ -415,7 +417,7 @@ pub(crate) fn dispatch_selected_skill_event(
     } else {
         retain_publication(&mut subscribers, selection.publication);
     }
-    retain_reaction_timing(&mut subscribers, selection.timing, event, false);
+    retain_reaction_timing(&mut subscribers, selection.timing, event, false, false);
     Ok(dispatch_subscribers(
         subscribers,
         pool,
@@ -873,6 +875,7 @@ fn retain_reaction_timing(
     timing: crate::engine::event::subscription::ReactionTiming,
     event: &BattleEvent,
     delay_shared_hit: bool,
+    hit_passives_pending: bool,
 ) {
     use crate::engine::event::subscription::ReactionTiming;
 
@@ -881,6 +884,10 @@ fn retain_reaction_timing(
     let selected = |declared| match declared {
         ReactionTiming::AfterSharedHit if shared_hit => timing == ReactionTiming::AfterSharedHit,
         ReactionTiming::AfterSharedHit => timing == ReactionTiming::Immediate,
+        ReactionTiming::AfterHitPassives if hit_passives_pending => {
+            timing == ReactionTiming::BeforeAfterHitObservers
+        }
+        ReactionTiming::AfterHitPassives => timing == ReactionTiming::Immediate,
         declared => declared == timing,
     };
     subscribers

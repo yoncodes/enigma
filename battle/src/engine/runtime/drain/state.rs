@@ -23,6 +23,7 @@ pub(super) type ActionReactionKey = (i64, i32, Option<usize>, DefinitionKey);
 pub(super) struct ActionReactions {
     pub(super) skills: HashSet<ActionReactionKey>,
     pub(super) buff_targets: HashSet<OncePerTargetKey>,
+    pub(super) hit_passives_released: bool,
 }
 
 /// Owns bookkeeping shared by the root drain and every nested reaction drain.
@@ -342,7 +343,7 @@ impl DrainState {
     }
 
     // Only an action that will still complete releases held casts; otherwise they run at once.
-    pub(super) fn action_in_progress(&self, action_path: &FramePath) -> bool {
+    pub(super) fn action_in_progress(&self, action_path: &[usize]) -> bool {
         self.open_actions.contains(action_path)
     }
 

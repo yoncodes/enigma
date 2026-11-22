@@ -20,6 +20,7 @@ pub enum ReactionTiming {
     AttackedSkills,
     HpThresholds,
     BeforeAfterHitObservers,
+    AfterHitPassives,
     AfterHitObservers,
     AfterHitShell,
     AfterSharedHit,

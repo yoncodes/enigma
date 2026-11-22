@@ -3,7 +3,7 @@ use sonettobuf::effect_type_enum::EffectType;
 use crate::engine::{
     damage::{DamageFormulaInput, calculate, modifiers},
     entity::attr::AttrId,
-    event::payload::BattleEvent,
+    event::{payload::BattleEvent, subscription::ReactionTiming},
     manager::{
         BattleManagers, HpExecution,
         buff::{BuffCommand, BuffConsume, BuffSelector, DepletedBuff},
@@ -39,6 +39,15 @@ impl ReflectedDamage {
 pub fn supports(args: &[i32]) -> bool {
     matches!(args, [0 | 2, permille, raw_attr]
         if *permille > 0 && AttrId::from_raw(*raw_attr).is_some())
+}
+
+pub(crate) fn timing(
+    catalog: crate::catalog::BattleCatalog,
+    buff_id: i32,
+    args: &[i32],
+) -> Option<ReactionTiming> {
+    (matches!(args, [0, _, _]) && supports(args) && !catalog.buff_has_effect_count(buff_id))
+        .then_some(ReactionTiming::AfterHitPassives)
 }
 
 pub fn supports_damage_based(args: &[i32]) -> bool {

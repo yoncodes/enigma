@@ -52,7 +52,7 @@ fn rebound_claim_survives_each_damage_batch_and_resets_between_casts() {
     let mut state = DrainState::default();
     let mut determinism = RoundDeterminism::default();
 
-    let mut rebound_hits = |path: &[usize], target_uid, damage_from| {
+    let mut rebound_hits = |state: &mut DrainState, path: &[usize], target_uid, damage_from| {
         let hit = BattleEvent::Hit(HitEvent {
             origin: CommandOrigin {
                 domain: RuleDomain::Skill,
@@ -70,12 +70,12 @@ fn rebound_claim_survives_each_damage_batch_and_resets_between_casts() {
             assassinate: false,
             ignore_riposte: false,
         });
-        dispatch_event_groups(
+        let reactions = dispatch_event_groups(
             &pool,
             &managers,
             &catalog,
             &mut determinism,
-            &mut state,
+            state,
             &[vec![hit]],
             path,
             path,
@@ -89,17 +89,117 @@ fn rebound_claim_survives_each_damage_batch_and_resets_between_casts() {
             Some(ReactionLane::BuffActs),
             None,
         )
-        .unwrap()
-        .into_ordered()
-        .iter()
-        .filter(|queued| matches!(queued.op, RuleOp::Command(BattleCommand::ReboundDamage(_))))
-        .count()
+        .unwrap();
+        let damage_count = |ops: &[QueuedOp]| {
+            ops.iter()
+                .filter(|queued| {
+                    matches!(queued.op, RuleOp::Command(BattleCommand::ReboundDamage(_)))
+                })
+                .count()
+        };
+        let deferred = damage_count(&reactions.before_after_hit_observers);
+        (damage_count(&reactions.into_ordered()), deferred)
     };
 
-    assert_eq!(rebound_hits(&[0], -1, HurtDamageFromType::Skill), 2);
-    assert_eq!(rebound_hits(&[0], -1, HurtDamageFromType::SkillEffect), 0);
-    assert_eq!(rebound_hits(&[0], -2, HurtDamageFromType::Skill), 2);
-    assert_eq!(rebound_hits(&[1], -1, HurtDamageFromType::Skill), 2);
+    state.open_action(vec![0]);
+    assert_eq!(
+        rebound_hits(&mut state, &[0], -1, HurtDamageFromType::Skill),
+        (0, 2)
+    );
+    assert_eq!(
+        rebound_hits(&mut state, &[0], -1, HurtDamageFromType::SkillEffect),
+        (0, 0)
+    );
+    state.reactions(&[0]).hit_passives_released = true;
+    assert_eq!(
+        rebound_hits(&mut state, &[0], -2, HurtDamageFromType::Skill),
+        (2, 0)
+    );
+    assert_eq!(
+        rebound_hits(&mut state, &[1], -1, HurtDamageFromType::Skill),
+        (2, 0)
+    );
+}
+
+#[test]
+fn charged_rebound_is_spent_before_a_nested_attack() {
+    crate::test_support::init_config();
+    let mut fight = fight();
+    let buff = &mut fight.defender.as_mut().unwrap().entitys[0].buffs[0];
+    buff.buff_id = Some(7160005);
+    buff.layer = Some(1);
+    buff.count = Some(1);
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    let catalog = SkillEffectCatalog::from_fight(config::configs::get(), &fight);
+    let mut state = DrainState::default();
+    let mut determinism = RoundDeterminism::default();
+    let mut frames = Vec::new();
+    let root = push_root(&mut frames, FrameOwner::Command, FrameTrigger::Active);
+    let child = push_child(
+        &mut frames,
+        &root,
+        FrameOwner::Command,
+        FrameTrigger::Active,
+    );
+    let hit = BattleEvent::Hit(HitEvent {
+        origin: CommandOrigin {
+            domain: RuleDomain::Skill,
+            key: DefinitionKey::new(0, "TestHit"),
+        },
+        source_uid: 10,
+        target_uid: -1,
+        skill_id: 1,
+        amount: 300,
+        resolved_damage: 300,
+        shield_absorbed: 0,
+        career_restraint: false,
+        damage_from: HurtDamageFromType::Skill,
+        share_count: 0,
+        assassinate: false,
+        ignore_riposte: false,
+    });
+    let mut reflected = 0;
+    for path in [root, child] {
+        state.open_action(path.clone());
+        let reactions = dispatch_event_groups(
+            &pool,
+            &managers,
+            &catalog,
+            &mut determinism,
+            &mut state,
+            &[vec![hit.clone()]],
+            &path,
+            &path,
+            Some(&path),
+            &path,
+            Some((10, 1, Some(-1))),
+            false,
+            true,
+            PublicationPhase::AfterPublish,
+            None,
+            Some(ReactionLane::BuffActs),
+            None,
+        )
+        .unwrap();
+        assert!(reactions.before_after_hit_observers.is_empty());
+        let result = drain_queue_with_frames(
+            &mut managers,
+            &pool,
+            &catalog,
+            &mut determinism,
+            TargetContext::default(),
+            &mut reactions.into_ordered().into(),
+            frames,
+        )
+        .unwrap();
+        reflected += result.outcomes.iter().filter(|outcome| {
+            matches!(outcome, RuleOutcome::Hp(hit) if hit.changes.target_uid == 10 && hit.changes.damage.is_some())
+        }).count();
+        frames = result.frames;
+        assert_eq!(managers.buff.snapshot(-1, 100).unwrap().count, Some(0));
+    }
+    assert_eq!(reflected, 1);
 }
 
 #[test]

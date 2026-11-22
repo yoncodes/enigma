@@ -149,7 +149,11 @@ pub fn for_active_buffs(managers: &BattleManagers, event: EventKind) -> Vec<Buff
                     phase,
                     buff_act::registry::runtime_publication(act_id, &feature.act_type, event),
                 )
-                .with_timing(definition.runtime.reaction_timing),
+                .with_timing(definition.runtime.timing_for(
+                    managers.catalog(),
+                    feature.buff_id,
+                    args,
+                )),
                 act_type: feature.act_type,
                 effect_time: feature.effect_time,
                 effect_condition: feature.effect_condition,

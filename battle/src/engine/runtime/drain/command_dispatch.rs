@@ -922,6 +922,9 @@ pub(super) fn drain_command(
     let mut after_publish = reactions.after_publish;
     let after_settlement = reactions.after_settlement;
     if releases_hit_passive_skills {
+        if let Some(path) = action_scope.as_deref() {
+            state.reactions(path).hit_passives_released = true;
+        }
         let mut released_hit_passives = state
             .take_attacked_skills(action_scope.as_ref())
             .unwrap_or_default();

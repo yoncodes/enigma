@@ -445,6 +445,8 @@ pub struct RuntimeMarker {
     pub effect_type: Option<i32>,
 }
 
+type RuntimeTiming = fn(crate::catalog::BattleCatalog, i32, &[i32]) -> Option<ReactionTiming>;
+
 #[derive(Debug, Clone, Copy)]
 pub struct BuffActRuntimeDefinition {
     pub effect_time_subscription: bool,
@@ -458,6 +460,7 @@ pub struct BuffActRuntimeDefinition {
     pub team_scope: RuntimeTeamScope,
     pub actor_scope: RuntimeActorScope,
     pub reaction_timing: ReactionTiming,
+    timing_override: Option<RuntimeTiming>,
     pub event_multiplicity: RuntimeEventMultiplicity,
     pub reserves_trigger_child_uid: bool,
     pub owns_duration: bool,
@@ -466,6 +469,19 @@ pub struct BuffActRuntimeDefinition {
     pub handler: Option<RuntimeHandler>,
     pub scoped_handler: Option<ScopedRuntimeHandler>,
     pub fallible_scoped_handler: Option<FallibleScopedRuntimeHandler>,
+}
+
+impl BuffActRuntimeDefinition {
+    pub(crate) fn timing_for(
+        self,
+        catalog: crate::catalog::BattleCatalog,
+        buff_id: i32,
+        args: &[i32],
+    ) -> ReactionTiming {
+        self.timing_override
+            .and_then(|timing| timing(catalog, buff_id, args))
+            .unwrap_or(self.reaction_timing)
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -663,6 +679,7 @@ macro_rules! buff_act_definitions {
             $(, team: $team:ident)?
             $(, actor: $actor:ident)?
             $(, timing: $timing:ident)?
+            $(, timing_override: $timing_override:expr)?
             $(, multiplicity: $multiplicity:ident)?
             $(, trigger_child_uid: $trigger_child_uid:expr)?
             $(, owns_duration: $owns_duration:expr)?
@@ -709,6 +726,7 @@ macro_rules! buff_act_definitions {
                     team_scope: buff_act_definitions!(@team $($team)?),
                     actor_scope: buff_act_definitions!(@actor $($actor)?),
                     reaction_timing: buff_act_definitions!(@timing $($timing)?),
+                    timing_override: buff_act_definitions!(@timing_override $($timing_override)?),
                     event_multiplicity: buff_act_definitions!(@multiplicity $($multiplicity)?),
                     reserves_trigger_child_uid: buff_act_definitions!(@trigger_child_uid $($trigger_child_uid)?),
                     owns_duration: buff_act_definitions!(@owns_duration $($owns_duration)?),
@@ -776,6 +794,8 @@ macro_rules! buff_act_definitions {
     (@actor) => { RuntimeActorScope::Owner };
     (@timing $timing:ident) => { ReactionTiming::$timing };
     (@timing) => { ReactionTiming::Immediate };
+    (@timing_override $handler:expr) => { Some($handler) };
+    (@timing_override) => { None };
     (@multiplicity $multiplicity:ident) => { RuntimeEventMultiplicity::$multiplicity };
     (@multiplicity) => { RuntimeEventMultiplicity::EveryEvent };
     (@trigger_child_uid $value:expr) => { $value };
@@ -928,6 +948,7 @@ buff_act_definitions! {
         supports: super::riposte::supports_holder, references: references_for_feature, wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(302, "BeatBack"), &[EffectType::Beatback as i32]));
     (301, "Taunt") => Taunt, effect_time_subscription: false, supports: |_| true, state_consumer: true, wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(301, "Taunt"), &[EffectType::Taunt as i32]));
     (303, "Rebound") => Rebound, source: Owner,
+        timing_override: super::rebound::timing,
         multiplicity: OncePerActionTarget,
         runtime: |context| super::rebound::rule_ops(context.managers, context.subscriber, context.event?),
         supports: super::rebound::supports, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(303, "Rebound"), &[EffectType::Rebound as i32]));
