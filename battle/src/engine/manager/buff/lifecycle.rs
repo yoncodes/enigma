@@ -1,4 +1,5 @@
 use super::*;
+use crate::engine::skill::action::SkillPhase;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(i32)]
@@ -437,7 +438,8 @@ impl BuffManager {
         owner_uids: &[i64],
         buff_uids: &[i64],
     ) -> Vec<BuffReplaceResult> {
-        let plans = self.plan_duration_advances_matching(take_stage, owner_uids, Some(buff_uids));
+        let plans =
+            self.plan_duration_advances_matching(take_stage, owner_uids, Some(buff_uids), None);
         plans
             .into_iter()
             .filter_map(|plan| self.commit_duration_advance(plan))
@@ -449,7 +451,7 @@ impl BuffManager {
         take_stage: i32,
         owner_uids: &[i64],
     ) -> Vec<BuffDurationPlan> {
-        self.plan_duration_advances_matching(take_stage, owner_uids, None)
+        self.plan_duration_advances_matching(take_stage, owner_uids, None, None)
     }
 
     pub(crate) fn duration_buff_uids(&self, take_stage: i32, owner_uids: &[i64]) -> Vec<i64> {
@@ -519,20 +521,12 @@ impl BuffManager {
             .collect()
     }
 
-    pub(crate) fn plan_duration_advances_for_snapshot(
-        &self,
-        take_stage: i32,
-        owner_uids: &[i64],
-        buff_uids: &[i64],
-    ) -> Vec<BuffDurationPlan> {
-        self.plan_duration_advances_matching(take_stage, owner_uids, Some(buff_uids))
-    }
-
-    fn plan_duration_advances_matching(
+    pub(super) fn plan_duration_advances_matching(
         &self,
         take_stage: i32,
         owner_uids: &[i64],
         buff_uids: Option<&[i64]>,
+        non_attack_phase: Option<SkillPhase>,
     ) -> Vec<BuffDurationPlan> {
         let mut indices = if owner_uids.is_empty() {
             (0..self.buffs.len()).collect::<Vec<_>>()
@@ -568,10 +562,15 @@ impl BuffManager {
                 let duration = active.buff.duration.unwrap_or_default();
                 (duration > 0
                     && !self.follows_layer_halo_master(active)
-                    && active
-                        .definition
-                        .as_ref()
-                        .is_some_and(|definition| definition.take_stage == take_stage)
+                    && active.definition.as_ref().is_some_and(|definition| {
+                        definition.take_stage == take_stage
+                            && non_attack_phase.is_none_or(|phase| {
+                                definition
+                                    .non_attack_duration()
+                                    .unwrap_or(SkillPhase::HitPassives)
+                                    == phase
+                            })
+                    })
                     && buff_uids.is_none_or(|buff_uids| buff_uids.contains(&buff_uid)))
                 .then_some(BuffDurationPlan {
                     target_uid: active.owner_uid,

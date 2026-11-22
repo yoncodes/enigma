@@ -543,7 +543,7 @@ fn deferred_hit_consumes_the_attack_buff_before_after_hit_completes() {
 }
 
 #[test]
-fn non_attack_device_uses_the_configured_take_stage_boundary() {
+fn non_attack_device_resolves_harmonization_before_restraint_expires() {
     crate::test_support::init_config();
     let fight = Fight {
         attacker: Some(FightTeam {
@@ -558,6 +558,7 @@ fn non_attack_device_uses_the_configured_take_stage_boundary() {
                     uid: Some(2),
                     from_uid: Some(10),
                     duration: Some(1),
+                    count: Some(1),
                     ..Default::default()
                 }],
                 ..Default::default()
@@ -572,7 +573,7 @@ fn non_attack_device_uses_the_configured_take_stage_boundary() {
     let mut after_hit = SkillEffectSlot::new(
         ParsedBehavior::from_spec(
             BehaviorSpec::new(60292, "AddDeviceExPoint"),
-            vec![7],
+            vec![8],
             Vec::new(),
         ),
         TargetRequest::self_only(),
@@ -632,9 +633,9 @@ fn non_attack_device_uses_the_configured_take_stage_boundary() {
                 RuleOutcome::ExPoint(crate::engine::manager::ex_point::ExPointChanges::Value {
                     change,
                     ..
-                }) if change.applied_delta == 7
+                }) if change.applied_delta == 8
             )
         })
         .unwrap();
-    assert!(removed < resource);
+    assert!(resource < removed);
 }

@@ -17,6 +17,7 @@ pub const ROUND_START_DURATION_STAGES: [i32; 2] =
     [ROUND_START_DURATION, ROUND_START_AFTER_REACTION_DURATION];
 pub const ROUND_START_CARD_SETTLED_DURATION: i32 = 106;
 pub const ROUND_START_CARD_STAGES: [i32; 2] = [105, ROUND_START_CARD_SETTLED_DURATION];
+pub(crate) const AFTER_HIT_DURATION: i32 = 210;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum BuffActEvent {
@@ -68,7 +69,7 @@ effect_time_definitions! {
     ROUND_START_CARD_SETTLED_DURATION => BuffActEvent::Runtime(EventKind::RoundStartCard),
     107 => BuffActEvent::Runtime(EventKind::ActionQueueCommitted),
     201 => BuffActEvent::Runtime(EventKind::SkillAction); SkillPhase::Immediate,
-    210 => BuffActEvent::Runtime(EventKind::SkillAction); SkillPhase::AfterHit,
+    AFTER_HIT_DURATION => BuffActEvent::Runtime(EventKind::SkillAction); SkillPhase::AfterHit,
     208 => BuffActEvent::Runtime(EventKind::SkillCast),
     2081 => BuffActEvent::Runtime(EventKind::SkillCast),
     2101 => BuffActEvent::Runtime(EventKind::SkillCast),
