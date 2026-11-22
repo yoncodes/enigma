@@ -43,6 +43,7 @@ fn fight() -> Fight {
                     ..entity(-6, 900100601, 2, 1)
                 },
                 FightEntityInfo {
+                    skill_group1: vec![23310411],
                     passive_skill: vec![23310413],
                     power_infos: vec![PowerInfo {
                         power_id: Some(1),
@@ -89,8 +90,17 @@ fn prepared_cast_is_deferred() {
 
     assert_eq!(managers.hp.current(10), 10_000);
     assert_eq!(managers.eureka.get(-7, 1).current, 1);
-    let decks =
-        configured_start_decks(&fight, &managers, &catalog, &determinism, 0, 4, None).unwrap();
+    let entry_ap_reduction = -1;
+    let decks = configured_start_decks(
+        &fight,
+        &managers,
+        &catalog,
+        &determinism,
+        entry_ap_reduction,
+        4,
+        None,
+    )
+    .unwrap();
     assert_eq!(
         decks
             .ai
@@ -108,8 +118,16 @@ fn prepared_cast_is_deferred() {
         decks.ai,
     )
     .unwrap();
-    let next =
-        configured_start_decks(&fight, &managers, &catalog, &determinism, 0, 4, None).unwrap();
+    let next = configured_start_decks(
+        &fight,
+        &managers,
+        &catalog,
+        &determinism,
+        entry_ap_reduction,
+        4,
+        None,
+    )
+    .unwrap();
     assert_eq!(next.ai.len(), 1);
 }
 
