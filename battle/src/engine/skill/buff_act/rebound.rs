@@ -53,7 +53,7 @@ pub fn rule_ops(
     let BattleEvent::Hit(hit) = event else {
         return None;
     };
-    let [_, permille, raw_attr] = subscriber.args.as_slice() else {
+    let [mode, permille, raw_attr] = subscriber.args.as_slice() else {
         return None;
     };
     if !supports(&subscriber.args)
@@ -74,22 +74,41 @@ pub fn rule_ops(
     if amount <= 0 {
         return Some(Vec::new());
     }
-    reflection_ops(
-        managers,
-        subscriber,
-        BattleCommand::ReboundDamage(ReflectedDamage(HpDamage {
-            origin: super::command_origin(subscriber)?,
-            source_uid: subscriber.owner_uid,
-            target_uid: hit.source_uid,
-            amount,
-            config_effect: 0,
-            effect_kind: DamageEffectKind::Genesis,
-            assassinate: false,
-            ignore_riposte: false,
-            hurt: reflected_hurt(subscriber, amount),
-        })),
-        DepletedBuff::Keep,
-    )
+    let damage = ReflectedDamage(HpDamage {
+        origin: super::command_origin(subscriber)?,
+        source_uid: subscriber.owner_uid,
+        target_uid: hit.source_uid,
+        amount,
+        config_effect: 0,
+        effect_kind: DamageEffectKind::Genesis,
+        assassinate: false,
+        ignore_riposte: false,
+        hurt: reflected_hurt(subscriber, amount),
+    });
+    let mut ops = (0..reflected_hits(managers, subscriber, *mode))
+        .flat_map(|_| {
+            [
+                RuleOp::BuffFeatureMarker {
+                    target_uid: hit.source_uid,
+                    effect_type: EffectType::Rebound as i32,
+                    effect_num: subscriber.buff_id,
+                    buff_act_id: subscriber.key.definition.opcode,
+                },
+                RuleOp::Command(BattleCommand::ReboundDamage(damage)),
+            ]
+        })
+        .collect::<Vec<_>>();
+    ops.extend(consume_charge(managers, subscriber, DepletedBuff::Keep));
+    Some(ops)
+}
+
+fn reflected_hits(managers: &BattleManagers, subscriber: &BuffActSubscriber, mode: i32) -> i32 {
+    if mode != 0 || managers.catalog().buff_has_effect_count(subscriber.buff_id) {
+        return 1;
+    }
+    managers
+        .buff
+        .instance_layers(subscriber.owner_uid, subscriber.buff_uid)
 }
 
 pub fn damage_based_rule_ops(
@@ -120,19 +139,18 @@ pub fn damage_based_rule_ops(
         modifiers::genesis_multiplier(managers, subscriber.owner_uid, hit.source_uid),
     ))
     .max(1);
-    reflection_ops(
-        managers,
-        subscriber,
-        BattleCommand::Hp(HpCommand::Lose(HpLoss {
+    let mut ops = vec![RuleOp::Command(BattleCommand::Hp(HpCommand::Lose(
+        HpLoss {
             origin: super::command_origin(subscriber)?,
             source_uid: subscriber.owner_uid,
             target_uid: hit.source_uid,
             amount,
             config_effect: 0,
             hurt: Some(reflected_hurt(subscriber, amount)),
-        })),
-        DepletedBuff::Remove,
-    )
+        },
+    )))];
+    ops.extend(consume_charge(managers, subscriber, DepletedBuff::Remove));
+    Some(ops)
 }
 
 fn reflected_hurt(subscriber: &BuffActSubscriber, amount: i32) -> HurtInfoData {
@@ -151,30 +169,28 @@ fn reflected_hurt(subscriber: &BuffActSubscriber, amount: i32) -> HurtInfoData {
     }
 }
 
-fn reflection_ops(
+fn consume_charge(
     managers: &BattleManagers,
     subscriber: &BuffActSubscriber,
-    damage: BattleCommand,
     depleted: DepletedBuff,
-) -> Option<Vec<RuleOp>> {
-    let mut ops = vec![RuleOp::Command(damage)];
-    if managers.catalog().buff_has_effect_count(subscriber.buff_id) {
-        let consume = BuffConsume {
-            origin: super::command_origin(subscriber)?,
-            target_uid: subscriber.owner_uid,
-            selector: BuffSelector::Uid(subscriber.buff_uid),
-            amount: 1,
-            depleted,
-        };
-        ops.push(RuleOp::Command(BattleCommand::Buff(
-            if matches!(depleted, DepletedBuff::Remove) {
-                BuffCommand::ConsumeCount(consume)
-            } else {
-                BuffCommand::ConsumeEffectCount(consume)
-            },
-        )));
+) -> Option<RuleOp> {
+    if !managers.catalog().buff_has_effect_count(subscriber.buff_id) {
+        return None;
     }
-    Some(ops)
+    let consume = BuffConsume {
+        origin: super::command_origin(subscriber)?,
+        target_uid: subscriber.owner_uid,
+        selector: BuffSelector::Uid(subscriber.buff_uid),
+        amount: 1,
+        depleted,
+    };
+    Some(RuleOp::Command(BattleCommand::Buff(
+        if matches!(depleted, DepletedBuff::Remove) {
+            BuffCommand::ConsumeCount(consume)
+        } else {
+            BuffCommand::ConsumeEffectCount(consume)
+        },
+    )))
 }
 
 #[cfg(test)]

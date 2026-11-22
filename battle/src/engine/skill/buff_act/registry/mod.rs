@@ -928,7 +928,6 @@ buff_act_definitions! {
     (301, "Taunt") => Taunt, effect_time_subscription: false, supports: |_| true, state_consumer: true, wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(301, "Taunt"), &[EffectType::Taunt as i32]));
     (303, "Rebound") => Rebound, source: Owner,
         multiplicity: OncePerActionTarget,
-        runtime_marker: BeforeChanges(EventSource),
         runtime: |context| super::rebound::rule_ops(context.managers, context.subscriber, context.event?),
         supports: super::rebound::supports, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(303, "Rebound"), &[EffectType::Rebound as i32]));
     (305, "AddToAttacker") => AddToAttacker,

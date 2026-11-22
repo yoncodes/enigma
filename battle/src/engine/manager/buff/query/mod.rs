@@ -827,6 +827,27 @@ impl BuffManager {
             .sum()
     }
 
+    pub(crate) fn instance_layers(&self, owner_uid: i64, buff_uid: i64) -> i32 {
+        self.buffs
+            .iter()
+            .find(|active| {
+                active.effective
+                    && active.owner_uid == owner_uid
+                    && active.buff.uid == Some(buff_uid)
+            })
+            .map_or(0, |active| {
+                if active
+                    .definition
+                    .as_ref()
+                    .is_some_and(super::BuffDefinition::uses_stack_layer)
+                {
+                    stack_layer(active).max(0)
+                } else {
+                    1
+                }
+            })
+    }
+
     pub(crate) fn id_or_type_layer(&self, uid: i64, id: i32) -> i32 {
         self.id_or_type_layers(uid, id).sum()
     }

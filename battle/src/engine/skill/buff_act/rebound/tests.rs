@@ -14,6 +14,8 @@ use crate::engine::{
     },
 };
 
+mod layers;
+
 #[test]
 fn rebound_uses_holder_attack_and_consumes_trigger_count() {
     crate::test_support::init_config();
@@ -92,6 +94,7 @@ fn rebound_uses_holder_attack_and_consumes_trigger_count() {
     let ops = rule_ops(&managers, &subscriber, &event).unwrap();
 
     let [
+        RuleOp::BuffFeatureMarker { target_uid: 10, .. },
         damage @ RuleOp::Command(BattleCommand::ReboundDamage(ReflectedDamage(HpDamage {
             target_uid: 10,
             amount: 1_237,
