@@ -79,6 +79,27 @@ pub(in crate::engine::runtime::drain) fn dispatch_reactions(
         owner_uids.or_else(|| lifecycle_owner.as_ref().map(|owners| owners.as_slice()));
     let scoped_owner_uids = terminal_owner_scope(pool, managers, requested_owner_uids);
     let owner_uids = scoped_owner_uids.as_deref();
+    if let BattleEvent::SkillEffectsPrepared(action) = event {
+        if publication_phase != Some(PublicationPhase::BeforePublish)
+            && matches!(lane, None | Some(ReactionLane::Skills))
+            && owner_uids.is_none_or(|owners| owners.contains(&action.source_uid))
+        {
+            reactions.after_publish = queued_selected_timing(
+                pool,
+                managers,
+                catalog,
+                determinism,
+                ReactionDispatch {
+                    lane: Some(ReactionLane::Skills),
+                    owner_uids: Some(&[action.source_uid]),
+                    ..dispatch
+                },
+                (PublicationPhase::AfterPublish, ReactionTiming::Immediate),
+                multiplicity,
+            )?;
+        }
+        return Ok(reactions);
+    }
     let transaction_ops = if !matches!(lane, Some(ReactionLane::Skills)) {
         crate::engine::skill::buff_act::transaction_rule_ops_for(managers, event, |definition| {
             reaction_lane_accepts_buff_act(lane, definition.key.opcode, definition.key.type_name)

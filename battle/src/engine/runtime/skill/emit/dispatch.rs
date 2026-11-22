@@ -33,7 +33,10 @@ use super::super::{
     plan,
 };
 use super::*;
-use super::{effect_started as effect_started_op, phase_completed as phase_completed_op};
+use super::{
+    effect_started as effect_started_op, effects_prepared as effects_prepared_op,
+    phase_completed as phase_completed_op,
+};
 
 fn uses_action_targets(slot: &SkillEffectSlot, active_skill_target_condition: bool) -> bool {
     slot.target.code == 0
@@ -1032,31 +1035,20 @@ pub(in crate::engine::runtime) fn emit_ops(
         }
     }
     if active_phase == Some(SkillPhase::Immediate) {
-        let phase_completed = phase_completed_op(
-            &invocation,
-            managers,
-            catalog,
-            pool,
-            execution,
-            SkillPhase::Immediate,
-        );
-        outputs.extend(super::payment::settle(
-            &invocation,
-            execution,
-            phase_completed,
-        ));
-        if execution
+        let prepares_target_buffs = !execution.modifiers.post_immediate_target_buffs.is_empty();
+        let freeze_rates = execution
             .modifiers
             .rates
             .iter()
-            .any(|modifier| modifier.fixed_value().is_none())
-        {
-            outputs.push(SkillEmissionOp {
-                op: RuleOp::FreezeActiveSkillRates,
-                owner: behavior::registry::OutputOwner::Skill,
-                consequence: ConsequencePolicy::Default,
-                frame_owner: None,
-            });
+            .any(|modifier| modifier.fixed_value().is_none());
+        let freeze = || SkillEmissionOp {
+            op: RuleOp::FreezeActiveSkillRates,
+            owner: behavior::registry::OutputOwner::Skill,
+            consequence: ConsequencePolicy::Default,
+            frame_owner: None,
+        };
+        if prepares_target_buffs && freeze_rates {
+            outputs.push(freeze());
         }
         outputs.extend(
             execution
@@ -1087,6 +1079,31 @@ pub(in crate::engine::runtime) fn emit_ops(
                         })
                 }),
         );
+        if catalog.has_preparation_observers() {
+            outputs.push(effects_prepared_op(
+                &invocation,
+                managers,
+                catalog,
+                pool,
+                execution,
+            ));
+        }
+        let phase_completed = phase_completed_op(
+            &invocation,
+            managers,
+            catalog,
+            pool,
+            execution,
+            SkillPhase::Immediate,
+        );
+        outputs.extend(super::payment::settle(
+            &invocation,
+            execution,
+            phase_completed,
+        ));
+        if !prepares_target_buffs && freeze_rates {
+            outputs.push(freeze());
+        }
     }
     if active_phase == Some(SkillPhase::Immediate) && has_row_damage {
         for activation in plan::LinkedDamagePlan::activations(&invocation, managers, execution) {

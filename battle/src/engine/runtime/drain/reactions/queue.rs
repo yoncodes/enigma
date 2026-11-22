@@ -327,6 +327,7 @@ fn event_target(event: &BattleEvent) -> Option<i64> {
         BattleEvent::EurekaChanged(change) => Some(change.target_uid),
         BattleEvent::ConduitActivated(change) => Some(change.source_uid),
         BattleEvent::SkillEffectStarted(started) => Some(started.target_uid),
+        BattleEvent::SkillEffectsPrepared(action) => Some(action.target_uid),
         BattleEvent::SkillAction(action) => Some(action.target_uid),
         BattleEvent::AllyAction(action) => Some(action.target_uid),
         BattleEvent::BuffFeatureTriggered(trigger) => Some(trigger.target_uid),
@@ -342,6 +343,7 @@ pub(in crate::engine::runtime::drain) fn reaction_counterparty(
     let observer_inherits_target = matches!(
         event,
         BattleEvent::SkillEffectStarted(_)
+            | BattleEvent::SkillEffectsPrepared(_)
             | BattleEvent::SkillAction(_)
             | BattleEvent::AllyAction(_)
             | BattleEvent::BuffAdded(_)
@@ -352,6 +354,7 @@ pub(in crate::engine::runtime::drain) fn reaction_counterparty(
     );
     let (source_uid, target_uid) = match event {
         BattleEvent::SkillEffectStarted(started) => (started.source_uid, started.target_uid),
+        BattleEvent::SkillEffectsPrepared(action) => (action.source_uid, action.target_uid),
         BattleEvent::SkillAction(action) => (action.source_uid, action.target_uid),
         BattleEvent::AllyAction(action) => (action.source_uid, action.target_uid),
         BattleEvent::BuffFeatureTriggered(trigger) => (trigger.owner_uid, trigger.target_uid),

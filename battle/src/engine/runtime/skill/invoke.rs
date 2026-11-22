@@ -282,7 +282,9 @@ pub(super) fn apply_event_context(
         | BattleEvent::SummonChanged(_)
         | BattleEvent::BloodtitheChanged { .. }
         | BattleEvent::Kind(_) => {}
-        BattleEvent::SkillEffectStarted(_) | BattleEvent::SkillAction(_) => unreachable!(),
+        BattleEvent::SkillEffectStarted(_)
+        | BattleEvent::SkillEffectsPrepared(_)
+        | BattleEvent::SkillAction(_) => unreachable!(),
         BattleEvent::AllyAction(action) => {
             context.runtime_target_uid = action.target_uid;
             context.active_skill_id = action.skill_id;

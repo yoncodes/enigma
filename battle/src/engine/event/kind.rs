@@ -36,6 +36,7 @@ pub enum EventKind {
     ShellRetrieved,
     DamageCalculation,
     SkillEffectStarted,
+    SkillEffectsPrepared,
     SkillAction,
     NoActionRound,
     SkillCast,

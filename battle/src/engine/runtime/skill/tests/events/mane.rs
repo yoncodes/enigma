@@ -192,7 +192,7 @@ fn committed_conduit_hit_satisfies_attack_conditions() {
 }
 
 #[test]
-fn visible_status_threshold_runs_before_incantations() {
+fn prepared_status_threshold_includes_nonattacks_and_excludes_energy_cards() {
     crate::test_support::init_config();
     let mut status_buffs = [31450171, 31450143, 31440116, 31450111]
         .into_iter()
@@ -235,7 +235,7 @@ fn visible_status_threshold_runs_before_incantations() {
         .into();
         invocation.condition_key = Some(DefinitionKey::new(42203, "HasTypeBuffMoreThan"));
         invocation.phase = Some(SkillPhase::Immediate);
-        let event = BattleEvent::SkillEffectStarted(
+        let event = BattleEvent::SkillEffectsPrepared(Box::new(
             crate::engine::skill::action::SkillActionEvent {
                 source_uid: 10,
                 card_index: 0,
@@ -263,9 +263,8 @@ fn visible_status_threshold_runs_before_incantations() {
                 team_injury_count_round: 0,
                 card_enchants: Vec::new(),
                 buff_additions: Vec::new(),
-            }
-            .into(),
-        );
+            },
+        ));
         emit_all_ops(
             invocation,
             &managers,

@@ -233,8 +233,8 @@ impl SkillEffectSlot {
                 crate::engine::event::kind::EventKind::SkillAction => {
                     subscription.phase.or(fallback)
                 }
-                // The action-start trigger runs with the action's own Immediate slots.
-                crate::engine::event::kind::EventKind::SkillEffectStarted => subscription
+                crate::engine::event::kind::EventKind::SkillEffectStarted
+                | crate::engine::event::kind::EventKind::SkillEffectsPrepared => subscription
                     .phase
                     .filter(|phase| *phase == SkillPhase::Immediate),
                 _ => None,

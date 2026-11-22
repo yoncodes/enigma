@@ -268,6 +268,7 @@ pub enum BattleEvent {
         critical_action_count: i32,
     },
     SkillEffectStarted(SkillEffectStartedEvent),
+    SkillEffectsPrepared(Box<crate::engine::skill::action::SkillActionEvent>),
     SkillAction(crate::engine::skill::action::SkillActionEvent),
     AllyAction(crate::engine::skill::action::ActionEvent),
     BuffAdded(BuffChangeEvent),
@@ -336,6 +337,7 @@ impl BattleEvent {
     pub fn skill_action_event(&self) -> Option<&crate::engine::skill::action::SkillActionEvent> {
         match self {
             Self::SkillEffectStarted(started) => Some(started.action.as_ref()),
+            Self::SkillEffectsPrepared(action) => Some(action.as_ref()),
             Self::SkillAction(action) => Some(action),
             _ => None,
         }
@@ -348,6 +350,7 @@ impl BattleEvent {
             | Self::PlayerActionsResolved { emitter_uid, .. }
             | Self::ImpromptuResolved { emitter_uid, .. } => Some(*emitter_uid),
             Self::SkillEffectStarted(started) => Some(started.source_uid),
+            Self::SkillEffectsPrepared(action) => Some(action.source_uid),
             Self::SkillAction(action) => Some(action.source_uid),
             Self::AllyAction(action) => Some(action.source_uid),
             Self::BuffAdded(change) | Self::BuffChanged(change) | Self::BuffRemoved(change) => {
@@ -391,6 +394,7 @@ impl BattleEvent {
             | Self::HpHealed { target_uid, .. }
             | Self::ToughnessBroken { target_uid, .. } => Some(*target_uid),
             Self::SkillEffectStarted(started) => Some(started.target_uid),
+            Self::SkillEffectsPrepared(action) => Some(action.target_uid),
             Self::SkillAction(action) => Some(action.target_uid),
             Self::AllyAction(action) => Some(action.target_uid),
             Self::BuffAdded(change) | Self::BuffChanged(change) | Self::BuffRemoved(change) => {
@@ -434,6 +438,7 @@ impl BattleEvent {
             Self::PlayerActionsResolved { .. } => EventKind::PlayerActionsResolved,
             Self::ImpromptuResolved { .. } => EventKind::ImpromptuResolved,
             Self::SkillEffectStarted(_) => EventKind::SkillEffectStarted,
+            Self::SkillEffectsPrepared(_) => EventKind::SkillEffectsPrepared,
             Self::SkillAction(_) => EventKind::SkillAction,
             Self::AllyAction(_) => EventKind::AllyAction,
             Self::BuffAdded(_) => EventKind::BuffAdded,

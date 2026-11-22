@@ -647,10 +647,12 @@ fn collect_attack_modifier_slot(
                         None | Some(crate::engine::skill::action::SkillPhase::Immediate)
                             | Some(crate::engine::skill::action::SkillPhase::Damage)
                     ))
-                    || (trigger.event
-                        == crate::engine::event::kind::EventKind::SkillEffectStarted
-                        && trigger.phase
-                            == Some(crate::engine::skill::action::SkillPhase::Immediate)) =>
+                    || (matches!(
+                        trigger.event,
+                        crate::engine::event::kind::EventKind::SkillEffectStarted
+                            | crate::engine::event::kind::EventKind::SkillEffectsPrepared
+                    ) && trigger.phase
+                        == Some(crate::engine::skill::action::SkillPhase::Immediate)) =>
             {
                 Some(trigger.key)
             }

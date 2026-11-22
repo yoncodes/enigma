@@ -415,7 +415,7 @@ fn active_skill_status_thresholds_preserve_strictness() {
     assert_eq!(
         find_key(42203, "HasTypeBuffMoreThan").unwrap().role,
         ConditionRole::Trigger {
-            event: EventKind::SkillEffectStarted,
+            event: EventKind::SkillEffectsPrepared,
             phase: Some(SkillPhase::Immediate),
         }
     );

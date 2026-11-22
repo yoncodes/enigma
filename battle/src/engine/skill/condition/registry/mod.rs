@@ -837,7 +837,7 @@ condition_definitions! {
     [51103] "HasTypeIdBuffMoreThan" => buff::buff_type_at_least, setup_route(SetupStage::RoundStart, 1, &[]);
     [511201] "HasTypeBuffIdsMoreThan" => buff::buff_status_at_least, predicate(&[EventKind::BuffChanged]);
     [42201] "HasTypeBuffMoreThan" => buff::visible_status_threshold, attack_only(event_trigger(EventKind::SkillEffectStarted, Some(SkillPhase::Immediate)));
-    [42203] "HasTypeBuffMoreThan" => buff::visible_stacked_status_types_at_least, reaction_targets_causing_frame(skip_energy_cards(event_trigger(EventKind::SkillEffectStarted, Some(SkillPhase::Immediate))));
+    [42203] "HasTypeBuffMoreThan" => buff::visible_stacked_status_types_at_least, reaction_targets_causing_frame(skip_energy_cards(event_trigger(EventKind::SkillEffectsPrepared, Some(SkillPhase::Immediate))));
     [42209] "HasTypeBuffMoreThan" => buff::visible_stacked_status_types_at_least, after_shared_hit(predicate(&[EventKind::TargetAttacked]));
     [43203] "HasTypeBuffLessThan" => buff::visible_stacked_status_below, predicate(&[]);
     [42208] "HasTypeBuffMoreThan" => buff::buff_status_at_least, event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterDamage));

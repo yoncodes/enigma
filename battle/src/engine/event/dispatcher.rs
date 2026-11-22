@@ -276,7 +276,21 @@ pub(crate) fn dispatch_selected_event(
     selection: DispatchSelection<'_>,
     multiplicity: Option<&mut DispatchMultiplicity<'_>>,
 ) -> Result<DispatchBatch, SubscriberError> {
-    let mut subscribers = if let Some(owner_uids) = selection.owner_uids {
+    let mut subscribers = if let BattleEvent::SkillEffectsPrepared(action) = event {
+        if selection
+            .owner_uids
+            .is_some_and(|owners| !owners.contains(&action.source_uid))
+        {
+            return Ok(DispatchBatch::default());
+        }
+        subscriber::for_compiled_owner_skill_event(
+            pool,
+            managers,
+            catalog,
+            EventKind::SkillEffectsPrepared,
+            action.source_uid,
+        )?
+    } else if let Some(owner_uids) = selection.owner_uids {
         subscriber::for_compiled_owner_events(
             pool,
             managers,
