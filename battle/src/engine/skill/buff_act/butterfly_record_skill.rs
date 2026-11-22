@@ -152,18 +152,17 @@ pub fn rule_ops(
         duration: Some(-1),
         ex_info: Vec::new(),
     });
-    let mut ops = (0..count)
-        .map(|_| {
-            RuleOp::Command(BattleCommand::Card(CardCommand::AddPrecast(
-                CardAddPrecast {
-                    origin,
-                    card: card.clone(),
-                },
-            )))
-        })
-        .collect::<Vec<_>>();
-    info.str_param = Some(format!("{count},0,0"));
-    ops.push(RuleOp::Command(BattleCommand::Buff(BuffCommand::SetState(
+    let cleared = format!("{count},0,0");
+    info.str_param = Some(cleared.clone());
+    let marker = RuleOp::BuffActInfoMarker(BuffActInfoMarkerResult {
+        target_uid: subscriber.owner_uid,
+        buff_uid: subscriber.buff_uid,
+        act_id,
+        params: info.param.clone(),
+        str_param: Some(cleared),
+        team_type: 0,
+    });
+    let clear = RuleOp::Command(BattleCommand::Buff(BuffCommand::SetInternalState(
         BuffSetState {
             origin,
             target_uid: subscriber.owner_uid,
@@ -172,8 +171,16 @@ pub fn rule_ops(
             params: None,
             act_info: Some(buff.act_info),
         },
-    ))));
-    Some(ops)
+    )));
+    let copies = (0..count).map(|_| {
+        RuleOp::Command(BattleCommand::Card(CardCommand::AddPrecast(
+            CardAddPrecast {
+                origin,
+                card: card.clone(),
+            },
+        )))
+    });
+    Some([clear, marker].into_iter().chain(copies).collect())
 }
 
 fn parse_record(info: &sonettobuf::BuffActInfo) -> Option<(i32, SkillRequest)> {

@@ -121,9 +121,20 @@ fn check_selection(caster_uid: i64, skill_id: i32) {
     };
     let event = BattleEvent::Kind(EventKind::RoundStartCard);
     let ops = rule_ops(&managers, &pool, &subscriber, &event).unwrap();
-    let [copies @ .., RuleOp::Command(BattleCommand::Buff(reset))] = ops.as_slice() else {
-        panic!("expected copies and the state reset");
+    let [
+        RuleOp::Command(BattleCommand::Buff(reset @ BuffCommand::SetInternalState(_))),
+        RuleOp::BuffActInfoMarker(clear),
+        copies @ ..,
+    ] = ops.as_slice()
+    else {
+        panic!("expected to clear the record before adding copies");
     };
+    assert_eq!(
+        (clear.target_uid, clear.buff_uid, clear.act_id),
+        (source_uid, buff_uid, act_id)
+    );
+    assert_eq!(clear.params, marker.params);
+    assert_eq!(clear.str_param.as_deref(), Some("3,0,0"));
     assert_eq!(copies.len(), 3);
     let caster_model = pool.entity(caster_uid).unwrap().model_id;
     assert!(copies.iter().all(|op| matches!(op,
