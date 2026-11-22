@@ -7,7 +7,8 @@ use crate::engine::{
     },
     skill::{
         action::SkillRequest,
-        behavior::BehaviorOpContext,
+        behavior::{BehaviorOpContext, classify::BehaviorKind},
+        effect::SkillEffectCatalog,
         rule::{
             CommandOrigin,
             output::{BattleCommand, RuleOp},
@@ -25,19 +26,9 @@ pub(crate) fn record(context: BehaviorOpContext<'_>, origin: CommandOrigin) -> O
     if skill.skill_id <= 0 || skill.source_uid == 0 {
         return Some(Vec::new());
     }
-    let Some(feature) = context
-        .managers
-        .buff
-        .active_features(&context.managers.hp)
-        .into_iter()
-        .find(|feature| {
-            feature.owner_uid == context.source_uid
-                && super::is_kind(feature, super::registry::BuffActKind::ButterflyRecordSkill)
-        })
-        .filter(|feature| {
-            allows_recorded_skill(context.managers.catalog(), feature, skill.skill_id)
-        })
-    else {
+    let Some(feature) = record_feature(context.managers, context.source_uid).filter(|feature| {
+        allows_recorded_skill(context.managers.catalog(), feature, skill.skill_id)
+    }) else {
         return Some(Vec::new());
     };
     let &[act_id, count, _, ref allowed @ ..] = feature.values.as_slice() else {
@@ -74,6 +65,47 @@ pub(crate) fn record(context: BehaviorOpContext<'_>, origin: CommandOrigin) -> O
             team_type: 0,
         }),
     ])
+}
+
+fn record_feature(managers: &BattleManagers, owner_uid: i64) -> Option<ActiveBuffFeature> {
+    managers
+        .buff
+        .active_features(&managers.hp)
+        .into_iter()
+        .find(|feature| {
+            feature.owner_uid == owner_uid
+                && super::is_kind(feature, super::registry::BuffActKind::ButterflyRecordSkill)
+        })
+}
+
+pub(crate) fn auto_record(
+    managers: &BattleManagers,
+    catalog: &SkillEffectCatalog,
+    hand: &[sonettobuf::CardInfo],
+    cast: SkillRequest,
+) -> Option<SkillRequest> {
+    let effect = catalog.get(cast.skill_id)?;
+    if !effect
+        .slots
+        .iter()
+        .any(|slot| slot.behavior.spec.kind == BehaviorKind::BufferflyRecordSkill)
+    {
+        return None;
+    }
+    let feature = record_feature(managers, cast.source_uid)?;
+    let data = managers.catalog();
+    let (_, skill_id) = hand
+        .iter()
+        .filter_map(|card| {
+            let skill_id = card.skill_id?;
+            (card.uid == Some(cast.source_uid) && allows_recorded_skill(data, &feature, skill_id))
+                .then_some((card, skill_id))
+        })
+        .min_by_key(|(_, skill_id)| catalog.damage_rate(*skill_id) <= 0)?;
+    Some(SkillRequest {
+        source_uid: cast.source_uid,
+        skill_id,
+    })
 }
 
 pub fn rule_ops(

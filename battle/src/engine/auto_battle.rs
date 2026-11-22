@@ -15,6 +15,8 @@ use crate::engine::{
     round::{command::RoundCommand, state::RoundState},
     runtime::{determinism::RoundDeterminism, schedule::card_skill_is_blocked},
     skill::{
+        action::SkillRequest,
+        buff_act::butterfly_record_skill,
         effect::SkillEffectCatalog,
         target::{CardSelectionResolver, TargetContext, TargetPool},
     },
@@ -222,18 +224,28 @@ fn plan_cards_inner(
         else {
             break;
         };
+        let recorded_skill = butterfly_record_skill::auto_record(
+            managers,
+            catalog,
+            cards.hand(),
+            SkillRequest {
+                source_uid: candidate.source_uid,
+                skill_id: candidate.skill_id,
+            },
+        );
         let play = CardPlay {
             origin: CARD_PLAY_ORIGIN,
             hand_index: candidate.card_index,
             target_uid: Some(candidate.target_uid),
             chosen_skill_id: candidate.chosen_skill_id,
             choice: None,
-            recorded_skill: None,
+            recorded_skill,
         };
         let operation = play_operation(
             candidate.card_index,
             candidate.target_uid,
             candidate.chosen_skill_id,
+            recorded_skill,
         );
         if !play_card(&mut cards, play) {
             break;
@@ -371,12 +383,15 @@ fn play_operation(
     card_index: usize,
     target_uid: i64,
     chosen_skill_id: Option<i32>,
+    recorded_skill: Option<SkillRequest>,
 ) -> BeginRoundOper {
     BeginRoundOper {
         oper_type: Some(CardOpType::PlayCard.id()),
         param1: Some(card_index as i32 + 1),
         to_id: Some(target_uid),
         param3: chosen_skill_id,
+        card_param1: recorded_skill
+            .map(|recorded| format!("{}#{}", recorded.skill_id, recorded.source_uid)),
         ..Default::default()
     }
 }
