@@ -5,15 +5,36 @@ use crate::engine::{
     entity::attr::AttrId,
     event::payload::BattleEvent,
     manager::{
-        BattleManagers,
+        BattleManagers, HpExecution,
         buff::{BuffCommand, BuffConsume, BuffSelector, DepletedBuff},
-        hp::{HpCommand, HpLoss, HurtDamageFromType, HurtInfoData},
+        hp::{
+            DamageEffectKind, HpCommand, HpCommandError, HpDamage, HpLoss, HurtDamageFromType,
+            HurtInfoData,
+        },
     },
     skill::{
         rule::output::{BattleCommand, RuleOp},
         subscriber::BuffActSubscriber,
     },
 };
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ReflectedDamage(HpDamage);
+
+impl ReflectedDamage {
+    pub(crate) fn settle(
+        self,
+        managers: &mut BattleManagers,
+    ) -> Result<Option<HpExecution>, HpCommandError> {
+        let command = HpCommand::Damage(self.0);
+        if managers.hp.current(self.0.target_uid) <= 0 {
+            managers.hp.validate_command(command)?;
+            return Ok(None);
+        }
+        let command = super::fixed_hurt::resolve_command(&managers.buff, &managers.hp, command);
+        managers.execute_rule_hp(command).map(Some)
+    }
+}
 
 pub fn supports(args: &[i32]) -> bool {
     matches!(args, [0 | 2, permille, raw_attr]
@@ -56,8 +77,17 @@ pub fn rule_ops(
     reflection_ops(
         managers,
         subscriber,
-        hit.source_uid,
-        amount,
+        BattleCommand::ReboundDamage(ReflectedDamage(HpDamage {
+            origin: super::command_origin(subscriber)?,
+            source_uid: subscriber.owner_uid,
+            target_uid: hit.source_uid,
+            amount,
+            config_effect: 0,
+            effect_kind: DamageEffectKind::Genesis,
+            assassinate: false,
+            ignore_riposte: false,
+            hurt: reflected_hurt(subscriber, amount),
+        })),
         DepletedBuff::Keep,
     )
 }
@@ -93,45 +123,44 @@ pub fn damage_based_rule_ops(
     reflection_ops(
         managers,
         subscriber,
-        hit.source_uid,
-        amount,
+        BattleCommand::Hp(HpCommand::Lose(HpLoss {
+            origin: super::command_origin(subscriber)?,
+            source_uid: subscriber.owner_uid,
+            target_uid: hit.source_uid,
+            amount,
+            config_effect: 0,
+            hurt: Some(reflected_hurt(subscriber, amount)),
+        })),
         DepletedBuff::Remove,
     )
+}
+
+fn reflected_hurt(subscriber: &BuffActSubscriber, amount: i32) -> HurtInfoData {
+    HurtInfoData {
+        from_uid: subscriber.owner_uid,
+        is_crit: false,
+        career_restraint: false,
+        reduce_hp: 0,
+        effect_id: 0,
+        skill_id: 0,
+        damage_from: HurtDamageFromType::Buff,
+        buff_act_id: subscriber.key.definition.opcode,
+        buff_uid: subscriber.buff_uid,
+        hurt_effect_type: EffectType::Origindamage as i32,
+        display_amount: Some(amount),
+    }
 }
 
 fn reflection_ops(
     managers: &BattleManagers,
     subscriber: &BuffActSubscriber,
-    target_uid: i64,
-    amount: i32,
+    damage: BattleCommand,
     depleted: DepletedBuff,
 ) -> Option<Vec<RuleOp>> {
-    let origin = super::command_origin(subscriber)?;
-    let mut ops = vec![RuleOp::Command(BattleCommand::Hp(HpCommand::Lose(
-        HpLoss {
-            origin,
-            source_uid: subscriber.owner_uid,
-            target_uid,
-            amount,
-            config_effect: 0,
-            hurt: Some(HurtInfoData {
-                from_uid: subscriber.owner_uid,
-                is_crit: false,
-                career_restraint: false,
-                reduce_hp: 0,
-                effect_id: 0,
-                skill_id: 0,
-                damage_from: HurtDamageFromType::Buff,
-                buff_act_id: subscriber.key.definition.opcode,
-                buff_uid: subscriber.buff_uid,
-                hurt_effect_type: EffectType::Origindamage as i32,
-                display_amount: Some(amount),
-            }),
-        },
-    )))];
+    let mut ops = vec![RuleOp::Command(damage)];
     if managers.catalog().buff_has_effect_count(subscriber.buff_id) {
         let consume = BuffConsume {
-            origin,
+            origin: super::command_origin(subscriber)?,
             target_uid: subscriber.owner_uid,
             selector: BuffSelector::Uid(subscriber.buff_uid),
             amount: 1,

@@ -67,6 +67,7 @@ pub enum BattleCommand {
     BuffMoveToHolder(crate::engine::manager::buff::BuffGrant),
     Hp(HpCommand),
     HpBatch(Vec<HpCommand>),
+    ReboundDamage(crate::engine::skill::buff_act::rebound::ReflectedDamage),
     LinkedDamage(Vec<LinkedHit>),
     ImmediateReservePromotion(
         crate::engine::manager::battle_rule::ImmediateReservePromotionCommand,

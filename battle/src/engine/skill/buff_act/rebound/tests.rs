@@ -1,8 +1,13 @@
-use sonettobuf::{Fight, FightEntityInfo, FightTeam, HeroAttribute};
+use sonettobuf::{BuffInfo, Fight, FightEntityInfo, FightTeam, HeroAttribute};
 
 use super::*;
 use crate::engine::{
     event::payload::HitEvent,
+    packet::timeline::project_for_version,
+    runtime::{
+        executor::execute_rule_op,
+        record::{FrameItem, FrameOwner, FrameTrigger, SemanticFrame},
+    },
     skill::{
         rule::{CommandOrigin, DefinitionKey, RuleDomain},
         subscriber::BuffActSubscriber,
@@ -30,6 +35,14 @@ fn rebound_uses_holder_attack_and_consumes_trigger_count() {
             entitys: vec![FightEntityInfo {
                 uid: Some(10),
                 current_hp: Some(2_000),
+                shield_value: Some(2_000),
+                buffs: vec![BuffInfo {
+                    uid: Some(77),
+                    buff_id: Some(31270501),
+                    from_uid: Some(10),
+                    duration: Some(3),
+                    ..Default::default()
+                }],
                 attr: Some(HeroAttribute {
                     hp: Some(2_000),
                     ..Default::default()
@@ -40,7 +53,7 @@ fn rebound_uses_holder_attack_and_consumes_trigger_count() {
         }),
         ..Default::default()
     };
-    let managers = BattleManagers::seeded(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
     let subscriber = BuffActSubscriber {
         owner_uid: -1,
         source_uid: -1,
@@ -78,22 +91,69 @@ fn rebound_uses_holder_attack_and_consumes_trigger_count() {
     });
     let ops = rule_ops(&managers, &subscriber, &event).unwrap();
 
+    let [
+        damage @ RuleOp::Command(BattleCommand::ReboundDamage(ReflectedDamage(HpDamage {
+            target_uid: 10,
+            amount: 1_237,
+            effect_kind: DamageEffectKind::Genesis,
+            ..
+        }))),
+        RuleOp::Command(BattleCommand::Buff(BuffCommand::ConsumeEffectCount(BuffConsume {
+            amount: 1,
+            depleted: DepletedBuff::Keep,
+            ..
+        }))),
+    ] = ops.as_slice()
+    else {
+        panic!("expected damage settlement followed by consumption");
+    };
+    let mut events = Default::default();
+    let outcome = execute_rule_op(&mut managers, &mut events, damage.clone()).unwrap();
+    let frame = SemanticFrame {
+        owner: FrameOwner::BuffAct {
+            owner_uid: subscriber.owner_uid,
+            source_uid: subscriber.source_uid,
+            buff_uid: subscriber.buff_uid,
+            buff_id: subscriber.buff_id,
+            key: subscriber.key.definition,
+        },
+        trigger: FrameTrigger::Event(event),
+        items: outcome
+            .changes()
+            .into_iter()
+            .map(|change| FrameItem::Change(Box::new(change)))
+            .collect(),
+    };
+    let steps = project_for_version(&[frame], 7).unwrap();
+    let effect = steps
+        .iter()
+        .flat_map(|step| &step.act_effect)
+        .find(|effect| effect.effect_type == Some(EffectType::Origindamage as i32))
+        .unwrap();
+    let hurt = effect.hurt_info.as_ref().unwrap();
+    assert_eq!(hurt.damage, Some(1_237));
+    assert_eq!(hurt.reduce_hp.unwrap_or_default(), 0);
+    let absorption: serde_json::Value =
+        serde_json::from_str(hurt.absorb_hurt_param.as_deref().unwrap()).unwrap();
+    assert_eq!(absorption["reduceShieldBuffMap"], "77#1237");
+    assert_eq!(managers.hp.current(10), 2_000);
+    assert_eq!(managers.hp.shield(10), 763);
+
+    managers.hp.set_shield(10, 0);
+    managers.hp.lose(10, 1_999, 0).unwrap();
+    let lethal = execute_rule_op(&mut managers, &mut events, damage.clone()).unwrap();
+    assert!(!lethal.changes().is_empty());
+    assert_eq!(managers.hp.current(10), 0);
+    let after_death = execute_rule_op(&mut managers, &mut events, damage.clone()).unwrap();
+    assert!(after_death.changes().is_empty());
+
+    let RuleOp::Command(BattleCommand::ReboundDamage(mut invalid)) = damage.clone() else {
+        unreachable!();
+    };
+    invalid.0.target_uid = 999;
     assert!(matches!(
-        ops.as_slice(),
-        [
-            RuleOp::Command(BattleCommand::Hp(HpCommand::Lose(HpLoss {
-                target_uid: 10,
-                amount: 1_237,
-                ..
-            }))),
-            RuleOp::Command(BattleCommand::Buff(BuffCommand::ConsumeEffectCount(
-                BuffConsume {
-                    amount: 1,
-                    depleted: DepletedBuff::Keep,
-                    ..
-                }
-            )))
-        ]
+        invalid.settle(&mut managers),
+        Err(HpCommandError::MissingTarget(999))
     ));
     assert!(!supports(&[1, 100, AttrId::Hp as i32]));
 }

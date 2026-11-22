@@ -765,6 +765,15 @@ pub(crate) fn execute_rule_op_with(
             }
             Ok(RuleOutcome::Hp(Box::new(execution)))
         }
+        RuleOp::Command(BattleCommand::ReboundDamage(damage)) => {
+            let Some(execution) = damage.settle(managers)? else {
+                return Ok(RuleOutcome::StateChanged);
+            };
+            for event in execution.changes.events() {
+                events.push(event);
+            }
+            Ok(RuleOutcome::Hp(Box::new(execution)))
+        }
         RuleOp::Command(BattleCommand::HpBatch(commands)) => {
             let commands = commands
                 .into_iter()
