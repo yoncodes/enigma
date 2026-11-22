@@ -28,6 +28,19 @@ mod buff;
 pub struct EffectPacket;
 
 impl EffectPacket {
+    pub fn crystal_selected(
+        choice: crate::engine::mechanic::crystal_selection::CrystalChoice,
+    ) -> ActEffect {
+        ActEffect {
+            target_id: Some(choice.owner_uid),
+            effect_type: Some(EffectType::Crystalselect as i32),
+            effect_num: Some(choice.packed),
+            reserve_str: Some(choice.packed.to_string()),
+            team_type: Some(choice.team_type),
+            ..Default::default()
+        }
+    }
+
     pub fn fight_param_change(key: i32, delta: i32) -> ActEffect {
         ActEffect {
             target_id: Some(0),

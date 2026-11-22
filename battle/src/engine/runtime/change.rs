@@ -28,6 +28,7 @@ pub enum BattleChange {
     SceneChange { scene_id: i32 },
     BuffActTrigger(crate::engine::manager::buff::BuffActTriggerResult),
     BuffActInfoMarker(crate::engine::manager::buff::BuffActInfoMarkerResult),
+    CrystalSelected(crate::engine::mechanic::crystal_selection::CrystalChoice),
     Hp(Box<HpChanges>),
     Death(crate::engine::manager::hp::DeathTransition),
     NuoDiKaHit(crate::engine::mechanic::nuo_di_ka::NuoDiKaHit),

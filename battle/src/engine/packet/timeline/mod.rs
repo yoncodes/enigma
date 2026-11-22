@@ -429,6 +429,7 @@ fn project_change(
                 marker.team_type,
             )]
         }
+        BattleChange::CrystalSelected(choice) => vec![EffectPacket::crystal_selected(*choice)],
         BattleChange::Hp(changes) => {
             if let Some(config_effect) = changes.kill {
                 return Ok(vec![EffectPacket::kill(changes.target_uid, config_effect)]);

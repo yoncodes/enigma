@@ -122,12 +122,7 @@ fn fight_snapshot_projects_team_lingering_glow_and_crystals() {
             GaugeOperation::ChangeValue { delta: 121 },
         ))
         .unwrap();
-    crate::engine::mechanic::heat_scale::HeatScale::select_crystals_from_cloth(
-        &mut managers,
-        10,
-        110,
-    )
-    .unwrap();
+    crate::engine::mechanic::crystal_selection::select(&mut managers, 10, 110).unwrap();
 
     managers.sync_entities(&mut fight);
 

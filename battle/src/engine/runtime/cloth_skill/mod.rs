@@ -4,6 +4,8 @@ use crate::engine::round::state::continuation_round_shell;
 
 use super::{BattleRuntime, change, drain, executor, project_result, record};
 
+mod crystal;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(i32)]
 pub enum ClothSkillType {
@@ -233,26 +235,7 @@ impl BattleRuntime {
                 .inspect_err(|error| tracing::warn!(%error, "contract selection projection failed"))
                 .ok()?
             }
-            ClothSkillType::SelectCrystal => {
-                let owner_uid = request.from_id?;
-                let packed = i32::try_from(request.to_id?).ok()?;
-                let selection =
-                    crate::engine::mechanic::heat_scale::HeatScale::select_crystals_from_cloth(
-                        &mut self.managers,
-                        owner_uid,
-                        packed,
-                    )?;
-                project_changes(
-                    [
-                        change::BattleChange::Buff(Box::new(selection.state)),
-                        change::BattleChange::BuffActInfoMarker(selection.marker),
-                    ],
-                    fight_version,
-                    absorb_hurt_map_layout,
-                )
-                .inspect_err(|error| tracing::warn!(%error, "crystal selection projection failed"))
-                .ok()?
-            }
+            ClothSkillType::SelectCrystal => self.select_crystal(&request)?,
             ClothSkillType::TwinsSelect => {
                 if request.skill_id.unwrap_or_default() != 0 {
                     return None;
