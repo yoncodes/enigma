@@ -250,6 +250,14 @@ fn master_halo_requires_an_owned_master_instance() {
         buff_id: Some(31450141),
         ..Default::default()
     }])));
+    assert!(matches(&fight_with(vec![BuffInfo {
+        buff_id: Some(31340005),
+        ..Default::default()
+    }])));
+    assert!(!matches(&fight_with(vec![BuffInfo {
+        buff_id: Some(31340006),
+        ..Default::default()
+    }])));
     assert!(!matches(&fight_with(vec![BuffInfo {
         buff_id: Some(31560152),
         r#type: Some(2),
