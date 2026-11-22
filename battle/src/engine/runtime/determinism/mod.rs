@@ -87,6 +87,7 @@ pub struct RoundDeterminism {
     random_buff_pools: VecDeque<RandomBuffChoice>,
     hand_rank_choices: VecDeque<HandRankChoice>,
     hand_card_choices: VecDeque<HandCardChoice>,
+    card_energy_allocations: VecDeque<Vec<CardInfo>>,
     permille_rolls: VecDeque<i32>,
     crit_seed: u64,
     crit_roll_index: u64,
@@ -461,6 +462,25 @@ impl RoundDeterminism {
             .contains(self.random_buff_choices.front()?)
             .then(|| self.random_buff_choices.pop_front())
             .flatten()
+    }
+
+    /// Observed hands after each weighted card-energy allocation, in wire order.
+    pub fn replace_card_energy_allocations(
+        &mut self,
+        hands: impl IntoIterator<Item = Vec<CardInfo>>,
+    ) {
+        self.card_energy_allocations = hands.into_iter().collect();
+    }
+
+    pub(crate) fn take_card_energy_allocation(
+        &mut self,
+        accepts: impl Fn(&[CardInfo]) -> bool,
+    ) -> Option<Vec<CardInfo>> {
+        let index = self
+            .card_energy_allocations
+            .iter()
+            .position(|hand| accepts(hand))?;
+        self.card_energy_allocations.remove(index)
     }
 
     pub fn enqueue_hand_rank_choices(&mut self, choices: impl IntoIterator<Item = HandRankChoice>) {

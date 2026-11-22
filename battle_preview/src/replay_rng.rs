@@ -26,6 +26,7 @@ pub fn opening_determinism(
         .enqueue_condition_random_choices(conduit_ex_point_rolls::choices(&catalog, round, true));
     determinism.enqueue_hand_rank_choices(opening_hand_rank_choices(game_data, fight, round));
     determinism.enqueue_hand_rank_choices(card_level_add_choices(round));
+    determinism.replace_card_energy_allocations(card_energy_allocations(round));
     let draws = round
         .team_a_cards1
         .iter()
@@ -94,6 +95,7 @@ pub fn seed_round_determinism(
         runtime.seed_next_ai_cards(round.ai_use_cards.clone());
     }
     runtime.seed_condition_random_choices(conduit_ex_point_rolls::choices(catalog, round, false));
+    runtime.seed_card_energy_allocations(card_energy_allocations(round));
     seed_action_determinism(runtime, catalog, round);
 }
 
@@ -113,6 +115,28 @@ pub fn seed_action_determinism(
     ));
     let (hidden, additional, indirect_heals) = crit_choices(config::configs::get(), round);
     runtime.seed_crits(hidden, additional, indirect_heals);
+}
+
+fn card_energy_allocations(round: &FightRound) -> Vec<Vec<CardInfo>> {
+    fn visit(step: &FightStep, hands: &mut Vec<Vec<CardInfo>>) {
+        for effect in &step.act_effect {
+            if effect.effect_type
+                == Some(sonettobuf::effect_type_enum::EffectType::Allocatecardenergy as i32)
+                && effect.effect_num1 == Some(1)
+            {
+                hands.push(effect.card_info_list.clone());
+            }
+            if let Some(nested) = effect.fight_step.as_ref() {
+                visit(nested, hands);
+            }
+        }
+    }
+
+    let mut hands = Vec::new();
+    for step in round.fight_step.iter().chain(&round.next_round_begin_step) {
+        visit(step, &mut hands);
+    }
+    hands
 }
 
 fn card_level_add_choices(round: &FightRound) -> Vec<HandRankChoice> {
