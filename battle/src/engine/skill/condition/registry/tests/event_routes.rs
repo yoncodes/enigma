@@ -663,15 +663,13 @@ fn field_presence_modifier_keeps_its_exact_immediate_route() {
 
 #[test]
 fn static_team_battle_tag_threshold_runs_on_enter_fight() {
-    for opcode in [762005, 762021] {
-        assert_eq!(
-            find_key(opcode, "BattleTagNum").map(|definition| definition.role),
-            Some(ConditionRole::Setup {
-                stage: SetupStage::EnterFight,
-                priority: 0,
-            })
-        );
-    }
+    assert_eq!(
+        find_key(762005, "BattleTagNum").map(|definition| definition.role),
+        Some(ConditionRole::Setup {
+            stage: SetupStage::EnterFight,
+            priority: 0,
+        })
+    );
     assert_eq!(
         parse(
             762005,
@@ -691,6 +689,18 @@ fn static_team_battle_tag_threshold_runs_on_enter_fight() {
             stage: SetupStage::RoundStart,
             priority: 1,
         })
+    );
+}
+
+#[test]
+fn opening_battle_tag_threshold_runs_at_battle_start() {
+    let definition = find_key(762021, "BattleTagNum").unwrap();
+    assert_eq!(
+        definition.role,
+        ConditionRole::Setup {
+            stage: SetupStage::BattleStart,
+            priority: 0,
+        }
     );
 }
 

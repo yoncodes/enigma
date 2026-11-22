@@ -958,7 +958,7 @@ condition_definitions! {
     [16021] "TargetCareer" => career::target_career, setup_route(SetupStage::BattleStart, 0, &[]);
     [16204] "TargetCareer" => career::target_career, predicate(&[]);
     [762005] "BattleTagNum" => battle_tag::parse, setup_route(SetupStage::EnterFight, 0, &[]);
-    [762021] "BattleTagNum" => battle_tag::parse, setup_route(SetupStage::EnterFight, 0, &[]);
+    [762021] "BattleTagNum" => battle_tag::parse, setup_route(SetupStage::BattleStart, 0, &[]);
     [1021002] "BattleTagCheck" => battle_tag::present, setup_route(SetupStage::EnterFight, 0, &[]);
     [1021101] "BattleTagCheck" => battle_tag::present, predicate(&[]);
     [1022101] "Rouge2AttrExRand" => parse::rouge2_attribute_random, setup_route(SetupStage::RoundStartCondition, 101, &[]);
