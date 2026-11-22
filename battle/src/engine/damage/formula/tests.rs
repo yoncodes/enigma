@@ -1,6 +1,6 @@
 use super::{
     DamageFormula, DeadlyPoisonFormulaInput, attribute_scaled_damage, butterfly_damage,
-    deadly_poison_damage, scale_permille, scale_permille_stacks,
+    deadly_poison_damage, scale_permille, scale_permille_stacks, scaled_butterfly_damage,
 };
 
 #[test]
@@ -94,4 +94,5 @@ fn deadly_poison_compounds_after_base_stack_damage() {
 #[test]
 fn butterfly_rate_is_derived_from_capped_raw_gauge_progress() {
     assert_eq!(butterfly_damage(2_000, 100, 250, 50, 25, 200), 400);
+    assert_eq!(scaled_butterfly_damage(10_000, 60, 125, 100, 12, 600), 750);
 }

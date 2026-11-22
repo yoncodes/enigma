@@ -1,5 +1,5 @@
 use crate::engine::{
-    damage::butterfly_damage,
+    damage::{butterfly_damage, formula::scaled_butterfly_damage},
     entity::attr::AttrId,
     manager::hp::{
         DamageEffectKind, HpCommand, HpDamage, HpHeal, HpHealKind, HpLoss, HurtDamageFromType,
@@ -401,7 +401,12 @@ impl BehaviorHandler for Handler {
                     .managers
                     .hp
                     .skill_damage_from_sources(target_uid, &allied_sources);
-                let amount = butterfly_damage(
+                let formula = if matches!((*raw_step, *raw_cap), (100_000, 600_000)) {
+                    scaled_butterfly_damage
+                } else {
+                    butterfly_damage
+                };
+                let amount = formula(
                     recorded_damage,
                     *base_rate,
                     gauge_raw,

@@ -149,6 +149,23 @@ pub fn butterfly_damage(
     attribute_scaled_damage(recorded_damage, rate, 1)
 }
 
+pub(super) fn scaled_butterfly_damage(
+    recorded_damage: i32,
+    base_rate: i32,
+    gauge_raw: i32,
+    raw_step: i32,
+    rate_per_step: i32,
+    raw_cap: i32,
+) -> i32 {
+    if raw_step <= 0 || raw_cap < 0 {
+        return 0;
+    }
+    let step = i128::from(raw_step);
+    let gauge = i128::from(gauge_raw.clamp(0, raw_cap));
+    let rate = i128::from(base_rate.max(0)) * step + gauge * i128::from(rate_per_step.max(0));
+    clamp_i32(i128::from(recorded_damage.max(0)) * rate / (1_000 * step))
+}
+
 fn clamp_i32(value: i128) -> i32 {
     value.clamp(0, i128::from(i32::MAX)) as i32
 }
