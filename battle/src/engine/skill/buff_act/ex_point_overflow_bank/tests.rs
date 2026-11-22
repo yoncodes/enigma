@@ -8,6 +8,8 @@ use crate::engine::{
 
 use super::*;
 
+mod phase;
+
 fn subscriber(event: EventKind) -> BuffActSubscriber {
     BuffActSubscriber {
         owner_uid: 10,

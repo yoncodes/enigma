@@ -73,10 +73,17 @@ pub(super) fn drain_command(
             )
         })
     } else {
+        let parent = super::overflow_frame::storage_scope(
+            &result.frames,
+            parent_path.as_deref(),
+            &trigger,
+            &command,
+        )
+        .or(parent_path.as_deref());
         ensure_frame(
             &mut result.frames,
             frame_path,
-            parent_path.as_deref(),
+            parent,
             frame_owner.unwrap_or(FrameOwner::Command),
             &trigger,
         )

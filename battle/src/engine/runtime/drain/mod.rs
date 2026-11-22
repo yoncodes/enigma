@@ -34,6 +34,7 @@ mod command_dispatch;
 mod command_prepare;
 mod entry;
 mod model;
+mod overflow_frame;
 mod paid_ultimate;
 mod reactions;
 mod shield_counter;
