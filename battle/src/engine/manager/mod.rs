@@ -826,9 +826,19 @@ impl BattleManagers {
             _ => None,
         };
         let team_shared_shield_removed = plan.team_shared_buff.map(|plan| self.commit_buff(plan));
-        let mut changes =
-            self.hp
-                .commit_validated_command(plan.command, plan.team_shared, loss_limit);
+        let mut command = plan.command;
+        if plan.fake_hp.is_none()
+            && plan.team_shared.is_none()
+            && shared_hurt.is_none()
+            && let hp::HpCommand::Damage(damage) = &mut command
+            && damage.hurt.damage_from == hp::HurtDamageFromType::Skill
+            && (1..damage.amount).contains(&self.hp.shield(damage.target_uid))
+        {
+            damage.hurt.display_amount.get_or_insert(damage.amount);
+        }
+        let mut changes = self
+            .hp
+            .commit_validated_command(command, plan.team_shared, loss_limit);
         changes.fake_hp_consumed = plan.fake_hp.map(|plan| plan.consumption);
         changes.toughness = toughness;
         changes.team_shared_shield_removed = team_shared_shield_removed;
@@ -839,7 +849,7 @@ impl BattleManagers {
                 .shield_carrier_uid(changes.target_uid)
                 .unwrap_or_default();
         }
-        crate::engine::damage::export::settlement(plan.command, &changes, &self.hp, loss_limit);
+        crate::engine::damage::export::settlement(command, &changes, &self.hp, loss_limit);
         HpCommit {
             changes,
             shield_counter_credits: plan.shield_counter_credits,
