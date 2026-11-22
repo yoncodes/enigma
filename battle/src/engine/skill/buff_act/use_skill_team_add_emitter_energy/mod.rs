@@ -97,5 +97,4 @@ fn spec(
 }
 
 #[cfg(test)]
-#[path = "use_skill_team_add_emitter_energy/tests.rs"]
 mod tests;

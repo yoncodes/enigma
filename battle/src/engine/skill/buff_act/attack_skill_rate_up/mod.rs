@@ -60,5 +60,4 @@ pub fn rate_modifiers(
 }
 
 #[cfg(test)]
-#[path = "attack_skill_rate_up/tests.rs"]
 mod tests;

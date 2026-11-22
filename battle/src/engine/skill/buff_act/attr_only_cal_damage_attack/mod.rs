@@ -168,5 +168,4 @@ fn consume_command(managers: &BattleManagers, feature: &ActiveBuffFeature) -> Op
 }
 
 #[cfg(test)]
-#[path = "attr_only_cal_damage_attack/tests.rs"]
 mod tests;

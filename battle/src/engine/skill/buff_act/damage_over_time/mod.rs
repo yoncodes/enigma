@@ -399,5 +399,4 @@ fn settled_layer(kind: DamageOverTimeKind, args: &[i32], current: i32) -> Option
 }
 
 #[cfg(test)]
-#[path = "damage_over_time/tests.rs"]
 mod tests;

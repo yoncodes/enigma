@@ -147,5 +147,4 @@ pub fn transaction_rule_ops(
 }
 
 #[cfg(test)]
-#[path = "each_change_attr_one_way/tests.rs"]
 mod tests;
