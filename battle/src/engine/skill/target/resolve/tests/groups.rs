@@ -337,3 +337,60 @@ fn side_state_target_resolves_to_the_attacker_side() {
         vec![crate::engine::fight::rules::ATTACKER_SIDE_UID]
     );
 }
+
+#[test]
+fn main_body_target_is_the_label_one_ally_not_the_action_target() {
+    init_config();
+    let part = |uid, position, model_id| FightEntityInfo {
+        model_id: Some(model_id),
+        ..entity_at(uid, position)
+    };
+    let fight = |battle_id, wave, defenders| Fight {
+        battle_id: Some(battle_id),
+        cur_wave: Some(wave),
+        attacker: Some(FightTeam {
+            entitys: vec![entity_at(10, 1)],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: defenders,
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let context = TargetContext {
+        runtime_target_uid: 10,
+        ..Default::default()
+    };
+    let resolve = |pool: &TargetPool, source_uid| {
+        resolve_code_with_context(
+            1001,
+            source_uid,
+            pool,
+            &mut RoundDeterminism::default(),
+            context,
+        )
+    };
+
+    let lord_of_dream = TargetPool::from_fight(&fight(
+        2411,
+        2,
+        vec![
+            part(-2, 1, 241102),
+            part(-4, 2, 241104),
+            part(-3, 3, 241103),
+            part(-5, 4, 241105),
+        ],
+    ));
+    for source_uid in [-4, -5, -2] {
+        assert_eq!(resolve(&lord_of_dream, source_uid), vec![-2]);
+    }
+    assert_eq!(resolve(&lord_of_dream, 10), Vec::<i64>::new());
+
+    let no_boss_id = TargetPool::from_fight(&fight(
+        1514,
+        1,
+        vec![part(-1, 1, 151401), part(-2, 2, 151402)],
+    ));
+    assert_eq!(resolve(&no_boss_id, -2), vec![-1]);
+}
