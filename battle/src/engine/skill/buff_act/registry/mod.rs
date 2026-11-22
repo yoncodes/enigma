@@ -1100,7 +1100,8 @@ buff_act_definitions! {
         effect_time_subscription: false,
         events: [EventKind::SkillCast, EventKind::SkillEffectStarted],
         scoped_runtime: |context| super::use_damage_skill_add_to_target::rule_ops(context.managers, context.catalog, context.subscriber, context.event?),
-        supports: |_| true, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(748, "UseDamageSkillAddToTarget"), &[EffectType::None as i32]));
+        supports: super::use_damage_skill_add_to_target::supports,
+        wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(748, "UseDamageSkillAddToTarget"), &[EffectType::None as i32]));
     (757, "UseSkillLoseHpNotFixed") => UseSkillLoseHpNotFixed,
         runtime: |context| super::use_skill_modifier::loss_rule_ops(context.managers, context.subscriber, context.event?),
         supports: super::use_skill_modifier::supports_loss, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(757, "UseSkillLoseHpNotFixed"), &[EffectType::None as i32]));

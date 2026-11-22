@@ -12,6 +12,19 @@ use crate::engine::{
     },
 };
 
+mod timed;
+
+pub fn supports(args: &[i32]) -> bool {
+    grant_id(args).is_some()
+}
+
+fn grant_id(args: &[i32]) -> Option<i32> {
+    match args {
+        [0, buff_id] if *buff_id > 0 => Some(*buff_id),
+        _ => None,
+    }
+}
+
 pub fn rule_ops(
     managers: &BattleManagers,
     catalog: &SkillEffectCatalog,
@@ -42,12 +55,15 @@ pub fn rule_ops(
         }
         _ => return Some(Vec::new()),
     };
-    let [_, buff_id, ..] = subscriber.args.as_slice() else {
-        return None;
-    };
+    let buff_id = grant_id(&subscriber.args)?;
     let stored = managers
         .buff
         .snapshot(subscriber.owner_uid, subscriber.buff_uid)?;
+    if !managers.catalog().buff_has_effect_count(subscriber.buff_id)
+        && stored.duration.unwrap_or_default() > 0
+    {
+        return timed::apply(subscriber, buff_id, target_uids);
+    }
     let activation_count = stored.count.unwrap_or_default();
     if activation_count <= 0 {
         return Some(Vec::new());
@@ -67,7 +83,7 @@ pub fn rule_ops(
         )]);
     }
     let stacks = stored.layer.unwrap_or_default().max(0);
-    if stacks == 0 || *buff_id <= 0 {
+    if stacks == 0 {
         return Some(Vec::new());
     }
     let occurrences = u32::try_from(stacks).ok()?;
@@ -83,7 +99,7 @@ pub fn rule_ops(
                 origin,
                 source_uid,
                 target_uid,
-                buff_id: *buff_id,
+                buff_id,
                 amount: None,
                 occurrences,
                 child_uid_reservations: 0,
