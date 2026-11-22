@@ -834,6 +834,9 @@ pub fn emit_passive_attack_attributes(
         .passive_override(source_uid)
         .unwrap_or(passive_skills)
         .to_vec();
+    if managers.passives_disabled(source_uid) {
+        passive_skills.clear();
+    }
     for link in managers.buff.passive_skill_links_for(source_uid) {
         if !passive_skills.contains(&link.skill_id) {
             passive_skills.push(link.skill_id);
@@ -988,6 +991,9 @@ pub(crate) fn incoming_target_attack_modifiers(
         })
         .unwrap_or_default()
         .to_vec();
+    if managers.passives_disabled(target_uid) {
+        passive_skills.clear();
+    }
     for link in managers.buff.passive_skill_links_for(target_uid) {
         if !passive_skills.contains(&link.skill_id) {
             passive_skills.push(link.skill_id);

@@ -291,3 +291,79 @@ fn ally_death_reaction_targets_only_the_defeated_ally() {
         assert_eq!(managers.buff.buff_id_amount(uid, 27342), 0);
     }
 }
+
+#[test]
+fn disabled_passives_do_not_react_to_their_owner_death() {
+    crate::test_support::init_config();
+
+    let regret_after_arm_death = |arm_buffs: Vec<BuffInfo>| {
+        let part = |uid, position, model_id, passive_skill, buffs| FightEntityInfo {
+            uid: Some(uid),
+            model_id: Some(model_id),
+            team_type: Some(2),
+            position: Some(position),
+            current_hp: Some(1_000),
+            passive_skill,
+            buffs,
+            attr: Some(HeroAttribute {
+                hp: Some(1_000),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let fight = Fight {
+            battle_id: Some(2411),
+            cur_wave: Some(2),
+            defender: Some(FightTeam {
+                entitys: vec![
+                    part(
+                        -2,
+                        1,
+                        241102,
+                        Vec::new(),
+                        vec![BuffInfo {
+                            uid: Some(100),
+                            buff_id: Some(103201),
+                            layer: Some(1),
+                            from_uid: Some(-5),
+                            ..Default::default()
+                        }],
+                    ),
+                    part(-3, 3, 241103, vec![2737], arm_buffs),
+                ],
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let pool = TargetPool::from_fight(&fight);
+        let mut managers = BattleManagers::seeded(&fight);
+        let catalog = SkillEffectCatalog::from_fight(config::configs::get(), &fight);
+        managers.hp.lose(-3, 1_000, 10);
+
+        run_event(
+            &mut managers,
+            &pool,
+            &catalog,
+            &mut RoundDeterminism::default(),
+            TargetContext::default(),
+            BattleEvent::EntityDied(crate::engine::event::payload::EntityDiedEvent {
+                source_uid: 10,
+                target_uid: -3,
+            }),
+        )
+        .unwrap();
+        managers.buff.buff_id_amount(-2, 103201)
+    };
+
+    assert_eq!(regret_after_arm_death(Vec::new()), 0);
+    assert_eq!(
+        regret_after_arm_death(vec![BuffInfo {
+            uid: Some(101),
+            buff_id: Some(27341),
+            duration: Some(3),
+            from_uid: Some(-5),
+            ..Default::default()
+        }]),
+        1
+    );
+}

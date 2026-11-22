@@ -310,6 +310,7 @@ pub enum BuffActKind {
     MasterHalo,
     MockTaunt,
     Petrified,
+    PassiveSkillInvalid,
     MonsterLabel,
     NuoDiKaCastChannel,
     PowerMaxAdd,
@@ -940,6 +941,8 @@ buff_act_definitions! {
             .without_initial_state_marker());
     (401, "Dizzy") => Dizzy, effect_time_subscription: false,
         supports: |args| args.is_empty(), state_consumer: true, wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(401, "Dizzy"), &[EffectType::Dizzy as i32]));
+    (706, "PassiveSkillInvalid") => PassiveSkillInvalid, effect_time_subscription: false,
+        supports: |args| args.is_empty(), state_consumer: true, wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(706, "PassiveSkillInvalid"), &[EffectType::Passiveskillinvalid as i32]));
     (402, "Petrified") => Petrified, event: EventKind::TargetAttacked, frame: CausingFrame,
         runtime: |context| super::petrified::rule_ops(context.catalog, context.subscriber, context.event?),
         supports: |args| args.is_empty(), state_consumer: true,

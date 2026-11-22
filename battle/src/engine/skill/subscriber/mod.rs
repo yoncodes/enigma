@@ -620,6 +620,7 @@ fn entity_skill_owners(
     let mut skills = managers
         .entity
         .passive_skills(entity.uid)
+        .filter(|_| !managers.passives_disabled(entity.uid))
         .into_iter()
         .flatten()
         .map(|&skill_id| (entity.uid, skill_id))

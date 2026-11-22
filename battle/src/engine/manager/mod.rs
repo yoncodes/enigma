@@ -1529,6 +1529,13 @@ impl BattleManagers {
         }))
     }
 
+    pub(crate) fn passives_disabled(&self, owner_uid: i64) -> bool {
+        self.buff.has_buff_act_kind(
+            owner_uid,
+            crate::engine::skill::buff_act::registry::BuffActKind::PassiveSkillInvalid,
+        )
+    }
+
     pub(crate) fn can_fire_rule(
         &self,
         owner_uid: i64,

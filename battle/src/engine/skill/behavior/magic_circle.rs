@@ -313,6 +313,9 @@ pub fn emit_attack_attributes(
     }
 
     let mut passive_skills = owner.passive_skills.clone();
+    if managers.passives_disabled(owner.uid) {
+        passive_skills.clear();
+    }
     for link in managers.buff.passive_skill_links_for(owner.uid) {
         if !passive_skills.contains(&link.skill_id) {
             passive_skills.push(link.skill_id);
