@@ -394,3 +394,43 @@ fn main_body_target_is_the_label_one_ally_not_the_action_target() {
     ));
     assert_eq!(resolve(&no_boss_id, -2), vec![-1]);
 }
+
+#[test]
+fn label_two_target_is_the_label_two_ally_not_the_action_target() {
+    init_config();
+    let part = |uid, position, model_id| FightEntityInfo {
+        model_id: Some(model_id),
+        ..entity_at(uid, position)
+    };
+    let fight = Fight {
+        battle_id: Some(1514),
+        cur_wave: Some(1),
+        attacker: Some(FightTeam {
+            entitys: vec![entity_at(10, 1)],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![part(-1, 1, 151401), part(-2, 2, 151402)],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let context = TargetContext {
+        runtime_target_uid: 10,
+        ..Default::default()
+    };
+
+    for source_uid in [-1, -2] {
+        assert_eq!(
+            resolve_code_with_context(
+                1002,
+                source_uid,
+                &pool,
+                &mut RoundDeterminism::default(),
+                context,
+            ),
+            vec![-2]
+        );
+    }
+}
