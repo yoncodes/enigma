@@ -62,6 +62,7 @@ fn configured_cloth_skills_drive_universal_and_redeal_card_rules() {
         ))
         .unwrap();
 
+    runtime.fight.version = Some(7);
     let universal = runtime
         .use_cloth_skill(UseClothSkillRequest {
             skill_id: Some(30010201),
@@ -94,7 +95,13 @@ fn configured_cloth_skills_drive_universal_and_redeal_card_rules() {
                 == Some(sonettobuf::effect_type_enum::EffectType::Universalcard as i32)
         })
     }));
+    assert_eq!(
+        universal.fight_step[1].act_effect[1].effect_type,
+        Some(sonettobuf::effect_type_enum::EffectType::Carddecknum as i32)
+    );
+    assert_eq!(universal.fight_step[1].act_effect[1].effect_num, Some(16));
 
+    runtime.fight.version = Some(6);
     runtime.determinism.enqueue_card_draws(vec![card(201)]);
     let redeal = runtime
         .use_cloth_skill(UseClothSkillRequest {
@@ -160,6 +167,11 @@ fn configured_cloth_skills_drive_universal_and_redeal_card_rules() {
     assert_eq!(redeal.fight_step[1].act_effect[0].effect_num, Some(0));
     assert_eq!(redeal.fight_step[1].act_effect[0].effect_num1, Some(0));
     assert_eq!(redeal.fight_step[1].act_effect[0].team_type, Some(0));
+    assert_eq!(
+        redeal.fight_step[1].act_effect[1].effect_type,
+        Some(sonettobuf::effect_type_enum::EffectType::Carddecknum as i32)
+    );
+    assert_eq!(redeal.fight_step[1].act_effect[1].effect_num, Some(16));
     assert!(
         redeal.fight_step[1].act_effect[0]
             .card_info_list

@@ -1,6 +1,10 @@
 use sonettobuf::{FightStep, RedealCardInfoPush, UseClothSkillReply, UseClothSkillRequest};
 
-use crate::engine::round::state::continuation_round_shell;
+use crate::engine::{
+    fight::versions::{RedealWireLayout, redeal_wire_layout},
+    manager::card::CardChangeKind,
+    round::state::continuation_round_shell,
+};
 
 use super::{BattleRuntime, change, drain, executor, project_result, record};
 
@@ -86,7 +90,7 @@ impl BattleRuntime {
                 )
                 .runtime_view(&self.managers);
                 self.managers.begin_cloth_sequence();
-                let result = drain::run_skill(
+                let mut result = drain::run_skill(
                     &mut self.managers,
                     &pool,
                     &self.catalog,
@@ -124,17 +128,32 @@ impl BattleRuntime {
                     let executor::RuleOutcome::Card(changes) = outcome else {
                         return None;
                     };
-                    (changes.kind == crate::engine::manager::card::CardChangeKind::RedealtKeepRanks)
-                        .then(|| RedealCardInfoPush {
-                            card_group: changes.after.clone(),
-                            deal_card_group: Vec::new(),
-                        })
+                    (changes.kind == CardChangeKind::RedealtKeepRanks).then(|| RedealCardInfoPush {
+                        card_group: changes.after.clone(),
+                        deal_card_group: Vec::new(),
+                    })
                 });
-                self.pending_redeal =
-                    match crate::engine::fight::versions::redeal_wire_layout(fight_version)? {
-                        crate::engine::fight::versions::RedealWireLayout::Version6 => redeal,
-                        crate::engine::fight::versions::RedealWireLayout::Version7 => None,
-                    };
+                match redeal_wire_layout(fight_version)? {
+                    RedealWireLayout::Version6 => self.pending_redeal = redeal,
+                    RedealWireLayout::Version7 => {
+                        if redeal.is_some()
+                            || result.outcomes.iter().any(|outcome| {
+                                matches!(outcome, executor::RuleOutcome::Card(changes)
+                                    if changes.kind == CardChangeKind::UniversalAdded)
+                            })
+                        {
+                            result.frames.push(record::SemanticFrame {
+                                owner: record::FrameOwner::Command,
+                                trigger: record::FrameTrigger::Active,
+                                items: vec![record::FrameItem::Change(Box::new(
+                                    change::BattleChange::CardStateSnapshot(
+                                        self.managers.card.state_snapshot(1),
+                                    ),
+                                ))],
+                            });
+                        }
+                    }
+                }
                 project_result(result, fight_version, absorb_hurt_map_layout)
                     .inspect_err(|error| tracing::warn!(%error, "cloth skill projection failed"))
                     .ok()?

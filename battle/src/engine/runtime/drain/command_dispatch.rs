@@ -614,14 +614,6 @@ pub(super) fn drain_command(
         .then_some(settlement_action_scope)
         .flatten();
     let original_pending_deaths = pending_deaths.clone();
-    let redeal_hand = match &outcome {
-        RuleOutcome::Card(changes)
-            if changes.kind == crate::engine::manager::card::CardChangeKind::RedealtKeepRanks =>
-        {
-            Some(changes.after.clone())
-        }
-        _ => None,
-    };
     let (leading_fanout, fanout): (Vec<_>, Vec<_>) = fanout
         .into_iter()
         .partition(|fanout| fanout.precedes_carrier_change());
@@ -724,9 +716,6 @@ pub(super) fn drain_command(
             };
             push_change(&mut result.frames, &frame_path, change);
         }
-    }
-    if let Some(cards) = redeal_hand {
-        push_cue(&mut result.frames, RoundCue::RedealHandSync { cards });
     }
     for (owner, change) in outcome.owned_changes() {
         let nested_owner = match owner {
