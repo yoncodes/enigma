@@ -145,7 +145,7 @@ fn attack_consumption_waits_for_hit_reactions() {
                 uid: Some(10),
                 buffs: vec![BuffInfo {
                     uid: Some(30),
-                    buff_id: Some(430111),
+                    buff_id: Some(301),
                     count: Some(1),
                     from_uid: Some(10),
                     ..Default::default()

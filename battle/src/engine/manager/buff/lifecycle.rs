@@ -70,6 +70,7 @@ pub(crate) struct BuffActionSettlement {
     pub(crate) trigger: BuffTakeActionTrigger,
     pub(crate) command: BuffCommand,
     pub(crate) in_action: bool,
+    pub(crate) after_hit_reactions: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -127,6 +128,16 @@ impl BuffManager {
             },
             |emitter| emitter == emitter_uid,
         )
+    }
+
+    pub(crate) fn settles_on_owner_cast(&self, owner_uid: i64, buff_uid: i64) -> bool {
+        self.buffs
+            .iter()
+            .find(|active| active.owner_uid == owner_uid && active.buff.uid == Some(buff_uid))
+            .and_then(|active| active.definition.as_ref())
+            .filter(|definition| !definition.preserves_action_lifetime())
+            .and_then(BuffDefinition::take_action)
+            .is_some_and(|action| action.trigger == BuffTakeActionTrigger::OwnerCastSkill)
     }
 
     pub(crate) fn plan_action_settlements(
@@ -215,6 +226,14 @@ impl BuffManager {
                     trigger: take_action.trigger,
                     command,
                     in_action: copy,
+                    after_hit_reactions: take_action.trigger == BuffTakeActionTrigger::OwnerCastSkill
+                        && definition.features().iter().any(|feature| {
+                            feature.arguments_supported
+                                && feature.kind
+                                    == Some(
+                                        crate::engine::skill::buff_act::registry::BuffActKind::AttrOnlyCalDamageAttack,
+                                    )
+                        }),
                 })
             })
             .collect::<Vec<_>>();

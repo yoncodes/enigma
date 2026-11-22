@@ -459,7 +459,7 @@ fn deferred_hit_consumes_the_attack_buff_before_after_hit_completes() {
                 }),
                 buffs: vec![BuffInfo {
                     uid: Some(30),
-                    buff_id: Some(430111),
+                    buff_id: Some(301),
                     from_uid: Some(10),
                     count: Some(1),
                     ..Default::default()

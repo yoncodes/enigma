@@ -217,42 +217,40 @@ pub(in crate::engine::runtime::drain) fn dispatch_reactions(
             multiplicity.as_deref_mut(),
         )?);
     }
+    let mut after_hit_settlements = Vec::new();
     if lane.is_none()
         && let BattleEvent::SkillAction(action) = event
     {
-        reactions.after_publish.extend(
-            managers
-                .buff
-                .plan_action_settlements(action)
-                .into_iter()
-                .map(|settlement| {
-                    let in_action = settlement.in_action;
-                    QueuedOp {
-                        op: RuleOp::Command(
-                            crate::engine::skill::rule::output::BattleCommand::Buff(
-                                settlement.command,
-                            ),
-                        ),
-                        trigger: SkillOpTrigger::Event(event.clone()),
-                        skill_execution: None,
-                        frame_path: in_action
-                            .then(|| parent_path.map(|path| path.to_vec()))
-                            .flatten(),
-                        parent_path: parent_path.map(|path| path.to_vec()),
-                        frame_group: None,
-                        independent_parent_group: None,
-                        frame_owner: (!in_action).then_some(FrameOwner::BuffAct {
-                            owner_uid: settlement.owner_uid,
-                            source_uid: settlement.source_uid,
-                            buff_uid: settlement.buff_uid,
-                            buff_id: settlement.buff_id,
-                            key: settlement.trigger.key(),
-                        }),
-                        subscriber: None,
-                        caster_frame: None,
-                    }
+        for settlement in managers.buff.plan_action_settlements(action) {
+            let in_action = settlement.in_action;
+            let queue = if settlement.after_hit_reactions {
+                &mut after_hit_settlements
+            } else {
+                &mut reactions.after_publish
+            };
+            queue.push(QueuedOp {
+                op: RuleOp::Command(crate::engine::skill::rule::output::BattleCommand::Buff(
+                    settlement.command,
+                )),
+                trigger: SkillOpTrigger::Event(event.clone()),
+                skill_execution: None,
+                frame_path: in_action
+                    .then(|| parent_path.map(|path| path.to_vec()))
+                    .flatten(),
+                parent_path: parent_path.map(|path| path.to_vec()),
+                frame_group: None,
+                independent_parent_group: None,
+                frame_owner: (!in_action).then_some(FrameOwner::BuffAct {
+                    owner_uid: settlement.owner_uid,
+                    source_uid: settlement.source_uid,
+                    buff_uid: settlement.buff_uid,
+                    buff_id: settlement.buff_id,
+                    key: settlement.trigger.key(),
                 }),
-        );
+                subscriber: None,
+                caster_frame: None,
+            });
+        }
     }
     if runs_after {
         let mut selected = queued_selected_timing(
@@ -277,6 +275,7 @@ pub(in crate::engine::runtime::drain) fn dispatch_reactions(
             reactions.after_publish.push(settlement);
         }
     }
+    reactions.after_publish.extend(after_hit_settlements);
     for (timing, destination) in [
         (
             ReactionTiming::AfterSettlement,

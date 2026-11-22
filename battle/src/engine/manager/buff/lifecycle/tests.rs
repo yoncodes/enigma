@@ -102,6 +102,47 @@ fn counted_action_settlement_consumes_one_charge() {
 }
 
 #[test]
+fn next_incantation_might_expires_on_a_cast_without_damage() {
+    crate::test_support::init_config();
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                current_hp: Some(100),
+                buffs: vec![BuffInfo {
+                    uid: Some(20),
+                    buff_id: Some(430111),
+                    from_uid: Some(10),
+                    count: Some(1),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let mut manager = BuffManager::default();
+    manager.seed(&fight);
+    assert!(manager.plan_action_settlements(&action()).is_empty());
+
+    let cast = SkillActionEvent {
+        skill_slot: 2,
+        is_attack: false,
+        ..action()
+    };
+    let settlements = manager.plan_action_settlements(&cast);
+    let [settlement] = settlements.as_slice() else {
+        panic!("expected one cast settlement");
+    };
+    assert!(settlement.after_hit_reactions);
+    manager
+        .execute(&HpManager::default(), settlement.command.clone())
+        .unwrap();
+    assert!(manager.snapshot(10, 20).is_none());
+}
+
+#[test]
 fn attack_drops_only_the_oldest_include_fourteen_copy() {
     crate::test_support::init_config();
     let buff = |uid, buff_id| BuffInfo {

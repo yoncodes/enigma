@@ -149,7 +149,15 @@ pub fn consume_rule_op(managers: &BattleManagers, feature: &ActiveBuffFeature) -
 }
 
 fn consume_command(managers: &BattleManagers, feature: &ActiveBuffFeature) -> Option<BuffCommand> {
-    let consumes_effect_count = super::feature_kind(feature)
+    let kind = super::feature_kind(feature);
+    if kind == Some(super::registry::BuffActKind::AttrOnlyCalDamageAttack)
+        && managers
+            .buff
+            .settles_on_owner_cast(feature.owner_uid, feature.buff_uid)
+    {
+        return None;
+    }
+    let consumes_effect_count = kind
         == Some(super::registry::BuffActKind::AttrOnlyCalDamageBasicAttacked)
         && managers.catalog().buff_has_effect_count(feature.buff_id);
     if !consumes_effect_count && !consumes_after_attack(feature) {
