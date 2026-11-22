@@ -69,7 +69,8 @@ pub(crate) type OncePerTargetKey = (
 );
 
 pub(crate) struct DispatchMultiplicity<'a> {
-    pub once_per_target: &'a mut std::collections::HashSet<OncePerTargetKey>,
+    pub once_per_batch_target: &'a mut std::collections::HashSet<OncePerTargetKey>,
+    pub once_per_action_target: &'a mut std::collections::HashSet<OncePerTargetKey>,
     pub once_per_event_batch: &'a mut std::collections::HashSet<ReactionMultiplicityKey>,
     pub once_per_action: &'a mut std::collections::HashSet<ReactionMultiplicityKey>,
     pub event_batch_id: u64,
@@ -503,29 +504,51 @@ fn dispatch_subscribers_with_multiplicity(
             }
         }
     });
-    subscribers.buff_acts.retain(|subscriber| {
-        let BattleEvent::Hit(hit) = event else {
-            return true;
-        };
-        let Some(definition) =
+    let BattleEvent::Hit(hit) = event else {
+        return output_passes(subscribers, managers, pool, catalog, determinism, event);
+    };
+    let claim = |subscriber: &BuffActSubscriber| {
+        use buff_act::registry::RuntimeEventMultiplicity;
+        let policy =
             buff_act::registry::find(subscriber.key.definition.opcode, &subscriber.act_type)
-        else {
-            return true;
-        };
-        if definition.runtime.event_multiplicity
-            != buff_act::registry::RuntimeEventMultiplicity::OncePerActionTarget
-        {
-            return true;
-        }
-        multiplicity.once_per_target.insert((
+                .map_or(RuntimeEventMultiplicity::EveryEvent, |definition| {
+                    definition.runtime.event_multiplicity
+                });
+        let key = (
             subscriber.owner_uid,
             subscriber.buff_uid,
             subscriber.key.definition,
             hit.source_uid,
             hit.target_uid,
-        ))
-    });
-    output_passes(subscribers, managers, pool, catalog, determinism, event)
+        );
+        (policy, key)
+    };
+    use buff_act::registry::RuntimeEventMultiplicity;
+    subscribers
+        .buff_acts
+        .retain(|subscriber| match claim(subscriber) {
+            (RuntimeEventMultiplicity::EveryEvent, _) => true,
+            (RuntimeEventMultiplicity::OncePerActionTarget, key) => {
+                !multiplicity.once_per_action_target.contains(&key)
+            }
+            (RuntimeEventMultiplicity::OncePerBatchTarget, key) => {
+                multiplicity.once_per_batch_target.insert(key)
+            }
+        });
+    let mut batch = output_passes(subscribers, managers, pool, catalog, determinism, event);
+    let claims = &mut multiplicity.once_per_action_target;
+    for dispatches in std::iter::once(&mut batch.buff_acts)
+        .chain(batch.following.iter_mut().map(|pass| &mut pass.buff_acts))
+    {
+        dispatches.retain(|(subscriber, output)| {
+            matches!(output, Ok(Some(ops)) if !ops.is_empty())
+                .then(|| claim(subscriber))
+                .is_none_or(|(policy, key)| {
+                    policy != RuntimeEventMultiplicity::OncePerActionTarget || claims.insert(key)
+                })
+        });
+    }
+    batch
 }
 
 fn retain_observing_subscribers(

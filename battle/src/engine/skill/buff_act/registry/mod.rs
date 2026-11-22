@@ -435,6 +435,7 @@ pub enum RuntimeEventMultiplicity {
     #[default]
     EveryEvent,
     OncePerActionTarget,
+    OncePerBatchTarget,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1070,7 +1071,7 @@ buff_act_definitions! {
         scoped_runtime: |context| super::dot_no_limit::rule_ops(context.managers, context.subscriber, context.event?),
         supports: |_| true, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(721, "DotNoLimit"), &[EffectType::Dot as i32]));
     (743, "ReboundBasedOnDamage") => ReboundBasedOnDamage, source: Owner,
-        multiplicity: OncePerActionTarget,
+        multiplicity: OncePerBatchTarget,
         runtime_marker: BeforeChanges(EventSource, EffectType::Rebound as i32),
         runtime: |context| super::rebound::damage_based_rule_ops(context.managers, context.subscriber, context.event?),
         supports: super::rebound::supports_damage_based,
