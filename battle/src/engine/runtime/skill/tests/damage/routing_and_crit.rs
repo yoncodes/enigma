@@ -298,7 +298,7 @@ fn purple_emanation_applies_configured_halo_before_destined_doom_damage() {
         halo,
         vec![(freeze + 1, -1, Some(2)), (freeze + 2, -2, Some(2)),]
     );
-    assert!(halo[1].0 < prepared && prepared < immediate_completed);
+    assert!(halo[1].0 < immediate_completed && immediate_completed < prepared);
     assert!(!immediate.ops.iter().any(|emission| matches!(
         emission.op,
         RuleOp::Command(BattleCommand::Hp(_) | BattleCommand::HpBatch(_))

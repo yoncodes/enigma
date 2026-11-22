@@ -1079,15 +1079,9 @@ pub(in crate::engine::runtime) fn emit_ops(
                         })
                 }),
         );
-        if catalog.has_preparation_observers() {
-            outputs.push(effects_prepared_op(
-                &invocation,
-                managers,
-                catalog,
-                pool,
-                execution,
-            ));
-        }
+        let prepared = catalog
+            .has_preparation_observers()
+            .then(|| effects_prepared_op(&invocation, managers, catalog, pool, execution));
         let phase_completed = phase_completed_op(
             &invocation,
             managers,
@@ -1100,6 +1094,7 @@ pub(in crate::engine::runtime) fn emit_ops(
             &invocation,
             execution,
             phase_completed,
+            prepared,
         ));
         if !prepares_target_buffs && freeze_rates {
             outputs.push(freeze());
