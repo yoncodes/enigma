@@ -42,12 +42,9 @@ pub(super) fn admits_cast(managers: &BattleManagers, source_uid: i64) -> bool {
 
 pub(crate) fn credits(managers: &BattleManagers, hit: &HpChanges) -> Vec<Credit> {
     if !hit.publishes_hit
-        || !(hit
+        || !hit
             .shield_absorbed
             .is_some_and(|shield| shield.absorbed > 0)
-            || hit
-                .team_shared_shield_absorbed
-                .is_some_and(|shield| shield.absorbed > 0))
     {
         return Vec::new();
     }
@@ -61,6 +58,19 @@ pub(crate) fn credits(managers: &BattleManagers, hit: &HpChanges) -> Vec<Credit>
             (route.handler)(managers, &feature, hit, definition.key)
         })
         .collect()
+}
+
+fn absorbed_by_owner_shield(managers: &BattleManagers, hit: &HpChanges, owner_uid: i64) -> bool {
+    hit.shield_absorbed
+        .filter(|shield| shield.absorbed > 0)
+        .and_then(|shield| {
+            let carrier_uid = managers.buff.shield_carrier_uid(shield.target_uid)?;
+            managers
+                .buff
+                .active_for(shield.target_uid)
+                .find(|buff| buff.uid == Some(carrier_uid))
+        })
+        .is_some_and(|carrier| carrier.from_uid == Some(owner_uid))
 }
 
 pub(super) fn earn(
@@ -77,6 +87,7 @@ pub(super) fn earn(
         })
         || managers.entity.team_type(hit.target_uid)? != feature.team_type
         || managers.entity.team_type(hit.source_uid)? == feature.team_type
+        || !absorbed_by_owner_shield(managers, hit, feature.owner_uid)
     {
         return None;
     }

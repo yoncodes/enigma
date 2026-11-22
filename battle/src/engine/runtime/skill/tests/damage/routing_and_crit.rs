@@ -396,12 +396,21 @@ fn configured_ignore_beat_back_reaches_the_committed_hit() {
         defender: Some(FightTeam {
             entitys: vec![FightEntityInfo {
                 uid: Some(-1),
-                buffs: vec![BuffInfo {
-                    uid: Some(-20),
-                    buff_id: Some(30940182),
-                    from_uid: Some(-1),
-                    ..Default::default()
-                }],
+                buffs: vec![
+                    BuffInfo {
+                        uid: Some(-20),
+                        buff_id: Some(30940182),
+                        from_uid: Some(-1),
+                        ..Default::default()
+                    },
+                    BuffInfo {
+                        uid: Some(-21),
+                        buff_id: Some(30940121),
+                        duration: Some(2),
+                        from_uid: Some(-1),
+                        ..Default::default()
+                    },
+                ],
                 current_hp: Some(10_000),
                 attr: Some(HeroAttribute {
                     hp: Some(10_000),
