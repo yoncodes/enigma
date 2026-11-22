@@ -57,10 +57,40 @@ pub mod scan {
     }
 
     pub mod behavior {
+        use super::{ParsedCondition, ParsedConditionKind, SkillEffectSlot};
+        use crate::engine::skill::{
+            behavior::registry::CardPlayRole, condition::none::NoneMode, rule::SetupStage,
+        };
+
         pub use crate::engine::skill::behavior::buff::random_buff_pool;
         pub use crate::engine::skill::behavior::{
             has_destination, is_slot_supported, is_supported,
         };
+
+        pub fn missing_queue_preparation_route(slot: &SkillEffectSlot) -> bool {
+            let Some(definition) = registry::find(&slot.behavior) else {
+                return false;
+            };
+            definition.card_play_role == CardPlayRole::QueuePreparation
+                && slot.compiled_route.is_ok()
+                && requires_queue_commit(&slot.conditions)
+                && slot
+                    .compiled_setup_keys(SetupStage::GeneratedCard, 0)
+                    .is_ok_and(|keys| keys.is_empty())
+        }
+
+        fn requires_queue_commit(conditions: &[ParsedCondition]) -> bool {
+            conditions.iter().any(|condition| match &condition.kind {
+                ParsedConditionKind::None(NoneMode::ActionQueueCommitted) => true,
+                ParsedConditionKind::Any(alternatives) => {
+                    !alternatives.is_empty()
+                        && alternatives
+                            .iter()
+                            .all(|group| requires_queue_commit(group))
+                }
+                _ => false,
+            })
+        }
 
         pub mod classify {
             pub use crate::engine::skill::behavior::classify::{BehaviorKind, BehaviorSpec};
