@@ -3,7 +3,7 @@ use crate::engine::{
     manager::{
         BattleManagers,
         buff::{ActiveBuffFeature, BuffActInfoMarkerResult, BuffCommand, BuffSetState},
-        card::{CardAddPrecast, CardCommand, temp::runtime_precast_card},
+        card::{CardAddPrecast, CardCommand, selected_precast_card},
     },
     skill::{
         action::SkillRequest,
@@ -137,16 +137,16 @@ pub fn rule_ops(
     let Some((count, skill)) = parse_record(info) else {
         return Some(Vec::new());
     };
-    if !pool
+    let Some(caster) = pool
         .allies(subscriber.owner_uid)
         .iter()
-        .any(|entity| entity.uid == skill.source_uid)
-    {
+        .find(|entity| entity.uid == skill.source_uid)
+    else {
         return Some(Vec::new());
-    }
+    };
     let enchant_id = *subscriber.args.get(1)?;
     let origin = super::command_origin(subscriber)?;
-    let mut card = runtime_precast_card(managers, skill.source_uid, skill.skill_id);
+    let mut card = selected_precast_card(caster.uid, caster.model_id, skill.skill_id);
     card.enchants.push(sonettobuf::CardEnchant {
         enchant_id: Some(enchant_id),
         duration: Some(1),

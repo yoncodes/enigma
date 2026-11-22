@@ -19,19 +19,20 @@ fn selection_keeps_eligibility_and_copies_for_the_recorded_caster() {
 }
 
 fn check_selection(caster_uid: i64, skill_id: i32) {
-    let entity = |uid, group| FightEntityInfo {
+    let entity = |uid, model_id, group| FightEntityInfo {
         uid: Some(uid),
+        model_id: Some(model_id),
         current_hp: Some(100),
         skill_group1: group,
         ..Default::default()
     };
     let source_uid = -1;
     let mut allies = vec![
-        entity(source_uid, vec![31390111, 31390121]),
-        entity(12, vec![skill_id]),
+        entity(source_uid, 3139, vec![31390111, 31390121]),
+        entity(12, 3127, vec![skill_id]),
     ];
     if caster_uid != source_uid {
-        allies.push(entity(caster_uid, vec![skill_id]));
+        allies.push(entity(caster_uid, 3127, vec![skill_id]));
     }
     let fight = Fight {
         version: Some(7),
@@ -124,9 +125,13 @@ fn check_selection(caster_uid: i64, skill_id: i32) {
         panic!("expected copies and the state reset");
     };
     assert_eq!(copies.len(), 3);
+    let caster_model = pool.entity(caster_uid).unwrap().model_id;
     assert!(copies.iter().all(|op| matches!(op,
         RuleOp::Command(BattleCommand::Card(CardCommand::AddPrecast(add)))
             if add.card.uid == Some(caster_uid) && add.card.skill_id == Some(skill_id)
+                && add.card.hero_id == Some(caster_model)
+                && add.card.temp_card == Some(true)
+                && add.card.card_type == Some(sonettobuf::card_info::CardType::None as i32)
                 && matches!(add.card.enchants.as_slice(), [enchant]
                     if enchant.enchant_id == Some(10010))
     )));
