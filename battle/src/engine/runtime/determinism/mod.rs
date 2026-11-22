@@ -244,6 +244,14 @@ impl RoundDeterminism {
         self.shell_moxie_choices.extend(choices);
     }
 
+    pub(crate) fn replace_skill_target_choices(
+        &mut self,
+        choices: impl IntoIterator<Item = SkillTargetChoice>,
+    ) {
+        self.skill_targets.clear();
+        self.enqueue_skill_target_choices(choices);
+    }
+
     pub fn enqueue_skill_target_choices(
         &mut self,
         choices: impl IntoIterator<Item = SkillTargetChoice>,

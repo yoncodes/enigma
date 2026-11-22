@@ -239,7 +239,7 @@ impl BattleRuntime {
         &mut self,
         choices: impl IntoIterator<Item = determinism::SkillTargetChoice>,
     ) {
-        self.determinism.enqueue_skill_target_choices(choices);
+        self.determinism.replace_skill_target_choices(choices);
     }
 
     pub fn seed_hidden_crits(
