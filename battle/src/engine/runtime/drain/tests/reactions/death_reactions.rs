@@ -236,3 +236,58 @@ fn enemy_death_condition_fires_for_the_observing_side() {
         vec![(crate::engine::fight::rules::ATTACKER_SIDE_UID, Some(-1))]
     );
 }
+
+#[test]
+fn ally_death_reaction_targets_only_the_defeated_ally() {
+    crate::test_support::init_config();
+
+    let entity = |uid, position, hp, passive_skill| FightEntityInfo {
+        uid: Some(uid),
+        team_type: Some(2),
+        position: Some(position),
+        current_hp: Some(hp),
+        passive_skill,
+        attr: Some(HeroAttribute {
+            hp: Some(hp),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let fight = Fight {
+        defender: Some(FightTeam {
+            entitys: vec![
+                entity(-2, 1, 1_000, Vec::new()),
+                entity(-3, 2, 1_000, Vec::new()),
+                entity(-5, 3, 4_000, vec![2734]),
+            ],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    let catalog = SkillEffectCatalog::from_fight(config::configs::get(), &fight);
+    managers.hp.lose(-3, 1_000, 10);
+
+    run_event(
+        &mut managers,
+        &pool,
+        &catalog,
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+        BattleEvent::EntityDied(crate::engine::event::payload::EntityDiedEvent {
+            source_uid: 10,
+            target_uid: -3,
+        }),
+    )
+    .unwrap();
+
+    assert_eq!(managers.hp.current(-3), 150);
+    assert_eq!(managers.buff.buff_id_amount(-3, 27341), 1);
+    assert_eq!(managers.buff.buff_id_amount(-3, 27342), 1);
+    for (uid, hp) in [(-2, 1_000), (-5, 4_000)] {
+        assert_eq!(managers.hp.current(uid), hp);
+        assert_eq!(managers.buff.buff_id_amount(uid, 27341), 0);
+        assert_eq!(managers.buff.buff_id_amount(uid, 27342), 0);
+    }
+}

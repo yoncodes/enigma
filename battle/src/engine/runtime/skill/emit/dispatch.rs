@@ -794,6 +794,11 @@ pub(in crate::engine::runtime) fn emit_ops(
             );
         let condition_uses_hit_targets = behavior_target_source
             == crate::engine::skill::condition::registry::BehaviorTargetSource::HitTargets;
+        let event_subject = (slot.target_from_condition
+            && behavior_target_source
+                == crate::engine::skill::condition::registry::BehaviorTargetSource::EventSubject
+            && execution.context.runtime_target_uid != 0)
+            .then_some(execution.context.runtime_target_uid);
         let child_skill_kind = condition_key
             .and_then(|condition_key| {
                 crate::engine::skill::condition::registry::find_key(
@@ -830,6 +835,8 @@ pub(in crate::engine::runtime) fn emit_ops(
         let mut targets =
             if definition.target_emission_mode == behavior::registry::TargetEmissionMode::Owner {
                 vec![invocation.plan.source_uid]
+            } else if let Some(subject_uid) = event_subject {
+                vec![subject_uid]
             } else if let Some(targets) = event_targets {
                 targets.to_vec()
             } else if active_phase.is_some()
