@@ -396,7 +396,7 @@ fn active_skill_status_thresholds_preserve_strictness() {
     );
     assert_eq!(
         parse(43203, "HasTypeBuffLessThan", &["6".into(), "1,5".into()]),
-        Some(ParsedConditionKind::VisibleBuffStatusTypeCount {
+        Some(ParsedConditionKind::VisibleStackedStatusTypeCount {
             status_ids: vec![1, 5],
             compare: crate::engine::skill::condition::ConditionCompare::LessThan,
             threshold: 6,
