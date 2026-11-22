@@ -149,7 +149,7 @@ pub fn rule_ops(
     let mut card = selected_precast_card(caster.uid, caster.model_id, skill.skill_id);
     card.enchants.push(sonettobuf::CardEnchant {
         enchant_id: Some(enchant_id),
-        duration: Some(1),
+        duration: Some(-1),
         ex_info: Vec::new(),
     });
     let mut ops = (0..count)

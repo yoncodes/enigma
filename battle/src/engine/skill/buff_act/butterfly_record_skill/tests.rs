@@ -133,7 +133,7 @@ fn check_selection(caster_uid: i64, skill_id: i32) {
                 && add.card.temp_card == Some(true)
                 && add.card.card_type == Some(sonettobuf::card_info::CardType::None as i32)
                 && matches!(add.card.enchants.as_slice(), [enchant]
-                    if enchant.enchant_id == Some(10010))
+                    if enchant.enchant_id == Some(10010) && enchant.duration == Some(-1))
     )));
     managers.execute_buff(reset.clone()).unwrap();
     let buff = managers.buff.snapshot(source_uid, buff_uid).unwrap();
