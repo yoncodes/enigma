@@ -39,23 +39,23 @@ pub fn attribute_delta(feature: &ActiveBuffFeature, attr_id: AttrId, buffs: &Buf
         .unwrap_or_default()
 }
 
-pub fn snapshot(buff_id: i32, visible: i32) -> Option<Vec<BuffActInfo>> {
-    snapshot_features(BuffManager::configured_features(buff_id), visible)
+pub fn snapshot(buff_id: i32, raw_value: i32) -> Option<Vec<BuffActInfo>> {
+    snapshot_features(BuffManager::configured_features(buff_id), raw_value)
 }
 
 pub(crate) fn definition_snapshot(
     buffs: &BuffManager,
     buff_id: i32,
-    visible: i32,
+    raw_value: i32,
 ) -> Option<Vec<BuffActInfo>> {
-    snapshot_features(buffs.definition_features(buff_id), visible)
+    snapshot_features(buffs.definition_features(buff_id), raw_value)
 }
 
-fn snapshot_features(features: Vec<ActiveBuffFeature>, visible: i32) -> Option<Vec<BuffActInfo>> {
+fn snapshot_features(features: Vec<ActiveBuffFeature>, raw_value: i32) -> Option<Vec<BuffActInfo>> {
     let infos = features
         .into_iter()
         .filter(|feature| super::is_kind(feature, super::registry::BuffActKind::AttrByHeatScale))
-        .filter_map(|feature| Some((feature.act_id()?, snapshot_delta(&feature, visible)?)))
+        .filter_map(|feature| Some((feature.act_id()?, snapshot_delta(&feature, raw_value)?)))
         .map(|(act_id, delta)| BuffActInfo {
             act_id: Some(act_id),
             param: vec![delta],
@@ -65,29 +65,19 @@ fn snapshot_features(features: Vec<ActiveBuffFeature>, visible: i32) -> Option<V
     (!infos.is_empty()).then_some(infos)
 }
 
-fn snapshot_delta(feature: &ActiveBuffFeature, visible: i32) -> Option<i32> {
+fn snapshot_delta(feature: &ActiveBuffFeature, raw_value: i32) -> Option<i32> {
     let [_, raw_attr_id, value_per_step, raw_cap, rest @ ..] = feature.values.as_slice() else {
         return None;
     };
-    let attr_id = AttrId::from_raw(*raw_attr_id)?;
+    AttrId::from_raw(*raw_attr_id)?;
     let raw_step = i64::from(
         rest.first()
             .copied()
             .unwrap_or(RAW_GAUGE_PER_VISIBLE_POINT)
             .max(1),
     );
-    let numerator = i64::from(
-        visible
-            .max(0)
-            .saturating_mul(RAW_GAUGE_PER_VISIBLE_POINT)
-            .min((*raw_cap).max(0)),
-    ) * i64::from(*value_per_step);
-    let delta = if attr_id == AttrId::DmgBonus && numerator > 0 {
-        (numerator + raw_step - 1) / raw_step
-    } else {
-        numerator / raw_step
-    };
-    i32::try_from(delta).ok()
+    let numerator = i64::from(raw_value.clamp(0, (*raw_cap).max(0))) * i64::from(*value_per_step);
+    i32::try_from(numerator / raw_step).ok()
 }
 
 #[cfg(test)]
