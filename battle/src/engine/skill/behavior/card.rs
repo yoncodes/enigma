@@ -3,7 +3,7 @@ use crate::engine::{
         buff::{BuffCommand, BuffConsume, BuffSelector, DepletedBuff},
         card::{
             CardAddTemporary, CardAddUniversal, CardCommand, CardEnchantHand, CardEnergyChange,
-            CardMarkTemporary, CardQueueUse, EnchantedType, HandCardRankUp, QueuedCardRankUp,
+            CardMarkTemporary, CardQueueUse, EnchantedType, HandCardRankUp,
         },
         eureka::{EUREKA_RESOURCE_ID, EurekaChange, EurekaCommand},
     },
@@ -162,50 +162,6 @@ impl BehaviorHandler for Handler {
                 context,
                 super::command_origin(behavior)?,
             );
-        }
-        if behavior.spec.kind == BehaviorKind::AddCardRankByEffectTag {
-            let effect_tags = behavior.arg_list(0)?;
-            let skill_slot = behavior.arg(1)?;
-            let played = context.managers.card.played();
-            let upgrades = played
-                .iter()
-                .filter(|card| {
-                    card.card.uid == Some(context.source_uid)
-                        && context.pool.skill_slot(
-                            context.managers,
-                            context.source_uid,
-                            card.skill_id,
-                        ) == skill_slot
-                        && effect_tags
-                            .contains(&context.managers.catalog().skill_effect_tag(card.skill_id))
-                })
-                .filter_map(|card| {
-                    let effect_tag = context.managers.catalog().skill_effect_tag(card.skill_id);
-                    let levels = played
-                        .iter()
-                        .filter(|other| {
-                            other.card_index != card.card_index
-                                && context.managers.catalog().skill_effect_tag(other.skill_id)
-                                    == effect_tag
-                        })
-                        .count() as i32;
-                    (levels > 0).then_some(QueuedCardRankUp {
-                        card_index: card.card_index,
-                        levels,
-                    })
-                })
-                .collect::<Vec<_>>();
-            return Some(if upgrades.is_empty() {
-                Vec::new()
-            } else {
-                vec![RuleOp::Command(BattleCommand::Card(
-                    CardCommand::RankUpQueuedCards {
-                        origin: super::command_origin(behavior)?,
-                        upgrades,
-                        rewritten: true,
-                    },
-                ))]
-            });
         }
         rule_op(behavior).map(|op| vec![op])
     }
@@ -691,10 +647,6 @@ pub(super) fn supports_queued_skill_card(behavior: &ParsedBehavior) -> bool {
 
 pub(super) fn supports_temporary_skill_card(behavior: &ParsedBehavior) -> bool {
     matches!(behavior.args.as_slice(), [skill_id] if *skill_id > 0)
-}
-
-pub(super) fn supports_rank_by_effect_tag(behavior: &ParsedBehavior) -> bool {
-    behavior.arg_list(0).is_some() && behavior.arg(1).is_some()
 }
 
 #[cfg(test)]

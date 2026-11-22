@@ -1,7 +1,7 @@
 use super::*;
 use std::collections::{HashMap, HashSet};
 
-mod selection;
+pub(super) mod selection;
 
 pub struct PlayerPhaseResult {
     pub drain: DrainResult,
@@ -39,12 +39,9 @@ pub(super) fn run_action_queue_committed(
             .push(crate::engine::round::command::PlayerQueuedAction::Conduit);
     }
     let team = queue.team;
-    let committed_event = BattleEvent::ActionQueueCommitted {
-        team,
-        emitter_uid: queue.emitter_uid,
-        cards: queue.cards(),
-        action_count: queue.action_count(),
-    };
+    let emitter_uid = queue.emitter_uid;
+    let cards = queue.cards();
+    let action_count = queue.action_count();
     let card_state = managers.card.action_queue_state(team);
     let mut result = DrainResult {
         frames: vec![SemanticFrame {
@@ -63,6 +60,21 @@ pub(super) fn run_action_queue_committed(
     };
     append(
         &mut result,
+        drain::run_event(
+            managers,
+            pool,
+            catalog,
+            determinism,
+            context,
+            BattleEvent::ActionQueueSubmitted {
+                team,
+                emitter_uid,
+                cards: cards.clone(),
+            },
+        )?,
+    );
+    append(
+        &mut result,
         selections.commit(managers, pool, catalog, determinism, context)?,
     );
     append(
@@ -73,7 +85,12 @@ pub(super) fn run_action_queue_committed(
             catalog,
             determinism,
             context,
-            committed_event,
+            BattleEvent::ActionQueueCommitted {
+                team,
+                emitter_uid,
+                cards,
+                action_count,
+            },
         )?,
     );
     Ok(result)

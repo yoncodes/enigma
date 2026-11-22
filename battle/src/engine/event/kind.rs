@@ -39,6 +39,7 @@ pub enum EventKind {
     SkillAction,
     NoActionRound,
     SkillCast,
+    ActionQueueSubmitted,
     ActionQueueCommitted,
     PlayerActionsResolved,
     PostActionRefill,

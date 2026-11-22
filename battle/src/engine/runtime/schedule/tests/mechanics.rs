@@ -493,20 +493,16 @@ fn action_queue_commit_collects_played_card_energy_as_inspiration() {
                 && queued.kind == crate::engine::manager::card::CardChangeKind::UseCardQueued
     ));
     assert!(matches!(
-        result.events.first(),
-        Some(BattleEvent::ActionQueueCommitted {
-            action_count: 1,
-            ..
-        })
+        result.events.as_slice(),
+        [
+            BattleEvent::ActionQueueSubmitted { .. },
+            BattleEvent::ActionQueueCommitted {
+                action_count: 1,
+                ..
+            },
+            BattleEvent::GaugeChanged(_),
+        ]
     ));
-    assert_eq!(
-        result
-            .events
-            .iter()
-            .map(BattleEvent::kind)
-            .collect::<Vec<_>>(),
-        vec![EventKind::ActionQueueCommitted, EventKind::GaugeChanged]
-    );
     assert_eq!(
         managers.gauge.get(inspiration_key(99998)).unwrap().current,
         3

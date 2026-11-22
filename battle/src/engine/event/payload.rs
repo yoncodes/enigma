@@ -247,6 +247,11 @@ pub enum BattleEvent {
         target_uid: i64,
     },
     RoundStart,
+    ActionQueueSubmitted {
+        team: i32,
+        emitter_uid: i64,
+        cards: Vec<CardInfo>,
+    },
     ActionQueueCommitted {
         team: i32,
         emitter_uid: i64,
@@ -338,7 +343,8 @@ impl BattleEvent {
 
     pub fn source_uid(&self) -> Option<i64> {
         match self {
-            Self::ActionQueueCommitted { emitter_uid, .. }
+            Self::ActionQueueSubmitted { emitter_uid, .. }
+            | Self::ActionQueueCommitted { emitter_uid, .. }
             | Self::PlayerActionsResolved { emitter_uid, .. }
             | Self::ImpromptuResolved { emitter_uid, .. } => Some(*emitter_uid),
             Self::SkillEffectStarted(started) => Some(started.source_uid),
@@ -404,6 +410,7 @@ impl BattleEvent {
             Self::EnterFight
             | Self::BattleTerminalCommitted { .. }
             | Self::RoundStart
+            | Self::ActionQueueSubmitted { .. }
             | Self::ActionQueueCommitted { .. }
             | Self::PlayerActionsResolved { .. }
             | Self::ImpromptuResolved { .. }
@@ -422,6 +429,7 @@ impl BattleEvent {
             Self::EntityEntered { .. } => EventKind::EntityEntered,
             Self::EntityTransformed { .. } => EventKind::EntityTransformed,
             Self::RoundStart => EventKind::RoundStart,
+            Self::ActionQueueSubmitted { .. } => EventKind::ActionQueueSubmitted,
             Self::ActionQueueCommitted { .. } => EventKind::ActionQueueCommitted,
             Self::PlayerActionsResolved { .. } => EventKind::PlayerActionsResolved,
             Self::ImpromptuResolved { .. } => EventKind::ImpromptuResolved,

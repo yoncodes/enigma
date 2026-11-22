@@ -34,6 +34,7 @@ pub mod position;
 pub mod power_queue_rank;
 pub mod precast;
 pub mod prepare_skill;
+mod queue_rank_by_tag;
 pub mod rate;
 pub mod registry;
 pub mod resource;

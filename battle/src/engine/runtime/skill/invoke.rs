@@ -274,6 +274,7 @@ pub(super) fn apply_event_context(
         BattleEvent::EnterFight
         | BattleEvent::BattleTerminalCommitted { .. }
         | BattleEvent::RoundStart
+        | BattleEvent::ActionQueueSubmitted { .. }
         | BattleEvent::ActionQueueCommitted { .. }
         | BattleEvent::PlayerActionsResolved { .. }
         | BattleEvent::BuffsSettled(_)

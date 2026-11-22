@@ -899,7 +899,7 @@ behavior_definitions! {
     [60033] "AttrFixByLoseHp" => super::attr_fix_by_lost_hp::Handler, AttrFixByLoseHp, Immediate, modifier;
     [60246] "HeatScaleUseSkillAddCount" => crate::engine::mechanic::heat_scale::Handler, HeatScaleUseSkillAddCount, Immediate, destination, arguments::at_least_one;
     [60247] "AddCardRankNext" => crate::engine::mechanic::heat_scale::Handler, AddCardRankNext, Immediate, queue_preparation, arguments::exactly_two;
-    [60281] "AddCardRankByEffectTag" => super::card::Handler, AddCardRankByEffectTag, Immediate, queue_preparation, super::card::supports_rank_by_effect_tag;
+    [60281] "AddCardRankByEffectTag" => super::queue_rank_by_tag::Handler, AddCardRankByEffectTag, Immediate, parent_destination, @route(ConditionRouteOverride::Trigger { key: DefinitionKey::new(1061, "None"), event: EventKind::ActionQueueSubmitted, phase: None }), super::queue_rank_by_tag::supports_arguments;
     [60283] "BufferflyRecordSkill" => super::card::Handler, BufferflyRecordSkill, Immediate, destination, arguments::none;
     [60287] "ToughnessRecover" => super::toughness::Handler, ToughnessRecover, Immediate, destination;
     [60254] "AddHeatScaleFromBuff" => crate::engine::mechanic::heat_scale::Handler, AddHeatScaleFromBuff, Immediate, destination, arguments::none;
