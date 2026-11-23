@@ -489,6 +489,15 @@ fn defender_round_end_keeps_buff_acts_and_owner_passives_in_one_frame() {
         buffs: vec![burn(buff_uid)],
         ..Default::default()
     };
+    let mut sentinel = defender(-1, vec![103374116], 31);
+    sentinel.buffs.push(BuffInfo {
+        uid: Some(40),
+        buff_id: Some(103374118),
+        from_uid: Some(-1),
+        count: Some(1),
+        duration: Some(1),
+        ..Default::default()
+    });
     let fight = Fight {
         version: Some(7),
         attacker: Some(FightTeam {
@@ -506,7 +515,7 @@ fn defender_round_end_keeps_buff_acts_and_owner_passives_in_one_frame() {
         }),
         defender: Some(FightTeam {
             entitys: vec![
-                defender(-1, Vec::new(), 31),
+                sentinel,
                 defender(-2, vec![116330101], 32),
                 defender(-3, vec![116330101], 33),
             ],
@@ -527,9 +536,9 @@ fn defender_round_end_keeps_buff_acts_and_owner_passives_in_one_frame() {
     )
     .unwrap();
     let steps = crate::engine::packet::timeline::project(&result.frames).unwrap();
-    let round_end = steps
+    let round_end_index = steps
         .iter()
-        .find(|step| {
+        .position(|step| {
             step.act_effect
                 .iter()
                 .filter(|effect| {
@@ -542,6 +551,18 @@ fn defender_round_end_keeps_buff_acts_and_owner_passives_in_one_frame() {
                 == 3
         })
         .unwrap();
+    assert_eq!(managers.buff.buff_id_amount(-1, 103374117), 1);
+    let small_round_end = &steps[round_end_index - 1];
+    assert!(
+        small_round_end
+            .act_effect
+            .iter()
+            .filter_map(|effect| effect.fight_step.as_ref())
+            .flat_map(|step| &step.act_effect)
+            .filter_map(|effect| effect.fight_step.as_ref())
+            .any(|step| step.act_id == Some(103374116))
+    );
+    let round_end = &steps[round_end_index];
     assert_eq!(round_end.act_effect.len(), 5);
 
     let passives = round_end.act_effect[3..]

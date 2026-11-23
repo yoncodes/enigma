@@ -319,18 +319,7 @@ fn run_defender_settlement(
         .collect::<Vec<_>>();
     owners.extend(pool.assist_boss(crate::engine::fight::rules::DEFENDER_SIDE_UID));
     owners.push(crate::engine::fight::rules::DEFENDER_SIDE_UID);
-    let mut result = drain::run_group_event_lanes(
-        managers,
-        pool,
-        catalog,
-        determinism,
-        context,
-        BattleEvent::Kind(EventKind::RoundEnd),
-        &[drain::ReactionLane::BuffActs, drain::ReactionLane::Skills],
-        Some(&owners),
-    )?;
-    append(
-        &mut result,
+    let small_round_end = |managers: &mut BattleManagers, determinism: &mut RoundDeterminism| {
         drain::run_grouped_owner_event_lanes(
             managers,
             pool,
@@ -340,8 +329,29 @@ fn run_defender_settlement(
             BattleEvent::Kind(EventKind::SmallRoundEnd),
             &owners,
             &[drain::ReactionLane::BuffActs, drain::ReactionLane::Skills],
+        )
+    };
+    let small_first = managers.fight_version() == 7;
+    let mut result = DrainResult::default();
+    if small_first {
+        append(&mut result, small_round_end(managers, determinism)?);
+    }
+    append(
+        &mut result,
+        drain::run_group_event_lanes(
+            managers,
+            pool,
+            catalog,
+            determinism,
+            context,
+            BattleEvent::Kind(EventKind::RoundEnd),
+            &[drain::ReactionLane::BuffActs, drain::ReactionLane::Skills],
+            Some(&owners),
         )?,
     );
+    if !small_first {
+        append(&mut result, small_round_end(managers, determinism)?);
+    }
     let settlement = run_entity_settlement(
         managers,
         pool,
