@@ -19,6 +19,7 @@ fn command() -> ShieldCommand {
         max_rate: 6_500,
         scope: ShieldScope::Entity,
         carrier_uid: ShieldCarrierUid::Definition,
+        carrier_duration: ShieldCarrierDuration::Preserve,
     }
 }
 
@@ -189,7 +190,7 @@ fn shield_buff_is_attached_once_and_repeats_stack_to_the_cap() {
     assert_eq!(managers.hp.shield(1), 1_590);
 
     let second = execute(&mut managers, command()).unwrap();
-    assert!(second.buff.as_ref().unwrap().change.refreshed.is_empty());
+    assert!(second.buff.is_none());
     assert_eq!(second.hp.unwrap().shield_granted.unwrap().added, 1_590);
     assert_eq!(managers.hp.shield(1), 3_180);
 }
@@ -228,6 +229,7 @@ fn cumulative_carrier_initializes_from_its_tier_then_refreshes_by_the_increment(
         max_rate: 1_000,
         scope: ShieldScope::Entity,
         carrier_uid: ShieldCarrierUid::Child,
+        carrier_duration: ShieldCarrierDuration::Refresh,
     };
 
     let first = execute(&mut managers, cumulative).unwrap();
@@ -276,6 +278,7 @@ fn fifth_cumulative_carrier_initializes_to_full_max_hp() {
             max_rate: 1_000,
             scope: ShieldScope::Entity,
             carrier_uid: ShieldCarrierUid::Child,
+            carrier_duration: ShieldCarrierDuration::Refresh,
         },
     )
     .unwrap();
@@ -333,6 +336,7 @@ fn assist_boss_hp_can_drive_its_configured_shield() {
             max_rate: 600,
             scope: ShieldScope::Entity,
             carrier_uid: ShieldCarrierUid::Definition,
+            carrier_duration: ShieldCarrierDuration::Refresh,
         },
     )
     .unwrap();
@@ -595,6 +599,7 @@ fn team_shared_shield_stacks_on_its_buff_act_state() {
         max_rate: 12_500,
         scope: ShieldScope::TeamShared,
         carrier_uid: ShieldCarrierUid::Definition,
+        carrier_duration: ShieldCarrierDuration::Refresh,
     };
 
     let first = execute(&mut managers, command).unwrap();
@@ -701,6 +706,7 @@ fn team_shared_shield_stacks_on_an_existing_shared_type_variant() {
         max_rate: 12_500,
         scope: ShieldScope::TeamShared,
         carrier_uid: ShieldCarrierUid::Definition,
+        carrier_duration: ShieldCarrierDuration::Refresh,
     };
 
     let changes = execute(&mut managers, command).unwrap();

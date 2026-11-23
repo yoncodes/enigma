@@ -29,6 +29,12 @@ pub enum ShieldCarrierUid {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ShieldCarrierDuration {
+    Refresh,
+    Preserve,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ShieldCommand {
     pub origin: CommandOrigin,
     pub source_uid: i64,
@@ -41,6 +47,7 @@ pub struct ShieldCommand {
     pub max_rate: i32,
     pub scope: ShieldScope,
     pub carrier_uid: ShieldCarrierUid,
+    pub carrier_duration: ShieldCarrierDuration,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -166,7 +173,7 @@ fn plan(
     match command.scope {
         ShieldScope::Entity => {
             let buff = match carrier_uid {
-                Some(buff_uid) => {
+                Some(buff_uid) if command.carrier_duration == ShieldCarrierDuration::Refresh => {
                     let carrier = managers.buff.snapshot(command.target_uid, buff_uid).ok_or(
                         ShieldCommandError::Buff(BuffCommandError::InvalidDurationChange),
                     )?;
@@ -190,6 +197,7 @@ fn plan(
                         })
                         .transpose()?
                 }
+                Some(_) => None,
                 None => Some(plan_carrier(managers, command)?),
             };
             let accepted =

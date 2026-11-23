@@ -1,6 +1,6 @@
 use crate::engine::{
     entity::attr::AttrId,
-    manager::shield::{ShieldCarrierUid, ShieldCommand, ShieldScope},
+    manager::shield::{ShieldCarrierDuration, ShieldCarrierUid, ShieldCommand, ShieldScope},
     skill::{
         behavior::{BehaviorOpContext, classify::BehaviorKind, registry::BehaviorHandler},
         effect::ParsedBehavior,
@@ -91,7 +91,13 @@ impl BehaviorHandler for Handler {
     }
 
     fn emit_ops(context: BehaviorOpContext<'_>, behavior: &ParsedBehavior) -> Option<Vec<RuleOp>> {
-        emit_ops(context, behavior, ShieldCarrierUid::Definition, false)
+        emit_ops(
+            context,
+            behavior,
+            ShieldCarrierUid::Definition,
+            ShieldCarrierDuration::Refresh,
+            false,
+        )
     }
 
     fn references(behavior: &ParsedBehavior) -> RuleReferences {
@@ -107,7 +113,13 @@ impl BehaviorHandler for ChildUidHandler {
     }
 
     fn emit_ops(context: BehaviorOpContext<'_>, behavior: &ParsedBehavior) -> Option<Vec<RuleOp>> {
-        emit_ops(context, behavior, ShieldCarrierUid::Child, true)
+        emit_ops(
+            context,
+            behavior,
+            ShieldCarrierUid::Child,
+            ShieldCarrierDuration::Refresh,
+            true,
+        )
     }
 
     fn references(behavior: &ParsedBehavior) -> RuleReferences {
@@ -123,7 +135,13 @@ impl BehaviorHandler for ScaledHandler {
     }
 
     fn emit_ops(context: BehaviorOpContext<'_>, behavior: &ParsedBehavior) -> Option<Vec<RuleOp>> {
-        emit_ops(context, behavior, ShieldCarrierUid::SharedChild, false)
+        emit_ops(
+            context,
+            behavior,
+            ShieldCarrierUid::SharedChild,
+            ShieldCarrierDuration::Preserve,
+            false,
+        )
     }
 
     fn references(behavior: &ParsedBehavior) -> RuleReferences {
@@ -135,6 +153,7 @@ fn emit_ops(
     context: BehaviorOpContext<'_>,
     behavior: &ParsedBehavior,
     carrier_uid: ShieldCarrierUid,
+    carrier_duration: ShieldCarrierDuration,
     stack_bonus: bool,
 ) -> Option<Vec<RuleOp>> {
     let (buff_id, amount_attr, rate, max_attr, max_rate, multiplier_bonus, stack_bonus) =
@@ -165,6 +184,7 @@ fn emit_ops(
                 _ => return None,
             },
             carrier_uid,
+            carrier_duration,
         },
     ))])
 }

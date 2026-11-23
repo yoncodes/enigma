@@ -385,6 +385,7 @@ fn shield_transaction_projects_only_changed_carrier_and_shield_values() {
         max_rate: 6_500,
         scope: crate::engine::manager::shield::ShieldScope::Entity,
         carrier_uid: crate::engine::manager::shield::ShieldCarrierUid::Definition,
+        carrier_duration: crate::engine::manager::shield::ShieldCarrierDuration::Refresh,
     };
     let changes = crate::engine::manager::shield::execute(&mut managers, command).unwrap();
 
@@ -456,6 +457,7 @@ fn team_shared_shield_projects_buff_state_then_stack_updates() {
         max_rate: 12_500,
         scope: crate::engine::manager::shield::ShieldScope::TeamShared,
         carrier_uid: crate::engine::manager::shield::ShieldCarrierUid::Definition,
+        carrier_duration: crate::engine::manager::shield::ShieldCarrierDuration::Refresh,
     };
 
     let changes = crate::engine::manager::shield::execute(&mut managers, command).unwrap();
