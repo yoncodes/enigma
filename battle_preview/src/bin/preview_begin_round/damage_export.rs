@@ -6,7 +6,7 @@ use std::{
 
 use anyhow::{Context, bail};
 use serde_json::{Value, json};
-use sonettobuf::Fight;
+use sonettobuf::{Fight, FightRound};
 
 pub(super) struct DamageExport(BufWriter<File>);
 
@@ -26,7 +26,7 @@ impl DamageExport {
         let file =
             File::create_new(&path).with_context(|| format!("create damage export {path}"))?;
         let mut export = Self(BufWriter::new(file));
-        export.event(json!({"kind": "header", "format": "enigma-damage", "version": 1}))?;
+        export.event(json!({"kind": "header", "format": "enigma-damage", "version": 2}))?;
         Ok(Some(export))
     }
 
@@ -53,16 +53,23 @@ impl DamageExport {
         phase: &str,
         round: i32,
         input: &Path,
+        generated_round: impl FnOnce(&T) -> Option<&FightRound>,
         run: impl FnOnce() -> Result<T, E>,
     ) -> anyhow::Result<Result<T, E>> {
         let Some(export) = export.as_deref_mut() else {
             return Ok(run());
         };
         let (result, records) = battle::tooling::damage::collect(run)?;
-        if result.is_ok() {
-            export.event(
-                json!({"kind": "phase", "phase": phase, "round": round, "input": absolute(input)?}),
-            )?;
+        if let Ok(reply) = &result {
+            let generated_round = generated_round(reply)
+                .with_context(|| format!("{phase} {round} produced no generated round"))?;
+            export.event(json!({
+                "kind": "phase",
+                "phase": phase,
+                "round": round,
+                "input": absolute(input)?,
+                "generated_round": generated_round,
+            }))?;
             for record in records {
                 writeln!(export.0, "{record}")?;
             }
