@@ -46,6 +46,16 @@ fn configured_cloth_skills_drive_universal_and_redeal_card_rules() {
             skill_infos: crate::engine::fight::team::Team::get_player_skills(Some(1)),
             ..Default::default()
         }),
+        defender: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(-1),
+                model_id: Some(30111002),
+                team_type: Some(2),
+                current_hp: Some(100),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
         ..Default::default()
     };
     let mut runtime = runtime(fight);
@@ -63,6 +73,9 @@ fn configured_cloth_skills_drive_universal_and_redeal_card_rules() {
         .unwrap();
 
     runtime.fight.version = Some(7);
+    let defender_snapshot = runtime.managers.hero_sp_attributes(&runtime.fight);
+    assert_eq!(defender_snapshot.len(), 1);
+    runtime.round_state.hero_sp_attributes = defender_snapshot.clone();
     let universal = runtime
         .use_cloth_skill(UseClothSkillRequest {
             skill_id: Some(30010201),
@@ -77,6 +90,7 @@ fn configured_cloth_skills_drive_universal_and_redeal_card_rules() {
     );
     let universal = universal.round.unwrap();
     assert_eq!(universal.power, Some(59));
+    assert_eq!(universal.hero_sp_attributes, defender_snapshot);
     assert_eq!(
         universal.ex_point_info,
         runtime.managers.ex_point_info(&runtime.fight)
@@ -102,6 +116,7 @@ fn configured_cloth_skills_drive_universal_and_redeal_card_rules() {
     assert_eq!(universal.fight_step[1].act_effect[1].effect_num, Some(16));
 
     runtime.fight.version = Some(6);
+    runtime.round_state.hero_sp_attributes = runtime.managers.hero_sp_attributes(&runtime.fight);
     runtime.determinism.enqueue_card_draws(vec![card(201)]);
     let redeal = runtime
         .use_cloth_skill(UseClothSkillRequest {
@@ -113,6 +128,7 @@ fn configured_cloth_skills_drive_universal_and_redeal_card_rules() {
         .unwrap();
     let redeal = redeal.round.unwrap();
     assert_eq!(redeal.power, Some(34));
+    assert!(redeal.hero_sp_attributes.is_empty());
     let v6_effect = &redeal.fight_step[0].act_effect[0];
     assert_eq!(
         v6_effect.effect_type,
@@ -128,6 +144,7 @@ fn configured_cloth_skills_drive_universal_and_redeal_card_rules() {
     );
 
     runtime.fight.version = Some(7);
+    runtime.round_state.hero_sp_attributes = defender_snapshot.clone();
     let redeal = runtime
         .use_cloth_skill(UseClothSkillRequest {
             skill_id: Some(30010202),
@@ -139,6 +156,7 @@ fn configured_cloth_skills_drive_universal_and_redeal_card_rules() {
         .round
         .unwrap();
     assert_eq!(redeal.power, Some(9));
+    assert_eq!(redeal.hero_sp_attributes, defender_snapshot);
     assert_eq!(
         redeal.ex_point_info,
         runtime.managers.ex_point_info(&runtime.fight)

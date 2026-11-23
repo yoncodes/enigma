@@ -7,7 +7,7 @@ use crate::engine::{
         payload::{EntityDiedEvent, HitEvent},
     },
     manager::buff::{BuffCommand, CommandOrigin},
-    runtime::executor::execute_rule_op,
+    runtime::{determinism::RoundDeterminism, executor::execute_rule_op},
     skill::{
         condition::{ParsedCondition, ParsedConditionKind, parse::BuffAddedScope},
         effect::{ParsedBehavior, ParsedSkillEffect, SkillEffectSlot},
@@ -90,6 +90,51 @@ fn death_reactions_run_subscriber_frames_before_side_frames() {
             .collect::<Vec<_>>(),
         vec![vec![2], vec![3], vec![1]]
     );
+}
+
+#[test]
+fn life_threshold_reactions_observe_only_their_own_hp_loss() {
+    let subscriber = |owner_uid, condition, slot_index| SkillSubscriber {
+        owner_uid,
+        skill_id: 109320108,
+        slot_index: Some(slot_index),
+        key: crate::engine::event::subscription::SubscriptionKey::new(
+            EventKind::HpLost,
+            DefinitionKey::new(condition, "LifeLess"),
+        ),
+    };
+    let mut subscribers = subscriber::EventSubscribers {
+        skills: vec![
+            subscriber(-2, 1209, 6),
+            subscriber(-2, 1304, 11),
+            subscriber(-1, 1209, 6),
+            subscriber(-1, 1304, 11),
+        ],
+        buff_acts: Vec::new(),
+    };
+    let event = BattleEvent::HpLost {
+        origin: CommandOrigin {
+            domain: RuleDomain::Skill,
+            key: DefinitionKey::new(30810341, "SkillDamage"),
+        },
+        source_uid: 10,
+        skill_id: 30810341,
+        target_uid: -1,
+        amount: 30,
+        buff_uid: None,
+    };
+
+    retain_observing_subscribers(
+        &mut subscribers,
+        &TargetPool::default(),
+        &BattleManagers::default(),
+        &SkillEffectCatalog::default(),
+        &RoundDeterminism::default(),
+        &event,
+    );
+
+    assert_eq!(subscribers.skills.len(), 2);
+    assert!(subscribers.skills.iter().all(|entry| entry.owner_uid == -1));
 }
 
 #[test]

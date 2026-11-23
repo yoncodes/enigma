@@ -1,51 +1,69 @@
 use crate::engine::{
     entity::attr::AttrId,
-    manager::{buff::ActiveBuffFeature, hp::HpManager},
+    manager::{
+        buff::ActiveBuffFeature,
+        hp::{HpManager, HpState},
+    },
 };
 
+mod action;
+pub(crate) use action::OutgoingEvaluation;
+
 pub fn attribute_delta(feature: &ActiveBuffFeature, attr_id: AttrId, hp: &HpManager) -> i32 {
-    let parts = feature.raw.split('#').collect::<Vec<_>>();
-    let Some((step, raw_attrs, raw_values, max_steps, absolute_step)) = (match parts.as_slice() {
-        [_, step, attrs, values, max_steps] => Some((*step, *attrs, *values, *max_steps, false)),
-        [_, step, attr, value, max_steps, "1", mode] if matches!(*mode, "0" | "1") => {
-            Some((*step, *attr, *value, *max_steps, true))
-        }
-        _ => None,
-    }) else {
-        return 0;
-    };
-    let Ok(step) = step.parse::<i32>() else {
-        return 0;
-    };
-    let Ok(max_steps) = max_steps.parse::<i32>() else {
-        return 0;
-    };
-    if step <= 0 || max_steps <= 0 {
-        return 0;
+    Steps::parse(&feature.raw).map_or(0, |steps| steps.delta(attr_id, hp.get(feature.owner_uid)))
+}
+
+struct Steps<'a> {
+    size: i32,
+    cap: i32,
+    attrs: &'a str,
+    values: &'a str,
+    absolute_mode: Option<&'a str>,
+}
+
+impl<'a> Steps<'a> {
+    fn parse(raw: &'a str) -> Option<Self> {
+        let parts = raw.split('#').collect::<Vec<_>>();
+        let (size, attrs, values, cap, absolute_mode) = match parts.as_slice() {
+            [_, size, attrs, values, cap] => (*size, *attrs, *values, *cap, None),
+            [_, size, attr, value, cap, "1", mode @ ("0" | "1")] => {
+                (*size, *attr, *value, *cap, Some(*mode))
+            }
+            _ => return None,
+        };
+        let size = size.parse().ok()?;
+        let cap = cap.parse().ok()?;
+        (size > 0 && cap > 0).then_some(Self {
+            size,
+            cap,
+            attrs,
+            values,
+            absolute_mode,
+        })
     }
-    let Some(value) =
-        raw_attrs
+
+    fn delta(&self, attr_id: AttrId, state: HpState) -> i32 {
+        if state.max <= 0 {
+            return 0;
+        }
+        let value = self
+            .attrs
             .split(',')
-            .zip(raw_values.split(','))
+            .zip(self.values.split(','))
             .find_map(|(raw_attr, raw_value)| {
                 (raw_attr.parse().ok().and_then(AttrId::from_raw) == Some(attr_id))
                     .then(|| raw_value.parse::<i32>().ok())
                     .flatten()
             })
-    else {
-        return 0;
-    };
-    let state = hp.get(feature.owner_uid);
-    if state.max <= 0 {
-        return 0;
+            .unwrap_or_default();
+        let missing_hp = (state.max - state.current).max(0);
+        let missing = if self.absolute_mode.is_some() {
+            missing_hp
+        } else {
+            ((i64::from(missing_hp) * 1000) / i64::from(state.max)) as i32
+        };
+        value * (missing / self.size).min(self.cap)
     }
-    let missing_hp = (state.max - state.current).max(0);
-    let missing = if absolute_step {
-        missing_hp
-    } else {
-        ((i64::from(missing_hp) * 1000) / i64::from(state.max)) as i32
-    };
-    value * (missing / step).min(max_steps)
 }
 
 pub fn supports(args: &[i32]) -> bool {

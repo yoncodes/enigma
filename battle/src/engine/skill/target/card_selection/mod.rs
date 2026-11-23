@@ -13,13 +13,22 @@ pub(crate) struct CardSelectionResolver;
 mod record_ultimate;
 mod source_buff;
 mod sovereign_charge;
+mod sovereign_vision;
 
 const ALLY_TARGET_LIMIT: usize = 2;
 
-fn uses_enemy_aim(catalog: &SkillEffectCatalog, skill_id: i32) -> bool {
+fn uses_enemy_aim(
+    catalog: &SkillEffectCatalog,
+    skill_id: i32,
+    source_uid: i64,
+    managers: Option<&BattleManagers>,
+) -> bool {
     source_buff::uses_enemy_aim(catalog, skill_id)
         || record_ultimate::uses_enemy_aim(catalog, skill_id)
         || sovereign_charge::uses_enemy_aim(catalog, skill_id)
+        || managers.is_some_and(|managers| {
+            sovereign_vision::uses_enemy_aim(catalog, skill_id, source_uid, managers)
+        })
 }
 
 fn selectable_enemies(
@@ -38,8 +47,9 @@ impl CardSelectionResolver {
         source_uid: i64,
         pool: &TargetPool,
         preferred_target: Option<i64>,
+        managers: &BattleManagers,
     ) -> Option<i64> {
-        if !uses_enemy_aim(catalog, skill_id) {
+        if !uses_enemy_aim(catalog, skill_id, source_uid, Some(managers)) {
             return None;
         }
         selectable_enemies(pool, source_uid)
@@ -91,7 +101,7 @@ impl CardSelectionResolver {
             managers,
             context,
         );
-        if uses_enemy_aim(catalog, skill_id) {
+        if uses_enemy_aim(catalog, skill_id, source_uid, managers) {
             candidates.extend(selectable_enemies(pool, source_uid).map(|enemy| enemy.uid));
         }
         candidates

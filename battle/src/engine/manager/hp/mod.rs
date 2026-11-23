@@ -298,6 +298,7 @@ pub struct HpChanges {
     pub team_shared_shield_removed: Option<crate::engine::manager::buff::BuffChanges>,
     pub shared_hurt: Option<Box<SharedHurt>>,
     pub shield_absorbed: Option<ShieldChange>,
+    pub(crate) shield_broken: Option<Box<super::shield::ShieldBreak>>,
     pub shield_granted: Option<ShieldGain>,
     pub max_hp: Option<MaxHpChange>,
     pub hp: Option<HpChange>,
@@ -470,6 +471,9 @@ impl HpChanges {
         if let Some(removed) = &self.team_shared_shield_removed {
             events.extend(removed.events());
         }
+        if let Some(removed) = &self.shield_broken {
+            events.extend(removed.carrier.events());
+        }
         if let Some(death) = self.death {
             let death = death.transition();
             events.push(BattleEvent::EntityDied(EntityDiedEvent {
@@ -489,6 +493,7 @@ pub enum HpCommandError {
     UnsupportedFoundationInteraction,
     MissingTarget(i64),
     InvalidTeamSharedState,
+    InvalidPersonalShieldState,
     InvalidShareHurtState,
     InvalidHpLossState,
 }

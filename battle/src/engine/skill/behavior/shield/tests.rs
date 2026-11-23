@@ -53,7 +53,7 @@ fn exact_supply_shield_routes_keep_distinct_carrier_uid_policies() {
     assert_eq!(registered_carrier_uid(&kiperina), ShieldCarrierUid::Child);
     assert_eq!(
         registered_carrier_uid(&marsha),
-        ShieldCarrierUid::Definition
+        ShieldCarrierUid::SharedChild
     );
 }
 

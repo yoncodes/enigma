@@ -95,3 +95,134 @@ fn absolute_missing_hp_steps_scale_playmode_attributes() {
         200
     );
 }
+
+#[test]
+fn absolute_outgoing_evaluation_tracks_committed_defender_cards() {
+    use sonettobuf::BuffInfo;
+
+    use crate::engine::{
+        manager::BattleManagers,
+        runtime::{
+            determinism::{AiSkillChoice, RoundDeterminism},
+            drain,
+            schedule::run_ai_actions,
+        },
+        skill::{
+            action::{SkillInvocation, SkillRequest},
+            effect::SkillEffectCatalog,
+            target::{TargetContext, TargetPool},
+        },
+    };
+
+    crate::test_support::init_config();
+    let holder = FightEntityInfo {
+        uid: Some(-1),
+        team_type: Some(2),
+        current_hp: Some(97_000_000),
+        attr: Some(HeroAttribute {
+            hp: Some(100_000_000),
+            ..Default::default()
+        }),
+        buffs: vec![BuffInfo {
+            uid: Some(20),
+            buff_id: Some(109320104),
+            from_uid: Some(-1),
+            duration: Some(-1),
+            ..Default::default()
+        }],
+        ..Default::default()
+    };
+    let fight = Fight {
+        version: Some(7),
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                team_type: Some(1),
+                current_hp: Some(100),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![
+                holder.clone(),
+                FightEntityInfo {
+                    uid: Some(-2),
+                    team_type: Some(2),
+                    current_hp: Some(100),
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    let self_consumption = 116330112;
+    let strike = 103374111;
+    let catalog =
+        SkillEffectCatalog::from_roots(config::configs::get(), [self_consumption, strike], []);
+    let play_card = |managers: &mut BattleManagers, source_uid| {
+        run_ai_actions(
+            &fight,
+            managers,
+            &pool,
+            &catalog,
+            &mut RoundDeterminism::default(),
+            TargetContext::default(),
+            [AiSkillChoice {
+                source_uid,
+                skill_id: self_consumption,
+                target_uid: source_uid,
+            }],
+            &[],
+        )
+        .unwrap();
+    };
+    let outgoing = AttrId::PlaymodeDmgIncrease;
+    let incoming = AttrId::PlaymodeDmgImmunity;
+
+    play_card(&mut managers, -1);
+    managers.hp.register(&FightEntityInfo {
+        current_hp: Some(95_000_000),
+        ..holder
+    });
+    assert_eq!(managers.settled_playmode_increase(-1), 0);
+    assert_eq!(managers.origin_attribute(-1, incoming), 200);
+    assert_eq!(managers.persistent_attribute_delta(-1, outgoing), 400);
+
+    play_card(&mut managers, -1);
+    assert_eq!(managers.settled_playmode_increase(-1), 400);
+
+    let attacker = &fight.attacker.as_ref().unwrap().entitys[0];
+    managers.hp.register(&FightEntityInfo {
+        current_hp: Some(0),
+        ..attacker.clone()
+    });
+    let mut rejected: SkillInvocation = SkillRequest {
+        source_uid: -2,
+        skill_id: strike,
+    }
+    .into();
+    rejected.card_index = 1;
+    let result = drain::run_round_action(
+        &mut managers,
+        &pool,
+        &catalog,
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+        [],
+        None,
+        rejected,
+    )
+    .unwrap();
+    assert!(result.frames.is_empty());
+    assert_eq!(managers.settled_playmode_increase(-1), 400);
+
+    managers.hp.register(attacker);
+    play_card(&mut managers, -2);
+    assert_eq!(managers.settled_playmode_increase(-1), 0);
+    assert_eq!(managers.origin_attribute(-1, incoming), 200);
+    assert_eq!(managers.persistent_attribute_delta(-1, outgoing), 400);
+}
