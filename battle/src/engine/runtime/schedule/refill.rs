@@ -451,18 +451,19 @@ pub fn run_ai_queue_refresh(
         .filter(|owner_uid| managers.ex_point.gains_composition_ex_point(*owner_uid))
         .map(|owner_uid| (owner_uid, 1))
         .collect::<Vec<_>>();
-    append(
-        &mut result,
-        run_card_composition_rewards(
-            managers,
-            pool,
-            catalog,
-            determinism,
-            context,
-            origin,
-            composed_owners,
-        )?,
-    );
+    for rewards in composed_owners.chunk_by(|left, right| left.0 == right.0) {
+        let ops = rewards.iter().copied().flat_map(|reward| {
+            super::card_rewards::changes(origin, [reward])
+                .into_iter()
+                .map(|change| {
+                    RuleOp::Command(BattleCommand::ExPoint(ExPointCommand::Change(change)))
+                })
+        });
+        append(
+            &mut result,
+            drain::run_command_group(managers, pool, catalog, determinism, context, ops)?,
+        );
+    }
     Ok(result)
 }
 

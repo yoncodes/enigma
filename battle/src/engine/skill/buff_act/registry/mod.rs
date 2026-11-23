@@ -1452,7 +1452,7 @@ buff_act_definitions! {
     (889, "BeAttackByEmitterDamage") => BeAttackByEmitterDamage,
         runtime: |context| super::be_attack_by_emitter_damage::rule_ops(context.managers, context.subscriber, context.event?),
         supports: super::be_attack_by_emitter_damage::supports, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(889, "BeAttackByEmitterDamage"), &[EffectType::None as i32]));
-    (10010, "BeAttackedFromUseSkill") => BeAttackedFromUseSkill, source: Applier,
+    (10010, "BeAttackedFromUseSkill") => BeAttackedFromUseSkill, source: Applier, timing: HpThresholds,
         runtime: |context| super::be_attacked_from_use_skill::rule_ops(context.managers, context.subscriber, context.event?),
         supports: super::be_attacked_from_use_skill::supports, references: references_for_feature,
         wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(10010, "BeAttackedFromUseSkill"), &[EffectType::None as i32]));

@@ -217,7 +217,7 @@ fn ai_queue_refresh_awards_composition_moxie_from_configured_card_ranks() {
                 FightEntityInfo {
                     uid: Some(-2),
                     current_hp: Some(100),
-                    ex_point: Some(5),
+                    ex_point: Some(0),
                     skill_group1: vec![100, 101],
                     ..Default::default()
                 },
@@ -225,7 +225,7 @@ fn ai_queue_refresh_awards_composition_moxie_from_configured_card_ranks() {
                     uid: Some(-3),
                     current_hp: Some(100),
                     ex_point: Some(3),
-                    skill_group1: vec![100, 101],
+                    skill_group1: vec![100, 101, 102],
                     ..Default::default()
                 },
             ],
@@ -250,15 +250,15 @@ fn ai_queue_refresh_awards_composition_moxie_from_configured_card_ranks() {
             },
             CardInfo {
                 uid: Some(-3),
-                skill_id: Some(101),
+                skill_id: Some(102),
                 ..Default::default()
             },
         ],
     )
     .unwrap();
 
-    assert_eq!(managers.ex_point.get(-2), 5);
-    assert_eq!(managers.ex_point.get(-3), 4);
+    assert_eq!(managers.ex_point.get(-2), 1);
+    assert_eq!(managers.ex_point.get(-3), 5);
     assert_eq!(
         managers
             .card
@@ -266,16 +266,29 @@ fn ai_queue_refresh_awards_composition_moxie_from_configured_card_ranks() {
             .iter()
             .filter_map(|card| card.skill_id)
             .collect::<Vec<_>>(),
-        vec![101, 101]
+        vec![101, 102]
     );
     let steps = crate::engine::packet::timeline::project(&result.frames).unwrap();
-    assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0].act_effect[0].target_id, Some(-3));
+    assert_eq!(steps.len(), 2);
     assert_eq!(
-        steps[0].act_effect[0].effect_type,
-        Some(sonettobuf::effect_type_enum::EffectType::Expointchange as i32)
+        steps
+            .iter()
+            .map(|step| step.act_effect[0].target_id)
+            .collect::<Vec<_>>(),
+        vec![Some(-2), Some(-3)]
     );
-    assert_eq!(steps[0].act_effect[0].effect_num, Some(1));
+    assert_eq!(steps[0].act_effect.len(), 1);
+    assert_eq!(steps[1].act_effect.len(), 2);
+    assert!(
+        steps
+            .iter()
+            .flat_map(|step| &step.act_effect)
+            .all(|effect| {
+                effect.effect_type
+                    == Some(sonettobuf::effect_type_enum::EffectType::Expointchange as i32)
+                    && effect.effect_num == Some(1)
+            })
+    );
 }
 
 #[test]
