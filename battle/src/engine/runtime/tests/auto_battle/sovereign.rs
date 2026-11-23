@@ -108,3 +108,69 @@ fn auto_round_plays_configured_vision_after_one_opening_ultimate() {
         );
     }
 }
+
+#[test]
+fn auto_round_aims_configured_vision_at_enemies() {
+    let mut beryl = team_hero(10, 3134, 1_000, [31340111, 31340121]);
+    for (skill, configured, aim) in [
+        (31340164, true, Some(-1)),
+        (31340165, true, Some(-1)),
+        (31340166, true, Some(-1)),
+        (31340165, false, Some(10)),
+        (31340168, true, Some(10)),
+    ] {
+        beryl.passive_skill = if configured { vec![31340141] } else { vec![] };
+        let mut crystal = hand_card(10, skill, true);
+        crystal.card_type = Some(sonettobuf::card_info::CardType::Skill3 as i32);
+        let mut runtime = team_runtime_against(
+            vec![beryl.clone()],
+            vec![enemy(-1, 1_000), enemy(-2, 1_000)],
+            vec![crystal, hand_card(10, 31340111, false)],
+        );
+        runtime.round_state.act_point = 1;
+        let plan = runtime
+            .auto_round_planner()
+            .plan(&AutoRoundRequest::default())
+            .unwrap();
+        assert_eq!(plan.opers[0].param1, Some(1));
+        assert_eq!(plan.opers[0].to_id, aim);
+
+        if aim == Some(-1) {
+            let aimed = runtime
+                .auto_round_planner()
+                .plan(&AutoRoundRequest {
+                    to_id: Some(-2),
+                    ..Default::default()
+                })
+                .unwrap();
+            assert_eq!(aimed.opers[0].param1, Some(1));
+            assert_eq!(aimed.opers[0].to_id, Some(-2));
+            let continued = runtime
+                .auto_round_planner()
+                .plan(&AutoRoundRequest {
+                    opers: vec![aimed.opers[0].clone()],
+                    to_id: Some(-2),
+                })
+                .unwrap();
+            assert_eq!(continued.opers.len(), 1);
+
+            if skill == 31340165 {
+                let round = runtime
+                    .build_begin_round_from_schedule(&BeginRoundRequest {
+                        opers: aimed.opers,
+                        auto_oper: Some(true),
+                        ..Default::default()
+                    })
+                    .unwrap();
+                let vision = round
+                    .fight_step
+                    .iter()
+                    .find(|step| step.act_id == Some(skill) && step.card_index == Some(1))
+                    .unwrap();
+                assert_eq!(vision.to_id, Some(-2));
+                assert_eq!(runtime.managers.buff.buff_type_layer(10, 31340002), 3);
+                assert_eq!(runtime.managers.buff.buff_type_layer(-2, 31340002), 0);
+            }
+        }
+    }
+}

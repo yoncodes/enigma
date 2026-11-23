@@ -4,10 +4,7 @@ use sonettobuf::CardInfo;
 
 use crate::engine::{
     manager::{BattleManagers, emanation::EmanationKind},
-    skill::{
-        behavior::{classify::BehaviorKind, crystal_card},
-        effect::SkillEffectCatalog,
-    },
+    skill::{behavior::crystal_card, effect::SkillEffectCatalog},
 };
 
 use super::{Candidate, is_precast};
@@ -20,18 +17,13 @@ pub(in crate::engine::auto_battle) fn is_vision(
     catalog: &SkillEffectCatalog,
 ) -> bool {
     is_precast(card)
-        && managers
-            .entity
-            .passive_skills(owner_uid)
-            .into_iter()
-            .flatten()
-            .filter_map(|&passive| catalog.get(passive))
-            .flat_map(|effect| &effect.slots)
-            .any(|slot| {
-                slot.behavior.spec.kind == BehaviorKind::CrystalAddCard
-                    && crystal_card::kind_for_skill(&slot.behavior, skill_id)
-                        == Some(EmanationKind::Purple)
-            })
+        && crystal_card::has_kind(
+            managers,
+            catalog,
+            owner_uid,
+            skill_id,
+            EmanationKind::Purple,
+        )
 }
 
 #[derive(Default)]

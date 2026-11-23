@@ -759,6 +759,7 @@ fn best_candidate(
                         source_uid,
                         live_pool,
                         preferred_target,
+                        managers,
                     )
                 })
                 .unwrap_or(resolved_target_uid);
