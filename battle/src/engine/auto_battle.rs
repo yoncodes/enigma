@@ -24,6 +24,7 @@ use crate::engine::{
 };
 
 mod conduit;
+mod defense_setup;
 mod sovereign;
 
 #[derive(Debug)]
@@ -52,6 +53,7 @@ struct Candidate {
     conduit_priority: conduit::Priority,
     opening_skill_two: bool,
     first_for_owner: bool,
+    defense_setup: bool,
     support: Support,
     strength: Option<(i32, i32)>,
 }
@@ -215,6 +217,12 @@ fn plan_cards_inner(
     )
     .into_iter()
     .collect::<Vec<_>>();
+    let mut opening_setup = basic_opening
+        && fight.version == Some(7)
+        && opers.is_empty()
+        && cards
+            .visible_cards()
+            .all(|card| card.energy.unwrap_or_default() == 0);
     let mut reported_unsupported = HashSet::new();
     loop {
         let choices = cards
@@ -241,6 +249,7 @@ fn plan_cards_inner(
             &selected_power_types,
             &mut reported_unsupported,
             basic_opening && opers.is_empty(),
+            opening_setup && !opers.is_empty(),
         )?
         else {
             break;
@@ -271,6 +280,11 @@ fn plan_cards_inner(
         if !play_card(&mut cards, play) {
             break;
         }
+        opening_setup &= candidate.normal_ap > 0
+            && candidate.strength.is_some_and(|(rate, _)| rate == 0)
+            && candidate.support != Support::Unneeded
+            && catalog.effect_tag(candidate.skill_id)
+                == crate::engine::skill::effect::catalog::SkillEffectTag::Buff as i32;
         normal_ap = normal_ap.saturating_sub(candidate.normal_ap);
         if candidate.normal_ap > 0 {
             played_owners.insert(candidate.source_uid);
@@ -560,6 +574,7 @@ fn best_candidate(
     selected_power_types: &HashSet<(i32, i32)>,
     reported_unsupported: &mut HashSet<i32>,
     opening: bool,
+    opening_after_setup: bool,
 ) -> Result<Option<Candidate>, AutoBattleError> {
     let candidates = cards
         .visible_cards()
@@ -649,6 +664,18 @@ fn best_candidate(
                 sim,
                 pool,
             );
+            let damage_rate = catalog.damage_rate(skill_id);
+            let first_for_owner = energy.is_none()
+                && !played_owners.contains(&source_uid)
+                && support != Support::Unneeded;
+            let defense_setup = opening_after_setup
+                && first_for_owner
+                && normal_ap_cost > 0
+                && !ultimate
+                && damage_rate == 0
+                && effect_tag
+                    == crate::engine::skill::effect::catalog::SkillEffectTag::Debuff as i32
+                && defense_setup::available(catalog.logic_target(skill_id), &targets, &buffs, sim);
             let live_preferred_target = catalog
                 .is_attack(skill_id)
                 .then(|| {
@@ -711,7 +738,6 @@ fn best_candidate(
                     )
                 })
                 .unwrap_or(resolved_target_uid);
-            let damage_rate = catalog.damage_rate(skill_id);
             Some(Ok(Candidate {
                 card_index,
                 source_uid,
@@ -736,9 +762,8 @@ fn best_candidate(
                 ),
                 opening_skill_two: opening
                     && live_pool.skill_slot(managers, source_uid, skill_id) == 2,
-                first_for_owner: energy.is_none()
-                    && !played_owners.contains(&source_uid)
-                    && support != Support::Unneeded,
+                first_for_owner,
+                defense_setup,
                 support,
                 strength: (!ultimate && !device)
                     .then(|| (damage_rate, managers.catalog().card_skill_rank(card))),
@@ -749,7 +774,7 @@ fn best_candidate(
         .iter()
         .any(|candidate| candidate.ultimate && !candidate.free);
     let sovereign_order = sovereign::Order::new(&candidates);
-    Ok(candidates.into_iter().max_by_key(|candidate| {
+    let rank = |candidate: &Candidate| {
         // Official auto casts ready ultimates left to right.
         (
             candidate.free
@@ -768,7 +793,25 @@ fn best_candidate(
             Reverse(candidate.source_uid),
             Reverse(candidate.skill_id),
         )
-    }))
+    };
+    let best = candidates.iter().max_by_key(|candidate| rank(candidate));
+    if let Some(best) = best.filter(|candidate| {
+        opening_after_setup
+            && candidate.first_for_owner
+            && !candidate.free
+            && candidate.support == Support::None
+            && candidate.strength.is_some_and(|(rate, _)| rate > 0)
+    }) {
+        return Ok(Some(
+            candidates
+                .iter()
+                .filter(|candidate| candidate.defense_setup)
+                .max_by_key(|candidate| rank(candidate))
+                .unwrap_or(best)
+                .clone(),
+        ));
+    }
+    Ok(best.cloned())
 }
 
 // Only unconditional `AddBuff` slots aimed at the card's own target count.

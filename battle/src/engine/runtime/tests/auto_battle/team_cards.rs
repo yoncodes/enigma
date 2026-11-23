@@ -21,6 +21,50 @@ fn auto_round_leads_with_the_second_incantation_in_the_opening() {
 }
 
 #[test]
+fn auto_round_opens_defense_before_an_ordinary_attack() {
+    let enemy_uids = [-1, -2];
+    for (energy, already_weakened, expected_pick) in [(0, false, 2), (1, false, 1), (0, true, 1)] {
+        let mut attack = hand_card(11, 31270111, false);
+        attack.energy = Some(energy);
+        let mut runtime = team_runtime_against(
+            vec![
+                team_hero(10, 3134, 1_000, [31340111, 31340121]),
+                team_hero(11, 3127, 1_000, [31270111, 31270121]),
+                team_hero(12, 3081, 1_000, [30810481, 30810226]),
+            ],
+            enemy_uids
+                .into_iter()
+                .map(|uid| enemy(uid, 1_000))
+                .collect(),
+            vec![
+                hand_card(10, 31340121, false),
+                attack,
+                hand_card(12, 30810226, false),
+            ],
+        );
+        if already_weakened {
+            for uid in enemy_uids {
+                grant_buff(&mut runtime, 12, uid, 30810105);
+                change_buff_duration(&mut runtime, uid, 30810105, -1);
+            }
+        }
+        runtime.fight.cur_round = Some(1);
+        runtime.round_state.act_point = 2;
+        let reply = runtime.plan_auto_round(&AutoRoundRequest::default());
+        let played: Vec<_> = reply
+            .opers
+            .iter()
+            .map(|operation| operation.param1)
+            .collect();
+        assert_eq!(
+            played,
+            vec![Some(1), Some(expected_pick)],
+            "energy={energy}, already_weakened={already_weakened}"
+        );
+    }
+}
+
+#[test]
 fn auto_round_aims_source_buffs_at_the_selected_enemy() {
     let beryl = team_hero(10, 3134, 1_000, [31340111, 31340121]);
     let mut runtime = team_runtime_against(

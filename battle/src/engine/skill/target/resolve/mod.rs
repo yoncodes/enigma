@@ -800,7 +800,7 @@ fn target_rule(code: i32) -> Option<TargetRule> {
         7 => TargetRule::SynchronizationTarget,
         201 => TargetRule::SingleOrRandomEnemy,
         206 => TargetRule::RandomEnemyByRng,
-        202 => TargetRule::EnemiesIncludingSpecial,
+        super::request::ALL_ENEMIES_TARGET_CODE => TargetRule::EnemiesIncludingSpecial,
         221 => TargetRule::PriorityBossEnemy,
         210 => TargetRule::LowestHpPercentageEnemy,
         207 => TargetRule::HighestAttackEnemy,
