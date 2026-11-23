@@ -54,6 +54,7 @@ impl HpManager {
             team_shared_shield_removed: None,
             shared_hurt: None,
             shield_absorbed: None,
+            shield_broken: None,
             shield_granted: None,
             max_hp: None,
             hp: None,

@@ -384,6 +384,7 @@ pub enum BuffCommand {
     Replace(BuffReplace),
     Remove(BuffRemove),
     ForceExpire(BuffRemove),
+    BreakShield(BuffRemove),
     RemoveAfterTrigger(BuffRemove),
     LoseStack(BuffRemove),
     EndChannel(BuffRemove),

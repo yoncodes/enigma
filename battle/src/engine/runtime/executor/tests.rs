@@ -9,7 +9,7 @@ use crate::engine::{
         eureka::{EUREKA_RESOURCE_ID, EurekaChange, EurekaCommand},
         ex_point::{ExPointChange, ExPointCommand},
         hp::{DamageEffectKind, HpCommand, HpDamage, HpKill, HurtDamageFromType, HurtInfoData},
-        shield::{ShieldCarrierUid, ShieldCommand, ShieldScope},
+        shield::{ShieldCarrierDuration, ShieldCarrierUid, ShieldCommand, ShieldScope},
     },
     skill::rule::{DefinitionKey, RuleDomain},
 };
@@ -157,6 +157,7 @@ fn shield_event_observes_the_committed_team_shared_value() {
             max_rate: 12_500,
             scope: ShieldScope::TeamShared,
             carrier_uid: ShieldCarrierUid::Definition,
+            carrier_duration: ShieldCarrierDuration::Refresh,
         })),
     )
     .unwrap();

@@ -62,6 +62,8 @@ pub struct BattleManagers {
     fight_version: i32,
     terminal_outcome: Option<crate::engine::round::outcome::BattleOutcome>,
     pub attribute: AttributeManager,
+    pub(crate) outgoing_loss_rate:
+        crate::engine::skill::buff_act::attr_by_lost_hp::OutgoingEvaluation,
     pub battle_rule: battle_rule::BattleRuleManager,
     pub(crate) buff: BuffManager,
     pub card: CardManager,
@@ -98,6 +100,7 @@ struct HpPlan {
     fake_hp: Option<crate::engine::skill::buff_act::lost_hp_to_fake_hp::DamagePlan>,
     team_shared: Option<hp::TeamSharedShieldPlan>,
     team_shared_buff: Option<BuffPlan>,
+    shield_break: Option<BuffPlan>,
     share: Option<ShareHurtPlan>,
     foundation_counter: Option<FoundationCounterPlan>,
     hp_loss_state: Vec<HpLossStatePlan>,
@@ -136,6 +139,18 @@ pub(crate) fn persistent_attribute_delta(
     uid: i64,
     attr_id: crate::engine::entity::attr::AttrId,
 ) -> i32 {
+    persistent_attribute_delta_with(buffs, hp, uid, attr_id, |feature| {
+        crate::engine::skill::buff_act::dynamic_attribute_delta(feature, attr_id, buffs, hp, true)
+    })
+}
+
+fn persistent_attribute_delta_with(
+    buffs: &BuffManager,
+    hp: &HpManager,
+    uid: i64,
+    attr_id: crate::engine::entity::attr::AttrId,
+    dynamic_delta: impl Fn(&buff::ActiveBuffFeature) -> i32,
+) -> i32 {
     use crate::engine::skill::buff_act::{self, registry::BuffActKind};
 
     let active_features = buffs.active_features(hp);
@@ -171,7 +186,7 @@ pub(crate) fn persistent_attribute_delta(
         + active_features
             .iter()
             .filter(|feature| feature.owner_uid == uid)
-            .map(|feature| buff_act::dynamic_attribute_delta(feature, attr_id, buffs, hp, true))
+            .map(dynamic_delta)
             .sum::<i32>()
         + buff_act::raspberry::attribute_delta(buffs, uid, attr_id)
 }
@@ -731,6 +746,7 @@ impl BattleManagers {
             fake_hp,
             team_shared,
             team_shared_buff,
+            shield_break: None,
             share,
             foundation_counter,
             hp_loss_state: Vec::new(),
@@ -770,6 +786,7 @@ impl BattleManagers {
                 });
             }
         }
+        plan.shield_break = shield::plan_break(self, &changes)?;
         Ok(())
     }
 
@@ -781,6 +798,9 @@ impl BattleManagers {
             self.hp.commit_validated_command(*share, None, None);
         }
         plan.commit_damage(&mut self.hp);
+        if let Some(shield_break) = &plan.shield_break {
+            self.commit_buff(shield_break.clone());
+        }
     }
 
     fn commit_hp(&mut self, plan: HpPlan) -> HpCommit {
@@ -848,6 +868,10 @@ impl BattleManagers {
                 .buff
                 .shield_carrier_uid(changes.target_uid)
                 .unwrap_or_default();
+        }
+        if let (Some(shield_break), Some(absorption)) = (plan.shield_break, changes.shield_absorbed)
+        {
+            changes.shield_broken = shield::commit_break(self, shield_break, absorption);
         }
         crate::engine::damage::export::settlement(command, &changes, &self.hp, loss_limit);
         HpCommit {
@@ -1827,6 +1851,24 @@ impl BattleManagers {
             .collect()
     }
 
+    pub(crate) fn settled_playmode_increase(&self, uid: i64) -> i32 {
+        use crate::engine::{
+            entity::attr::AttrId,
+            skill::buff_act::{self, attr_by_lost_hp::OutgoingEvaluation},
+        };
+
+        let attr = AttrId::PlaymodeDmgIncrease;
+        self.attribute.get(uid, attr)
+            + self.outgoing_loss_rate.rate(uid)
+            + persistent_attribute_delta_with(&self.buff, &self.hp, uid, attr, |feature| {
+                if OutgoingEvaluation::applies(feature) {
+                    0
+                } else {
+                    buff_act::dynamic_attribute_delta(feature, attr, &self.buff, &self.hp, true)
+                }
+            })
+    }
+
     pub(crate) fn hero_sp_attributes(&self, fight: &Fight) -> Vec<FightHeroSpAttributeInfo> {
         let fight_version = fight.version.unwrap_or_default();
         entities(fight)
@@ -1849,8 +1891,7 @@ impl BattleManagers {
                     Some(self.origin_attribute(uid, AttrId::FinalDmgReduction));
                 attribute.normal_skill_rate =
                     Some(self.origin_attribute(uid, AttrId::IncantationMight));
-                attribute.play_add_rate =
-                    Some(self.origin_attribute(uid, AttrId::PlaymodeDmgIncrease));
+                attribute.play_add_rate = Some(self.settled_playmode_increase(uid));
                 attribute.play_drop_rate =
                     Some(self.origin_attribute(uid, AttrId::PlaymodeDmgImmunity));
                 attribute.rebound_dmg = Some(self.origin_attribute(uid, AttrId::ReboundDmg));

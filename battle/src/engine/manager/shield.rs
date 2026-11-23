@@ -3,9 +3,13 @@ use crate::engine::{
         BattleManagers,
         buff::{
             BuffChanges, BuffCommand, BuffCommandError, BuffGrant, BuffManager, BuffMarkerResult,
-            BuffPlan, BuffPolicy, BuffRefreshDuration, BuffSetState,
+            BuffPlan, BuffPolicy, BuffRefreshDuration, BuffRemove, BuffRemoveSelector,
+            BuffSetState,
         },
-        hp::{HpChanges, HpCommand, HpCommandError, ShieldGrant, TeamSharedShieldGain},
+        hp::{
+            HpChange, HpChanges, HpCommand, HpCommandError, ShieldChange, ShieldGrant,
+            TeamSharedShieldGain,
+        },
     },
     skill::buff_act::registry::BuffActKind,
     skill::rule::CommandOrigin,
@@ -21,6 +25,13 @@ pub enum ShieldScope {
 pub enum ShieldCarrierUid {
     Definition,
     Child,
+    SharedChild,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ShieldCarrierDuration {
+    Refresh,
+    Preserve,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -36,6 +47,7 @@ pub struct ShieldCommand {
     pub max_rate: i32,
     pub scope: ShieldScope,
     pub carrier_uid: ShieldCarrierUid,
+    pub carrier_duration: ShieldCarrierDuration,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -76,12 +88,59 @@ struct ShieldPlan {
     team_shared: Option<TeamSharedShieldGain>,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct ShieldBreak {
+    pub(crate) absorption: ShieldChange,
+    pub(crate) carrier: BuffChanges,
+}
+
 pub(crate) fn execute(
     managers: &mut BattleManagers,
     command: ShieldCommand,
 ) -> Result<ShieldChanges, ShieldCommandError> {
     let plan = plan(managers, command)?;
     Ok(commit(managers, plan))
+}
+
+pub(super) fn plan_break(
+    managers: &BattleManagers,
+    changes: &HpChanges,
+) -> Result<Option<BuffPlan>, HpCommandError> {
+    let Some(absorption) = changes.shield_absorbed.filter(|shield| shield.after == 0) else {
+        return Ok(None);
+    };
+    if !changes.hp.as_ref().is_some_and(HpChange::is_loss) {
+        return Ok(None);
+    }
+    managers
+        .buff
+        .shield_carrier_uid(absorption.target_uid)
+        .map(|buff_uid| {
+            managers.plan_buff(BuffCommand::BreakShield(BuffRemove {
+                origin: changes.origin,
+                target_uid: absorption.target_uid,
+                selector: BuffRemoveSelector::Uid(buff_uid),
+            }))
+        })
+        .transpose()
+        .map_err(|_| HpCommandError::InvalidPersonalShieldState)
+}
+
+pub(super) fn commit_break(
+    managers: &mut BattleManagers,
+    plan: BuffPlan,
+    absorption: ShieldChange,
+) -> Option<Box<ShieldBreak>> {
+    let carrier = managers.commit_buff(plan);
+    let removed = carrier.change.removed.iter().any(|removed| {
+        removed.target_uid == absorption.target_uid && removed.buff.uid == Some(absorption.buff_uid)
+    });
+    removed.then(|| {
+        Box::new(ShieldBreak {
+            absorption,
+            carrier,
+        })
+    })
 }
 
 fn plan(
@@ -114,7 +173,7 @@ fn plan(
     match command.scope {
         ShieldScope::Entity => {
             let buff = match carrier_uid {
-                Some(buff_uid) => {
+                Some(buff_uid) if command.carrier_duration == ShieldCarrierDuration::Refresh => {
                     let carrier = managers.buff.snapshot(command.target_uid, buff_uid).ok_or(
                         ShieldCommandError::Buff(BuffCommandError::InvalidDurationChange),
                     )?;
@@ -138,6 +197,7 @@ fn plan(
                         })
                         .transpose()?
                 }
+                Some(_) => None,
                 None => Some(plan_carrier(managers, command)?),
             };
             let accepted =
@@ -255,8 +315,11 @@ fn plan_carrier(
         child_uid_reservations: 0,
     };
     Ok(managers.plan_buff(match command.carrier_uid {
-        ShieldCarrierUid::Definition => BuffCommand::Grant(grant),
         ShieldCarrierUid::Child => BuffCommand::GrantUsingChildUid(grant),
+        ShieldCarrierUid::SharedChild if managers.buff.uses_shared_uid_lane() => {
+            BuffCommand::GrantUsingChildUid(grant)
+        }
+        ShieldCarrierUid::Definition | ShieldCarrierUid::SharedChild => BuffCommand::Grant(grant),
     })?)
 }
 

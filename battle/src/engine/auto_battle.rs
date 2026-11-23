@@ -52,6 +52,7 @@ struct Candidate {
     ultimate: bool,
     fractal_attack: bool,
     sovereign_charge: bool,
+    sovereign_vision: bool,
     conduit_priority: conduit::Priority,
     opening_skill_two: bool,
     first_for_owner: bool,
@@ -230,6 +231,8 @@ fn plan_cards_inner(
     .into_iter()
     .collect::<Vec<_>>();
     let queue_setup = fight.version == Some(7) && ordinary_queue;
+    let mut vision_order =
+        (queue_setup && opers.is_empty()).then(sovereign::vision::Order::default);
     let mut opening_setup = basic_opening
         && fight.version == Some(7)
         && opers.is_empty()
@@ -264,6 +267,7 @@ fn plan_cards_inner(
             basic_opening && opers.is_empty(),
             opening_setup && !opers.is_empty(),
             queue_setup,
+            vision_order.as_ref(),
         )?
         else {
             break;
@@ -293,6 +297,9 @@ fn plan_cards_inner(
         );
         if !play_card(&mut cards, play) {
             break;
+        }
+        if let Some(order) = &mut vision_order {
+            order.record(&candidate);
         }
         opening_setup &= candidate.normal_ap > 0
             && candidate.strength.is_some_and(|(rate, _)| rate == 0)
@@ -591,6 +598,7 @@ fn best_candidate(
     opening: bool,
     opening_after_setup: bool,
     queue_setup: bool,
+    vision_order: Option<&sovereign::vision::Order>,
 ) -> Result<Option<Candidate>, AutoBattleError> {
     let candidates = cards
         .visible_cards()
@@ -751,6 +759,7 @@ fn best_candidate(
                         source_uid,
                         live_pool,
                         preferred_target,
+                        managers,
                     )
                 })
                 .unwrap_or(resolved_target_uid);
@@ -770,6 +779,9 @@ fn best_candidate(
                     && damage_rate > 0
                     && has_enchant_type(card, EnchantedType::Lorenz),
                 sovereign_charge: sovereign::is_charge(card, skill_id, catalog),
+                sovereign_vision: vision_order.is_some()
+                    && normal_ap_cost == 0
+                    && sovereign::vision::is_vision(card, source_uid, skill_id, managers, catalog),
                 conduit_priority: conduit::Priority::new(
                     energy,
                     device,
@@ -792,10 +804,11 @@ fn best_candidate(
     let sovereign_order = sovereign::Order::new(&candidates);
     let rank = |candidate: &Candidate| {
         // Official auto casts ready ultimates left to right.
+        let deferred_free = (has_paid_ultimate && candidate.fractal_attack)
+            || sovereign_order.holds_charge(candidate)
+            || vision_order.is_some_and(|order| order.waits_for_ultimate(candidate, &candidates));
         (
-            candidate.free
-                && !(has_paid_ultimate && candidate.fractal_attack)
-                && !sovereign_order.holds_charge(candidate),
+            candidate.free && !deferred_free,
             candidate.ultimate && !sovereign_order.holds_ultimate(candidate),
             candidate.support == Support::Urgent,
             candidate.conduit_priority,

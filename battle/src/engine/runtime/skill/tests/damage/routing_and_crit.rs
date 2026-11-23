@@ -414,7 +414,7 @@ fn configured_ignore_beat_back_reaches_the_committed_hit() {
                         ..Default::default()
                     },
                     BuffInfo {
-                        uid: Some(-21),
+                        uid: Some(100_002),
                         buff_id: Some(30940121),
                         duration: Some(2),
                         from_uid: Some(-1),

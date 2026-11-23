@@ -366,6 +366,15 @@ impl BuffManager {
                     RemoveSnapshot::Preserve,
                 )?),
             ),
+            BuffCommand::BreakShield(remove) => (
+                remove.origin,
+                BuffPlanAction::Remove(self.plan_remove(
+                    remove,
+                    0,
+                    false,
+                    RemoveSnapshot::ClearDuration,
+                )?),
+            ),
             BuffCommand::LoseStack(remove) => (
                 remove.origin,
                 BuffPlanAction::Remove(self.plan_remove(

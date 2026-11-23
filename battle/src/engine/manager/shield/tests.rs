@@ -19,6 +19,7 @@ fn command() -> ShieldCommand {
         max_rate: 6_500,
         scope: ShieldScope::Entity,
         carrier_uid: ShieldCarrierUid::Definition,
+        carrier_duration: ShieldCarrierDuration::Preserve,
     }
 }
 
@@ -27,6 +28,84 @@ fn shield_terms_are_rounded_after_they_are_combined() {
     assert_eq!(shield_amount(1_657, 1_500, Some((323, 400))), 2_699);
     assert_eq!(shield_amount(1_657, 2_250, Some((323, 600))), 4_049);
     assert_eq!(shield_amount(1_737, 1_500, Some((443, 400))), 2_913);
+}
+
+#[test]
+fn personal_shield_breaks_when_the_hit_reaches_hp() {
+    use crate::engine::manager::hp::{
+        DamageEffectKind, HpDamage, HurtDamageFromType, HurtInfoData,
+    };
+
+    crate::test_support::init_config();
+    let fight = Fight {
+        version: Some(7),
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(1),
+                current_hp: Some(1_000),
+                shield_value: Some(100),
+                attr: Some(HeroAttribute {
+                    hp: Some(1_000),
+                    attack: Some(1_000),
+                    ..Default::default()
+                }),
+                buffs: vec![sonettobuf::BuffInfo {
+                    uid: Some(1_002),
+                    buff_id: Some(31270501),
+                    from_uid: Some(1),
+                    duration: Some(2),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    for (amount, breaks) in [(99, false), (100, false), (101, true)] {
+        let mut managers = BattleManagers::seeded(&fight);
+        let hit = managers
+            .execute_hp(HpCommand::Damage(HpDamage {
+                origin: CommandOrigin {
+                    domain: RuleDomain::BuffAct,
+                    key: DefinitionKey::new(303, "Rebound"),
+                },
+                source_uid: -1,
+                target_uid: 1,
+                amount,
+                config_effect: 0,
+                effect_kind: DamageEffectKind::Genesis,
+                assassinate: false,
+                ignore_riposte: false,
+                hurt: HurtInfoData {
+                    from_uid: -1,
+                    is_crit: false,
+                    career_restraint: false,
+                    reduce_hp: 0,
+                    effect_id: 0,
+                    skill_id: 0,
+                    damage_from: HurtDamageFromType::Buff,
+                    buff_act_id: 303,
+                    buff_uid: 0,
+                    hurt_effect_type: sonettobuf::effect_type_enum::EffectType::Origindamage as i32,
+                    display_amount: None,
+                },
+            }))
+            .unwrap();
+        assert_eq!(hit.shield_absorbed.unwrap().buff_uid, 1_002);
+        assert_eq!(hit.shield_broken.is_some(), breaks);
+        assert_eq!(managers.buff.snapshot(1, 1_002).is_none(), breaks);
+        if let Some(broken) = hit.shield_broken {
+            assert_eq!(broken.carrier.change.removed[0].buff.duration, Some(0));
+            assert_eq!(managers.hp.current(1), 999);
+
+            let mut grant = command();
+            grant.buff_id = 31270005;
+            let replacement = execute(&mut managers, grant).unwrap();
+            let added = replacement.buff.unwrap().change.added.unwrap();
+            assert_ne!(added.buff.uid, Some(1_002));
+        }
+    }
 }
 
 #[test]
@@ -111,7 +190,7 @@ fn shield_buff_is_attached_once_and_repeats_stack_to_the_cap() {
     assert_eq!(managers.hp.shield(1), 1_590);
 
     let second = execute(&mut managers, command()).unwrap();
-    assert!(second.buff.as_ref().unwrap().change.refreshed.is_empty());
+    assert!(second.buff.is_none());
     assert_eq!(second.hp.unwrap().shield_granted.unwrap().added, 1_590);
     assert_eq!(managers.hp.shield(1), 3_180);
 }
@@ -150,6 +229,7 @@ fn cumulative_carrier_initializes_from_its_tier_then_refreshes_by_the_increment(
         max_rate: 1_000,
         scope: ShieldScope::Entity,
         carrier_uid: ShieldCarrierUid::Child,
+        carrier_duration: ShieldCarrierDuration::Refresh,
     };
 
     let first = execute(&mut managers, cumulative).unwrap();
@@ -198,6 +278,7 @@ fn fifth_cumulative_carrier_initializes_to_full_max_hp() {
             max_rate: 1_000,
             scope: ShieldScope::Entity,
             carrier_uid: ShieldCarrierUid::Child,
+            carrier_duration: ShieldCarrierDuration::Refresh,
         },
     )
     .unwrap();
@@ -255,6 +336,7 @@ fn assist_boss_hp_can_drive_its_configured_shield() {
             max_rate: 600,
             scope: ShieldScope::Entity,
             carrier_uid: ShieldCarrierUid::Definition,
+            carrier_duration: ShieldCarrierDuration::Refresh,
         },
     )
     .unwrap();
@@ -421,7 +503,7 @@ fn shared_family_shield_carrier_uses_its_configured_uid_lane() {
 }
 
 #[test]
-fn child_carrier_commands_allocate_consecutive_uids_after_observed_state() {
+fn carrier_commands_use_the_requested_uid_lane_after_observed_state() {
     crate::test_support::init_config();
     let fight = Fight {
         version: Some(7),
@@ -451,27 +533,34 @@ fn child_carrier_commands_allocate_consecutive_uids_after_observed_state() {
         }),
         ..Default::default()
     };
-    let mut managers = BattleManagers::seeded(&fight);
+    for (version, carrier_uid, expected) in [
+        (7, ShieldCarrierUid::Child, [1082, 1083, 1084, 1085]),
+        (7, ShieldCarrierUid::SharedChild, [1082, 1083, 1084, 1085]),
+        (6, ShieldCarrierUid::SharedChild, [1083, 1085, 1087, 1089]),
+    ] {
+        let mut fight = fight.clone();
+        fight.version = Some(version);
+        let mut managers = BattleManagers::seeded(&fight);
+        let actual = (1..=4)
+            .map(|target_uid| {
+                let mut shield = command();
+                shield.target_uid = target_uid;
+                shield.carrier_uid = carrier_uid;
+                execute(&mut managers, shield)
+                    .unwrap()
+                    .buff
+                    .unwrap()
+                    .change
+                    .added
+                    .unwrap()
+                    .buff
+                    .uid
+                    .unwrap()
+            })
+            .collect::<Vec<_>>();
 
-    let actual = (1..=4)
-        .map(|target_uid| {
-            let mut shield = command();
-            shield.target_uid = target_uid;
-            shield.carrier_uid = ShieldCarrierUid::Child;
-            execute(&mut managers, shield)
-                .unwrap()
-                .buff
-                .unwrap()
-                .change
-                .added
-                .unwrap()
-                .buff
-                .uid
-                .unwrap()
-        })
-        .collect::<Vec<_>>();
-
-    assert_eq!(actual, vec![1082, 1083, 1084, 1085]);
+        assert_eq!(actual, expected, "version {version}, {carrier_uid:?}");
+    }
 }
 
 #[test]
@@ -510,6 +599,7 @@ fn team_shared_shield_stacks_on_its_buff_act_state() {
         max_rate: 12_500,
         scope: ShieldScope::TeamShared,
         carrier_uid: ShieldCarrierUid::Definition,
+        carrier_duration: ShieldCarrierDuration::Refresh,
     };
 
     let first = execute(&mut managers, command).unwrap();
@@ -616,6 +706,7 @@ fn team_shared_shield_stacks_on_an_existing_shared_type_variant() {
         max_rate: 12_500,
         scope: ShieldScope::TeamShared,
         carrier_uid: ShieldCarrierUid::Definition,
+        carrier_duration: ShieldCarrierDuration::Refresh,
     };
 
     let changes = execute(&mut managers, command).unwrap();

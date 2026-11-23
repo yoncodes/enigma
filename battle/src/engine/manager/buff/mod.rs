@@ -160,6 +160,10 @@ impl BuffManager {
         self.catalog_data
     }
 
+    pub(super) fn uses_shared_uid_lane(&self) -> bool {
+        self.shared_uid_lane
+    }
+
     fn catalog(&self) -> crate::catalog::BattleCatalog {
         if let Some(catalog) = self.catalog_data {
             return catalog;

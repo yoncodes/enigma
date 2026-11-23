@@ -471,9 +471,14 @@ fn replay_rounds(
         .inherit_absorb_hurt_map_layout(&captured_start_round)
         .map_err(anyhow::Error::msg)?;
     runtime.extend_battle_rule_skills(tower_rule_skills);
-    let start_round = DamageExport::phase(&mut export, "opening", 0, &battle.start, || {
-        runtime.start_round_with_determinism(opening_determinism)
-    })?
+    let start_round = DamageExport::phase(
+        &mut export,
+        "opening",
+        0,
+        &battle.start,
+        |round| Some(round),
+        || runtime.start_round_with_determinism(opening_determinism),
+    )?
     .map_err(io::Error::other)?;
     if damage_tracing_enabled() {
         eprintln!("  start-round damage:");
@@ -545,9 +550,14 @@ fn replay_rounds(
         };
         report_rule_issues(&captured);
         seed_round_determinism(&mut runtime, effect_catalog::global(), &captured);
-        let result = DamageExport::phase(&mut export, "round", index, &round.reply, || {
-            runtime.advance_round(request)
-        })?;
+        let result = DamageExport::phase(
+            &mut export,
+            "round",
+            index,
+            &round.reply,
+            |round| Some(round),
+            || runtime.advance_round(request),
+        )?;
         let failed = result.is_err();
         run.outcomes.push(RoundOutcome {
             index,
@@ -644,11 +654,18 @@ fn replay_cloth_input(
                 seed_observed_redeal(runtime, &cards).map_err(io::Error::other)?;
             }
         }
-        let generated = DamageExport::phase(export, "cloth", round, &input.request, || {
-            runtime.use_cloth_skill(request).ok_or_else(|| {
-                io::Error::other(format!("invalid cloth input: {}", input.request.display()))
-            })
-        })??;
+        let generated = DamageExport::phase(
+            export,
+            "cloth",
+            round,
+            &input.request,
+            |reply: &UseClothSkillReply| reply.round.as_ref(),
+            || {
+                runtime.use_cloth_skill(request).ok_or_else(|| {
+                    io::Error::other(format!("invalid cloth input: {}", input.request.display()))
+                })
+            },
+        )??;
         if let Some(captured) = input.reply.as_ref() {
             outcomes.push(ClothOutcome {
                 captured: captured.clone(),

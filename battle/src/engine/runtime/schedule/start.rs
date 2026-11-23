@@ -44,6 +44,13 @@ fn round_start_setup_owner_uids(owner_uids: &[i64], team: i32) -> Vec<i64> {
     setup_owner_uids
 }
 
+fn settled_death_uids(result: &DrainResult) -> impl Iterator<Item = i64> + '_ {
+    result.outcomes.iter().filter_map(|outcome| match outcome {
+        RuleOutcome::DeathSettlement(death) => Some(death.transition().target_uid),
+        _ => None,
+    })
+}
+
 #[cfg(test)]
 pub fn run_round_start_split(
     managers: &mut BattleManagers,
@@ -330,6 +337,10 @@ pub fn run_round_start_after_ai_split(
             &setup_owner_uids,
         )?
     };
+    let mut scheduled_card_cleanup = Vec::new();
+    if version_seven {
+        scheduled_card_cleanup.extend(settled_death_uids(&event_setup));
+    }
     append_round_phase(&mut settlement, event_setup);
     if setup_layout == Some(crate::engine::fight::versions::RoundStartSetupLayout::Version7) {
         append_round_phase(
@@ -405,6 +416,9 @@ pub fn run_round_start_after_ai_split(
             )?,
         )
     };
+    if version_seven {
+        scheduled_card_cleanup.extend(settled_death_uids(&sync_setup));
+    }
     let mut sync_phase = begin_round_phase(RoundPhase::RoundStartSync);
     append_round_phase(&mut sync_phase, sync_setup);
     let deferred_settlement_setup = if version_seven {
@@ -419,12 +433,22 @@ pub fn run_round_start_after_ai_split(
     } else {
         DrainResult::default()
     };
-    let defeated_defenders = pool
+    let mut defeated_defenders = pool
         .defender_all
         .iter()
         .filter(|entity| managers.hp.current(entity.uid) <= 0)
         .map(|entity| entity.uid)
         .collect::<Vec<_>>();
+    for uid in scheduled_card_cleanup {
+        if managers.entity.team_type(uid) == Some(2)
+            && !defeated_defenders.contains(&uid)
+            && !managers
+                .entity
+                .has_pending_reserve_promotion(uid, &managers.hp)
+        {
+            defeated_defenders.push(uid);
+        }
+    }
     let card_cleanup = run_entity_card_cleanup(
         managers,
         pool,

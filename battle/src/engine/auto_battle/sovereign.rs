@@ -6,9 +6,14 @@ use crate::engine::skill::{behavior::classify::BehaviorKind, effect::SkillEffect
 
 use super::Candidate;
 
+pub(super) mod vision;
+
+fn is_precast(card: &CardInfo) -> bool {
+    card.temp_card == Some(true) && card.card_type == Some(CardType::Skill3 as i32)
+}
+
 pub(super) fn is_charge(card: &CardInfo, skill_id: i32, catalog: &SkillEffectCatalog) -> bool {
-    card.temp_card == Some(true)
-        && card.card_type == Some(CardType::Skill3 as i32)
+    is_precast(card)
         && catalog.get(skill_id).is_some_and(|effect| {
             effect.slots.iter().any(|slot| {
                 slot.behavior.spec.kind == BehaviorKind::HeatScaleUseSkillAddCount

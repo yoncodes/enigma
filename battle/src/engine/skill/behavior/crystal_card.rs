@@ -1,8 +1,12 @@
 use crate::engine::{
-    manager::card::{CardAddCrystal, CardCommand},
+    manager::{
+        BattleManagers,
+        card::{CardAddCrystal, CardCommand},
+        emanation::EmanationKind,
+    },
     skill::{
-        behavior::{BehaviorOpContext, registry::BehaviorHandler},
-        effect::ParsedBehavior,
+        behavior::{BehaviorOpContext, classify::BehaviorKind, registry::BehaviorHandler},
+        effect::{ParsedBehavior, SkillEffectCatalog},
         rule::{
             RuleReferences,
             output::{BattleCommand, RuleOp},
@@ -45,9 +49,7 @@ impl BehaviorHandler for Handler {
         let Some(skill_id) = skill_id else {
             return Some(Vec::new());
         };
-        let crystal = groups
-            .iter()
-            .find_map(|group| group.iter().position(|candidate| *candidate == skill_id))?;
+        let crystal = crystal_index(&groups, skill_id)?;
         let rank_group = groups
             .iter()
             .filter_map(|group| group.get(crystal).copied())
@@ -71,6 +73,37 @@ impl BehaviorHandler for Handler {
             summons: Vec::new(),
         }
     }
+}
+
+fn crystal_index(groups: &[Vec<i32>], skill_id: i32) -> Option<usize> {
+    groups
+        .iter()
+        .find_map(|group| group.iter().position(|candidate| *candidate == skill_id))
+}
+
+pub(crate) fn kind_for_skill(behavior: &ParsedBehavior, skill_id: i32) -> Option<EmanationKind> {
+    let index = crystal_index(&candidate_groups(behavior), skill_id)?;
+    EmanationKind::from_id(i32::try_from(index).ok()?.checked_add(1)?)
+}
+
+pub(crate) fn has_kind(
+    managers: &BattleManagers,
+    catalog: &SkillEffectCatalog,
+    owner: i64,
+    skill: i32,
+    kind: EmanationKind,
+) -> bool {
+    managers
+        .entity
+        .passive_skills(owner)
+        .into_iter()
+        .flatten()
+        .filter_map(|&passive| catalog.get(passive))
+        .flat_map(|effect| &effect.slots)
+        .any(|slot| {
+            slot.behavior.spec.kind == BehaviorKind::CrystalAddCard
+                && kind_for_skill(&slot.behavior, skill) == Some(kind)
+        })
 }
 
 fn rank_weights(behavior: &ParsedBehavior) -> Vec<i32> {

@@ -120,6 +120,8 @@ pub(super) fn shield_grant_ops(
                     max_rate: rate,
                     scope: crate::engine::manager::shield::ShieldScope::Entity,
                     carrier_uid: crate::engine::manager::shield::ShieldCarrierUid::Definition,
+                    carrier_duration:
+                        crate::engine::manager::shield::ShieldCarrierDuration::Refresh,
                 }))
             })
             .collect(),
