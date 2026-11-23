@@ -145,3 +145,40 @@ fn auto_round_plays_a_ready_team_ultimate_at_its_visible_index() {
             .any(|step| step.act_id == Some(31390131))
     );
 }
+
+#[test]
+fn auto_round_holds_fractal_attacks_for_ready_ultimates() {
+    use crate::engine::manager::card::EnchantedType;
+
+    let mut beryl = team_hero(10, 3134, 1_000, [31340111, 31340121]);
+    beryl.ex_point = Some(5);
+    beryl.ex_skill = Some(31340131);
+    let lorentz = team_hero(11, 3139, 1_000, [31390114, 31390122]);
+    for (skill, free_ultimate, first) in [
+        (31390114, false, 2),
+        (31390122, false, 1),
+        (31390114, true, 2),
+    ] {
+        let mut copy = hand_card(11, skill, true);
+        copy.enchants.push(sonettobuf::CardEnchant {
+            enchant_id: Some(EnchantedType::Lorenz.id()),
+            duration: Some(-1),
+            ..Default::default()
+        });
+        let mut runtime = team_runtime(
+            vec![beryl.clone(), lorentz.clone()],
+            vec![copy, hand_card(10, 31340131, false)],
+        );
+        runtime.round_state.act_point = i32::from(!free_ultimate);
+        if free_ultimate {
+            grant_buff(&mut runtime, 10, 10, 6270589);
+        }
+
+        let plan = runtime
+            .auto_round_planner()
+            .plan(&AutoRoundRequest::default())
+            .unwrap();
+        assert_eq!(plan.opers.len(), 2);
+        assert_eq!(plan.opers[0].param1, Some(first));
+    }
+}

@@ -9,6 +9,7 @@ use crate::engine::{
         BattleManagers,
         card::{
             CARD_PLAY_ORIGIN, CardCommand, CardManager, CardOpType, CardPlay, CardUseUniversal,
+            EnchantedType, deck::has_enchant_type,
         },
         eureka::PowerType,
     },
@@ -45,6 +46,7 @@ struct Candidate {
     chosen_skill_id: Option<i32>,
     free: bool,
     ultimate: bool,
+    fractal_attack: bool,
     conduit_priority: conduit::Priority,
     opening_skill_two: bool,
     first_for_owner: bool,
@@ -707,6 +709,7 @@ fn best_candidate(
                     )
                 })
                 .unwrap_or(resolved_target_uid);
+            let damage_rate = catalog.damage_rate(skill_id);
             Some(Ok(Candidate {
                 card_index,
                 source_uid,
@@ -717,6 +720,11 @@ fn best_candidate(
                 chosen_skill_id,
                 free: normal_ap_cost == 0,
                 ultimate,
+                fractal_attack: temporary
+                    && !ultimate
+                    && !device
+                    && damage_rate > 0
+                    && has_enchant_type(card, EnchantedType::Lorenz),
                 conduit_priority: conduit::Priority::new(
                     energy,
                     device,
@@ -729,19 +737,18 @@ fn best_candidate(
                     && !played_owners.contains(&source_uid)
                     && support != Support::Unneeded,
                 support,
-                strength: (!ultimate && !device).then(|| {
-                    (
-                        catalog.damage_rate(skill_id),
-                        managers.catalog().card_skill_rank(card),
-                    )
-                }),
+                strength: (!ultimate && !device)
+                    .then(|| (damage_rate, managers.catalog().card_skill_rank(card))),
             }))
         })
         .collect::<Result<Vec<Candidate>, AutoBattleError>>()?;
+    let has_paid_ultimate = candidates
+        .iter()
+        .any(|candidate| candidate.ultimate && !candidate.free);
     Ok(candidates.into_iter().max_by_key(|candidate| {
         // Official auto casts ready ultimates left to right.
         (
-            candidate.free,
+            candidate.free && !(has_paid_ultimate && candidate.fractal_attack),
             candidate.ultimate,
             candidate.support == Support::Urgent,
             candidate.conduit_priority,
