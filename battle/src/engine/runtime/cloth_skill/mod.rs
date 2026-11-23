@@ -518,11 +518,12 @@ impl BattleRuntime {
             round.ex_point_info = self.managers.ex_point_info(&self.fight);
         }
         let hero_sp_attributes = self.managers.hero_sp_attributes(&self.fight);
-        if hero_sp_attributes == self.round_state.hero_sp_attributes {
-            round.hero_sp_attributes.clear();
-        } else {
+        let tuning_snapshot = skill_type == ClothSkillType::ClothSkill && fight_version == 7;
+        if tuning_snapshot || hero_sp_attributes != self.round_state.hero_sp_attributes {
             self.round_state.hero_sp_attributes = hero_sp_attributes.clone();
             round.hero_sp_attributes = hero_sp_attributes;
+        } else {
+            round.hero_sp_attributes.clear();
         }
         round.fight_step = steps;
         self.round = Some(round.clone());
