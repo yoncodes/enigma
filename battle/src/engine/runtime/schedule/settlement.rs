@@ -620,14 +620,13 @@ pub fn run_round_end_final_settlement(
     settled_buffs: Vec<crate::engine::event::payload::BuffChangeEvent>,
 ) -> Result<DrainResult, DrainError> {
     let owner_uids = final_settlement_owner_order(pool, managers);
-    let event = BattleEvent::BuffsSettled(settled_buffs);
     let initial = drain::run_grouped_owner_event_lanes(
         managers,
         pool,
         catalog,
         determinism,
         context,
-        event.clone(),
+        BattleEvent::BuffsSettled(settled_buffs.clone()),
         &owner_uids,
         &[drain::ReactionLane::BuffActs, drain::ReactionLane::Skills],
     )?;
@@ -669,7 +668,7 @@ pub fn run_round_end_final_settlement(
             catalog,
             determinism,
             context,
-            BattleEvent::Kind(EventKind::RoundEndAfterSideFinalExpiry),
+            BattleEvent::AfterSideFinalExpiry(settled_buffs),
             &owner_uids,
             drain::ReactionLane::Skills,
         )?,

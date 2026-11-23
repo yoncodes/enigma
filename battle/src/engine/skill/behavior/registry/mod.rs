@@ -768,7 +768,7 @@ behavior_definitions! {
     [60022] "BuffCountMulti" => super::buff::Handler, BuffCountMulti, AfterDamage, destination, super::buff::supports_count_multiplier;
     [50032] "ReplaceBuff" => super::buff::Handler, ReplaceBuff, Immediate, destination, arguments::exactly_four;
     [60176] "ReplaceBuff2" => super::buff::Handler, ReplaceBuff2, Immediate, destination, super::buff::supports_layer_reward;
-    [50035] "AddBuffBasedOnEnemyBurnUseCount" => super::buff::Handler, AddBuffBasedOnEnemyBurnUseCount, Immediate, destination, arguments::exactly_two;
+    [50035] "AddBuffBasedOnEnemyBurnUseCount" => super::buff::Handler, AddBuffBasedOnEnemyBurnUseCount, Immediate, destination, @route(ConditionRouteOverride::Trigger { key: DefinitionKey::new(307, "None"), event: EventKind::RoundEndAfterSideFinalExpiry, phase: None }), arguments::exactly_two;
     [60059] "AddBurnBySkillAddBurnCount" => super::buff::Handler, AddBuffBySkillBuffAdditions, Immediate, destination, super::buff::supports_burn_return;
     [60068] "AddBuffByBuffLayer" => super::buff::Handler, AddBuffByBuffLayer, Immediate, destination, arguments::exactly_three;
     [60124] "AddBuffByBuffLayerRange" => super::buff::Handler, AddBuffByBuffLayerRange, Immediate, destination, super::buff::supports_layer_range;

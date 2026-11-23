@@ -236,9 +236,13 @@ fn blood_debt_replaces_its_expired_defense_debuff_after_settlement() {
 
 #[test]
 fn obscurity_break_enters_the_witness_round_on_the_next_round() {
+    use crate::engine::event::payload::{BuffChangeEvent, BuffExpiry};
+    use crate::test_support::contains_skill;
+
     init_config();
     let entity = |uid, buffs, passive_skill| FightEntityInfo {
         uid: Some(uid),
+        team_type: Some(if uid > 0 { 1 } else { 2 }),
         current_hp: Some(10_000),
         attr: Some(HeroAttribute {
             hp: Some(10_000),
@@ -250,7 +254,7 @@ fn obscurity_break_enters_the_witness_round_on_the_next_round() {
     };
     let fight = Fight {
         attacker: Some(FightTeam {
-            entitys: vec![entity(10, Vec::new(), Vec::new())],
+            entitys: vec![entity(10, Vec::new(), vec![30810311])],
             ..Default::default()
         }),
         defender: Some(FightTeam {
@@ -307,7 +311,19 @@ fn obscurity_break_enters_the_witness_round_on_the_next_round() {
         &catalog,
         &mut RoundDeterminism::default(),
         TargetContext::default(),
-        Vec::new(),
+        vec![BuffChangeEvent {
+            source_uid: 10,
+            target_uid: -1,
+            buff_uid: 30,
+            buff_id: 4150001,
+            before_amount: 8,
+            after_amount: 5,
+            act_id: 0,
+            act_value: 0,
+            replaced_fixed_max_hp: None,
+            replaced_buff_id: None,
+            expiry: BuffExpiry::None,
+        }],
     )
     .unwrap();
 
@@ -325,6 +341,7 @@ fn obscurity_break_enters_the_witness_round_on_the_next_round() {
     );
     assert!(managers.buff.has_active_buff_id(-1, 109320103));
     assert_eq!(managers.buff.snapshot(-1, 21).unwrap().duration, Some(1));
+    assert_eq!(managers.buff.buff_id_amount(10, 30810108), 3);
     let marker = managers
         .buff
         .active_for(-1)
@@ -393,8 +410,10 @@ fn obscurity_break_enters_the_witness_round_on_the_next_round() {
                     .collect::<Vec<_>>()
             })
             .collect::<Vec<_>>(),
-        vec![vec![6, 162, 162, 162], vec![7, 7, 7, 162]]
+        vec![vec![6, 162, 162, 162, 162], vec![7, 7, 7, 162]]
     );
+    let heat = steps[0].act_effect[4].fight_step.as_ref().unwrap();
+    assert!(contains_skill(heat, 30810311));
     assert_eq!(
         steps[0]
             .act_effect

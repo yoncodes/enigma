@@ -236,7 +236,7 @@ pub(super) fn add_buff_from_enemy_burn_ops(
         return Some(Vec::new());
     };
     let consumed = match context.event {
-        Some(crate::engine::event::payload::BattleEvent::BuffsSettled(changes)) => changes
+        Some(crate::engine::event::payload::BattleEvent::AfterSideFinalExpiry(changes)) => changes
             .iter()
             .filter(|change| {
                 context.managers.buff.team_type(change.target_uid) != Some(context.source_team)

@@ -278,6 +278,7 @@ pub(super) fn apply_event_context(
         | BattleEvent::ActionQueueCommitted { .. }
         | BattleEvent::PlayerActionsResolved { .. }
         | BattleEvent::BuffsSettled(_)
+        | BattleEvent::AfterSideFinalExpiry(_)
         | BattleEvent::CardChanged(_)
         | BattleEvent::SummonChanged(_)
         | BattleEvent::BloodtitheChanged { .. }

@@ -277,6 +277,7 @@ pub enum BattleEvent {
     BuffRemoved(BuffChangeEvent),
     BuffRejected(BuffRejectedEvent),
     BuffsSettled(Vec<BuffChangeEvent>),
+    AfterSideFinalExpiry(Vec<BuffChangeEvent>),
     BuffFeatureTriggered(BuffFeatureTriggeredEvent),
     HpLost {
         origin: CommandOrigin,
@@ -380,6 +381,7 @@ impl BattleEvent {
             | Self::CardChanged(_)
             | Self::FieldChanged(_)
             | Self::BuffsSettled(_)
+            | Self::AfterSideFinalExpiry(_)
             | Self::BloodtitheChanged { .. }
             | Self::Kind(_) => None,
         }
@@ -422,6 +424,7 @@ impl BattleEvent {
             | Self::CardChanged(_)
             | Self::FieldChanged(_)
             | Self::BuffsSettled(_)
+            | Self::AfterSideFinalExpiry(_)
             | Self::BloodtitheChanged { .. }
             | Self::Kind(_) => None,
         }
@@ -447,6 +450,7 @@ impl BattleEvent {
             Self::BuffRemoved(_) => EventKind::BuffRemoved,
             Self::BuffRejected(_) => EventKind::BuffRejected,
             Self::BuffsSettled(_) => EventKind::RoundEndFinalSettlement,
+            Self::AfterSideFinalExpiry(_) => EventKind::RoundEndAfterSideFinalExpiry,
             Self::BuffFeatureTriggered(_) => EventKind::BuffFeatureTriggered,
             Self::HpLost { .. } => EventKind::HpLost,
             Self::DamageShared { .. } => EventKind::DamageShared,
