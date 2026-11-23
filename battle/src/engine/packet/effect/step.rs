@@ -130,7 +130,7 @@ impl EffectPacket {
                 act_id: Some(act_id),
                 act_effect: effects,
                 card_index: Some(card_index),
-                support_hero_id: Some(0),
+                support_hero_id: None,
                 fake_timeline: Some(false),
                 real_skill_type: Some(0),
                 real_skin_id: Some(0),
