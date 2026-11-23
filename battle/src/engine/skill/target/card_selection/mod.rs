@@ -10,20 +10,37 @@ use crate::engine::{
 
 pub(crate) struct CardSelectionResolver;
 
+mod record_ultimate;
 mod source_buff;
 
+const ALLY_TARGET_LIMIT: usize = 2;
+
+fn uses_enemy_aim(catalog: &SkillEffectCatalog, skill_id: i32) -> bool {
+    source_buff::uses_enemy_aim(catalog, skill_id)
+        || record_ultimate::uses_enemy_aim(catalog, skill_id)
+}
+
+fn selectable_enemies(
+    pool: &TargetPool,
+    source_uid: i64,
+) -> impl Iterator<Item = &super::pool::TargetEntity> {
+    pool.enemies(source_uid, true)
+        .iter()
+        .filter(|enemy| enemy.can_receive_enemy_aim(pool.catalog()))
+}
+
 impl CardSelectionResolver {
-    pub(crate) fn source_buff_aim(
+    pub(crate) fn source_aim(
         catalog: &SkillEffectCatalog,
         skill_id: i32,
         source_uid: i64,
         pool: &TargetPool,
         preferred_target: Option<i64>,
     ) -> Option<i64> {
-        if !source_buff::uses_enemy_aim(catalog, skill_id) {
+        if !uses_enemy_aim(catalog, skill_id) {
             return None;
         }
-        source_buff::selectable_enemies(pool, source_uid)
+        selectable_enemies(pool, source_uid)
             .min_by_key(|enemy| {
                 (
                     preferred_target != Some(enemy.uid),
@@ -72,9 +89,8 @@ impl CardSelectionResolver {
             managers,
             context,
         );
-        if source_buff::uses_enemy_aim(catalog, skill_id) {
-            candidates
-                .extend(source_buff::selectable_enemies(pool, source_uid).map(|enemy| enemy.uid));
+        if uses_enemy_aim(catalog, skill_id) {
+            candidates.extend(selectable_enemies(pool, source_uid).map(|enemy| enemy.uid));
         }
         candidates
     }

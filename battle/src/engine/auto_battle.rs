@@ -702,7 +702,7 @@ fn best_candidate(
                     if energy.is_some() || device {
                         return None;
                     }
-                    CardSelectionResolver::source_buff_aim(
+                    CardSelectionResolver::source_aim(
                         catalog,
                         skill_id,
                         source_uid,
