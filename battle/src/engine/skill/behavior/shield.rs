@@ -13,6 +13,7 @@ use crate::engine::{
 
 pub(super) struct Handler;
 pub(super) struct ChildUidHandler;
+pub(super) struct ScaledHandler;
 
 type ShieldFormula = (
     i32,
@@ -111,6 +112,22 @@ impl BehaviorHandler for ChildUidHandler {
 
     fn references(behavior: &ParsedBehavior) -> RuleReferences {
         references(behavior, true)
+    }
+}
+
+impl BehaviorHandler for ScaledHandler {
+    const VALIDATES_ARGUMENTS: bool = true;
+
+    fn supports(behavior: &ParsedBehavior) -> bool {
+        supports(behavior)
+    }
+
+    fn emit_ops(context: BehaviorOpContext<'_>, behavior: &ParsedBehavior) -> Option<Vec<RuleOp>> {
+        emit_ops(context, behavior, ShieldCarrierUid::SharedChild, false)
+    }
+
+    fn references(behavior: &ParsedBehavior) -> RuleReferences {
+        references(behavior, false)
     }
 }
 

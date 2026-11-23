@@ -499,7 +499,7 @@ fn shared_family_shield_carrier_uses_its_configured_uid_lane() {
 }
 
 #[test]
-fn child_carrier_commands_allocate_consecutive_uids_after_observed_state() {
+fn carrier_commands_use_the_requested_uid_lane_after_observed_state() {
     crate::test_support::init_config();
     let fight = Fight {
         version: Some(7),
@@ -529,27 +529,34 @@ fn child_carrier_commands_allocate_consecutive_uids_after_observed_state() {
         }),
         ..Default::default()
     };
-    let mut managers = BattleManagers::seeded(&fight);
+    for (version, carrier_uid, expected) in [
+        (7, ShieldCarrierUid::Child, [1082, 1083, 1084, 1085]),
+        (7, ShieldCarrierUid::SharedChild, [1082, 1083, 1084, 1085]),
+        (6, ShieldCarrierUid::SharedChild, [1083, 1085, 1087, 1089]),
+    ] {
+        let mut fight = fight.clone();
+        fight.version = Some(version);
+        let mut managers = BattleManagers::seeded(&fight);
+        let actual = (1..=4)
+            .map(|target_uid| {
+                let mut shield = command();
+                shield.target_uid = target_uid;
+                shield.carrier_uid = carrier_uid;
+                execute(&mut managers, shield)
+                    .unwrap()
+                    .buff
+                    .unwrap()
+                    .change
+                    .added
+                    .unwrap()
+                    .buff
+                    .uid
+                    .unwrap()
+            })
+            .collect::<Vec<_>>();
 
-    let actual = (1..=4)
-        .map(|target_uid| {
-            let mut shield = command();
-            shield.target_uid = target_uid;
-            shield.carrier_uid = ShieldCarrierUid::Child;
-            execute(&mut managers, shield)
-                .unwrap()
-                .buff
-                .unwrap()
-                .change
-                .added
-                .unwrap()
-                .buff
-                .uid
-                .unwrap()
-        })
-        .collect::<Vec<_>>();
-
-    assert_eq!(actual, vec![1082, 1083, 1084, 1085]);
+        assert_eq!(actual, expected, "version {version}, {carrier_uid:?}");
+    }
 }
 
 #[test]

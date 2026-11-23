@@ -25,6 +25,7 @@ pub enum ShieldScope {
 pub enum ShieldCarrierUid {
     Definition,
     Child,
+    SharedChild,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -306,8 +307,11 @@ fn plan_carrier(
         child_uid_reservations: 0,
     };
     Ok(managers.plan_buff(match command.carrier_uid {
-        ShieldCarrierUid::Definition => BuffCommand::Grant(grant),
         ShieldCarrierUid::Child => BuffCommand::GrantUsingChildUid(grant),
+        ShieldCarrierUid::SharedChild if managers.buff.uses_shared_uid_lane() => {
+            BuffCommand::GrantUsingChildUid(grant)
+        }
+        ShieldCarrierUid::Definition | ShieldCarrierUid::SharedChild => BuffCommand::Grant(grant),
     })?)
 }
 
