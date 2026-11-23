@@ -103,42 +103,43 @@ pub(crate) fn run_round_start_card_duration(
     context: TargetContext,
     advances: impl IntoIterator<Item = BuffDurationAdvance>,
 ) -> Result<DrainResult, DrainError> {
-    let mut advances = advances.into_iter().peekable();
-    if advances.peek().is_none() {
-        return Ok(DrainResult::default());
-    }
     let event = BattleEvent::Kind(crate::engine::event::kind::EventKind::RoundStartCard);
-    let mut frames = Vec::new();
-    let scope = push_root(
-        &mut frames,
-        FrameOwner::EventRule,
-        FrameTrigger::Event(event.clone()),
-    );
-    let mut queue = advances
-        .map(|advance| QueuedOp {
+    let mut result = DrainResult::default();
+    for advance in advances {
+        let mut frames = Vec::new();
+        let scope = push_root(
+            &mut frames,
+            FrameOwner::EventRule,
+            FrameTrigger::Event(event.clone()),
+        );
+        let mut queue = VecDeque::from([QueuedOp {
             op: RuleOp::Command(crate::engine::skill::rule::output::BattleCommand::Buff(
                 crate::engine::manager::buff::BuffCommand::AdvanceDuration(advance),
             )),
             trigger: SkillOpTrigger::Event(event.clone()),
             skill_execution: None,
-            frame_path: Some(scope.clone()),
+            frame_path: Some(scope),
             parent_path: None,
             frame_group: None,
             independent_parent_group: None,
             frame_owner: None,
             subscriber: None,
             caster_frame: None,
-        })
-        .collect::<VecDeque<_>>();
-    drain_queue_with_frames(
-        managers,
-        pool,
-        catalog,
-        determinism,
-        context,
-        &mut queue,
-        frames,
-    )
+        }]);
+        let settled = drain_queue_with_frames(
+            managers,
+            pool,
+            catalog,
+            determinism,
+            context,
+            &mut queue,
+            frames,
+        )?;
+        result.outcomes.extend(settled.outcomes);
+        result.events.extend(settled.events);
+        result.frames.extend(settled.frames);
+    }
+    Ok(result)
 }
 
 #[allow(clippy::too_many_arguments)]

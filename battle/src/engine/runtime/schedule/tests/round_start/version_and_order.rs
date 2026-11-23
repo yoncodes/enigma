@@ -842,12 +842,23 @@ fn round_start_card_event_advances_buffs_added_late_in_round_start() {
     let fight = Fight {
         version: Some(7),
         attacker: Some(FightTeam {
-            entitys: vec![FightEntityInfo {
-                uid: Some(10),
-                current_hp: Some(100),
-                passive_skill: vec![40],
-                ..Default::default()
-            }],
+            entitys: [(10, 1010, vec![40]), (20, 1020, Vec::new())]
+                .into_iter()
+                .map(|(uid, buff_uid, passive_skill)| FightEntityInfo {
+                    uid: Some(uid),
+                    team_type: Some(1),
+                    current_hp: Some(100),
+                    passive_skill,
+                    buffs: vec![BuffInfo {
+                        uid: Some(buff_uid),
+                        buff_id: Some(31390132),
+                        from_uid: Some(uid),
+                        duration: Some(1),
+                        ..Default::default()
+                    }],
+                    ..Default::default()
+                })
+                .collect(),
             ..Default::default()
         }),
         ..Default::default()
@@ -882,6 +893,28 @@ fn round_start_card_event_advances_buffs_added_late_in_round_start() {
     .unwrap();
 
     assert!(!managers.buff.has_buff_id(10, 30810116));
+    assert!(!managers.buff.has_buff_id(10, 31390132));
+    assert!(!managers.buff.has_buff_id(20, 31390132));
+    let steps =
+        crate::engine::packet::timeline::project_for_version(&next_round.frames, 7).unwrap();
+    let expiry_groups = steps
+        .iter()
+        .map(|step| {
+            step.act_effect
+                .iter()
+                .filter(|effect| {
+                    effect.effect_type
+                        == Some(sonettobuf::effect_type_enum::EffectType::Buffdel as i32)
+                })
+                .filter_map(|effect| Some((effect.target_id?, effect.buff.as_ref()?.buff_id?)))
+                .collect::<Vec<_>>()
+        })
+        .filter(|effects| !effects.is_empty())
+        .collect::<Vec<_>>();
+    assert_eq!(
+        expiry_groups,
+        vec![vec![(10, 30810116)], vec![(10, 31390132), (20, 31390132)]]
+    );
     let round_start_card = next_round
         .events
         .iter()
