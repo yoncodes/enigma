@@ -12,12 +12,14 @@ pub(crate) struct CardSelectionResolver;
 
 mod record_ultimate;
 mod source_buff;
+mod sovereign_charge;
 
 const ALLY_TARGET_LIMIT: usize = 2;
 
 fn uses_enemy_aim(catalog: &SkillEffectCatalog, skill_id: i32) -> bool {
     source_buff::uses_enemy_aim(catalog, skill_id)
         || record_ultimate::uses_enemy_aim(catalog, skill_id)
+        || sovereign_charge::uses_enemy_aim(catalog, skill_id)
 }
 
 fn selectable_enemies(

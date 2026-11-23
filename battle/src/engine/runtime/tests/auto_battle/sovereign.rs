@@ -15,8 +15,9 @@ fn auto_round_orders_sovereign_charge_between_ultimates() {
     for charge in [31340161, 31340162, 31340163] {
         let mut sovereign = hand_card(10, charge, true);
         sovereign.card_type = Some(sonettobuf::card_info::CardType::Skill3 as i32);
-        let mut runtime = team_runtime(
+        let mut runtime = team_runtime_against(
             vec![beryl.clone(), marsha.clone(), lorentz.clone()],
+            vec![enemy(-1, 1_000), enemy(-2, 1_000)],
             vec![
                 sovereign,
                 hand_card(10, 31340131, false),
@@ -35,5 +36,27 @@ fn auto_round_orders_sovereign_charge_between_ultimates() {
             .map(|operation| operation.param1)
             .collect();
         assert_eq!(picks, [Some(3), Some(3), Some(1), Some(1)]);
+        assert_eq!(plan.opers[2].to_id, Some(-1));
+
+        let aimed = runtime
+            .auto_round_planner()
+            .plan(&AutoRoundRequest {
+                to_id: Some(-2),
+                ..Default::default()
+            })
+            .unwrap();
+        assert_eq!(aimed.opers[2].to_id, Some(-2));
+
+        let mut charge = aimed.opers[2].clone();
+        charge.param1 = Some(1);
+        let continued = runtime
+            .auto_round_planner()
+            .plan(&AutoRoundRequest {
+                opers: vec![charge],
+                to_id: Some(-2),
+                ..Default::default()
+            })
+            .unwrap();
+        assert_eq!(continued.opers.len(), 3);
     }
 }
