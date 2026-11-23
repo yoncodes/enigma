@@ -34,6 +34,9 @@ pub enum CardChange {
         target_uid: i64,
         card: CardInfo,
     },
+    PrecastPrinted {
+        card: CardInfo,
+    },
     OwnedAddHand {
         card: CardInfo,
         team_type: i32,

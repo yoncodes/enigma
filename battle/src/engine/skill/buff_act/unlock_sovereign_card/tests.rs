@@ -10,26 +10,11 @@ use crate::engine::{
         target::{TargetContext, TargetPool},
     },
 };
+use crate::test_support::{contains_skill, find_step};
 use sonettobuf::{
     BuffInfo, CardData, CardExtraInfo, CardInfo, Fight, FightEntityInfo, FightStep, FightTeam,
     card_data::CardDataKey, effect_type_enum::EffectType,
 };
-
-fn find_step(steps: &[FightStep], act_id: i32) -> Option<&FightStep> {
-    for step in steps {
-        if step.act_id == Some(act_id) {
-            return Some(step);
-        }
-        for effect in &step.act_effect {
-            if let Some(child) = &effect.fight_step
-                && let Some(found) = find_step(std::slice::from_ref(child), act_id)
-            {
-                return Some(found);
-            }
-        }
-    }
-    None
-}
 
 fn fight() -> Fight {
     Fight {
@@ -187,7 +172,10 @@ fn handoff_unlocks_once() {
     assert!(!managers.card.can_use_card(&expected));
     assert_eq!(managers.ex_point.get(10), 3);
     let projected = timeline::project_for_version(&result.frames, 7).unwrap();
-    let unlock = find_step(&projected, 31470007).unwrap();
+    let unlock = projected
+        .iter()
+        .find_map(|step| find_step(step, 31470007))
+        .unwrap();
     assert!(!unlock.fake_timeline.unwrap_or_default());
     assert_eq!(
         unlock.act_effect[0].effect_type,
@@ -207,11 +195,10 @@ fn handoff_unlocks_once() {
     assert_eq!(callback.act_effect[1].effect_num, Some(3));
     let repeated = handoff(&mut managers);
     assert!(
-        find_step(
-            &timeline::project_for_version(&repeated.frames, 7).unwrap(),
-            31470007
-        )
-        .is_none()
+        !timeline::project_for_version(&repeated.frames, 7)
+            .unwrap()
+            .iter()
+            .any(|step| contains_skill(step, 31470007))
     );
     assert_eq!(managers.card.hand(), &[expected]);
     assert_eq!(managers.ex_point.get(10), 3);

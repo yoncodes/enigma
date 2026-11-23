@@ -112,6 +112,31 @@ fn target_preview_does_not_consume_the_damage_decision() {
 }
 
 #[test]
+fn new_action_observations_replace_leftover_targets() {
+    let mut determinism = RoundDeterminism::default();
+    let choice = |target| super::SkillTargetChoice {
+        skill_id: 10,
+        source_uid: 1,
+        target_code: 206,
+        targets: vec![target],
+        additional_targets: Vec::new(),
+        crit_targets: Vec::new(),
+        additional_crit_targets: Vec::new(),
+    };
+
+    determinism.replace_skill_target_choices([choice(-3)]);
+    assert_eq!(determinism.take_skill_targets(10, 1, 206), Some(vec![-3]));
+
+    determinism.replace_skill_target_choices([choice(-1), choice(-2)]);
+    assert_eq!(determinism.take_skill_targets(10, 1, 206), Some(vec![-1]));
+    determinism.take_skill_target_choice(10, 1, 206).unwrap();
+    assert_eq!(determinism.take_skill_targets(10, 1, 206), Some(vec![-2]));
+
+    determinism.replace_skill_target_choices([]);
+    assert_eq!(determinism.take_skill_targets(10, 1, 206), None);
+}
+
+#[test]
 fn zero_seed_lua_pool_order_matches_start_battle_rng() {
     let mut determinism = RoundDeterminism::default();
 

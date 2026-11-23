@@ -5,7 +5,7 @@ use std::{
 };
 
 use crate::engine::{
-    event::payload::BattleEvent,
+    event::{dispatcher::OncePerTargetKey, payload::BattleEvent},
     manager::hp::{HurtDamageFromType, PendingDeath},
     runtime::record::{FrameOwner, FramePath},
     skill::{rule::DefinitionKey, target::TargetContext},
@@ -19,11 +19,17 @@ use super::{
 type DeferredCast = (Option<FrameOwner>, QueuedOp);
 pub(super) type ActionReactionKey = (i64, i32, Option<usize>, DefinitionKey);
 
+#[derive(Default)]
+pub(super) struct ActionReactions {
+    pub(super) skills: HashSet<ActionReactionKey>,
+    pub(super) buff_targets: HashSet<OncePerTargetKey>,
+    pub(super) hit_passives_released: bool,
+}
+
 /// Owns bookkeeping shared by the root drain and every nested reaction drain.
 #[derive(Default)]
 pub(super) struct DrainState {
     after_hit: HashMap<FramePath, Vec<QueuedOp>>,
-    attack_consumptions: HashMap<FramePath, Vec<QueuedOp>>,
     attacked_skills: HashMap<FramePath, Vec<QueuedOp>>,
     hp_thresholds: HashMap<FramePath, Vec<QueuedOp>>,
     hit_passive_skills: HashMap<FramePath, Vec<QueuedOp>>,
@@ -38,7 +44,7 @@ pub(super) struct DrainState {
     open_actions: HashSet<FramePath>,
     completed_actions: HashSet<FramePath>,
     pub(super) shield_counter: super::shield_counter::Tally,
-    action_reactions: HashMap<FramePath, HashSet<ActionReactionKey>>,
+    action_reactions: HashMap<FramePath, ActionReactions>,
     action_shared_damage: HashMap<FramePath, HashMap<i64, [i32; 2]>>,
     action_skill_reaction_frames: HashMap<(FramePath, i64, i32), FramePath>,
     event_batch_reactions: HashMap<u64, HashSet<ActionReactionKey>>,
@@ -173,21 +179,6 @@ impl DrainState {
         defer(&mut self.attacked_skills, action_path, queued);
     }
 
-    pub(super) fn defer_attack_consumptions(
-        &mut self,
-        action_path: Option<&[usize]>,
-        queued: Vec<QueuedOp>,
-    ) {
-        defer(&mut self.attack_consumptions, action_path, queued);
-    }
-
-    pub(super) fn take_attack_consumptions(
-        &mut self,
-        action_path: Option<&FramePath>,
-    ) -> Option<Vec<QueuedOp>> {
-        action_path.and_then(|path| self.attack_consumptions.remove(path))
-    }
-
     pub(super) fn take_attacked_skills(
         &mut self,
         action_path: Option<&FramePath>,
@@ -315,11 +306,6 @@ impl DrainState {
         self.action_reactions.remove(action_path);
         self.action_shared_damage.remove(action_path);
         let mut abandoned = self.after_hit.remove(action_path).unwrap_or_default();
-        abandoned.extend(
-            self.attack_consumptions
-                .remove(action_path)
-                .unwrap_or_default(),
-        );
         abandoned.extend(self.attacked_skills.remove(action_path).unwrap_or_default());
         abandoned.extend(self.hp_thresholds.remove(action_path).unwrap_or_default());
         abandoned.extend(
@@ -357,7 +343,7 @@ impl DrainState {
     }
 
     // Only an action that will still complete releases held casts; otherwise they run at once.
-    pub(super) fn action_in_progress(&self, action_path: &FramePath) -> bool {
+    pub(super) fn action_in_progress(&self, action_path: &[usize]) -> bool {
         self.open_actions.contains(action_path)
     }
 
@@ -374,13 +360,17 @@ impl DrainState {
         chain.map(<[usize]>::to_vec)
     }
 
+    pub(super) fn reactions(&mut self, action_path: &[usize]) -> &mut ActionReactions {
+        self.action_reactions
+            .entry(action_path.to_vec())
+            .or_default()
+    }
+
     pub(super) fn action_reactions(
         &mut self,
         action_path: &[usize],
     ) -> &mut HashSet<ActionReactionKey> {
-        self.action_reactions
-            .entry(action_path.to_vec())
-            .or_default()
+        &mut self.reactions(action_path).skills
     }
 
     pub(super) fn record_action_shared_damage(

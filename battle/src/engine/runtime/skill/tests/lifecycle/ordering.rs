@@ -160,13 +160,14 @@ fn source_opening_and_pre_effect_reactions_precede_action_cost() {
 }
 
 #[test]
-fn paid_skill_publishes_immediate_commands_before_action_start_lifecycle() {
+fn paid_skill_prepares_effects_between_immediate_commands_and_payment() {
     crate::test_support::init_config();
     let fight = Fight {
         attacker: Some(FightTeam {
             entitys: vec![FightEntityInfo {
                 uid: Some(10),
                 current_hp: Some(1_000),
+                passive_skill: vec![103374322],
                 ..Default::default()
             }],
             ..Default::default()
@@ -175,7 +176,7 @@ fn paid_skill_publishes_immediate_commands_before_action_start_lifecycle() {
     };
     let managers = BattleManagers::seeded(&fight);
     let pool = TargetPool::from_fight(&fight);
-    let mut catalog = SkillEffectCatalog::default();
+    let mut catalog = SkillEffectCatalog::from_roots(config::configs::get(), [103374322], []);
     catalog.insert(ParsedSkillEffect {
         skill_id: 100,
         slots: vec![SkillEffectSlot::new(
@@ -237,6 +238,17 @@ fn paid_skill_publishes_immediate_commands_before_action_start_lifecycle() {
             )
         })
         .unwrap();
+    let prepared = emission
+        .ops
+        .iter()
+        .position(|emission| {
+            matches!(
+                &emission.op,
+                RuleOp::Publish(BattleEvent::SkillEffectsPrepared(action))
+                    if action.phase == SkillPhase::Immediate && action.source_uid == 10
+            )
+        })
+        .unwrap();
     let lifecycle = emission
         .ops
         .iter()
@@ -250,7 +262,7 @@ fn paid_skill_publishes_immediate_commands_before_action_start_lifecycle() {
             )
         })
         .unwrap();
-    assert!(command < lifecycle);
+    assert!(command < prepared && prepared < lifecycle);
 
     let continuation = emission.continuation.expect("Immediate phase continuation");
     let continuation_emission = emit_ops(

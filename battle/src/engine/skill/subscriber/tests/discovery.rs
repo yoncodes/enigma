@@ -314,3 +314,58 @@ fn discovers_event_passives_linked_by_active_buffs() {
         }]
     );
 }
+
+#[test]
+fn disabled_passives_skip_round_end_subscriptions() {
+    crate::test_support::init_config();
+    let arm = |uid, position, passive, buffs| FightEntityInfo {
+        uid: Some(uid),
+        team_type: Some(2),
+        position: Some(position),
+        current_hp: Some(100),
+        passive_skill: vec![passive],
+        buffs,
+        ..Default::default()
+    };
+    let fight = Fight {
+        defender: Some(FightTeam {
+            entitys: vec![
+                arm(-4, 2, 2736, Vec::new()),
+                arm(
+                    -3,
+                    3,
+                    2737,
+                    vec![BuffInfo {
+                        uid: Some(100),
+                        buff_id: Some(27341),
+                        duration: Some(3),
+                        from_uid: Some(-5),
+                        ..Default::default()
+                    }],
+                ),
+            ],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let managers = BattleManagers::seeded(&fight);
+    let catalog = SkillEffectCatalog::from_fight(config::configs::get(), &fight);
+
+    let round_end = for_compiled_event(
+        &pool,
+        &managers,
+        &catalog,
+        EventKind::RoundEndAfterSettlement,
+    )
+    .unwrap();
+
+    assert_eq!(
+        round_end
+            .skills
+            .iter()
+            .map(|subscriber| (subscriber.owner_uid, subscriber.skill_id))
+            .collect::<Vec<_>>(),
+        vec![(-4, 2736)]
+    );
+}

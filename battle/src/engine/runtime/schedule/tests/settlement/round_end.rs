@@ -1,4 +1,5 @@
 use super::*;
+use crate::test_support::{contains_effect, contains_skill, find_step};
 
 #[test]
 fn side_round_end_schedules_keep_the_proven_lane_order() {
@@ -404,26 +405,6 @@ fn final_settlement_runs_side_expiry_reactions_before_entity_expiry() {
     assert!(has_output(&result.frames[1]));
     let steps = crate::engine::packet::timeline::project(&result.frames).unwrap();
 
-    fn contains_effect(step: &sonettobuf::FightStep, effect_type: i32, target_uid: i64) -> bool {
-        step.act_effect.iter().any(|effect| {
-            effect.effect_type == Some(effect_type) && effect.target_id == Some(target_uid)
-                || effect
-                    .fight_step
-                    .as_ref()
-                    .is_some_and(|child| contains_effect(child, effect_type, target_uid))
-        })
-    }
-
-    fn contains_skill(step: &sonettobuf::FightStep, skill_id: i32) -> bool {
-        step.act_id == Some(skill_id)
-            || step.act_effect.iter().any(|effect| {
-                effect
-                    .fight_step
-                    .as_ref()
-                    .is_some_and(|child| contains_skill(child, skill_id))
-            })
-    }
-
     assert_eq!(steps.len(), 2);
     assert!(contains_effect(
         &steps[0],
@@ -750,15 +731,6 @@ fn attacker_round_end_includes_the_assist_boss_passive_owner() {
     .unwrap();
 
     assert_eq!(managers.hp.current(10), 55);
-    fn contains_skill(step: &sonettobuf::FightStep, skill_id: i32) -> bool {
-        step.act_id == Some(skill_id)
-            || step.act_effect.iter().any(|effect| {
-                effect
-                    .fight_step
-                    .as_ref()
-                    .is_some_and(|nested| contains_skill(nested, skill_id))
-            })
-    }
     let steps = crate::engine::packet::timeline::project(&result.frames).unwrap();
     assert!(steps.iter().any(|step| contains_skill(step, 12_410_022)));
 }
@@ -820,15 +792,6 @@ fn defender_after_settlement_runs_its_registered_passive_skill() {
     )
     .unwrap();
 
-    fn contains_skill(step: &sonettobuf::FightStep, skill_id: i32) -> bool {
-        step.act_id == Some(skill_id)
-            || step.act_effect.iter().any(|effect| {
-                effect
-                    .fight_step
-                    .as_ref()
-                    .is_some_and(|nested| contains_skill(nested, skill_id))
-            })
-    }
     let steps = crate::engine::packet::timeline::project(&result.frames).unwrap();
     assert!(
         steps.iter().any(|step| contains_skill(step, 22_302_342)),
@@ -873,16 +836,6 @@ fn defender_entity_settlement_nests_its_periodic_passive() {
     )
     .unwrap();
     let steps = crate::engine::packet::timeline::project(&result.output.frames).unwrap();
-
-    fn contains_skill(step: &sonettobuf::FightStep, skill_id: i32) -> bool {
-        step.act_id == Some(skill_id)
-            || step.act_effect.iter().any(|effect| {
-                effect
-                    .fight_step
-                    .as_ref()
-                    .is_some_and(|nested| contains_skill(nested, skill_id))
-            })
-    }
 
     assert_eq!(steps.len(), 1);
     assert_eq!(steps[0].act_id, Some(0));
@@ -977,16 +930,6 @@ fn special_count_channel_casts_once_then_deletes_its_carrier() {
     .unwrap();
 
     assert!(!managers.buff.has_buff_id(10, 31070131));
-    fn find_step(step: &sonettobuf::FightStep, act_id: i32) -> Option<&sonettobuf::FightStep> {
-        (step.act_id == Some(act_id)).then_some(step).or_else(|| {
-            step.act_effect.iter().find_map(|effect| {
-                effect
-                    .fight_step
-                    .as_ref()
-                    .and_then(|nested| find_step(nested, act_id))
-            })
-        })
-    }
     fn collect_steps<'a>(
         step: &'a sonettobuf::FightStep,
         act_id: i32,

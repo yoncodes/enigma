@@ -1,8 +1,14 @@
 use sonettobuf::{FightStep, RedealCardInfoPush, UseClothSkillReply, UseClothSkillRequest};
 
-use crate::engine::round::state::continuation_round_shell;
+use crate::engine::{
+    fight::versions::{RedealWireLayout, redeal_wire_layout},
+    manager::card::CardChangeKind,
+    round::state::continuation_round_shell,
+};
 
 use super::{BattleRuntime, change, drain, executor, project_result, record};
+
+mod crystal;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(i32)]
@@ -84,7 +90,7 @@ impl BattleRuntime {
                 )
                 .runtime_view(&self.managers);
                 self.managers.begin_cloth_sequence();
-                let result = drain::run_skill(
+                let mut result = drain::run_skill(
                     &mut self.managers,
                     &pool,
                     &self.catalog,
@@ -122,17 +128,35 @@ impl BattleRuntime {
                     let executor::RuleOutcome::Card(changes) = outcome else {
                         return None;
                     };
-                    (changes.kind == crate::engine::manager::card::CardChangeKind::RedealtKeepRanks)
-                        .then(|| RedealCardInfoPush {
+                    (changes.kind == CardChangeKind::RedealtKeepRanks).then_some(changes)
+                });
+                self.cloth_redealt |= redeal.is_some();
+                match redeal_wire_layout(fight_version)? {
+                    RedealWireLayout::Version6 => {
+                        self.pending_redeal = redeal.map(|changes| RedealCardInfoPush {
                             card_group: changes.after.clone(),
                             deal_card_group: Vec::new(),
-                        })
-                });
-                self.pending_redeal =
-                    match crate::engine::fight::versions::redeal_wire_layout(fight_version)? {
-                        crate::engine::fight::versions::RedealWireLayout::Version6 => redeal,
-                        crate::engine::fight::versions::RedealWireLayout::Version7 => None,
-                    };
+                        });
+                    }
+                    RedealWireLayout::Version7 => {
+                        if redeal.is_some()
+                            || result.outcomes.iter().any(|outcome| {
+                                matches!(outcome, executor::RuleOutcome::Card(changes)
+                                    if changes.kind == CardChangeKind::UniversalAdded)
+                            })
+                        {
+                            result.frames.push(record::SemanticFrame {
+                                owner: record::FrameOwner::Command,
+                                trigger: record::FrameTrigger::Active,
+                                items: vec![record::FrameItem::Change(Box::new(
+                                    change::BattleChange::CardStateSnapshot(
+                                        self.managers.card.state_snapshot(1),
+                                    ),
+                                ))],
+                            });
+                        }
+                    }
+                }
                 project_result(result, fight_version, absorb_hurt_map_layout)
                     .inspect_err(|error| tracing::warn!(%error, "cloth skill projection failed"))
                     .ok()?
@@ -233,26 +257,7 @@ impl BattleRuntime {
                 .inspect_err(|error| tracing::warn!(%error, "contract selection projection failed"))
                 .ok()?
             }
-            ClothSkillType::SelectCrystal => {
-                let owner_uid = request.from_id?;
-                let packed = i32::try_from(request.to_id?).ok()?;
-                let selection =
-                    crate::engine::mechanic::heat_scale::HeatScale::select_crystals_from_cloth(
-                        &mut self.managers,
-                        owner_uid,
-                        packed,
-                    )?;
-                project_changes(
-                    [
-                        change::BattleChange::Buff(Box::new(selection.state)),
-                        change::BattleChange::BuffActInfoMarker(selection.marker),
-                    ],
-                    fight_version,
-                    absorb_hurt_map_layout,
-                )
-                .inspect_err(|error| tracing::warn!(%error, "crystal selection projection failed"))
-                .ok()?
-            }
+            ClothSkillType::SelectCrystal => self.select_crystal(&request)?,
             ClothSkillType::TwinsSelect => {
                 if request.skill_id.unwrap_or_default() != 0 {
                     return None;
@@ -509,6 +514,9 @@ impl BattleRuntime {
             self.managers.card.ai_queue(),
         );
         self.managers.sync_entities(&mut self.fight);
+        if skill_type == ClothSkillType::ClothSkill {
+            round.ex_point_info = self.managers.ex_point_info(&self.fight);
+        }
         let hero_sp_attributes = self.managers.hero_sp_attributes(&self.fight);
         if hero_sp_attributes == self.round_state.hero_sp_attributes {
             round.hero_sp_attributes.clear();

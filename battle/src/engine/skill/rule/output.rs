@@ -67,6 +67,7 @@ pub enum BattleCommand {
     BuffMoveToHolder(crate::engine::manager::buff::BuffGrant),
     Hp(HpCommand),
     HpBatch(Vec<HpCommand>),
+    ReboundDamage(crate::engine::skill::buff_act::rebound::ReflectedDamage),
     LinkedDamage(Vec<LinkedHit>),
     ImmediateReservePromotion(
         crate::engine::manager::battle_rule::ImmediateReservePromotionCommand,
@@ -155,6 +156,9 @@ pub enum RuleOp {
         config_effect: i32,
         reserve_id: Option<i64>,
         reserve_str: Option<String>,
+    },
+    CopyPreview {
+        target_uid: i64,
     },
     SceneChange {
         scene_id: i32,

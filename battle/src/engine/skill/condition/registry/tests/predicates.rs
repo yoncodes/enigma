@@ -396,7 +396,7 @@ fn active_skill_status_thresholds_preserve_strictness() {
     );
     assert_eq!(
         parse(43203, "HasTypeBuffLessThan", &["6".into(), "1,5".into()]),
-        Some(ParsedConditionKind::VisibleBuffStatusTypeCount {
+        Some(ParsedConditionKind::VisibleStackedStatusTypeCount {
             status_ids: vec![1, 5],
             compare: crate::engine::skill::condition::ConditionCompare::LessThan,
             threshold: 6,
@@ -415,7 +415,7 @@ fn active_skill_status_thresholds_preserve_strictness() {
     assert_eq!(
         find_key(42203, "HasTypeBuffMoreThan").unwrap().role,
         ConditionRole::Trigger {
-            event: EventKind::SkillEffectStarted,
+            event: EventKind::SkillEffectsPrepared,
             phase: Some(SkillPhase::Immediate),
         }
     );
@@ -423,7 +423,13 @@ fn active_skill_status_thresholds_preserve_strictness() {
         find_key(42203, "HasTypeBuffMoreThan")
             .unwrap()
             .skill_action_trigger,
-        SkillActionTriggerPolicy::AttackOnly
+        SkillActionTriggerPolicy::SkipEnergyCards
+    );
+    assert_eq!(
+        find_key(42203, "HasTypeBuffMoreThan")
+            .unwrap()
+            .reaction_frame_target,
+        ReactionFrameTarget::CausingFrame
     );
     assert_eq!(
         find_key(43203, "HasTypeBuffLessThan").unwrap().role,

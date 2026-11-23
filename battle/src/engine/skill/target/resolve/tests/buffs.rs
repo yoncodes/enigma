@@ -120,6 +120,8 @@ fn alternating_monster_targets_keep_their_exact_label_rules() {
 
     assert_eq!(resolve_code(1007, -2, &pool, &mut determinism), vec![-2]);
     assert_eq!(resolve_code(1008, -2, &pool, &mut determinism), vec![-3]);
+    assert_eq!(targets_enemy(1001), Some(false));
+    assert_eq!(targets_enemy(1002), Some(false));
     assert_eq!(targets_enemy(1007), Some(false));
     assert_eq!(targets_enemy(1008), Some(false));
 }

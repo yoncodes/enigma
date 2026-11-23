@@ -533,12 +533,16 @@ fn card_setup_rules_commit_enchants_and_temporary_lifecycle_through_the_manager(
             limit: 5,
         }))
         .unwrap();
-    manager
+    let printed = manager
         .execute_command(CardCommand::AddPrecast(CardAddPrecast {
             origin: ORIGIN,
             card: crate::engine::manager::card::precast_card(10, 900),
         }))
         .unwrap();
+    assert!(matches!(
+        printed.operation,
+        Some(CardChange::PrecastPrinted { card }) if card == manager.hand()[3]
+    ));
 
     let expired = manager
         .execute_command(CardCommand::ExpireTemporary { origin: ORIGIN })

@@ -1,4 +1,5 @@
 use super::*;
+use crate::test_support::frame_contains_skill;
 
 #[test]
 fn configured_action_target_owns_the_projected_skill_frame() {
@@ -270,31 +271,12 @@ fn be_attacked_reaction_commits_before_same_hit_threshold() {
     )
     .unwrap();
 
-    fn contains_skill(
-        frame: &crate::engine::runtime::record::SemanticFrame,
-        skill_id: i32,
-    ) -> bool {
-        matches!(
-            frame.owner,
-            crate::engine::runtime::record::FrameOwner::Skill {
-                skill_id: id,
-                ..
-            } if id == skill_id
-        ) || frame.items.iter().any(|item| {
-            matches!(
-                item,
-                crate::engine::runtime::record::FrameItem::Child(child)
-                    if contains_skill(child, skill_id)
-            )
-        })
-    }
-
     assert_eq!(managers.buff.buff_id_amount(10, 31430151), 0);
     assert!(
         result
             .frames
             .iter()
-            .any(|frame| contains_skill(frame, 31430181))
+            .any(|frame| frame_contains_skill(frame, 31430181))
     );
 }
 

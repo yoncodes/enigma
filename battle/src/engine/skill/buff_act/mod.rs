@@ -275,14 +275,6 @@ pub fn feature_reaction_timing(
     )
 }
 
-pub(crate) fn attack_consumption_timing(
-    feature: &ActiveBuffFeature,
-) -> Option<registry::AttackConsumptionTiming> {
-    registry::find(feature.act_id()?, &feature.act_type)?
-        .state
-        .attack_consumption
-}
-
 pub fn transaction_publication(
     feature: &ActiveBuffFeature,
     op: &RuleOp,
@@ -602,11 +594,6 @@ pub fn attack_consumption_rule_ops(
         .active_features(&managers.hp)
         .into_iter()
         .filter(|feature| feature.owner_uid == source_uid)
-        .filter(|feature| {
-            !managers
-                .buff
-                .settles_action_lifetime(feature.owner_uid, feature.buff_uid)
-        })
         .filter_map(|feature| {
             let op = match feature_kind(&feature)? {
                 registry::BuffActKind::AttrOnlyCalDamageAttack => {

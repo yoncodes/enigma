@@ -29,6 +29,7 @@ fn type_owned_args_are_an_attack_local_consumable_attribute() {
     assert_eq!(attribute_delta(&morale, AttrId::DmgBonus), 500);
     assert_eq!(attribute_delta(&morale, AttrId::CriticalDmg), 0);
     assert!(consumes_after_attack(&morale));
+    assert!(applies_to_skill(&morale, true));
 
     let ultimate = ActiveBuffFeature {
         amount: 3,
@@ -146,7 +147,7 @@ fn consumed_attack_attribute_removes_its_exact_instance_at_zero() {
 }
 
 #[test]
-fn incantation_might_leaves_consumption_to_its_action_lifetime() {
+fn next_incantation_might_uses_cast_settlement() {
     crate::test_support::init_config();
     let fight = Fight {
         attacker: Some(FightTeam {
@@ -166,34 +167,14 @@ fn incantation_might_leaves_consumption_to_its_action_lifetime() {
         ..Default::default()
     };
     let managers = BattleManagers::seeded(&fight);
-    let morale = feature(vec![113, AttrId::DmgBonus as i32, 200, 1]);
-    assert!(applies_to_skill(&morale, true));
     let incantation = ActiveBuffFeature {
         buff_id: 430111,
-        values: vec![113, AttrId::IncantationMight as i32, 200, 1],
-        ..morale
+        ..feature(vec![113, AttrId::IncantationMight as i32, 200, 1])
     };
     assert!(!applies_to_skill(&incantation, true));
     assert!(applies_to_skill(&incantation, false));
-    assert!(managers.buff.settles_action_lifetime(1, 3));
     assert!(super::super::attack_consumption_rule_ops(&managers, 1, true).is_empty());
     assert!(super::super::attack_consumption_rule_ops(&managers, 1, false).is_empty());
-    assert!(managers.buff.snapshot(1, 3).is_some());
-}
-
-#[test]
-fn only_plain_attack_consumption_precedes_attacked_reactions() {
-    let plain = feature(vec![113, AttrId::DmgBonus as i32, 500, 1]);
-    assert_eq!(
-        super::super::attack_consumption_timing(&plain),
-        Some(super::super::registry::AttackConsumptionTiming::BeforeAttackedReactions)
-    );
-    let ultimate = ActiveBuffFeature {
-        act_type: "AttrOnlyCalDamageAttackBigSkill".to_owned(),
-        values: vec![1001, AttrId::UltimateMight as i32, 500, 1],
-        ..plain
-    };
-    assert_eq!(super::super::attack_consumption_timing(&ultimate), None);
 }
 
 #[test]

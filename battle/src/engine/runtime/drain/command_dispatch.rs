@@ -73,10 +73,17 @@ pub(super) fn drain_command(
             )
         })
     } else {
+        let parent = super::overflow_frame::storage_scope(
+            &result.frames,
+            parent_path.as_deref(),
+            &trigger,
+            &command,
+        )
+        .or(parent_path.as_deref());
         ensure_frame(
             &mut result.frames,
             frame_path,
-            parent_path.as_deref(),
+            parent,
             frame_owner.unwrap_or(FrameOwner::Command),
             &trigger,
         )
@@ -607,14 +614,6 @@ pub(super) fn drain_command(
         .then_some(settlement_action_scope)
         .flatten();
     let original_pending_deaths = pending_deaths.clone();
-    let redeal_hand = match &outcome {
-        RuleOutcome::Card(changes)
-            if changes.kind == crate::engine::manager::card::CardChangeKind::RedealtKeepRanks =>
-        {
-            Some(changes.after.clone())
-        }
-        _ => None,
-    };
     let (leading_fanout, fanout): (Vec<_>, Vec<_>) = fanout
         .into_iter()
         .partition(|fanout| fanout.precedes_carrier_change());
@@ -718,9 +717,6 @@ pub(super) fn drain_command(
             push_change(&mut result.frames, &frame_path, change);
         }
     }
-    if let Some(cards) = redeal_hand {
-        push_cue(&mut result.frames, RoundCue::RedealHandSync { cards });
-    }
     for (owner, change) in outcome.owned_changes() {
         let nested_owner = match owner {
             crate::engine::skill::behavior::registry::OutputOwner::NestedLifecycleMechanic => {
@@ -796,13 +792,15 @@ pub(super) fn drain_command(
                 .then_some(pending_deaths.as_slice()),
         )?
     };
+    super::overflow_frame::defer_hit_storage(
+        &frame_path,
+        action_scope.as_deref(),
+        &trigger,
+        &mut reactions,
+    );
     state.defer_hp_thresholds(
         action_scope.as_deref(),
         std::mem::take(&mut reactions.hp_thresholds),
-    );
-    state.defer_attack_consumptions(
-        action_scope.as_deref(),
-        std::mem::take(&mut reactions.attack_consumptions),
     );
     state.defer_attacked_skills(
         action_scope.as_deref(),
@@ -872,13 +870,6 @@ pub(super) fn drain_command(
         hit_buff_acts
             .attacked_skills
             .append(&mut hit_skills.attacked_skills);
-        hit_buff_acts
-            .attack_consumptions
-            .append(&mut hit_skills.attack_consumptions);
-        state.defer_attack_consumptions(
-            action_scope.as_deref(),
-            std::mem::take(&mut hit_buff_acts.attack_consumptions),
-        );
         state.defer_attacked_skills(
             action_scope.as_deref(),
             std::mem::take(&mut hit_buff_acts.attacked_skills),
@@ -937,12 +928,12 @@ pub(super) fn drain_command(
     let mut after_publish = reactions.after_publish;
     let after_settlement = reactions.after_settlement;
     if releases_hit_passive_skills {
-        let mut released_hit_passives = state
-            .take_attack_consumptions(action_scope.as_ref())
-            .unwrap_or_default();
-        if let Some(attacked) = state.take_attacked_skills(action_scope.as_ref()) {
-            released_hit_passives.extend(attacked);
+        if let Some(path) = action_scope.as_deref() {
+            state.reactions(path).hit_passives_released = true;
         }
+        let mut released_hit_passives = state
+            .take_attacked_skills(action_scope.as_ref())
+            .unwrap_or_default();
         if let Some(thresholds) = state.take_hp_thresholds(action_scope.as_ref()) {
             released_hit_passives.extend(thresholds);
         }

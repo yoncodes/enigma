@@ -1,11 +1,12 @@
 use super::*;
 use std::collections::{HashMap, HashSet};
 
-mod selection;
+pub(super) mod selection;
 
 pub struct PlayerPhaseResult {
     pub drain: DrainResult,
     pub card_energy_finalized: bool,
+    pub(crate) refill_slots: RefillSlots,
 }
 
 /// Allocates configured card energy before the owning action phase begins.
@@ -39,12 +40,9 @@ pub(super) fn run_action_queue_committed(
             .push(crate::engine::round::command::PlayerQueuedAction::Conduit);
     }
     let team = queue.team;
-    let committed_event = BattleEvent::ActionQueueCommitted {
-        team,
-        emitter_uid: queue.emitter_uid,
-        cards: queue.cards(),
-        action_count: queue.action_count(),
-    };
+    let emitter_uid = queue.emitter_uid;
+    let cards = queue.cards();
+    let action_count = queue.action_count();
     let card_state = managers.card.action_queue_state(team);
     let mut result = DrainResult {
         frames: vec![SemanticFrame {
@@ -63,6 +61,21 @@ pub(super) fn run_action_queue_committed(
     };
     append(
         &mut result,
+        drain::run_event(
+            managers,
+            pool,
+            catalog,
+            determinism,
+            context,
+            BattleEvent::ActionQueueSubmitted {
+                team,
+                emitter_uid,
+                cards: cards.clone(),
+            },
+        )?,
+    );
+    append(
+        &mut result,
         selections.commit(managers, pool, catalog, determinism, context)?,
     );
     append(
@@ -73,7 +86,12 @@ pub(super) fn run_action_queue_committed(
             catalog,
             determinism,
             context,
-            committed_event,
+            BattleEvent::ActionQueueCommitted {
+                team,
+                emitter_uid,
+                cards,
+                action_count,
+            },
         )?,
     );
     Ok(result)
@@ -334,6 +352,7 @@ pub fn run_player_action_queue(
         None,
         &[],
     )
+    .map(|(drain, _)| drain)
 }
 
 fn player_ops_from_commands(
@@ -407,6 +426,7 @@ pub fn run_player_commands(
         None,
         &[],
     )
+    .map(|(drain, _)| drain)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -427,7 +447,7 @@ pub fn run_player_phase(
         ..context
     };
     let ops = player_ops_from_commands(commands, determinism);
-    let mut result = run_player_card_ops(
+    let (mut result, refill_slots) = run_player_card_ops(
         managers,
         pool,
         catalog,
@@ -450,15 +470,10 @@ pub fn run_player_phase(
     )?;
     let card_energy_finalized = impromptu.card_energy_finalized;
     append(&mut result, impromptu.drain);
-    if crate::engine::round::outcome::battle_ended(fight, pool, managers) {
-        return Ok(PlayerPhaseResult {
-            drain: result,
-            card_energy_finalized,
-        });
-    }
     Ok(PlayerPhaseResult {
         drain: result,
         card_energy_finalized,
+        refill_slots,
     })
 }
 
@@ -555,7 +570,7 @@ fn run_player_card_ops(
     emitter_uid: i64,
     fight: Option<&sonettobuf::Fight>,
     device_operations: &[sonettobuf::FightDeviceOper],
-) -> Result<DrainResult, DrainError> {
+) -> Result<(DrainResult, RefillSlots), DrainError> {
     let mut result = DrainResult::default();
     let selections = selection::Selection::from_operations(device_operations);
     let mut skills = Vec::new();
@@ -808,9 +823,10 @@ fn run_player_card_ops(
             )?,
         );
         if selections.is_empty() {
-            return Ok(result);
+            return Ok((result, RefillSlots::default()));
         }
     }
+    let refill_slots = RefillSlots::capture(managers, pool);
     let submitted_actions = skills.len();
     let actions = managers
         .card
@@ -902,7 +918,7 @@ fn run_player_card_ops(
         if fight
             .is_some_and(|fight| crate::engine::round::outcome::battle_ended(fight, pool, managers))
         {
-            return Ok(result);
+            return Ok((result, refill_slots));
         }
         let current_pool = pool
             .roster_changed(managers)
@@ -1092,7 +1108,7 @@ fn run_player_card_ops(
             )?,
         );
     }
-    Ok(result)
+    Ok((result, refill_slots))
 }
 
 fn queue_preparation_ops(

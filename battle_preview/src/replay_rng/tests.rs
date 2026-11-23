@@ -705,3 +705,36 @@ fn crystal_reuse_import_preserves_failures_before_a_success() {
         ]
     );
 }
+
+#[test]
+fn card_energy_import_keeps_allocations_from_both_step_lists() {
+    use sonettobuf::effect_type_enum::EffectType;
+    let record = |allocated: Option<i32>, energy| sonettobuf::ActEffect {
+        effect_type: Some(EffectType::Allocatecardenergy as i32),
+        effect_num1: allocated,
+        card_info_list: vec![CardInfo {
+            uid: Some(1),
+            skill_id: Some(10),
+            energy: Some(energy),
+            ..Default::default()
+        }],
+        ..Default::default()
+    };
+    let step = |effects| FightStep {
+        act_effect: effects,
+        ..Default::default()
+    };
+    let round = FightRound {
+        fight_step: vec![step(vec![record(None, 0), record(Some(1), 2)])],
+        next_round_begin_step: vec![step(vec![record(Some(1), 3)])],
+        ..Default::default()
+    };
+
+    assert_eq!(
+        card_energy_allocations(&round)
+            .iter()
+            .map(|hand| hand[0].energy)
+            .collect::<Vec<_>>(),
+        vec![Some(2), Some(3)]
+    );
+}

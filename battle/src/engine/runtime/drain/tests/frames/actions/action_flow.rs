@@ -459,12 +459,11 @@ fn deferred_hit_consumes_the_attack_buff_before_after_hit_completes() {
                 }),
                 buffs: vec![BuffInfo {
                     uid: Some(30),
-                    buff_id: Some(430111),
+                    buff_id: Some(301),
                     from_uid: Some(10),
                     count: Some(1),
                     ..Default::default()
                 }],
-                skill_group1: vec![31260111],
                 ..Default::default()
             }],
             ..Default::default()
@@ -487,7 +486,7 @@ fn deferred_hit_consumes_the_attack_buff_before_after_hit_completes() {
     let mut managers = BattleManagers::seeded(&fight);
     let mut catalog = SkillEffectCatalog::default();
     catalog.insert(ParsedSkillEffect {
-        skill_id: 31260171,
+        skill_id: 100,
         slots: vec![SkillEffectSlot::new(
             ParsedBehavior::from_spec(
                 BehaviorSpec::new(30015, "OriginDamageCanCrit"),
@@ -497,11 +496,11 @@ fn deferred_hit_consumes_the_attack_buff_before_after_hit_completes() {
             TargetRequest::self_only(),
         )],
     });
-    catalog.insert_damage_rate(31260171, 1_000);
-    catalog.insert_logic_target(31260171, 1);
+    catalog.insert_damage_rate(100, 1_000);
+    catalog.insert_logic_target(100, 1);
     let mut invocation: SkillInvocation = SkillRequest {
         source_uid: 10,
-        skill_id: 31260171,
+        skill_id: 100,
     }
     .into();
     invocation.target = SkillTarget::Explicit(-1);
@@ -544,7 +543,7 @@ fn deferred_hit_consumes_the_attack_buff_before_after_hit_completes() {
 }
 
 #[test]
-fn non_attack_device_uses_the_configured_take_stage_boundary() {
+fn non_attack_device_resolves_harmonization_before_restraint_expires() {
     crate::test_support::init_config();
     let fight = Fight {
         attacker: Some(FightTeam {
@@ -559,6 +558,7 @@ fn non_attack_device_uses_the_configured_take_stage_boundary() {
                     uid: Some(2),
                     from_uid: Some(10),
                     duration: Some(1),
+                    count: Some(1),
                     ..Default::default()
                 }],
                 ..Default::default()
@@ -573,7 +573,7 @@ fn non_attack_device_uses_the_configured_take_stage_boundary() {
     let mut after_hit = SkillEffectSlot::new(
         ParsedBehavior::from_spec(
             BehaviorSpec::new(60292, "AddDeviceExPoint"),
-            vec![7],
+            vec![8],
             Vec::new(),
         ),
         TargetRequest::self_only(),
@@ -633,9 +633,9 @@ fn non_attack_device_uses_the_configured_take_stage_boundary() {
                 RuleOutcome::ExPoint(crate::engine::manager::ex_point::ExPointChanges::Value {
                     change,
                     ..
-                }) if change.applied_delta == 7
+                }) if change.applied_delta == 8
             )
         })
         .unwrap();
-    assert!(removed < resource);
+    assert!(resource < removed);
 }

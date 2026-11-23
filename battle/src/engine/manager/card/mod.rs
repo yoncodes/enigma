@@ -581,29 +581,48 @@ impl CardManager {
         let catalog = self.deck.catalog();
         self.played
             .iter_mut()
-            .filter_map(|played| {
-                played.rank_change_pending.then(|| {
-                    let old_rank = catalog
-                        .map(|catalog| catalog.skill_rank(played.card.skill_id.unwrap_or_default()))
-                        .unwrap_or_default();
-                    played.rank_change_pending = false;
-                    played.card.skill_id = Some(played.skill_id);
-                    let new_rank = catalog
-                        .map(|catalog| catalog.skill_rank(played.skill_id))
-                        .unwrap_or_default();
-                    played.card.card_type = Some(new_rank);
-                    let mut resolved_card = played.card.clone();
-                    resolved_card.uid = Some(played.caster_uid);
-                    CardRankChange {
-                        owner_uid: played.caster_uid,
-                        card_index: played.card_index,
-                        card: resolved_card,
-                        rewritten: played.rewritten,
-                        rank_delta: new_rank - old_rank,
-                    }
-                })
-            })
+            .filter_map(|played| Self::settle_played_rank(catalog, played))
             .collect()
+    }
+
+    pub(crate) fn rewrite_played_rank(
+        &mut self,
+        card_index: i32,
+        levels: i32,
+    ) -> Option<CardRankChange> {
+        self.rank_up_played(card_index, levels, true)?;
+        let played = self
+            .played
+            .iter_mut()
+            .find(|played| played.card_index == card_index)?;
+        Self::settle_played_rank(self.deck.catalog(), played)
+    }
+
+    fn settle_played_rank(
+        catalog: Option<crate::catalog::BattleCatalog>,
+        played: &mut PlayedCard,
+    ) -> Option<CardRankChange> {
+        if !played.rank_change_pending {
+            return None;
+        }
+        let old_rank = catalog
+            .map(|catalog| catalog.skill_rank(played.card.skill_id.unwrap_or_default()))
+            .unwrap_or_default();
+        played.rank_change_pending = false;
+        played.card.skill_id = Some(played.skill_id);
+        let new_rank = catalog
+            .map(|catalog| catalog.skill_rank(played.skill_id))
+            .unwrap_or_default();
+        played.card.card_type = Some(new_rank);
+        let mut resolved_card = played.card.clone();
+        resolved_card.uid = Some(played.caster_uid);
+        Some(CardRankChange {
+            owner_uid: played.caster_uid,
+            card_index: played.card_index,
+            card: resolved_card,
+            rewritten: std::mem::take(&mut played.rewritten),
+            rank_delta: new_rank - old_rank,
+        })
     }
 
     pub fn refilled(&self) -> &[CardInfo] {
@@ -629,6 +648,10 @@ impl CardManager {
         self.refilled.push(card);
     }
 
+    pub(crate) fn next_rank(&self, owner: i64, skill: i32) -> Option<i32> {
+        self.rank_up.get(&(owner, skill)).copied()
+    }
+
     pub fn rank_up_played(&mut self, card_index: i32, levels: i32, rewritten: bool) -> Option<i32> {
         let played = self
             .played
@@ -637,7 +660,7 @@ impl CardManager {
         let owner_uid = played.caster_uid;
         let mut skill_id = played.skill_id;
         for _ in 0..levels.max(0) {
-            let Some(next) = self.rank_up.get(&(owner_uid, skill_id)).copied() else {
+            let Some(next) = self.next_rank(owner_uid, skill_id) else {
                 break;
             };
             skill_id = next;

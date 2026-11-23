@@ -21,7 +21,6 @@ pub(crate) fn normalize_effect_tree(mut effect: ActEffect) -> ActEffect {
         step.to_id.get_or_insert(0);
         step.act_id.get_or_insert(0);
         step.card_index.get_or_insert(0);
-        step.support_hero_id.get_or_insert(0);
         step.fake_timeline.get_or_insert(false);
         step.real_skill_type.get_or_insert(0);
         step.real_skin_id.get_or_insert(0);

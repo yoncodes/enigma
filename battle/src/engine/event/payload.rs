@@ -247,6 +247,11 @@ pub enum BattleEvent {
         target_uid: i64,
     },
     RoundStart,
+    ActionQueueSubmitted {
+        team: i32,
+        emitter_uid: i64,
+        cards: Vec<CardInfo>,
+    },
     ActionQueueCommitted {
         team: i32,
         emitter_uid: i64,
@@ -263,6 +268,7 @@ pub enum BattleEvent {
         critical_action_count: i32,
     },
     SkillEffectStarted(SkillEffectStartedEvent),
+    SkillEffectsPrepared(Box<crate::engine::skill::action::SkillActionEvent>),
     SkillAction(crate::engine::skill::action::SkillActionEvent),
     AllyAction(crate::engine::skill::action::ActionEvent),
     BuffAdded(BuffChangeEvent),
@@ -271,6 +277,7 @@ pub enum BattleEvent {
     BuffRemoved(BuffChangeEvent),
     BuffRejected(BuffRejectedEvent),
     BuffsSettled(Vec<BuffChangeEvent>),
+    AfterSideFinalExpiry(Vec<BuffChangeEvent>),
     BuffFeatureTriggered(BuffFeatureTriggeredEvent),
     HpLost {
         origin: CommandOrigin,
@@ -331,6 +338,7 @@ impl BattleEvent {
     pub fn skill_action_event(&self) -> Option<&crate::engine::skill::action::SkillActionEvent> {
         match self {
             Self::SkillEffectStarted(started) => Some(started.action.as_ref()),
+            Self::SkillEffectsPrepared(action) => Some(action.as_ref()),
             Self::SkillAction(action) => Some(action),
             _ => None,
         }
@@ -338,10 +346,12 @@ impl BattleEvent {
 
     pub fn source_uid(&self) -> Option<i64> {
         match self {
-            Self::ActionQueueCommitted { emitter_uid, .. }
+            Self::ActionQueueSubmitted { emitter_uid, .. }
+            | Self::ActionQueueCommitted { emitter_uid, .. }
             | Self::PlayerActionsResolved { emitter_uid, .. }
             | Self::ImpromptuResolved { emitter_uid, .. } => Some(*emitter_uid),
             Self::SkillEffectStarted(started) => Some(started.source_uid),
+            Self::SkillEffectsPrepared(action) => Some(action.source_uid),
             Self::SkillAction(action) => Some(action.source_uid),
             Self::AllyAction(action) => Some(action.source_uid),
             Self::BuffAdded(change) | Self::BuffChanged(change) | Self::BuffRemoved(change) => {
@@ -371,6 +381,7 @@ impl BattleEvent {
             | Self::CardChanged(_)
             | Self::FieldChanged(_)
             | Self::BuffsSettled(_)
+            | Self::AfterSideFinalExpiry(_)
             | Self::BloodtitheChanged { .. }
             | Self::Kind(_) => None,
         }
@@ -385,6 +396,7 @@ impl BattleEvent {
             | Self::HpHealed { target_uid, .. }
             | Self::ToughnessBroken { target_uid, .. } => Some(*target_uid),
             Self::SkillEffectStarted(started) => Some(started.target_uid),
+            Self::SkillEffectsPrepared(action) => Some(action.target_uid),
             Self::SkillAction(action) => Some(action.target_uid),
             Self::AllyAction(action) => Some(action.target_uid),
             Self::BuffAdded(change) | Self::BuffChanged(change) | Self::BuffRemoved(change) => {
@@ -404,6 +416,7 @@ impl BattleEvent {
             Self::EnterFight
             | Self::BattleTerminalCommitted { .. }
             | Self::RoundStart
+            | Self::ActionQueueSubmitted { .. }
             | Self::ActionQueueCommitted { .. }
             | Self::PlayerActionsResolved { .. }
             | Self::ImpromptuResolved { .. }
@@ -411,6 +424,7 @@ impl BattleEvent {
             | Self::CardChanged(_)
             | Self::FieldChanged(_)
             | Self::BuffsSettled(_)
+            | Self::AfterSideFinalExpiry(_)
             | Self::BloodtitheChanged { .. }
             | Self::Kind(_) => None,
         }
@@ -422,10 +436,12 @@ impl BattleEvent {
             Self::EntityEntered { .. } => EventKind::EntityEntered,
             Self::EntityTransformed { .. } => EventKind::EntityTransformed,
             Self::RoundStart => EventKind::RoundStart,
+            Self::ActionQueueSubmitted { .. } => EventKind::ActionQueueSubmitted,
             Self::ActionQueueCommitted { .. } => EventKind::ActionQueueCommitted,
             Self::PlayerActionsResolved { .. } => EventKind::PlayerActionsResolved,
             Self::ImpromptuResolved { .. } => EventKind::ImpromptuResolved,
             Self::SkillEffectStarted(_) => EventKind::SkillEffectStarted,
+            Self::SkillEffectsPrepared(_) => EventKind::SkillEffectsPrepared,
             Self::SkillAction(_) => EventKind::SkillAction,
             Self::AllyAction(_) => EventKind::AllyAction,
             Self::BuffAdded(_) => EventKind::BuffAdded,
@@ -434,6 +450,7 @@ impl BattleEvent {
             Self::BuffRemoved(_) => EventKind::BuffRemoved,
             Self::BuffRejected(_) => EventKind::BuffRejected,
             Self::BuffsSettled(_) => EventKind::RoundEndFinalSettlement,
+            Self::AfterSideFinalExpiry(_) => EventKind::RoundEndAfterSideFinalExpiry,
             Self::BuffFeatureTriggered(_) => EventKind::BuffFeatureTriggered,
             Self::HpLost { .. } => EventKind::HpLost,
             Self::DamageShared { .. } => EventKind::DamageShared,
@@ -496,98 +513,7 @@ impl BattleEvent {
 }
 
 #[cfg(test)]
-mod subscription_tests {
-    use super::*;
-    use crate::engine::{
-        manager::hp::HurtDamageFromType,
-        skill::rule::{CommandOrigin, DefinitionKey, RuleDomain},
-    };
-
-    fn hit(damage_from: HurtDamageFromType) -> BattleEvent {
-        BattleEvent::Hit(HitEvent {
-            origin: CommandOrigin {
-                domain: RuleDomain::Skill,
-                key: DefinitionKey::new(1, "SkillDamage"),
-            },
-            source_uid: 1,
-            target_uid: -1,
-            skill_id: 1,
-            amount: 1,
-            resolved_damage: 1,
-            shield_absorbed: 0,
-            career_restraint: false,
-            damage_from,
-            share_count: 0,
-            assassinate: false,
-            ignore_riposte: false,
-        })
-    }
-
-    #[test]
-    fn only_primary_skill_damage_publishes_target_attacked() {
-        assert_eq!(
-            hit(HurtDamageFromType::Skill)
-                .subscription_kinds()
-                .collect::<Vec<_>>(),
-            vec![
-                EventKind::TargetAttacked,
-                EventKind::BeAttacked,
-                EventKind::Riposte,
-            ]
-        );
-        assert_eq!(
-            hit(HurtDamageFromType::Additional)
-                .subscription_kinds()
-                .collect::<Vec<_>>(),
-            vec![EventKind::BeAttacked, EventKind::Riposte]
-        );
-    }
-
-    #[test]
-    fn skill_cast_uses_the_hit_passives_phase_not_action_completion() {
-        let action = crate::engine::skill::action::SkillActionEvent {
-            source_uid: 1,
-            card_index: 0,
-            skill_id: 2,
-            target_uid: -1,
-            target_uids: vec![-1],
-            attacked_target_uids: vec![-1],
-            phase: crate::engine::skill::action::SkillPhase::HitPassives,
-            skill_slot: 1,
-            is_attack: true,
-            rank: 1,
-            skill_type: 0,
-            effect_tag: 1,
-            assassinate: false,
-            ignore_riposte: false,
-            damage_amount: 10,
-            kill_count: 0,
-            crit_count: 0,
-            guard_break_count: 0,
-            additional_moxie: 0,
-            extra_skill_kind: 0,
-            mode: crate::engine::skill::action::SkillExecutionMode::Active,
-            teammate_injury_count: 0,
-            teammate_injury_count_not_reset: 0,
-            team_injury_count_round: 0,
-            card_enchants: Vec::new(),
-            buff_additions: Vec::new(),
-        };
-
-        assert_eq!(
-            BattleEvent::SkillAction(action)
-                .subscription_kinds()
-                .collect::<Vec<_>>(),
-            vec![EventKind::SkillAction, EventKind::SkillCast]
-        );
-        assert_eq!(
-            BattleEvent::AllyAction(Default::default())
-                .subscription_kinds()
-                .collect::<Vec<_>>(),
-            vec![EventKind::AllyAction]
-        );
-    }
-}
+mod subscription_tests;
 
 #[cfg(test)]
 mod tests {

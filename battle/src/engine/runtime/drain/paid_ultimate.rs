@@ -1,7 +1,7 @@
 use super::*;
 use crate::engine::{
-    event::kind::EventKind, manager::ex_point::ExPointCommand, runtime::record::frame_at,
-    skill::action::PaidUltimate,
+    event::kind::EventKind, manager::ex_point::ExPointCommand,
+    runtime::record::round_end_owner_scope, skill::action::PaidUltimate,
 };
 
 pub(super) fn start(
@@ -15,18 +15,8 @@ pub(super) fn start(
         .as_deref()
         .ok_or(DrainError::MissingRoundEndPaymentFrame)?;
     let round_end = BattleEvent::Kind(EventKind::RoundEnd);
-    let scope = (1..path.len())
-        .rev()
-        .map(|length| &path[..length])
-        .find(|ancestor| {
-            let frame = frame_at(frames, ancestor);
-            matches!(frame.owner, FrameOwner::EventRule)
-                && matches!(
-                    frame.trigger,
-                    FrameTrigger::Event(BattleEvent::Kind(EventKind::RoundEnd))
-                )
-        })
-        .ok_or(DrainError::MissingRoundEndPaymentFrame)?;
+    let scope =
+        round_end_owner_scope(frames, path).ok_or(DrainError::MissingRoundEndPaymentFrame)?;
     let payment = QueuedOp {
         op: RuleOp::Command(BattleCommand::ExPoint(ExPointCommand::Spend(paid.cost))),
         trigger: SkillOpTrigger::Event(round_end),

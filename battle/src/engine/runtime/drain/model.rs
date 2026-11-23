@@ -363,7 +363,6 @@ pub(super) struct ReactionBatch {
     pub(super) after_settlement: Vec<QueuedOp>,
     pub(super) after_skill: Vec<QueuedOp>,
     pub(super) after_hit: Vec<QueuedOp>,
-    pub(super) attack_consumptions: Vec<QueuedOp>,
     pub(super) attacked_skills: Vec<QueuedOp>,
     pub(super) hp_thresholds: Vec<QueuedOp>,
     pub(super) before_after_hit_observers: Vec<QueuedOp>,
@@ -382,8 +381,6 @@ impl ReactionBatch {
         self.after_settlement.append(&mut other.after_settlement);
         self.after_skill.append(&mut other.after_skill);
         self.after_hit.append(&mut other.after_hit);
-        self.attack_consumptions
-            .append(&mut other.attack_consumptions);
         self.attacked_skills.append(&mut other.attacked_skills);
         self.hp_thresholds.append(&mut other.hp_thresholds);
         self.before_after_hit_observers
@@ -412,7 +409,6 @@ impl ReactionBatch {
                 &mut self.after_settlement,
                 &mut self.after_skill,
                 &mut self.after_hit,
-                &mut self.attack_consumptions,
                 &mut self.attacked_skills,
                 &mut self.hp_thresholds,
                 &mut self.before_after_hit_observers,
