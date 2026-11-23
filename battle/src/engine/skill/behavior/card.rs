@@ -38,6 +38,10 @@ pub(super) fn supports_basic_card_energy(behavior: &ParsedBehavior) -> bool {
     matches!(behavior.args.as_slice(), [1, -1, amount] if *amount > 0)
 }
 
+pub(super) fn supports_redeal(behavior: &ParsedBehavior) -> bool {
+    behavior.raw_arity == 0 && super::registry::arguments::none(behavior)
+}
+
 pub(super) struct Handler;
 
 impl BehaviorHandler for Handler {
@@ -101,7 +105,7 @@ impl BehaviorHandler for Handler {
             ))]);
         }
         if behavior.spec.kind == BehaviorKind::RedealCardKeepStar2 {
-            if !behavior.args.is_empty() {
+            if !supports_redeal(behavior) {
                 return None;
             }
             return Some(vec![RuleOp::Command(BattleCommand::Card(

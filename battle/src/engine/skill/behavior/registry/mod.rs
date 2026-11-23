@@ -702,7 +702,7 @@ behavior_definitions! {
     [50034] "ConsumePowerUpgradeSkillCard" => super::card::Handler, ConsumePowerUpgradeSkillCard, Immediate, destination, super::card::supports_power_card_upgrade;
     [60265] "ConsumePowerUpdateActorCard" => super::power_queue_rank::Handler, ConsumePowerUpdateActorCard, Immediate, parent_destination, super::power_queue_rank::supports_arguments;
     [60002] "AddUniversalCard" => super::card::Handler, AddUniversalCard, Immediate, destination;
-    [60012] "RedealCardKeepStar2" => super::card::Handler, RedealCardKeepStar2, Immediate, destination;
+    [60012] "RedealCardKeepStar2" => super::card::Handler, RedealCardKeepStar2, Immediate, destination, super::card::supports_redeal;
     [60070] "AddUseSkillCard" => super::card::Handler, AddQueuedSkillCard, Immediate, destination, super::card::supports_queued_skill_card;
     [50031] "AddSpTempCard" => super::card::Handler, AddSpTempCard, Immediate, destination, @route(ConditionRouteOverride::Trigger { key: DefinitionKey::new(19106, "HasBuffId"), event: EventKind::RoundStartCard, phase: None }), super::card::supports_temporary_skill_card;
     [60300] "AddSpTempCard2" => super::card::Handler, AddSpTempCard2, Immediate, destination, super::card::supports_temporary_skill_card;
