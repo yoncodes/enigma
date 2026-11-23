@@ -180,7 +180,6 @@ impl CardPacket {
             buff_act_id: Some(0),
             reserve_id: Some(0),
             card_info_list: wire_cards(cards),
-            reserve_str: Some(String::new()),
             team_type: Some(0),
             effect_num1: Some(0),
             ..Default::default()

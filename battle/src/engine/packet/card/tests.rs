@@ -161,6 +161,7 @@ fn card_packets_render_absent_scalar_metadata_as_wire_defaults() {
     )]);
     let card = &effect.card_info_list[0];
 
+    assert_eq!(effect.reserve_str, None);
     assert_eq!(card.card_effect, None);
     assert_eq!(card.temp_card, Some(false));
     assert_eq!(card.card_type, Some(0));
