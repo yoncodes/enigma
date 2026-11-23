@@ -619,6 +619,7 @@ pub fn run_round_end_final_settlement(
     context: TargetContext,
     settled_buffs: Vec<crate::engine::event::payload::BuffChangeEvent>,
 ) -> Result<DrainResult, DrainError> {
+    let pool = &pool.runtime_view(managers);
     let owner_uids = final_settlement_owner_order(pool, managers);
     let initial = drain::run_grouped_owner_event_lanes(
         managers,

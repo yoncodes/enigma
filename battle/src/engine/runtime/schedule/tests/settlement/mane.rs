@@ -237,6 +237,7 @@ fn blood_debt_replaces_its_expired_defense_debuff_after_settlement() {
 #[test]
 fn obscurity_break_enters_the_witness_round_on_the_next_round() {
     use crate::engine::event::payload::{BuffChangeEvent, BuffExpiry};
+    use crate::engine::manager::entity::{EntityCommand, EntityOperation};
     use crate::test_support::contains_skill;
 
     init_config();
@@ -252,33 +253,51 @@ fn obscurity_break_enters_the_witness_round_on_the_next_round() {
         passive_skill,
         ..Default::default()
     };
+    let mut boss = entity(
+        -1,
+        vec![BuffInfo {
+            uid: Some(21),
+            buff_id: Some(109320101),
+            duration: Some(2),
+            from_uid: Some(-1),
+            ..Default::default()
+        }],
+        vec![109320102, 109320105, 109320112],
+    );
+    boss.skill_group1 = vec![103374111];
     let fight = Fight {
         attacker: Some(FightTeam {
             entitys: vec![entity(10, Vec::new(), vec![30810311])],
             ..Default::default()
         }),
         defender: Some(FightTeam {
-            entitys: vec![
-                entity(
-                    -1,
-                    vec![BuffInfo {
-                        uid: Some(21),
-                        buff_id: Some(109320101),
-                        duration: Some(2),
-                        from_uid: Some(-1),
-                        ..Default::default()
-                    }],
-                    vec![109320102, 109320105, 109320112],
-                ),
-                entity(-2, Vec::new(), vec![109320112]),
-            ],
+            entitys: vec![boss],
             ..Default::default()
         }),
+        version: Some(7),
         ..Default::default()
     };
     let pool = TargetPool::from_fight(&fight);
     let catalog = SkillEffectCatalog::from_fight(config::configs::get(), &fight);
     let mut managers = BattleManagers::seeded(&fight);
+    let entrant = managers
+        .execute_entity(EntityCommand {
+            origin: CommandOrigin {
+                domain: RuleDomain::Behavior,
+                key: DefinitionKey::new(60008, "Summon"),
+            },
+            source_uid: -1,
+            target_uid: -1,
+            operation: EntityOperation::SummonCombatant {
+                model_id: 103370112,
+                position: 2,
+            },
+        })
+        .unwrap()
+        .entity
+        .uid
+        .unwrap();
+    assert!(pool.entity(entrant).is_none());
     managers
         .buff
         .execute(
@@ -350,9 +369,10 @@ fn obscurity_break_enters_the_witness_round_on_the_next_round() {
     assert_eq!(marker.duration, Some(1));
     let other_marker = managers
         .buff
-        .active_for(-2)
+        .active_for(entrant)
         .find(|buff| buff.buff_id == Some(109320112))
         .unwrap();
+    assert_eq!(other_marker.duration, Some(1));
 
     fn collect_duration_owners(
         frame: &crate::engine::runtime::record::SemanticFrame,
@@ -391,7 +411,7 @@ fn obscurity_break_enters_the_witness_round_on_the_next_round() {
                 effect_time::ROUND_END_FINAL_SETTLEMENT
             ),
             (
-                -2,
+                entrant,
                 other_marker.uid.unwrap(),
                 effect_time::ROUND_END_FINAL_SETTLEMENT
             ),
@@ -422,7 +442,7 @@ fn obscurity_break_enters_the_witness_round_on_the_next_round() {
             .filter(|step| step.act_id == Some(109320112))
             .map(|step| (step.from_id, step.to_id))
             .collect::<Vec<_>>(),
-        vec![(Some(-1), Some(-1)), (Some(-2), Some(-2))]
+        vec![(Some(-1), Some(-1)), (Some(entrant), Some(entrant))]
     );
 }
 
