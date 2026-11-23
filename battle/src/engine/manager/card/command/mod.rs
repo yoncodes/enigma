@@ -1043,6 +1043,7 @@ pub(super) fn execute(
                 return Err(CardCommandError::InvalidCommand);
             }
             let card = manager.add_to_hand(add.card);
+            operation = Some(CardChange::PrecastPrinted { card: card.clone() });
             (
                 Some(add.origin),
                 CardChangeKind::PrecastAdded,

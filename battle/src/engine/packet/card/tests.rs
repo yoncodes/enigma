@@ -10,6 +10,13 @@ fn card_packets_use_card_effect_types_and_payloads() {
 
     let add = CardPacket::add_hand_card(10, card.clone());
     let push = CardPacket::cards_push(vec![card.clone()], 1);
+    let precast = CardInfo {
+        temp_card: Some(true),
+        ..card.clone()
+    };
+    let printed = CardPacket::from_change(CardChange::PrecastPrinted {
+        card: precast.clone(),
+    });
     let temp = CardPacket::change_to_temp_card(10, "5".to_owned(), 1);
     let compose = CardPacket::from_change(CardChange::CardsCompose {
         cards: vec![card],
@@ -22,6 +29,15 @@ fn card_packets_use_card_effect_types_and_payloads() {
     assert_eq!(add.team_type, Some(1));
     assert_eq!(add.card_info.as_ref().unwrap().uid, Some(10));
     assert!(add.card_info_list.is_empty());
+    assert_eq!(
+        printed.effect_type,
+        Some(EffectType::Butterflyaddhandcard as i32)
+    );
+    assert_eq!(printed.effect_num, Some(0));
+    assert_eq!(printed.team_type, Some(1));
+    assert_eq!(printed.target_id, precast.uid);
+    assert_eq!(printed.card_info, Some(precast));
+    assert!(printed.card_info_list.is_empty());
     assert_eq!(push.effect_type, Some(EffectType::Cardspush as i32));
     assert_eq!(push.card_info_list.len(), 1);
     assert_eq!(temp.effect_type, Some(EffectType::Changetotempcard as i32));

@@ -1303,12 +1303,13 @@ fn project_change(
             .map(EffectPacket::crystal_add_card)
             .into_iter()
             .collect(),
-        BattleChange::Card(changes) if changes.kind == CardChangeKind::PrecastAdded => changes
-            .added
-            .clone()
-            .map(EffectPacket::butterfly_add_hand_card)
-            .into_iter()
-            .collect(),
+        BattleChange::Card(changes) if changes.kind == CardChangeKind::PrecastAdded => {
+            let operation = changes
+                .operation
+                .clone()
+                .ok_or(ProjectionError::Card(changes.kind))?;
+            vec![CardPacket::from_change(operation)]
+        }
         BattleChange::Card(changes) if changes.kind == CardChangeKind::Refilled => Vec::new(),
         BattleChange::Card(changes)
             if changes.kind == CardChangeKind::UltimateAvailabilityChanged =>

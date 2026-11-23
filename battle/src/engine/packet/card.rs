@@ -67,6 +67,14 @@ impl CardPacket {
             } => Self::card_deck_num(deck_num, team_type),
             CardChange::CardsPush { cards, team_type } => Self::cards_push(cards, team_type),
             CardChange::AddHand { target_uid, card } => Self::add_hand_card(target_uid, card),
+            CardChange::PrecastPrinted { card } => ActEffect {
+                target_id: card.uid,
+                effect_type: Some(EffectType::Butterflyaddhandcard as i32),
+                effect_num: Some(0),
+                card_info: Some(card),
+                team_type: Some(1),
+                ..Default::default()
+            },
             CardChange::OwnedAddHand { card, team_type } => {
                 Self::configured_skill3_card(card, team_type)
             }
