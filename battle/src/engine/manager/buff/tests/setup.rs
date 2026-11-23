@@ -423,6 +423,51 @@ fn empty_duration_snapshot_does_not_advance_new_buffs() {
 }
 
 #[test]
+fn timer_expiry_distinguishes_linked_removal_with_the_same_uid() {
+    use crate::engine::event::payload::{BattleEvent, BuffExpiry};
+    use crate::engine::skill::buff_act::effect_time::ROUND_START_DURATION;
+
+    init_config();
+    let entity = |owner_uid, buff_id| FightEntityInfo {
+        uid: Some(owner_uid),
+        team_type: Some(1),
+        current_hp: Some(100),
+        buffs: vec![BuffInfo {
+            uid: Some(20),
+            buff_id: Some(buff_id),
+            from_uid: Some(10),
+            duration: Some(1),
+            ..Default::default()
+        }],
+        ..Default::default()
+    };
+    let mut manager = BuffManager::default();
+    manager.seed(&Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![entity(10, 30860153), entity(11, 30860162)],
+            ..Default::default()
+        }),
+        ..Default::default()
+    });
+    let changes = manager.advance_durations_for_snapshot(ROUND_START_DURATION, &[10], &[20]);
+    let removals = changes
+        .iter()
+        .flat_map(BuffReplaceResult::events)
+        .filter_map(|event| match event {
+            BattleEvent::BuffRemoved(change) => Some((change.target_uid, change.expiry)),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        removals,
+        [
+            (11, BuffExpiry::Forced),
+            (10, BuffExpiry::Duration(ROUND_START_DURATION))
+        ]
+    );
+}
+
+#[test]
 fn duration_settlement_removes_elapsed_independent_instances() {
     init_config();
     let mut manager = BuffManager::default();

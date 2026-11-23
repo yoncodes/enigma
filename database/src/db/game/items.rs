@@ -96,6 +96,18 @@ pub async fn add_item_quantity(
     item_id: u32,
     amount: i32,
 ) -> sqlx::Result<()> {
+    let mut tx = pool.begin().await?;
+    add_item_quantity_in_transaction(&mut tx, user_id, item_id, amount).await?;
+    tx.commit().await?;
+    Ok(())
+}
+
+pub async fn add_item_quantity_in_transaction(
+    tx: &mut Transaction<'_, Sqlite>,
+    user_id: i64,
+    item_id: u32,
+    amount: i32,
+) -> sqlx::Result<()> {
     sqlx::query(
         "INSERT INTO items (user_id, item_id, quantity, last_update_time, total_gain_count)
          VALUES (?, ?, ?, ?, ?)
@@ -109,7 +121,7 @@ pub async fn add_item_quantity(
     .bind(amount)
     .bind(ServerTime::now_ms())
     .bind(amount as i64)
-    .execute(pool)
+    .execute(&mut **tx)
     .await?;
     Ok(())
 }

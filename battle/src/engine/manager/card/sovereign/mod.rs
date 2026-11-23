@@ -23,6 +23,23 @@ struct Strengthen {
     fourth: u8,
 }
 
+impl Strengthen {
+    fn levels(&self) -> [u8; 4] {
+        [self.first, self.second, self.third, self.fourth]
+    }
+
+    fn levels_mut(&mut self) -> [&mut u8; 4] {
+        [
+            &mut self.first,
+            &mut self.second,
+            &mut self.third,
+            &mut self.fourth,
+        ]
+    }
+}
+
+const MAX_ENHANCEMENT_LEVEL: u8 = 4;
+
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct SovereignState {
@@ -46,10 +63,11 @@ fn state(card: &CardInfo) -> Result<Option<SovereignState>, ()> {
     }
     let state: SovereignState =
         serde_json::from_str(data.value.as_deref().ok_or(())?).map_err(|_| ())?;
-    let levels = &state.strengthen;
-    if [levels.first, levels.second, levels.third, levels.fourth]
+    if state
+        .strengthen
+        .levels()
         .iter()
-        .any(|level| *level > 4)
+        .any(|level| *level > MAX_ENHANCEMENT_LEVEL)
     {
         return Err(());
     }

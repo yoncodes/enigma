@@ -127,3 +127,41 @@ fn excess_crit_conversion_uses_the_same_attack_local_rate_as_the_crit_roll() {
         300
     );
 }
+
+#[test]
+fn attack_local_critical_resist_opposes_critical_rate() {
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![entity(10, 1, 1, 1000, 100)],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![entity(-1, 2, 1, 0, 100)],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    managers.attribute.override_ex(
+        10,
+        &HeroExAttribute {
+            cri: Some(500),
+            ..Default::default()
+        },
+    );
+
+    assert_eq!(
+        crit_chance_with_attack_attributes(
+            10,
+            -1,
+            &pool,
+            &managers,
+            &[
+                (crate::engine::entity::attr::AttrId::CriticalRate, 500),
+                (crate::engine::entity::attr::AttrId::CriticalResistRate, 300,),
+            ],
+        ),
+        700
+    );
+}

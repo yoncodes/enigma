@@ -226,6 +226,7 @@ async fn dispatch_registered_command(
         CmdId::Get101InfosCmd => activity::on_get_101_infos,
         CmdId::Get106InfosCmd => activity::on_get_106_infos,
         CmdId::Get107GoodsInfoCmd => activity::on_get_goods_info,
+        CmdId::Buy107GoodsCmd => activity::on_buy_goods_107,
         CmdId::Get108InfosCmd => activity::on_get_108_infos,
         CmdId::GetAct109InfoCmd => activity::on_get_act109_info,
         CmdId::Get111InfosCmd => activity::on_get_111_infos,

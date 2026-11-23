@@ -1,4 +1,4 @@
-use sonettobuf::{BuffInfo, FightTeam, HeroAttribute};
+use sonettobuf::{BuffInfo, FightTeam, HeroAttribute, PowerInfo};
 
 use super::*;
 use crate::engine::skill::rule::{DefinitionKey, RuleDomain};
@@ -19,6 +19,74 @@ fn configured_seed_preserves_defender_uid_reservations() {
 
     assert_eq!(configured.next_special_uid, -3);
     assert_eq!(configured.next_special_uid, legacy.next_special_uid);
+}
+
+#[test]
+fn move_front_reorders_only_the_target_team() {
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: (10..=12)
+                .enumerate()
+                .map(|(index, uid)| FightEntityInfo {
+                    uid: Some(uid),
+                    team_type: Some(1),
+                    position: Some(index as i32 + 1),
+                    ..Default::default()
+                })
+                .collect(),
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(-1),
+                team_type: Some(2),
+                position: Some(1),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let mut manager = EntityManager::seed(&fight);
+
+    let changes = manager
+        .execute_move_front(position::MoveFrontCommand {
+            origin: CommandOrigin {
+                domain: RuleDomain::Behavior,
+                key: DefinitionKey::new(60061, "MoveFront"),
+            },
+            target_uid: 12,
+            distance: 99,
+        })
+        .unwrap();
+
+    assert_eq!(
+        changes.target,
+        position::PositionChange {
+            uid: 12,
+            before: 3,
+            after: 1,
+        }
+    );
+    assert_eq!(
+        changes.displaced,
+        vec![
+            position::PositionChange {
+                uid: 11,
+                before: 2,
+                after: 3,
+            },
+            position::PositionChange {
+                uid: 10,
+                before: 1,
+                after: 2,
+            },
+        ]
+    );
+    assert_eq!(manager.snapshot(10).unwrap().position, Some(2));
+    assert_eq!(manager.snapshot(11).unwrap().position, Some(3));
+    assert_eq!(manager.snapshot(12).unwrap().position, Some(1));
+    assert_eq!(manager.snapshot(-1).unwrap().position, Some(1));
 }
 
 #[test]
@@ -294,6 +362,82 @@ fn promoted_defeated_unit_moves_behind_the_remaining_reserves() {
             .filter_map(|entity| entity.uid)
             .collect::<Vec<_>>(),
         [-3, -1]
+    );
+}
+
+#[test]
+fn cycle_substitution_replaces_the_defeated_reserve_with_a_fresh_copy() {
+    let entity = |uid, hp, position| FightEntityInfo {
+        uid: Some(uid),
+        model_id: Some(116_320_003),
+        team_type: Some(2),
+        current_hp: Some(hp),
+        ex_point: Some(3),
+        shield_value: Some(20),
+        position: Some(position),
+        attr: Some(HeroAttribute {
+            hp: Some(100),
+            ..Default::default()
+        }),
+        buffs: vec![BuffInfo {
+            uid: Some(uid.unsigned_abs() as i64),
+            buff_id: Some(99),
+            from_uid: Some(uid),
+            ..Default::default()
+        }],
+        power_infos: vec![PowerInfo {
+            power_id: Some(4),
+            num: Some(2),
+            max: Some(5),
+        }],
+        ..Default::default()
+    };
+    let mut fight = Fight {
+        defender: Some(FightTeam {
+            entitys: vec![entity(-1, 0, 1)],
+            sub_entitys: vec![entity(-2, 100, -1), entity(-3, 100, -2)],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let mut manager = EntityManager::seed(&fight);
+    let mut hp = HpManager::default();
+    hp.seed(&fight);
+
+    let promotion = manager.promote_reserves(&hp).remove(0);
+    let queued = manager.queue_reserve_cycle(
+        catalog(),
+        crate::engine::fight::reserve::CycleCommand {
+            defeated_uid: promotion.defeated_uid,
+            team_type: promotion.team_type,
+        },
+    );
+    manager.sync_to_fight(&mut fight);
+
+    assert_eq!(queued.entity.uid, Some(-4));
+    assert_eq!(queued.entity.current_hp, Some(100));
+    assert_eq!(queued.entity.position, Some(-2));
+    assert_eq!(queued.entity.ex_point, Some(3));
+    assert_eq!(queued.entity.shield_value, Some(20));
+    assert_eq!(queued.entity.buffs[0].buff_id, Some(99));
+    assert_eq!(queued.entity.power_infos[0].num, Some(2));
+    assert_eq!(manager.snapshot(-3).unwrap().position, Some(-1));
+    assert_eq!(manager.roster_lane(-1), Some(RosterLane::RetiringReserve));
+    assert_eq!(manager.retire_reserve(-1).unwrap().uid, -1);
+    assert_eq!(manager.roster_lane(-1), Some(RosterLane::Replaced));
+    assert_eq!(
+        manager.retire_reserve(-1),
+        Err(EntityCommandError::InvalidCommand)
+    );
+    let defender = fight.defender.unwrap();
+    assert_eq!(defender.entitys[0].uid, Some(-2));
+    assert_eq!(
+        defender
+            .sub_entitys
+            .iter()
+            .filter_map(|entity| entity.uid)
+            .collect::<Vec<_>>(),
+        [-3, -4]
     );
 }
 

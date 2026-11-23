@@ -3,11 +3,14 @@ use super::*;
 #[test]
 fn attribute_features_use_stack_layers_before_trigger_count() {
     assert_eq!(
-        attribute_amount(&BuffInfo {
-            layer: Some(3),
-            count: Some(1),
-            ..Default::default()
-        }),
+        attribute_amount(
+            &BuffInfo {
+                layer: Some(3),
+                count: Some(1),
+                ..Default::default()
+            },
+            None
+        ),
         3
     );
 }

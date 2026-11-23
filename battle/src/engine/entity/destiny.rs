@@ -40,6 +40,22 @@ impl Destiny {
         )
     }
 
+    pub(super) fn trial_exchanges(
+        game: &config::GameDB,
+        facets_id: i32,
+        rank: i32,
+    ) -> Option<HashMap<i32, i32>> {
+        if facets_id <= 0 || rank <= 0 {
+            return None;
+        }
+        let row = game.character_destiny_facets.iter().find(|row| {
+            row.facets_id == facets_id && row.level == rank && !row.ex_level_exchange
+        })?;
+        let mut exchanges = HashMap::new();
+        Self::parse_exchange_into(&row.exchange_skills, &mut exchanges);
+        Some(exchanges)
+    }
+
     pub fn exchanges(
         game: &config::GameDB,
         facets_id: i32,

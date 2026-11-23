@@ -5,12 +5,27 @@ use database::db::game::bgm;
 use sonettobuf::{BgmInfo, GetBgmInfoReply, ReadBgmReply, SetFavoriteBgmReply, SetUseBgmReply};
 use sqlx::SqlitePool;
 
+fn has_global_audio_bank(bgm_id: i32) -> bool {
+    if bgm_id == 0 {
+        return true;
+    }
+
+    let configs = config::configs::get();
+    configs
+        .bgm_switch
+        .get(bgm_id)
+        .and_then(|bgm| configs.ui_audio.get(bgm.audio))
+        .is_some_and(|audio| !audio.bank_name.ends_with("nfc"))
+}
+
 impl PreferenceManager {
     pub async fn bgm_info(&self, db: &SqlitePool) -> Result<GetBgmInfoReply, AppError> {
-        let (bgm_infos, use_bgm_id) = bgm::load_user_bgm(db, self.player_id).await?;
+        let (mut bgm_infos, use_bgm_id) = bgm::load_user_bgm(db, self.player_id).await?;
+        bgm_infos.retain(|info| info.bgm_id.is_some_and(has_global_audio_bank));
+
         Ok(GetBgmInfoReply {
             bgm_infos,
-            use_bgm_id,
+            use_bgm_id: use_bgm_id.filter(|id| has_global_audio_bank(*id)),
         })
     }
 
@@ -19,6 +34,10 @@ impl PreferenceManager {
         db: &SqlitePool,
         bgm_id: i32,
     ) -> Result<SetUseBgmReply, AppError> {
+        if !has_global_audio_bank(bgm_id) {
+            return Err(AppError::InvalidRequest);
+        }
+
         bgm::set_active_bgm(db, self.player_id, bgm_id).await?;
         Ok(SetUseBgmReply {
             bgm_id: Some(bgm_id),
@@ -49,6 +68,7 @@ impl PreferenceManager {
         let bgm_ids = config::configs::get()
             .bgm_switch
             .iter()
+            .filter(|bgm| has_global_audio_bank(bgm.id))
             .map(|bgm| bgm.id)
             .collect::<Vec<_>>();
 

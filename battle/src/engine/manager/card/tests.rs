@@ -101,7 +101,7 @@ fn enemy_ai_selects_ultimates_from_current_resource_state() {
     let mut mixed_rng = StdRng::seed_from_u64(1);
     assert_eq!(
         ai::generated_ai_action_count(&mixed, &mixed_ex_point, &mixed_eureka, 1),
-        2
+        3
     );
     assert_eq!(
         ai::generate_ai_deck_with_extra_actions(
@@ -112,7 +112,7 @@ fn enemy_ai_selects_ultimates_from_current_resource_state() {
             &mut mixed_rng,
         )
         .len(),
-        2
+        3
     );
 
     let fallback = fight(5, None);
@@ -137,6 +137,64 @@ fn enemy_ai_selects_ultimates_from_current_resource_state() {
             .skill_id,
         Some(100)
     );
+}
+
+#[test]
+fn every_alive_enemy_contributes_an_action_before_ap_reductions() {
+    let part = |uid, position, skills: Vec<i32>| FightEntityInfo {
+        uid: Some(uid),
+        position: Some(position),
+        current_hp: Some(100),
+        skill_group1: skills,
+        ..Default::default()
+    };
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(1),
+                current_hp: Some(100),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![
+                part(-2, 1, Vec::new()),
+                part(-4, 2, vec![40840711]),
+                part(-3, 3, vec![40840811]),
+                part(-5, 4, Vec::new()),
+            ],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let mut ex_point = crate::engine::manager::ex_point::ExPointManager::default();
+    ex_point.seed(&fight);
+    let mut eureka = crate::engine::manager::eureka::EurekaManager::default();
+    eureka.seed(&fight);
+    let deck = |extra| {
+        ai::generate_ai_deck_with_extra_actions(
+            &fight,
+            &ex_point,
+            &eureka,
+            extra,
+            &mut StdRng::seed_from_u64(1),
+        )
+        .iter()
+        .map(|card| (card.uid.unwrap(), card.skill_id.unwrap()))
+        .collect::<Vec<_>>()
+    };
+
+    assert_eq!(
+        ai::generated_ai_action_count(&fight, &ex_point, &eureka, -2),
+        2
+    );
+    assert_eq!(deck(-2), vec![(-4, 40840711), (-3, 40840811)]);
+    assert_eq!(
+        ai::generated_ai_action_count(&fight, &ex_point, &eureka, -3),
+        1
+    );
+    assert_eq!(deck(-3), vec![(-4, 40840711)]);
 }
 
 #[test]

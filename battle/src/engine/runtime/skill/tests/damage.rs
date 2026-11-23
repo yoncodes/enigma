@@ -5,6 +5,7 @@ enum ActionTargetRoute {
     FromCondition,
 }
 
+mod burn;
 mod lifecycle;
 mod linked_damage;
 mod modifiers;

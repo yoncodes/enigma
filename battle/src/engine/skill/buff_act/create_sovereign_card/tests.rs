@@ -15,9 +15,9 @@ use crate::engine::{
 };
 
 #[test]
-fn positive_generation_resources_fail_before_mutation_and_zero_resources_generate() {
+fn counted_resources_fail_before_mutation_and_stacks_are_spent_on_the_new_card() {
     crate::test_support::init_config();
-    for (count, layer) in [(1, 0), (0, 1), (0, 0)] {
+    for (count, layer) in [(1, 0), (1, 3), (0, 6), (0, 3), (0, 0)] {
         let fight = Fight {
             version: Some(7),
             attacker: Some(FightTeam {
@@ -63,7 +63,7 @@ fn positive_generation_resources_fail_before_mutation_and_zero_resources_generat
             ReactionLane::BuffActs,
             Some(&[10]),
         );
-        if count > 0 || layer > 0 {
+        if count > 0 {
             let Err(DrainError::BuffActRule(BuffActRuleError::CreateSovereignCard(error))) = result
             else {
                 panic!("expected an explicit generation failure");
@@ -128,8 +128,28 @@ fn positive_generation_resources_fail_before_mutation_and_zero_resources_generat
         } else {
             result.unwrap();
             assert_eq!(managers.card.hand().len(), 1);
-            assert_eq!(managers.card.hand()[0].skill_id, Some(31472131));
-            assert!(!managers.card.can_use_card(&managers.card.hand()[0]));
+            let card = &managers.card.hand()[0];
+            assert_eq!(card.skill_id, Some(31472131));
+            assert!(!managers.card.can_use_card(card));
+            let spent = layer.min(4);
+            let levels = match spent {
+                4 => r#"{"1":2,"2":2,"3":2,"4":2}"#,
+                3 => r#"{"1":2,"2":2,"3":1,"4":1}"#,
+                _ => r#"{"1":0,"2":0,"3":0,"4":0}"#,
+            };
+            assert_eq!(
+                card.card_dataes[0].value,
+                Some(format!(r#"{{"lock":true,"strengthen":{levels}}}"#))
+            );
+            let left = managers
+                .buff
+                .active_for(10)
+                .find(|buff| buff.buff_id == Some(31470001))
+                .map(|buff| buff.layer.unwrap_or_default());
+            assert_eq!(
+                left.filter(|layer| *layer > 0),
+                (layer > spent).then_some(layer - spent)
+            );
         }
     }
 }

@@ -11,6 +11,8 @@ use crate::engine::{
     },
 };
 
+const ACT_ID: i32 = 834;
+
 pub(crate) fn definition_snapshot(
     managers: &BattleManagers,
     buff_id: i32,
@@ -114,14 +116,26 @@ pub fn max_hp_rule_op(
     let delta = (i128::from(managers.hp.max(source_uid)) * i128::from(*permille) / 1000
         * i128::from(amount_delta))
     .clamp(i128::from(i32::MIN), i128::from(i32::MAX)) as i32;
-    (delta != 0).then_some(RuleOp::Command(BattleCommand::Hp(HpCommand::AdjustMax(
-        MaxHpAdjust {
-            origin: buff_act::feature_command_origin(feature)?,
-            source_uid,
-            target_uid: feature.owner_uid,
-            delta,
-        },
-    ))))
+    let adjust = MaxHpAdjust {
+        origin: buff_act::feature_command_origin(feature)?,
+        source_uid,
+        target_uid: feature.owner_uid,
+        delta,
+    };
+    let hp = if lends_hp(feature, source_uid) {
+        HpCommand::AdjustCapacity(adjust)
+    } else {
+        HpCommand::AdjustMax(adjust)
+    };
+    (delta != 0).then_some(RuleOp::Command(BattleCommand::Hp(hp)))
+}
+
+fn lends_hp(feature: &ActiveBuffFeature, source_uid: i64) -> bool {
+    matches!(
+        feature.values.as_slice(),
+        [ACT_ID, source, 0, target, 100]
+            if *source == AttrId::Hp.id() && *target == AttrId::Hp.id()
+    ) && source_uid != feature.owner_uid
 }
 
 pub fn transaction_rule_ops(

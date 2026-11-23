@@ -21,6 +21,23 @@ fn field_replacement_record_keeps_its_round_end_runtime_and_add_only_wire_contra
 }
 
 #[test]
+fn state_carrying_buffs_mark_their_add_only() {
+    use super::super::super::wire::WirePhase;
+    use sonettobuf::effect_type_enum::EffectType;
+
+    for (opcode, type_name) in [
+        (1139, "MeiLeiErCharge"),
+        (1146, "FoundationShield"),
+        (1147, "FoundationCounter"),
+    ] {
+        let wire = find(opcode, type_name).unwrap().wire.unwrap();
+        assert_eq!(wire.markers(WirePhase::Add), &[EffectType::None as i32]);
+        assert!(wire.markers(WirePhase::Static).is_empty());
+        assert!(wire.markers(WirePhase::Refresh).is_empty());
+    }
+}
+
+#[test]
 fn runtime_capability_lives_on_the_exact_registry_entry() {
     let definition = find(889, "BeAttackByEmitterDamage").unwrap();
 
@@ -32,27 +49,15 @@ fn runtime_capability_lives_on_the_exact_registry_entry() {
 
 #[test]
 fn reflect_frames_are_owned_by_holder_and_mark_attacker() {
-    for definition in [
-        find(303, "Rebound").unwrap(),
-        find(743, "ReboundBasedOnDamage").unwrap(),
-    ] {
-        assert_eq!(definition.runtime.frame_source, RuntimeFrameSource::Owner);
-        let marker = definition.runtime.marker.unwrap();
-        assert_eq!(marker.position, RuntimeMarkerPosition::BeforeChanges);
-        assert_eq!(marker.target, RuntimeMarkerTarget::EventSource);
-    }
-
-    assert_eq!(
-        find(303, "Rebound")
-            .unwrap()
-            .runtime
-            .marker
-            .unwrap()
-            .effect_type,
-        None
-    );
+    let rebound = find(303, "Rebound").unwrap();
+    assert_eq!(rebound.runtime.frame_source, RuntimeFrameSource::Owner);
+    assert!(rebound.runtime.marker.is_none());
 
     let damage_based = find(743, "ReboundBasedOnDamage").unwrap();
+    assert_eq!(damage_based.runtime.frame_source, RuntimeFrameSource::Owner);
+    let marker = damage_based.runtime.marker.unwrap();
+    assert_eq!(marker.position, RuntimeMarkerPosition::BeforeChanges);
+    assert_eq!(marker.target, RuntimeMarkerTarget::EventSource);
     assert_eq!(damage_based.kind, BuffActKind::ReboundBasedOnDamage);
     assert!(damage_based.supports.unwrap()(&[300, 0, 0]));
     assert!(!damage_based.supports.unwrap()(&[300, 101, 2_000]));
@@ -60,7 +65,7 @@ fn reflect_frames_are_owned_by_holder_and_mark_attacker() {
     let wire = damage_based.wire.unwrap();
     assert!(!wire.has_output());
     assert_eq!(
-        damage_based.runtime.marker.unwrap().effect_type,
+        marker.effect_type,
         Some(sonettobuf::effect_type_enum::EffectType::Rebound as i32)
     );
     assert!(
@@ -722,4 +727,17 @@ fn structured_features_keep_semantic_values_and_references() {
         resolve_feature(Some(game), "1042#100#100#700#150#203#50#211#33#1#40#26.4").unwrap();
     assert!(raspberry.arguments_supported);
     assert_eq!(raspberry.values.last(), Some(&264));
+}
+
+#[test]
+fn shield_counter_requires_the_configured_riposte_timing() {
+    let game = crate::test_support::game_data();
+    let mut feature = resolve_feature(Some(game), "802#30940171").unwrap();
+    assert!(feature.arguments_supported);
+    assert_eq!(
+        destination_for_feature(Some(game), &feature),
+        Some(BuffActDestination::StateConsumer)
+    );
+    feature.effect_time = 0;
+    assert_eq!(destination_for_feature(Some(game), &feature), None);
 }

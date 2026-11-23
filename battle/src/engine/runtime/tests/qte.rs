@@ -1,4 +1,5 @@
 use super::*;
+use crate::test_support::contains_skill;
 
 #[test]
 fn ezio_cloth_choice_runs_the_configured_skill_and_advances_qte_state() {
@@ -296,16 +297,6 @@ fn ezio_cloth_choice_runs_the_configured_skill_and_advances_qte_state() {
             .unwrap()
     };
     assert!(buff_position(229100) < buff_position(31090112));
-    fn contains_skill(steps: &[sonettobuf::FightStep], skill_id: i32) -> bool {
-        steps.iter().any(|step| {
-            step.act_id == Some(skill_id)
-                || step.act_effect.iter().any(|effect| {
-                    effect.fight_step.as_ref().is_some_and(|nested| {
-                        contains_skill(std::slice::from_ref(nested), skill_id)
-                    })
-                })
-        })
-    }
     fn count_skill(steps: &[sonettobuf::FightStep], skill_id: i32) -> usize {
         steps
             .iter()
@@ -335,7 +326,11 @@ fn ezio_cloth_choice_runs_the_configured_skill_and_advances_qte_state() {
         }
     }
     let final_steps = &replies.last().unwrap().round.as_ref().unwrap().fight_step;
-    assert!(contains_skill(final_steps, 312301343,));
+    assert!(
+        final_steps
+            .iter()
+            .any(|step| contains_skill(step, 312301343))
+    );
     assert_eq!(count_skill(final_steps, 31050141), 2);
     let mut order = Vec::new();
     skill_order(final_steps, &mut order);

@@ -154,8 +154,9 @@ impl BuffManager {
                     },
                     inputs,
                 )?;
+                plan.initial_act_info_markers = Some(stateful.act_info.clone());
                 plan.initial_act_info = Some(stateful.act_info);
-                plan.initial_act_info_markers = Some(Vec::new());
+                plan.snapshot_markers = true;
                 (grant.origin, BuffPlanAction::Grant(Box::new(plan)))
             }
             BuffCommand::GrantUsingChildUid(grant) => (
@@ -365,6 +366,15 @@ impl BuffManager {
                     RemoveSnapshot::Preserve,
                 )?),
             ),
+            BuffCommand::LoseStack(remove) => (
+                remove.origin,
+                BuffPlanAction::Remove(self.plan_remove(
+                    remove,
+                    0,
+                    false,
+                    RemoveSnapshot::MarkExpired,
+                )?),
+            ),
             BuffCommand::EndChannel(remove) => (
                 remove.origin,
                 BuffPlanAction::Remove(self.plan_remove(
@@ -420,6 +430,10 @@ impl BuffManager {
             BuffCommand::SetStateSnapshot(update) => (
                 update.origin,
                 BuffPlanAction::SetStateSnapshot(self.plan_set_state(update)?),
+            ),
+            BuffCommand::BankExPointOverflow(update) => (
+                update.origin,
+                BuffPlanAction::SetStateSnapshot(self.plan_ex_point_overflow(update)?),
             ),
             BuffCommand::AccumulateActValue(update) => {
                 if update.target_uid == 0
@@ -593,15 +607,12 @@ impl BuffManager {
                 {
                     return Err(BuffCommandError::InvalidDurationAdvance);
                 }
-                let plans = if let Some(buff_uids) = &advance.buff_uids {
-                    self.plan_duration_advances_for_snapshot(
-                        advance.take_stage,
-                        &advance.owner_uids,
-                        buff_uids,
-                    )
-                } else {
-                    self.plan_duration_advances(advance.take_stage, &advance.owner_uids)
-                };
+                let plans = self.plan_duration_advances_matching(
+                    advance.take_stage,
+                    &advance.owner_uids,
+                    advance.buff_uids.as_deref(),
+                    advance.non_attack_phase,
+                );
                 (advance.origin, BuffPlanAction::AdvanceDuration(plans))
             }
             BuffCommand::SyncRoundStartDuration(sync) => {
@@ -847,15 +858,9 @@ impl BuffManager {
                 action
             }
         };
-        let replaces_applier_provoke = action == GrantAction::Add
-            && policy.storage == BuffStorage::SeparateCopies
+        let reapplies_provoke = action == GrantAction::ReplaceExisting
             && definition.features().iter().any(|feature| {
                 feature.kind == Some(crate::engine::skill::buff_act::registry::BuffActKind::Provoke)
-            })
-            && self.buffs.iter().any(|active| {
-                active.owner_uid == route.target_uid
-                    && active.buff.buff_id == Some(route.buff_id)
-                    && active.buff.from_uid == Some(route.source_uid)
             });
         let capacity_eviction_uids = if matches!(action, GrantAction::Add) {
             let (limit, mut uids) = if let Some(capacity) = policy.shared_group_capacity {
@@ -925,6 +930,15 @@ impl BuffManager {
         } else {
             0
         };
+        let replacement_uids = if action == GrantAction::ReplaceExisting {
+            self.buffs
+                .iter()
+                .filter(|active| policy.matches(active, route))
+                .filter_map(|active| active.buff.uid)
+                .collect::<Vec<_>>()
+        } else {
+            Vec::new()
+        };
         let uid = match action {
             GrantAction::Reject(_) | GrantAction::Resist => Some(super::uid_policy::plan(
                 self,
@@ -942,6 +956,14 @@ impl BuffManager {
                 0,
                 0,
             )),
+            GrantAction::DiscardWeaker => Some(super::uid_policy::plan(
+                self,
+                route,
+                &definition,
+                policy.uid.allocation.uses_child_for_apply(args),
+                0,
+                0,
+            )),
             GrantAction::Add | GrantAction::ReplaceExisting => Some(super::uid_policy::plan(
                 self,
                 route,
@@ -952,7 +974,12 @@ impl BuffManager {
                         | GrantInput::ChildInstance { .. }
                         | GrantInput::TriggeredChildInstance { .. }
                 ) || (!request.force_normal_uid
-                    && policy.uid.allocation.uses_child_for_apply(args)),
+                    && (policy.uid.allocation.uses_child_for_apply(args)
+                        || super::uid_policy::follows_replaced_halo_copies(
+                            self,
+                            &replacement_uids,
+                            route.target_uid,
+                        ))),
                 normal_reserve_before,
                 reserve_before,
             )),
@@ -1176,26 +1203,27 @@ impl BuffManager {
             || (action == GrantAction::Add
                 && policy.uid.reserve_after_first_apply
                 && stack_layer > 0);
-        let post_add_normal_uids = if action == GrantAction::Add && self.shared_uid_lane {
-            super::uid_policy::normals_after_sequence(
-                self,
-                route.target_uid,
-                pre_add_uids
-                    .iter()
-                    .copied()
-                    .chain(uid)
-                    .chain(fanout.iter().map(|plan| plan.uid))
-                    .chain(refresh_uids.iter().copied()),
-                policy.uid.normal_reservations_after_first_apply
-                    + if replaces_applier_provoke {
-                        PROVOKE_REAPPLY_UID_RESERVATIONS
-                    } else {
-                        0
-                    },
-            )
-        } else {
-            Vec::new()
-        };
+        let post_add_normal_uids =
+            if (action == GrantAction::Add || reapplies_provoke) && self.shared_uid_lane {
+                super::uid_policy::normals_after_sequence(
+                    self,
+                    route.target_uid,
+                    pre_add_uids
+                        .iter()
+                        .copied()
+                        .chain(uid)
+                        .chain(fanout.iter().map(|plan| plan.uid))
+                        .chain(refresh_uids.iter().copied()),
+                    policy.uid.normal_reservations_after_first_apply
+                        + if reapplies_provoke {
+                            PROVOKE_REAPPLY_UID_RESERVATIONS
+                        } else {
+                            0
+                        },
+                )
+            } else {
+                Vec::new()
+            };
         let mut post_add_uids = post_add_normal_uids;
         if reserve_after_add {
             let child_uids = super::uid_policy::children_after_sequence(
@@ -1225,25 +1253,6 @@ impl BuffManager {
         let initial_act_info =
             definition.initial_planned_act_info(inputs.source_attack, &grant_values);
         let initial_params = self.plan_grant_params(&definition, route.source_uid);
-        let replacement_uids = if action == GrantAction::ReplaceExisting {
-            self.buffs
-                .iter()
-                .filter(|active| policy.matches(active, route))
-                .filter_map(|active| active.buff.uid)
-                .collect()
-        } else if replaces_applier_provoke {
-            self.buffs
-                .iter()
-                .filter(|active| {
-                    active.owner_uid == route.target_uid
-                        && active.buff.buff_id == Some(route.buff_id)
-                        && active.buff.from_uid == Some(route.source_uid)
-                })
-                .filter_map(|active| active.buff.uid)
-                .collect()
-        } else {
-            Vec::new()
-        };
         let transition_progress = (policy.storage == BuffStorage::Single
             && !unconditional
             && BuffManager::tracks_single_transition(&definition)
@@ -1291,6 +1300,7 @@ impl BuffManager {
             initial_params,
             initial_act_info,
             initial_act_info_markers: None,
+            snapshot_markers: false,
             dot_snapshots,
             grant_values,
             attr_snapshots: Vec::new(),
@@ -1762,6 +1772,19 @@ impl BuffManager {
         depleted: DepletedBuff,
         field: ConsumeField,
     ) -> ConsumeAction {
+        if crate::engine::diagnostics::enabled(crate::engine::diagnostics::TraceArea::Buff) {
+            eprintln!(
+                "buff consume owner={} buff={:?} uid={:?} count={:?} layer={:?} amount={} field={:?} depleted={:?}",
+                active.owner_uid,
+                active.buff.buff_id,
+                active.buff.uid,
+                active.buff.count,
+                active.buff.layer,
+                amount,
+                field,
+                depleted,
+            );
+        }
         if amount == 0 {
             return ConsumeAction::Update {
                 buff_uid: active.buff.uid.unwrap_or_default(),
@@ -1805,7 +1828,15 @@ impl BuffManager {
                 depleted,
                 DepletedBuff::Remove | DepletedBuff::RemoveWithZeroLayer
             )
-            && (consume_count || uses_stack_layer || uses_typed_count)
+            && (consume_count
+                || uses_stack_layer
+                || uses_typed_count
+                || (active
+                    .definition
+                    .as_ref()
+                    .is_some_and(|definition| !definition.has_effect_count())
+                    && active.buff.count.unwrap_or_default() <= 0
+                    && active.buff.layer.unwrap_or_default() <= 0))
         {
             ConsumeAction::Remove {
                 buff_uid,

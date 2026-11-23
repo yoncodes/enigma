@@ -121,7 +121,7 @@ fn configured_seed_uses_selected_destiny_device_from_entity_loadout() {
 }
 
 #[test]
-fn terminal_roster_refresh_removes_defeated_devices_and_preserves_live_state() {
+fn roster_refresh_removes_defeated_devices_and_preserves_live_state() {
     crate::test_support::init_config();
     let fight = Fight {
         attacker: Some(FightTeam {
@@ -134,6 +134,7 @@ fn terminal_roster_refresh_removes_defeated_devices_and_preserves_live_state() {
                 FightEntityInfo {
                     uid: Some(11),
                     model_id: Some(3144),
+                    current_hp: Some(100),
                     ..Default::default()
                 },
             ],
@@ -157,6 +158,12 @@ fn terminal_roster_refresh_removes_defeated_devices_and_preserves_live_state() {
             skill_id: stopped_skill,
         })
         .unwrap();
+    let live_skill = manager
+        .selected_skills(10)
+        .unwrap()
+        .into_iter()
+        .find(|skill| skill.skill_id != stopped_skill)
+        .unwrap();
     manager
         .execute(ConduitCommand::ChangePower(ConduitPowerChange {
             origin: ORIGIN,
@@ -167,8 +174,82 @@ fn terminal_roster_refresh_removes_defeated_devices_and_preserves_live_state() {
             kind: ConduitPowerChangeKind::Standard,
         }))
         .unwrap();
+    let retired_skill = manager.selected_skills(11).unwrap()[0];
+    manager
+        .execute(ConduitCommand::ChangePower(ConduitPowerChange {
+            origin: ORIGIN,
+            source_uid: 11,
+            team: 1,
+            power_id: retired_skill.cost_type,
+            delta: retired_skill.cost_value,
+            kind: ConduitPowerChangeKind::Standard,
+        }))
+        .unwrap();
+    manager
+        .execute(ConduitCommand::BeginSkill {
+            source_uid: 11,
+            skill_id: retired_skill.skill_id,
+            cost_reduction: 0,
+        })
+        .unwrap();
+    manager
+        .execute(ConduitCommand::FinishSkill {
+            source_uid: 11,
+            skill_id: retired_skill.skill_id,
+        })
+        .unwrap();
+    manager
+        .execute(ConduitCommand::SetRunning {
+            source_uid: 11,
+            running: true,
+        })
+        .unwrap();
+    manager
+        .execute(ConduitCommand::ChangePower(ConduitPowerChange {
+            origin: ORIGIN,
+            source_uid: 10,
+            team: 1,
+            power_id: live_skill.cost_type,
+            delta: live_skill.cost_value,
+            kind: ConduitPowerChangeKind::Standard,
+        }))
+        .unwrap();
+    manager
+        .execute(ConduitCommand::BeginSkill {
+            source_uid: 10,
+            skill_id: live_skill.skill_id,
+            cost_reduction: 0,
+        })
+        .unwrap();
+    manager
+        .execute(ConduitCommand::FinishSkill {
+            source_uid: 10,
+            skill_id: live_skill.skill_id,
+        })
+        .unwrap();
+    manager
+        .execute(ConduitCommand::SetRunning {
+            source_uid: 10,
+            running: true,
+        })
+        .unwrap();
+    let powers_before = manager.areas.get(&1).unwrap().powers.clone();
 
-    let commands = manager.terminal_roster_refresh_commands(&[11]);
+    use crate::engine::manager::hp::{HpCommand, HpKill, HpManager};
+    let mut hp = HpManager::default();
+    hp.seed(&fight);
+    let death = hp
+        .execute_command(HpCommand::Kill(HpKill {
+            origin: ORIGIN,
+            source_uid: -1,
+            target_uid: 11,
+            config_effect: 1,
+        }))
+        .unwrap()
+        .death
+        .unwrap();
+    manager.record_death(death);
+    let commands = manager.roster_refresh_commands(&hp);
     assert_eq!(commands.len(), 1);
     let change = manager.execute(commands[0].clone()).unwrap();
     let ConduitChange::RosterRefreshed(area) = change else {
@@ -184,15 +265,25 @@ fn terminal_roster_refresh_removes_defeated_devices_and_preserves_live_state() {
             .flatten()
             .any(|skill| skill.skill_id == stopped_skill && skill.is_stopped)
     );
-    assert_eq!(
-        area.powers
-            .iter()
-            .find(|power| power.id == 1)
-            .unwrap()
-            .value,
-        4
+    assert_eq!(area.powers, powers_before);
+    assert_eq!(manager.selected_group(11), None);
+    assert_eq!(manager.uses(11), 0);
+    assert!(!manager.is_running(11));
+    assert!(
+        manager
+            .pending_activations
+            .keys()
+            .all(|(source_uid, _)| *source_uid != 11)
     );
-    assert!(manager.terminal_roster_refresh_commands(&[11]).is_empty());
+    assert_eq!(manager.uses(10), 1);
+    assert!(manager.is_running(10));
+    assert!(
+        manager
+            .pending_activations
+            .contains_key(&(10, live_skill.skill_id))
+    );
+    assert_eq!(manager.counter(1, ConduitCounterKind::Activation), 2);
+    assert!(manager.roster_refresh_commands(&hp).is_empty());
 }
 
 #[test]
@@ -224,7 +315,7 @@ fn selects_the_requested_group_on_the_owning_device() {
                 group: 2,
             })
             .unwrap(),
-        ConduitChange::GroupSelected {
+        ConduitChange::SelectionCommitted {
             source_uid: 10,
             team: 1,
             group: 2,

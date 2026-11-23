@@ -77,6 +77,11 @@ impl SkillEffectCatalog {
             }
         }
         skills.extend(
+            crate::catalog::rouge2_entry_rule_skills(db, fight)
+                .into_iter()
+                .map(|skill| skill.skill_id),
+        );
+        skills.extend(
             crate::engine::manager::conduit::ConduitManager::seed_with_game_data(db, fight)
                 .skill_ids(),
         );
@@ -275,7 +280,7 @@ impl SkillEffectCatalog {
         self.warn_unsupported_buffs(db, |buff_id| !existing_buffs.contains(&buff_id));
     }
 
-    fn insert_configured_effect(
+    pub(super) fn insert_configured_effect(
         &mut self,
         db: &GameDB,
         row: &config::skill_effect::SkillEffect,
@@ -353,15 +358,19 @@ impl SkillEffectCatalog {
                 }
             }
         }
+        super::super::slot_order::bind_after_damage_grants(&mut slots);
+        let logic_target = parse_target(&row.logic_target)
+            .and_then(crate::engine::skill::target::resolve::compile_logic_target);
+        if let Some(target) = &logic_target {
+            super::super::delegated_ultimate::bind_reward(&mut slots, target);
+        }
         self.insert(ParsedSkillEffect {
             skill_id: row.id,
             slots,
         });
         self.insert_effect_tag(row.id, row.effect_tag);
-        if let Some(target) = parse_target(&row.logic_target)
-            .filter(|target| crate::engine::skill::target::is_mapped_target_code(target.code))
-        {
-            self.insert_logic_target(row.id, target.code);
+        if let Some(target) = logic_target {
+            self.logic_targets.insert(row.id, target);
         } else {
             self.issues.entry(row.id).or_default().push(target_issue(
                 row.id,

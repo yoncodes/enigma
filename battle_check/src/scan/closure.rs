@@ -99,6 +99,18 @@ fn scan_skill(
                 "UnsupportedBehaviorRoute path={slot_path} opcode={} type={}",
                 slot.behavior.spec.key.opcode, slot.behavior.spec.key.type_name
             ));
+        } else if behavior::missing_queue_preparation_route(slot) {
+            report.gap(
+                behavior_key.clone(),
+                "missing queue preparation setup route",
+            );
+            report.error(format!(
+                "MissingQueuePreparationRoute path={slot_path} effect={} opcode={} type={} event=ActionQueueCommitted raw={:?}",
+                skill.skill_effect,
+                slot.behavior.spec.key.opcode,
+                slot.behavior.spec.key.type_name,
+                slot.behavior.raw_args,
+            ));
         } else if !behavior::has_destination(&slot.behavior) {
             report.gap(behavior_key.clone(), "missing command owner");
             let owner = behavior::registry::find(&slot.behavior)
@@ -160,6 +172,27 @@ fn scan_skill(
                     "MissingConditionRoute path={slot_path} opcode={opcode} type={type_name}"
                 ));
             }
+            Ok(route)
+                if db.rule.get(pending.id).is_some()
+                    && !slot.conditions.is_empty()
+                    && route.branches.iter().all(|branch| branch.driver.is_none())
+                    && definition.is_none_or(|definition| {
+                        definition.collect_attack_modifier.is_none()
+                            && definition.collect_round_modifier.is_none()
+                            && definition.collect_queue_preparation.is_none()
+                    }) =>
+            {
+                for condition in slot.conditions.iter().flat_map(flatten_conditions) {
+                    report.gap(
+                        CapabilityKey::new("condition", condition.opcode, &condition.type_name),
+                        "missing exact route",
+                    );
+                    report.error(format!(
+                        "MissingConditionRoute path={slot_path} opcode={} type={}",
+                        condition.opcode, condition.type_name
+                    ));
+                }
+            }
             Ok(_) => {}
         }
         explain_conditions(&slot.conditions, pending.id, slot_number, report);
@@ -167,7 +200,7 @@ fn scan_skill(
         for target in [&slot.target, &slot.condition_target] {
             let key = CapabilityKey::new("target", target.code, "Target");
             report.capability(key.clone());
-            if !is_mapped_target_code(target.code) {
+            if !is_supported_target(target) {
                 report.gap(key, "unsupported target");
                 report.error(format!(
                     "UnsupportedTarget path={slot_path} code={} raw={:?}",

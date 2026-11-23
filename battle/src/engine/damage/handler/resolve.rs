@@ -33,6 +33,7 @@ pub struct DamageRequest<'a> {
     pub rate: i32,
     pub rate_terms: &'a [DamageRateTerm],
     pub attack_attributes: &'a [(AttrId, i32)],
+    pub attack_bonus: i32,
     pub career_ratio_bonus: i32,
     pub attack_career: Option<i32>,
     pub additional_attack_career: Option<i32>,
@@ -106,6 +107,7 @@ pub fn resolve_attack_command_with_precision(
             rate: plan.rate,
             rate_terms: &plan.rate_terms,
             attack_attributes: &plan.attack_attributes,
+            attack_bonus: plan.attack_bonus,
             career_ratio_bonus: plan.career_ratio_bonus,
             attack_career: plan.attack_career,
             additional_attack_career: plan.additional_attack_career,
@@ -631,6 +633,7 @@ fn direct_damage_trace(
         skill_id,
         rate_terms,
         attack_attributes,
+        attack_bonus,
         career_ratio_bonus,
         critical_multiplier_remainder,
         is_conduit,
@@ -866,6 +869,7 @@ fn direct_damage_trace(
     let flat_attack =
         crate::engine::manager::snapshotted_attribute_delta(buffs, hp, source.uid, AttrId::Attack)
             .saturating_add(buffs.fixed_attribute_delta(source.uid, AttrId::Attack))
+            .saturating_add(attack_bonus)
             .saturating_add(if source.uid == crate::engine::manager::emitter::UID {
                 runtime.emitter.map_or(0, |emitter| {
                     crate::engine::manager::emitter::average_ally_fixed_attribute(
@@ -1124,16 +1128,16 @@ fn direct_damage_trace(
             critical_multiplier_remainder,
             formula,
         );
+    crate::engine::damage::trace::HitTrace {
+        skill_id,
+        source_uid: source.uid,
+        target_uid: target.uid,
+        fight_version: runtime.fight_version,
+        formula,
+        trace: &damage_trace,
+    }
+    .emit();
     if crate::engine::damage::trace::enabled() {
-        crate::engine::damage::trace::HitTrace {
-            skill_id,
-            source_uid: source.uid,
-            target_uid: target.uid,
-            fight_version: runtime.fight_version,
-            formula,
-            trace: &damage_trace,
-        }
-        .emit();
         let local_damage_bonus = source_active_features
             .iter()
             .filter(|feature| feature.owner_uid == source.uid)

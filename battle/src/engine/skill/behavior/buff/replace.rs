@@ -53,6 +53,27 @@ pub(super) fn refresh_duration_command(
     ))
 }
 
+pub(in crate::engine::skill::behavior) fn supports_layer_reward(behavior: &ParsedBehavior) -> bool {
+    let exact_shape = if behavior.raw_args.is_empty() {
+        behavior.args.len() == 4
+    } else {
+        behavior.raw_args.len() == 4
+            && behavior.raw_args[0]
+                .split(',')
+                .all(|part| !part.trim().is_empty())
+    };
+    behavior.raw_arity == 4
+        && exact_shape
+        && behavior.arg_list(0).is_some_and(|sources| {
+            !sources.is_empty()
+                && sources
+                    .iter()
+                    .enumerate()
+                    .all(|(index, id)| *id > 0 && !sources[..index].contains(id))
+        })
+        && (1..4).all(|index| behavior.arg(index).is_some_and(|value| value > 0))
+}
+
 pub(super) fn replace_buff2_ops(
     context: &BehaviorOpContext<'_>,
     behavior: &ParsedBehavior,

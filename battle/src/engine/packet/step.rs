@@ -17,7 +17,7 @@ impl StepPacket {
             act_id: Some(0),
             act_effect: effects.into_iter().map(normalize_effect_tree).collect(),
             card_index: Some(0),
-            support_hero_id: Some(0),
+            support_hero_id: None,
             fake_timeline: Some(false),
             real_skill_type: Some(0),
             real_skin_id: Some(0),

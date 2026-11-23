@@ -4,6 +4,7 @@ use crate::{
     types::material_get_approach::MaterialGetApproach,
     util::push,
 };
+use logic::activity::Act243EpisodeReport;
 use prost::Message;
 use sonettobuf::{
     Act243ReportEpisodeRequest, Act243UnlockRacerRequest, Act243UpgradeGiftRequest, CmdId,
@@ -35,12 +36,14 @@ pub async fn on_act243_report_episode(
         .activity
         .report_act243_episode(
             db,
-            msg.activity_id.ok_or(AppError::InvalidRequest)?,
-            msg.episode_id.ok_or(AppError::InvalidRequest)?,
-            msg.score.ok_or(AppError::InvalidRequest)?,
-            msg.star.ok_or(AppError::InvalidRequest)?,
-            msg.time_ms.ok_or(AppError::InvalidRequest)?,
-            msg.record.unwrap_or_default(),
+            Act243EpisodeReport {
+                activity_id: msg.activity_id.ok_or(AppError::InvalidRequest)?,
+                episode_id: msg.episode_id.ok_or(AppError::InvalidRequest)?,
+                score: msg.score.ok_or(AppError::InvalidRequest)?,
+                star: msg.star.ok_or(AppError::InvalidRequest)?,
+                time_ms: msg.time_ms.ok_or(AppError::InvalidRequest)?,
+                record: msg.record.unwrap_or_default(),
+            },
         )
         .await?;
 

@@ -219,18 +219,6 @@ impl EffectPacket {
         }
     }
 
-    pub fn butterfly_add_hand_card(card: CardInfo) -> ActEffect {
-        ActEffect {
-            target_id: card.uid,
-            effect_type: Some(EffectType::Butterflyaddhandcard as i32),
-            effect_num: card.skill_id,
-            card_info: Some(card.clone()),
-            card_info_list: vec![card],
-            team_type: Some(1),
-            ..Default::default()
-        }
-    }
-
     pub fn blood_pool_max_change(team: i32, delta: i32) -> ActEffect {
         ActEffect {
             target_id: Some(0),

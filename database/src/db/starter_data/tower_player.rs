@@ -6,6 +6,8 @@ use crate::{
 use common::time::ServerTime;
 use sqlx::SqliteConnection;
 
+const TOWER_OPEN: i32 = 2;
+
 pub async fn load_tower_info(tx: &mut Transaction<'_, Sqlite>, user_id: i64) -> sqlx::Result<()> {
     let tables = configs::get();
     let now = ServerTime::now_ms();
@@ -31,7 +33,7 @@ pub async fn load_tower_info(tx: &mut Transaction<'_, Sqlite>, user_id: i64) -> 
     }
 
     for open in tower::tower_open_schedule(tables, now) {
-        if open.tower_type == TowerType::Limited.id() && open.status == 2 {
+        if open.tower_type == TowerType::Limited.id() && open.status == TOWER_OPEN {
             insert_tower(tx, user_id, TowerType::Limited, open.tower_id).await?;
         }
     }

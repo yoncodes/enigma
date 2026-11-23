@@ -107,16 +107,18 @@ pub fn parse_fixed_reward(reward_id: i32, cost: i32) -> RewardSet {
         return rewards;
     };
     for group_ref in groups(row).into_iter().filter(|group| !group.is_empty()) {
-        let Some((group, "NORMAL")) = group_ref.split_once(':') else {
-            tracing::warn!(
+        match group_ref.split_once(':') {
+            Some((group, "NORMAL")) => {
+                for row in tables.reward_group(group) {
+                    collect_reward_group_row(&mut rewards, row, cost);
+                }
+            }
+            Some((_, "RANDOM" | "WEIGHT")) => {}
+            _ => tracing::warn!(
                 reward_id,
                 group = group_ref,
                 "Unsupported reward group in guaranteed payout"
-            );
-            continue;
-        };
-        for row in tables.reward_group(group) {
-            collect_reward_group_row(&mut rewards, row, cost);
+            ),
         }
     }
     rewards

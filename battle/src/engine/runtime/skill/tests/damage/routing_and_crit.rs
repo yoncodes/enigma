@@ -227,7 +227,7 @@ fn purple_emanation_applies_configured_halo_before_destined_doom_damage() {
     let mut managers = BattleManagers::seeded(&fight);
     assert!(managers.emanation.select(10, 110));
     let pool = TargetPool::from_fight(&fight);
-    let catalog = SkillEffectCatalog::from_roots(config::configs::get(), [31340151], []);
+    let catalog = SkillEffectCatalog::from_roots(config::configs::get(), [31340151, 103374322], []);
     let mut invocation: SkillInvocation = SkillRequest {
         source_uid: 10,
         skill_id: 31340151,
@@ -284,11 +284,21 @@ fn purple_emanation_applies_configured_halo_before_destined_doom_damage() {
         .position(|emission| matches!(emission.op, RuleOp::FreezeActiveSkillRates))
         .unwrap();
 
-    assert_eq!(freeze, immediate_completed + 1);
+    let prepared = immediate
+        .ops
+        .iter()
+        .position(|emission| {
+            matches!(
+                emission.op,
+                RuleOp::Publish(BattleEvent::SkillEffectsPrepared(_))
+            )
+        })
+        .unwrap();
     assert_eq!(
         halo,
         vec![(freeze + 1, -1, Some(2)), (freeze + 2, -2, Some(2)),]
     );
+    assert!(halo[1].0 < immediate_completed && immediate_completed < prepared);
     assert!(!immediate.ops.iter().any(|emission| matches!(
         emission.op,
         RuleOp::Command(BattleCommand::Hp(_) | BattleCommand::HpBatch(_))
@@ -396,6 +406,21 @@ fn configured_ignore_beat_back_reaches_the_committed_hit() {
         defender: Some(FightTeam {
             entitys: vec![FightEntityInfo {
                 uid: Some(-1),
+                buffs: vec![
+                    BuffInfo {
+                        uid: Some(-20),
+                        buff_id: Some(30940182),
+                        from_uid: Some(-1),
+                        ..Default::default()
+                    },
+                    BuffInfo {
+                        uid: Some(-21),
+                        buff_id: Some(30940121),
+                        duration: Some(2),
+                        from_uid: Some(-1),
+                        ..Default::default()
+                    },
+                ],
                 current_hp: Some(10_000),
                 attr: Some(HeroAttribute {
                     hp: Some(10_000),
@@ -456,11 +481,20 @@ fn configured_ignore_beat_back_reaches_the_committed_hit() {
         })]
     ));
 
-    let events = managers
-        .execute_hp_batch(commands)
-        .unwrap()
+    let mut ordinary = managers.clone();
+    let mut counterable = commands.clone();
+    let [HpCommand::Damage(hit)] = counterable.as_mut_slice() else {
+        unreachable!()
+    };
+    hit.ignore_riposte = false;
+    let earned = ordinary.execute_rule_hp_batch(counterable).unwrap();
+    assert_eq!(earned[0].shield_counter_credits.len(), 1);
+
+    let committed = managers.execute_rule_hp_batch(commands).unwrap();
+    assert!(committed[0].shield_counter_credits.is_empty());
+    let events = committed
         .into_iter()
-        .flat_map(|changes| changes.events())
+        .flat_map(|hit| hit.changes.events())
         .collect::<Vec<_>>();
     let hit_event = events
         .into_iter()
@@ -482,46 +516,6 @@ fn configured_ignore_beat_back_reaches_the_committed_hit() {
             EventKind::Riposte,
         ]
     );
-
-    let subscriber = crate::engine::skill::subscriber::BuffActSubscriber {
-        owner_uid: -1,
-        source_uid: -1,
-        buff_uid: -20,
-        buff_id: 1,
-        team_type: 2,
-        owner_alive: true,
-        amount: 1,
-        key: crate::engine::event::subscription::SubscriptionKey::new(
-            EventKind::Riposte,
-            DefinitionKey::new(802, "BeatBackByCounter"),
-        ),
-        act_type: "BeatBackByCounter".to_owned(),
-        effect_time: 401,
-        effect_condition: 0,
-        args: vec![200],
-        raw: "802#200".to_owned(),
-    };
-    assert!(
-        crate::engine::skill::buff_act::riposte::shielded_ally_rule_ops(
-            &pool,
-            &subscriber,
-            &BattleEvent::Hit(hit),
-        )
-        .unwrap()
-        .is_empty()
-    );
-    let mut counterable = hit;
-    counterable.ignore_riposte = false;
-    assert!(matches!(
-        crate::engine::skill::buff_act::riposte::shielded_ally_rule_ops(
-            &pool,
-            &subscriber,
-            &BattleEvent::Hit(counterable),
-        )
-        .unwrap()
-        .as_slice(),
-        [RuleOp::Skill(_)]
-    ));
 }
 
 #[test]
@@ -605,7 +599,8 @@ fn row_damage_applies_configured_excess_crit_conversion() {
         100,
         &mut determinism,
         &mut execution,
-    );
+    )
+    .unwrap();
 
     assert!(matches!(
         ops.damage.as_slice(),
@@ -681,7 +676,8 @@ fn row_damage_consumes_captured_crit_choices_in_target_order() {
         100,
         &mut determinism,
         &mut execution,
-    );
+    )
+    .unwrap();
     assert!(ops.additional_damage.is_empty());
     assert_eq!(execution.configured_targets, Some(vec![-1, -2, -3]));
     let kinds = ops
@@ -733,15 +729,26 @@ fn additional_damage_activation_survives_its_pre_damage_resource_cost() {
             ..Default::default()
         }),
         defender: Some(FightTeam {
-            entitys: vec![FightEntityInfo {
-                uid: Some(-1),
-                current_hp: Some(10_000),
-                attr: Some(HeroAttribute {
-                    hp: Some(10_000),
+            entitys: vec![
+                FightEntityInfo {
+                    uid: Some(-1),
+                    current_hp: Some(10_000),
+                    attr: Some(HeroAttribute {
+                        hp: Some(10_000),
+                        ..Default::default()
+                    }),
                     ..Default::default()
-                }),
-                ..Default::default()
-            }],
+                },
+                FightEntityInfo {
+                    uid: Some(-3),
+                    current_hp: Some(500),
+                    attr: Some(HeroAttribute {
+                        hp: Some(500),
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                },
+            ],
             ..Default::default()
         }),
         ..Default::default()
@@ -784,10 +791,25 @@ fn additional_damage_activation_survives_its_pre_damage_resource_cost() {
         100,
         &mut RoundDeterminism::default(),
         &mut execution,
-    );
+    )
+    .unwrap();
     assert!(!damage.additional_damage.is_empty());
 
     execution.pending_additional_damage = damage.additional_damage;
+    execution.pending_additional_damage[0]
+        .commands
+        .push(HpCommand::Lose(crate::engine::manager::hp::HpLoss {
+            origin: CommandOrigin {
+                domain: RuleDomain::Skill,
+                key: DefinitionKey::new(100, "AbsorbedDamage"),
+            },
+            source_uid: 10,
+            target_uid: -3,
+            amount: 50,
+            config_effect: -1,
+            hurt: None,
+        }));
+    assert!(managers.hp.current(-3) > 0);
     managers
         .execute_hp(HpCommand::Kill(HpKill {
             origin: CommandOrigin {
@@ -799,5 +821,10 @@ fn additional_damage_activation_survives_its_pre_damage_resource_cost() {
             config_effect: 1,
         }))
         .unwrap();
-    assert!(execution.take_live_additional_damage(&managers).is_empty());
+    assert!(
+        managers
+            .execute_linked_damage(execution.take_additional_damage())
+            .unwrap()
+            .is_empty()
+    );
 }

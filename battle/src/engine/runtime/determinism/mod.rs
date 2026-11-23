@@ -4,6 +4,9 @@ use sonettobuf::CardInfo;
 
 use crate::engine::manager::card::CardPlayChoice;
 
+mod random_buff;
+pub use random_buff::RandomBuffChoice;
+
 type StartDeckSeed = (Vec<CardInfo>, Vec<CardInfo>, Vec<CardInfo>, usize);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -43,6 +46,7 @@ pub struct MoxieReductionResistanceChoice {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ConditionRandomChoice {
     pub skill_id: i32,
+    pub source_uid: i64,
     pub opcode: i32,
     pub roll: i32,
 }
@@ -75,14 +79,15 @@ pub struct RoundDeterminism {
     crystal_reuse_choices: VecDeque<CrystalReuseChoice>,
     moxie_reduction_resistance_choices: VecDeque<MoxieReductionResistanceChoice>,
     additional_crit_choices: HashMap<(i32, i64, i64), VecDeque<bool>>,
-    scripted_condition_random: HashSet<(i32, i32)>,
     next_ai_card_snapshots: VecDeque<Vec<CardInfo>>,
     ai_skill_snapshots: VecDeque<Vec<AiSkillChoice>>,
     random_skill_choices: VecDeque<i32>,
     scripted_random_skills: HashSet<i32>,
     random_buff_choices: VecDeque<i32>,
+    random_buff_pools: VecDeque<RandomBuffChoice>,
     hand_rank_choices: VecDeque<HandRankChoice>,
     hand_card_choices: VecDeque<HandCardChoice>,
+    card_energy_allocations: VecDeque<Vec<CardInfo>>,
     permille_rolls: VecDeque<i32>,
     crit_seed: u64,
     crit_roll_index: u64,
@@ -180,16 +185,15 @@ impl RoundDeterminism {
     }
 
     pub fn enqueue_condition_random_choices(&mut self, choices: Vec<ConditionRandomChoice>) {
-        self.scripted_condition_random.extend(
-            choices
-                .iter()
-                .map(|choice| (choice.skill_id, choice.opcode)),
-        );
         self.condition_random_choices.extend(choices);
     }
 
-    pub fn script_condition_randoms(&mut self, keys: impl IntoIterator<Item = (i32, i32)>) {
-        self.scripted_condition_random.extend(keys);
+    pub fn replace_condition_random_choices(
+        &mut self,
+        choices: impl IntoIterator<Item = ConditionRandomChoice>,
+    ) {
+        self.condition_random_choices.clear();
+        self.condition_random_choices.extend(choices);
     }
 
     pub fn enqueue_hidden_crits(
@@ -238,6 +242,14 @@ impl RoundDeterminism {
     pub fn replace_shell_moxie_choices(&mut self, choices: impl IntoIterator<Item = bool>) {
         self.shell_moxie_choices.clear();
         self.shell_moxie_choices.extend(choices);
+    }
+
+    pub(crate) fn replace_skill_target_choices(
+        &mut self,
+        choices: impl IntoIterator<Item = SkillTargetChoice>,
+    ) {
+        self.skill_targets.clear();
+        self.enqueue_skill_target_choices(choices);
     }
 
     pub fn enqueue_skill_target_choices(
@@ -382,22 +394,17 @@ impl RoundDeterminism {
             .and_then(VecDeque::pop_front);
     }
 
-    pub fn condition_random_roll(&mut self, skill_id: i32, opcode: i32) -> i32 {
-        if let Some(index) = self
-            .condition_random_choices
-            .iter()
-            .position(|choice| choice.skill_id == skill_id && choice.opcode == opcode)
-        {
+    pub fn condition_random_roll(&mut self, skill_id: i32, source_uid: i64, opcode: i32) -> i32 {
+        if let Some(index) = self.condition_random_choices.iter().position(|choice| {
+            choice.skill_id == skill_id
+                && choice.source_uid == source_uid
+                && choice.opcode == opcode
+        }) {
             return self
                 .condition_random_choices
                 .remove(index)
                 .roll
                 .clamp(0, 999);
-        }
-        // captures only expose successful activations; exhausted captured streams fail
-        // closed. Record ordered failures too if a future fixture needs success-after-failure parity.
-        if self.scripted_condition_random.contains(&(skill_id, opcode)) {
-            return 999;
         }
         self.lua_random_index(1000).unwrap_or_default() as i32
     }
@@ -465,8 +472,31 @@ impl RoundDeterminism {
             .flatten()
     }
 
+    /// Observed hands after each weighted card-energy allocation, in wire order.
+    pub fn replace_card_energy_allocations(
+        &mut self,
+        hands: impl IntoIterator<Item = Vec<CardInfo>>,
+    ) {
+        self.card_energy_allocations = hands.into_iter().collect();
+    }
+
+    pub(crate) fn take_card_energy_allocation(
+        &mut self,
+        accepts: impl Fn(&[CardInfo]) -> bool,
+    ) -> Option<Vec<CardInfo>> {
+        let index = self
+            .card_energy_allocations
+            .iter()
+            .position(|hand| accepts(hand))?;
+        self.card_energy_allocations.remove(index)
+    }
+
     pub fn enqueue_hand_rank_choices(&mut self, choices: impl IntoIterator<Item = HandRankChoice>) {
         self.hand_rank_choices.extend(choices);
+    }
+
+    pub fn replace_hand_rank_choices(&mut self, choices: impl IntoIterator<Item = HandRankChoice>) {
+        self.hand_rank_choices = choices.into_iter().collect();
     }
 
     pub fn take_hand_rank_choice(

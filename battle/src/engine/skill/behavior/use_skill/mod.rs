@@ -25,6 +25,9 @@ use crate::engine::{
 
 pub(super) struct Handler;
 
+mod free_ultimate;
+mod paid_ultimate;
+
 pub(super) fn supports_consume_power_direct_skill(behavior: &ParsedBehavior) -> bool {
     matches!(behavior.args.as_slice(), [cost, skill_id] if *cost > 0 && *skill_id > 0)
 }
@@ -37,7 +40,7 @@ pub(super) fn supports_per_consume_ex_point_direct_use_skill(behavior: &ParsedBe
     matches!(
         behavior.args.as_slice(),
         [5, skill_id, 0, buff_id, 1] if *skill_id > 0 && *buff_id > 0
-    )
+    ) || paid_ultimate::parse(behavior).is_some()
 }
 
 pub(super) fn supports_direct_use_skill_two(behavior: &ParsedBehavior) -> bool {
@@ -392,6 +395,9 @@ impl BehaviorHandler for Handler {
                 ])
             }
             BehaviorKind::PerConsumeExPointDirectUseSkill => {
+                if let Some(rule) = paid_ultimate::parse(behavior) {
+                    return Some(rule.emit(context, super::command_origin(behavior)?));
+                }
                 let [5, skill_id, 0, buff_id, 1] = behavior.args.as_slice() else {
                     return Some(Vec::new());
                 };
@@ -437,6 +443,7 @@ impl BehaviorHandler for Handler {
                 invocation.target =
                     crate::engine::skill::action::SkillTarget::Explicit(context.target_uid);
                 invocation.mode = crate::engine::skill::action::SkillExecutionMode::Active;
+                invocation.frame_target = Some(context.target_uid);
                 // The cast follows the casting action's own after-attack and ally-action reactions.
                 invocation.start = crate::engine::skill::action::SkillStart::AfterCurrentAction;
                 Some(vec![RuleOp::Skill(invocation)])
@@ -506,12 +513,20 @@ impl BehaviorHandler for Handler {
                 Some(vec![RuleOp::Skill(invocation)])
             }
             BehaviorKind::DirectUseBigSkill => direct_big_skill_rule_ops(context, behavior),
+            BehaviorKind::FreeUltimate => free_ultimate::cast(context),
             BehaviorKind::DirectUseGroupAndStarSkill => {
                 let [group, star, ..] = behavior.args.as_slice() else {
                     return Some(Vec::new());
                 };
                 let Some(skill_id) =
                     skill_from_group_and_star(context.pool, context.source_uid, *group, *star)
+                        .or_else(|| {
+                            (context.target_uid != context.source_uid)
+                                .then(|| {
+                                    loadout_skill(context.pool, context.source_uid, *group, *star)
+                                })
+                                .flatten()
+                        })
                 else {
                     return Some(Vec::new());
                 };
@@ -643,6 +658,12 @@ impl BehaviorHandler for Handler {
             }
             _ => None,
         }
+    }
+
+    fn supports_slot(slot: &crate::engine::skill::effect::SkillEffectSlot) -> bool {
+        slot.behavior.spec.kind != BehaviorKind::PerConsumeExPointDirectUseSkill
+            || paid_ultimate::parse(&slot.behavior).is_none()
+            || paid_ultimate::supports_slot(slot)
     }
 
     fn output_owner(behavior: &ParsedBehavior, op: &RuleOp, _index: usize) -> Option<OutputOwner> {

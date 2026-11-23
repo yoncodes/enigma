@@ -126,7 +126,7 @@ fn death_outside_the_subscriber_group_supersedes_its_pending_transition() {
             .outcomes
             .iter()
             .filter_map(|outcome| match outcome {
-                RuleOutcome::DeathSettlement(death) => Some(*death),
+                RuleOutcome::DeathSettlement(death) => Some(death.transition()),
                 _ => None,
             })
             .collect::<Vec<_>>(),

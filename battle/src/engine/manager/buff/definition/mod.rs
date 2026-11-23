@@ -11,7 +11,8 @@ enum BuffIncludeType {
     ReplaceExisting = 1,
     ExistingRefresh = 2,
     OwnUid = 3,
-    SeparateTimedCopies = 4,
+    /// A timed re-grant of a held buff ID replaces that copy with a new UID, whatever its source.
+    ReplaceTimedCopy = 4,
     PermanentMechanicCarrier = 5,
     SharedTypeFamily = 6,
     ReapplyReserve = 7,
@@ -28,19 +29,14 @@ enum BuffIncludeType {
 }
 
 impl BuffIncludeType {
-    const STACK_TYPES: [Self; 4] = [
-        Self::Stacked,
-        Self::Stacked12,
-        Self::Stacked14,
-        Self::TimedIndependentStacks,
-    ];
-    const LAYER_TYPES: [Self; 5] = [
+    const STACK_TYPES: [Self; 3] = [Self::Stacked, Self::Stacked12, Self::TimedIndependentStacks];
+    const LAYER_TYPES: [Self; 4] = [
         Self::Stacked,
         Self::Layer,
         Self::Stacked12,
-        Self::Stacked14,
         Self::TimedIndependentStacks,
     ];
+    const CAPPED_COPY_TYPES: [Self; 2] = [Self::Stacked14, Self::CappedSeparateCopies];
 
     fn id(self) -> i32 {
         self as i32
@@ -51,7 +47,7 @@ impl BuffIncludeType {
             1 => Self::ReplaceExisting,
             2 => Self::ExistingRefresh,
             3 => Self::OwnUid,
-            4 => Self::SeparateTimedCopies,
+            4 => Self::ReplaceTimedCopy,
             5 => Self::PermanentMechanicCarrier,
             6 => Self::SharedTypeFamily,
             7 => Self::ReapplyReserve,
@@ -74,7 +70,7 @@ impl BuffIncludeType {
             Self::ReplaceExisting => "ReplaceExisting",
             Self::ExistingRefresh => "ExistingRefresh",
             Self::OwnUid => "OwnUid",
-            Self::SeparateTimedCopies => "SeparateTimedCopies",
+            Self::ReplaceTimedCopy => "ReplaceTimedCopy",
             Self::PermanentMechanicCarrier => "PermanentMechanicCarrier",
             Self::SharedTypeFamily => "SharedTypeFamily",
             Self::ReapplyReserve => "ReapplyReserve",
@@ -276,6 +272,21 @@ impl BuffDefinition {
         &self,
         phase: crate::engine::skill::buff_act::wire::WirePhase,
     ) -> Vec<i32> {
+        self.wire_markers_for(phase, None)
+    }
+
+    pub(super) fn command_add_wire_markers(&self) -> Vec<i32> {
+        self.wire_markers_for(
+            crate::engine::skill::buff_act::wire::WirePhase::Add,
+            Some(crate::engine::event::kind::EventKind::BuffAdded),
+        )
+    }
+
+    fn wire_markers_for(
+        &self,
+        phase: crate::engine::skill::buff_act::wire::WirePhase,
+        transaction_event: Option<crate::engine::event::kind::EventKind>,
+    ) -> Vec<i32> {
         if phase == crate::engine::skill::buff_act::wire::WirePhase::Refresh
             && self.has_initial_state_refresh_projection()
         {
@@ -284,8 +295,9 @@ impl BuffDefinition {
         self.features
             .iter()
             .filter(|feature| {
-                phase == crate::engine::skill::buff_act::wire::WirePhase::Static
-                    || !mutates_max_hp(feature)
+                (phase == crate::engine::skill::buff_act::wire::WirePhase::Static
+                    || !mutates_max_hp(feature))
+                    && !transaction_owns_marker(feature, transaction_event)
             })
             .flat_map(|feature| {
                 feature
@@ -309,28 +321,9 @@ impl BuffDefinition {
             .iter()
             .filter(|feature| {
                 !mutates_max_hp(feature)
-                    && (!transaction_event.is_some_and(|event| {
-                        feature.values.first().copied().is_some_and(|act_id| {
-                            crate::engine::skill::buff_act::registry::find(
-                                act_id,
-                                &feature.act_type,
-                            )
-                            .is_some_and(|definition| {
-                                definition.transaction.handler.is_some()
-                                    && definition.transaction.wire_marker_events.contains(&event)
-                                    && definition
-                                        .runtime
-                                        .publications
-                                        .iter()
-                                        .find_map(|(registered, phase)| {
-                                            (*registered == event).then_some(*phase)
-                                        })
-                                        .unwrap_or(definition.runtime.publication)
-                                        == crate::engine::event::subscription::PublicationPhase::AfterPublish
-                            })
-                        })
-                    }) || (command_owns_attribute_markers
-                        && feature.kind == Some(BuffActKind::Attr)))
+                    && (!transaction_owns_marker(feature, transaction_event)
+                        || (command_owns_attribute_markers
+                            && feature.kind == Some(BuffActKind::Attr)))
             })
             .flat_map(|feature| {
                 feature
@@ -373,46 +366,21 @@ impl BuffDefinition {
 
     pub(super) fn marker_effect_num(
         &self,
-        game: &config::GameDB,
         effect_type: i32,
         act_common_params: Option<&str>,
     ) -> i32 {
-        use sonettobuf::effect_type_enum::EffectType;
-
-        if effect_type == EffectType::Exskillpointchange as i32 {
-            return super::active_feature(
-                Some(game),
-                0,
-                0,
-                true,
-                &sonettobuf::BuffInfo {
-                    buff_id: Some(self.id),
-                    count: Some(1),
-                    layer: Some(1),
-                    ..Default::default()
-                },
-                Some(self),
-            )
-            .iter()
-            .filter(|feature| {
-                crate::engine::skill::buff_act::is_kind(feature, BuffActKind::ExSkillPointChange)
-            })
-            .filter_map(|feature| feature.values.get(1))
-            .copied()
-            .sum();
+        if effect_type == sonettobuf::effect_type_enum::EffectType::Exskillpointchange as i32 {
+            return self
+                .features
+                .iter()
+                .filter(|feature| {
+                    feature.kind == Some(BuffActKind::ExSkillPointChange)
+                        && feature.arguments_supported
+                })
+                .filter_map(|feature| feature.values.get(1))
+                .sum();
         }
-        if ![
-            EffectType::Fixattrteamenergy as i32,
-            EffectType::Fixattrteamenergyandbuff as i32,
-        ]
-        .contains(&effect_type)
-        {
-            return 0;
-        }
-        act_common_params
-            .and_then(|raw| raw.split('#').nth(1))
-            .and_then(|value| value.parse().ok())
-            .unwrap_or_default()
+        crate::engine::buff::marker::effect_num(effect_type, act_common_params)
     }
 
     pub(super) fn state_snapshot_wire(&self, params: Option<&str>) -> Vec<(i32, Option<String>)> {
@@ -793,6 +761,20 @@ impl BuffDefinition {
         self.has_include_type(BuffIncludeType::Stacked)
     }
 
+    pub(super) fn non_attack_duration(&self) -> Option<crate::engine::skill::action::SkillPhase> {
+        self.features()
+            .iter()
+            .filter(|feature| feature.arguments_supported)
+            .find_map(|feature| {
+                let act = crate::engine::skill::buff_act::registry::find(
+                    *feature.values.first()?,
+                    &feature.act_type,
+                )?;
+                let (take_stage, phase) = act.runtime.non_attack_duration?;
+                (take_stage == self.take_stage).then_some(phase)
+            })
+    }
+
     pub(super) fn emits_existing_layer_on_refresh(&self) -> bool {
         [BuffIncludeType::Layer, BuffIncludeType::Stacked12]
             .into_iter()
@@ -840,6 +822,7 @@ impl BuffDefinition {
         (self.has_include_type(BuffIncludeType::Counted)
             || (!self.uses_stack_layer()
                 && !self.has_include_type(BuffIncludeType::ReplaceExisting)
+                && !self.has_include_type(BuffIncludeType::Stacked14)
                 && self.count > 0
                 && !self.reapplies_consumable_charge()))
             && self.count > 0
@@ -965,7 +948,6 @@ impl BuffDefinition {
     }
 
     pub(super) fn reapplies_as_new(&self) -> bool {
-        let timed_copy = self.has_include_type(BuffIncludeType::SeparateTimedCopies);
         self.shared_group_capacity().is_some()
             || self.same_type_capacity().is_some()
             || self.capped_separate_copy_limit().is_some()
@@ -974,7 +956,8 @@ impl BuffDefinition {
                 && !self.is_no_show
                 && self.duration > 0
                 && self.count == 0
-                && (timed_copy || !self.has_include_type(BuffIncludeType::ReplaceExisting)))
+                && !self.has_include_type(BuffIncludeType::ReplaceExisting)
+                && !self.has_include_type(BuffIncludeType::ReplaceTimedCopy))
     }
 
     fn reapplies_consumable_charge(&self) -> bool {
@@ -985,11 +968,18 @@ impl BuffDefinition {
             && !self.has_include_type(BuffIncludeType::ReplaceExisting)
     }
 
+    pub(super) fn stacks_as_copies(&self) -> bool {
+        self.has_include_type(BuffIncludeType::Stacked14)
+    }
+
     pub(super) fn capped_separate_copy_limit(&self) -> Option<i32> {
         self.include_entries
             .iter()
             .find_map(|(include_type, value)| {
-                (*include_type == BuffIncludeType::CappedSeparateCopies.id() && *value > 0)
+                (BuffIncludeType::CAPPED_COPY_TYPES
+                    .iter()
+                    .any(|kind| kind.id() == *include_type)
+                    && *value > 0)
                     .then_some(*value)
             })
     }
@@ -1046,9 +1036,11 @@ impl BuffDefinition {
     }
 
     pub(super) fn reserves_normal_uid_on_kept_reapply(&self) -> bool {
-        self.features
-            .iter()
-            .any(|feature| feature.kind == Some(BuffActKind::HeatScaleDecrCounter))
+        (self.stacks_as_copies() && self.capped_separate_copy_limit().is_some())
+            || self
+                .features
+                .iter()
+                .any(|feature| feature.kind == Some(BuffActKind::HeatScaleDecrCounter))
     }
 
     pub(super) fn is_enhanced_passive_variant_of(&self, incoming: &Self) -> bool {
@@ -1088,6 +1080,23 @@ impl BuffDefinition {
             .iter()
             .any(|(actual, _)| *actual == include_type.id())
     }
+}
+
+fn transaction_owns_marker(
+    feature: &super::feature::ResolvedBuffFeature,
+    event: Option<crate::engine::event::kind::EventKind>,
+) -> bool {
+    use crate::engine::{event::subscription::PublicationPhase, skill::buff_act::registry};
+
+    let (Some(event), Some(act_id)) = (event, feature.values.first().copied()) else {
+        return false;
+    };
+    registry::find(act_id, &feature.act_type).is_some_and(|definition| {
+        definition.transaction.handler.is_some()
+            && definition.transaction.wire_marker_events.contains(&event)
+            && registry::runtime_publication(act_id, &feature.act_type, event)
+                == PublicationPhase::AfterPublish
+    })
 }
 
 fn mutates_max_hp(feature: &super::feature::ResolvedBuffFeature) -> bool {

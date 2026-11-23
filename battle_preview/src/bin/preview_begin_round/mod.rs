@@ -22,8 +22,10 @@ use sonettobuf::{
 
 mod capture;
 mod damage_comparison;
+mod damage_export;
 
 use capture::CapturedBattle;
+use damage_export::DamageExport;
 
 fn main() -> anyhow::Result<()> {
     std::thread::Builder::new()
@@ -41,6 +43,7 @@ fn run() -> anyhow::Result<()> {
     let input_root = root.join("battles");
     let output_root = root.join("battles_gen");
     let mut args = env::args().skip(1).collect::<Vec<_>>();
+    let mut damage_export = DamageExport::from_args(&mut args)?;
     let resync = take_flag(&mut args, "--resync");
     let mut battles = Vec::new();
     let mut fixture_args = Vec::new();
@@ -81,8 +84,23 @@ fn run() -> anyhow::Result<()> {
         };
         let run = battle.and_then(|battle| {
             println!("battle start={}", battle.start.display());
-            replay_rounds(db, &battle, through, resync)
+            replay_rounds(db, &battle, through, resync, damage_export.as_mut())
         });
+        if let Some(export) = &mut damage_export {
+            match &run {
+                Err(error) => export.warning(&format!("through round {through}: {error:#}"))?,
+                Ok(run) => {
+                    if let Some(error) = &run.stopped {
+                        export.warning(error)?;
+                    }
+                    if let Some(last) = run.outcomes.last()
+                        && let Err(error) = &last.result
+                    {
+                        export.warning(&format!("round {}: {error}", last.index))?;
+                    }
+                }
+            }
+        }
         if let Ok(run) = run.as_ref() {
             for outcome in &run.auto_outcomes {
                 if let Err(error) = report_auto_input(
@@ -114,6 +132,10 @@ fn run() -> anyhow::Result<()> {
                 println!("{} round=ERROR {error:#}", input.display());
             }
         }
+    }
+
+    if let Some(export) = damage_export {
+        export.finish()?;
     }
 
     Ok(())
@@ -367,7 +389,7 @@ fn generate_reply(
 #[cfg(all(test, feature = "private-fixtures"))]
 fn replay_to_round(db: &'static config::GameDB, path: &Path) -> anyhow::Result<FightRound> {
     let battle = CapturedBattle::from_folder(path)?;
-    let outcome = replay_rounds(db, &battle, round_index(path)?, false)?
+    let outcome = replay_rounds(db, &battle, round_index(path)?, false, None)?
         .outcomes
         .pop()
         .ok_or_else(|| io::Error::other(format!("{} has no replayed round", path.display())))?;
@@ -409,6 +431,7 @@ fn replay_rounds(
     battle: &CapturedBattle,
     through: i32,
     resync: bool,
+    mut export: Option<&mut DamageExport>,
 ) -> anyhow::Result<ReplayRun> {
     let value = read_start_reply(&battle.start)?;
     let fight = value.get("fight").cloned().ok_or_else(|| {
@@ -418,6 +441,9 @@ fn replay_rounds(
         )
     })?;
     let fight: Fight = serde_json::from_value(fight)?;
+    if let Some(export) = export.as_deref_mut() {
+        export.battle(&battle.start, &fight, through, resync)?;
+    }
     let captured_start_round: FightRound = serde_json::from_value(
         value
             .get("round")
@@ -445,9 +471,10 @@ fn replay_rounds(
         .inherit_absorb_hurt_map_layout(&captured_start_round)
         .map_err(anyhow::Error::msg)?;
     runtime.extend_battle_rule_skills(tower_rule_skills);
-    let start_round = runtime
-        .start_round_with_determinism(opening_determinism)
-        .map_err(io::Error::other)?;
+    let start_round = DamageExport::phase(&mut export, "opening", 0, &battle.start, || {
+        runtime.start_round_with_determinism(opening_determinism)
+    })?
+    .map_err(io::Error::other)?;
     if damage_tracing_enabled() {
         eprintln!("  start-round damage:");
     }
@@ -476,6 +503,8 @@ fn replay_rounds(
         resync,
         &mut resynced,
         &mut run.cloth_outcomes,
+        &mut export,
+        0,
     ) {
         run.stopped = Some(format!("cloth before round 1: {error:#}"));
         return Ok(run);
@@ -493,15 +522,17 @@ fn replay_rounds(
                 &captured,
                 captured_extra_round(&round.cloth)?,
             )?;
-            for (index, cloth) in round.cloth.iter().enumerate() {
+            for (offset, cloth) in round.cloth.iter().enumerate() {
                 replay_cloth_input(
                     std::slice::from_ref(cloth),
                     &mut runtime,
                     resync,
                     &mut resynced,
                     &mut run.cloth_outcomes,
+                    &mut export,
+                    index,
                 )?;
-                replay_auto_inputs(&round.autos, index + 1, &runtime, &mut run.auto_outcomes)?;
+                replay_auto_inputs(&round.autos, offset + 1, &runtime, &mut run.auto_outcomes)?;
             }
             Ok((request, captured))
         })();
@@ -514,7 +545,9 @@ fn replay_rounds(
         };
         report_rule_issues(&captured);
         seed_round_determinism(&mut runtime, effect_catalog::global(), &captured);
-        let result = runtime.advance_round(request);
+        let result = DamageExport::phase(&mut export, "round", index, &round.reply, || {
+            runtime.advance_round(request)
+        })?;
         let failed = result.is_err();
         run.outcomes.push(RoundOutcome {
             index,
@@ -552,7 +585,9 @@ fn replay_auto_inputs(
         let request = auto_round_request(&input.request)?;
         outcomes.push(AutoOutcome {
             captured: input.reply.clone(),
-            generated: runtime.plan_auto_round(&request),
+            generated: runtime
+                .try_plan_auto_round(&request)
+                .map_err(anyhow::Error::msg)?,
         });
     }
     Ok(())
@@ -593,6 +628,8 @@ fn replay_cloth_input(
     resync: bool,
     resynced: &mut bool,
     outcomes: &mut Vec<ClothOutcome>,
+    export: &mut Option<&mut DamageExport>,
+    round: i32,
 ) -> anyhow::Result<()> {
     for input in inputs {
         let request = cloth_request(&input.request)?;
@@ -607,9 +644,11 @@ fn replay_cloth_input(
                 seed_observed_redeal(runtime, &cards).map_err(io::Error::other)?;
             }
         }
-        let generated = runtime.use_cloth_skill(request).ok_or_else(|| {
-            io::Error::other(format!("invalid cloth input: {}", input.request.display()))
-        })?;
+        let generated = DamageExport::phase(export, "cloth", round, &input.request, || {
+            runtime.use_cloth_skill(request).ok_or_else(|| {
+                io::Error::other(format!("invalid cloth input: {}", input.request.display()))
+            })
+        })??;
         if let Some(captured) = input.reply.as_ref() {
             outcomes.push(ClothOutcome {
                 captured: captured.clone(),

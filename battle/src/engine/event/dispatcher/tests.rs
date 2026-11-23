@@ -42,6 +42,7 @@ fn reaction_timing_selects_subscribers_before_rule_outputs() {
         crate::engine::event::subscription::ReactionTiming::AfterSkill,
         &BattleEvent::Kind(EventKind::SkillAction),
         false,
+        false,
     );
 
     assert_eq!(subscribers.skills.len(), 1);
@@ -132,6 +133,7 @@ fn shared_hit_delay_is_owned_by_the_subscription_timing() {
         crate::engine::event::subscription::ReactionTiming::Immediate,
         &hit(0),
         true,
+        false,
     );
     assert_eq!(normal.skills.len(), 1);
 
@@ -144,6 +146,7 @@ fn shared_hit_delay_is_owned_by_the_subscription_timing() {
         crate::engine::event::subscription::ReactionTiming::AfterSharedHit,
         &hit(3),
         true,
+        false,
     );
     assert_eq!(shared.skills.len(), 1);
 }
@@ -209,6 +212,7 @@ fn buff_act_subscription_selects_declared_reaction_timing_before_rule_outputs() 
             &mut subscribers,
             timing,
             &BattleEvent::Kind(EventKind::SkillAction),
+            false,
             false,
         );
 

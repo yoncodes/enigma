@@ -666,9 +666,7 @@ fn heat_tag_setup_selects_lingering_glow_over_bloodtithe() {
     );
 }
 
-#[test]
-fn no_action_round_reads_each_owners_committed_card_history() {
-    init_config();
+fn no_action_round_setup(opcode: i32) -> (TargetPool, BattleManagers, SkillEffectCatalog) {
     let entity = |uid| FightEntityInfo {
         uid: Some(uid),
         current_hp: Some(100),
@@ -711,7 +709,7 @@ fn no_action_round_reads_each_owners_committed_card_history() {
         TargetRequest::self_only(),
     );
     slot.conditions = vec![ParsedCondition {
-        opcode: 46301,
+        opcode,
         type_name: "NoActRound".to_owned(),
         kind: ParsedConditionKind::NoActionRound,
         raw_args: Vec::new(),
@@ -722,6 +720,107 @@ fn no_action_round_reads_each_owners_committed_card_history() {
         skill_id: 100,
         slots: vec![slot],
     });
+    (pool, managers, catalog)
+}
+
+#[test]
+fn after_settlement_no_action_round_waits_for_entity_settlement() {
+    init_config();
+    let (pool, mut managers, catalog) = no_action_round_setup(46304);
+
+    run_no_action_round(
+        &mut managers,
+        &pool,
+        &catalog,
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+        &[10, 20],
+    )
+    .unwrap();
+    assert_eq!(managers.ex_point.get(20), 0);
+
+    run_entity_settlement(
+        &mut managers,
+        &pool,
+        &catalog,
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+        &[10, 20],
+        SettlementSide::Attacker,
+    )
+    .unwrap();
+    assert_eq!(managers.ex_point.get(10), 0);
+    assert_eq!(managers.ex_point.get(20), 1);
+}
+
+#[test]
+fn after_settlement_no_action_round_counts_enemy_casts() {
+    init_config();
+    let (_, _, mut catalog) = no_action_round_setup(46304);
+    catalog.insert(ParsedSkillEffect {
+        skill_id: 999,
+        slots: Vec::new(),
+    });
+    let entity = |uid| FightEntityInfo {
+        uid: Some(uid),
+        current_hp: Some(100),
+        ex_point: Some(0),
+        passive_skill: vec![100],
+        ..Default::default()
+    };
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                current_hp: Some(100),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![entity(-1), entity(-2)],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+
+    run_ai_actions(
+        &fight,
+        &mut managers,
+        &pool,
+        &catalog,
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+        [AiSkillChoice {
+            source_uid: -1,
+            skill_id: 999,
+            target_uid: 10,
+        }],
+        &[],
+    )
+    .unwrap();
+    let caster_moxie = managers.ex_point.get(-1);
+    run_entity_settlement(
+        &mut managers,
+        &pool,
+        &catalog,
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+        &[-1, -2],
+        SettlementSide::Defender,
+    )
+    .unwrap();
+
+    assert_eq!(managers.ex_point.get(-1), caster_moxie);
+    assert_eq!(managers.ex_point.get(-2), 1);
+}
+
+#[test]
+fn no_action_round_reads_each_owners_committed_card_history() {
+    init_config();
+    let (pool, mut managers, catalog) = no_action_round_setup(46301);
 
     run_no_action_round(
         &mut managers,

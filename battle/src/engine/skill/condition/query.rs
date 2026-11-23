@@ -1,5 +1,12 @@
 use super::{ParsedCondition, ParsedConditionKind};
 
+pub fn is_random(condition: &ParsedCondition) -> bool {
+    matches!(
+        condition.kind,
+        ParsedConditionKind::Random { .. } | ParsedConditionKind::Rouge2AttributeRandom { .. }
+    )
+}
+
 pub fn find<'a>(
     conditions: &'a [ParsedCondition],
     predicate: &impl Fn(&ParsedCondition) -> bool,

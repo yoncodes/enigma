@@ -82,6 +82,7 @@ fn emitted_ops(power: i32, cost: i32, hand: Vec<CardInfo>) -> Vec<RuleOp> {
         team: 1,
         emitter_uid: 10,
         cards: Vec::new(),
+        action_count: 0,
     };
     let pool = TargetPool::from_fight(&fight);
     let mut determinism = RoundDeterminism::default();
@@ -175,6 +176,7 @@ fn ignores_the_other_teams_queue() {
         team: 2,
         emitter_uid: -1,
         cards: Vec::new(),
+        action_count: 0,
     };
     let mut determinism = RoundDeterminism::default();
     let mut modifiers = SkillModifiers::default();

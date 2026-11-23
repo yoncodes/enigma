@@ -1,4 +1,5 @@
 use super::*;
+use crate::engine::event::payload::BuffExpiry;
 
 impl BuffManager {
     /// Applies a validated `BuffPlan` exactly once without re-resolving its policies.
@@ -9,9 +10,25 @@ impl BuffManager {
         let changes = match plan.action {
             BuffPlanAction::Grant(plan) => {
                 let markers = plan.refresh_initial_state_markers();
+                let burn = plan.burn_application();
+                let refresh = plan.layer_refresh.is_some();
+                let replaced_uids = plan.replacement_uids.clone();
+                let snapshot_markers = plan.snapshot_markers;
                 let change = self.commit_grant_plan(hp, *plan);
-                BuffChanges::new(catalog, origin, change)
-                    .with_refresh_initial_state_markers(markers)
+                let mut changes = BuffChanges::new(catalog, origin, change)
+                    .with_refresh_initial_state_markers(markers);
+                changes.replaced_uids = replaced_uids;
+                changes.leading_pre_markers = snapshot_markers
+                    && changes
+                        .change
+                        .added
+                        .as_ref()
+                        .is_some_and(|added| !added.pre_markers.is_empty());
+                if changes.change.rejected.is_none() && (refresh || changes.change.added.is_some())
+                {
+                    changes.burn_application = burn;
+                }
+                changes
             }
             BuffPlanAction::GrantInternalChild(plan) => {
                 let change = self.commit_grant_plan(hp, *plan);
@@ -66,52 +83,50 @@ impl BuffManager {
             BuffPlanAction::Replace(plan) => {
                 BuffChanges::new(catalog, origin, self.commit_replace_plan(hp, *plan))
             }
-            BuffPlanAction::Remove(plan) => {
-                let duration_expired = plan.duration_expired;
-                let changes = BuffChanges::new(
-                    catalog,
-                    origin,
-                    BuffReplaceResult {
-                        removed: plan
-                            .buff_uids
-                            .into_iter()
-                            .flat_map(|buff_uid| {
-                                let Some(index) = self.buffs.iter().position(|active| {
-                                    active.owner_uid == plan.target_uid
-                                        && active.buff.uid == Some(buff_uid)
-                                }) else {
-                                    return Vec::new();
-                                };
-                                let mut removed = self.remove_at(index, plan.config_effect);
-                                for result in &mut removed {
-                                    match plan.snapshot {
-                                        RemoveSnapshot::Preserve => {}
-                                        RemoveSnapshot::ClearAmount => {
-                                            result.buff.layer = Some(0);
-                                        }
-                                        RemoveSnapshot::ClearCount => {
-                                            result.buff.count = Some(0);
-                                        }
-                                        RemoveSnapshot::ClearDuration => {
-                                            result.buff.duration = Some(0);
-                                        }
+            BuffPlanAction::Remove(plan) => BuffChanges::new(
+                catalog,
+                origin,
+                BuffReplaceResult {
+                    removed: plan
+                        .buff_uids
+                        .into_iter()
+                        .flat_map(|buff_uid| {
+                            let Some(index) = self.buffs.iter().position(|active| {
+                                active.owner_uid == plan.target_uid
+                                    && active.buff.uid == Some(buff_uid)
+                            }) else {
+                                return Vec::new();
+                            };
+                            let mut removed = self.remove_at(index, plan.config_effect);
+                            for result in &mut removed {
+                                if plan.duration_expired {
+                                    result.expiry = BuffExpiry::Forced;
+                                }
+                                match plan.snapshot {
+                                    RemoveSnapshot::Preserve => {}
+                                    RemoveSnapshot::ClearAmount => {
+                                        result.buff.layer = Some(0);
+                                    }
+                                    RemoveSnapshot::ClearCount => {
+                                        result.buff.count = Some(0);
+                                    }
+                                    RemoveSnapshot::ClearDuration => {
+                                        result.buff.duration = Some(0);
+                                    }
+                                    RemoveSnapshot::MarkExpired => {
+                                        result.buff.duration = Some(-1);
                                     }
                                 }
-                                removed
-                            })
-                            .collect(),
-                        added: None,
-                        refreshed: Vec::new(),
-                        rejected: None,
-                        fanout: Vec::new(),
-                    },
-                );
-                if duration_expired {
-                    changes.with_duration_expiry()
-                } else {
-                    changes
-                }
-            }
+                            }
+                            removed
+                        })
+                        .collect(),
+                    added: None,
+                    refreshed: Vec::new(),
+                    rejected: None,
+                    fanout: Vec::new(),
+                },
+            ),
             BuffPlanAction::SetAmount(plan) => BuffChanges::set_amount(
                 catalog,
                 origin,
@@ -294,7 +309,11 @@ impl BuffManager {
                     fanout: plans
                         .into_iter()
                         .filter_map(|plan| {
-                            let added = self.commit_fanout(hp, std::slice::from_ref(&plan.fanout));
+                            let added = self.commit_fanout(
+                                hp,
+                                Some(plan.carrier_buff_uid),
+                                std::slice::from_ref(&plan.fanout),
+                            );
                             (!added.is_empty()).then_some(BuffFanoutResult {
                                 rule: plan.fanout.spec.rule,
                                 emitter_uid: plan.emitter_uid,
@@ -302,6 +321,7 @@ impl BuffManager {
                                 carrier_buff_id: plan.carrier_buff_id,
                                 added,
                                 refreshed: Vec::new(),
+                                allies: Vec::new(),
                             })
                         })
                         .collect(),
@@ -334,7 +354,6 @@ impl BuffManager {
                         });
                 BuffChanges::without_refresh_echo(catalog, origin, change)
                     .with_lifecycle_transitions(transitions)
-                    .with_duration_expiry()
             }
             BuffPlanAction::SyncRoundStartDuration(plans) => BuffChanges::new(
                 catalog,
@@ -400,6 +419,9 @@ impl BuffManager {
             let Some(uid) = fanout.replacement_uid else {
                 continue;
             };
+            if fanout.replaces_layered_copy() {
+                continue;
+            }
             planned_removed.extend(
                 self.delete(fanout.spec.route.target_uid, uid)
                     .into_iter()
@@ -429,6 +451,23 @@ impl BuffManager {
                 changes
             },
         );
+        let mut copy_trims = self.plan_layer_halo_copy_trims(&stack_trim);
+        let replacing_rules = plan
+            .fanout
+            .iter()
+            .filter(|fanout| fanout.replaces_layered_copy())
+            .map(|fanout| fanout.spec.rule)
+            .collect::<Vec<_>>();
+        let (per_ally_fanout, fanout): (Vec<_>, Vec<_>) = plan.fanout.iter().partition(|fanout| {
+            copy_trims.owns(fanout.spec.rule) || replacing_rules.contains(&fanout.spec.rule)
+        });
+        copy_trims.own_copy_replacements(&per_ally_fanout, plan.route.buff_id);
+        let fanout = fanout.into_iter().cloned().collect::<Vec<_>>();
+        let (per_ally_refreshes, fanout_refreshes): (Vec<_>, Vec<_>) = plan
+            .fanout_refreshes
+            .iter()
+            .partition(|refresh| copy_trims.owns(refresh.spec.rule));
+        let fanout_refreshes = fanout_refreshes.into_iter().cloned().collect::<Vec<_>>();
         for uid in &plan.pre_add_uids {
             super::uid_policy::commit(self, plan.route.target_uid, *uid);
         }
@@ -450,7 +489,7 @@ impl BuffManager {
             &plan.refresh_uids,
             plan.layer_refresh,
             layer_refresh_uid,
-            &plan.fanout,
+            &fanout,
         );
         if let Some(progress) = plan.transition_progress {
             self.transition_progress
@@ -458,7 +497,17 @@ impl BuffManager {
         }
         change
             .fanout
-            .extend(self.commit_fanout_refreshes(&plan.fanout_refreshes));
+            .extend(self.commit_fanout_refreshes(&fanout_refreshes));
+        if !copy_trims.is_empty() || !per_ally_fanout.is_empty() {
+            let carrier_buff_uid = change.added.as_ref().and_then(|added| added.buff.uid);
+            change.fanout.extend(self.commit_layer_halo_allies(
+                hp,
+                carrier_buff_uid,
+                &per_ally_fanout,
+                &per_ally_refreshes,
+                copy_trims,
+            ));
+        }
         change.removed.splice(0..0, stack_trim.removed.drain(..));
         change
             .refreshed
@@ -482,15 +531,17 @@ impl BuffManager {
         {
             added.buff = update.after;
             for marker in &mut added.markers {
-                marker.effect_num = plan.definition.marker_effect_num(
-                    self.catalog().game_data(),
-                    marker.effect_type,
-                    added.buff.act_common_params.as_deref(),
-                );
+                marker.effect_num = plan
+                    .definition
+                    .marker_effect_num(marker.effect_type, added.buff.act_common_params.as_deref());
             }
         }
         if let (Some(added), Some(act_info)) = (change.added.as_mut(), initial_act_info_markers) {
-            let target_uid = added.target_uid;
+            let target_uid = if plan.snapshot_markers {
+                0
+            } else {
+                added.target_uid
+            };
             let buff_uid = added.buff.uid.unwrap_or_default();
             added
                 .pre_markers

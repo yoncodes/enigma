@@ -57,23 +57,23 @@ fn captured_state(info: &[BuffActInfo], value: i32) -> bool {
 }
 
 #[test]
-fn snapshots_the_after_add_attribute_into_each_halo_copy() {
+fn first_grant_snapshots_the_current_attribute_into_each_halo_copy() {
     let mut managers = managers();
     let changes = grant(&mut managers);
     let added = changes.change.added.as_ref().expect("field carrier");
 
-    assert!(captured_state(&added.buff.act_info, 750));
+    assert!(captured_state(&added.buff.act_info, 550));
     let copies = &changes.fanout[0].added;
     assert_eq!(copies.len(), 3);
     assert!(
         copies
             .iter()
-            .all(|copy| captured_state(&copy.buff.act_info, 750))
+            .all(|copy| captured_state(&copy.buff.act_info, 550))
     );
     for uid in [-4, -1, -2, -3] {
         assert_eq!(
             managers.buff.fixed_attribute_delta(uid, AttrId::DmgBonus),
-            750
+            550
         );
     }
 }
@@ -98,7 +98,11 @@ fn replacement_keeps_the_captured_value() {
     let added = changes.change.added.as_ref().expect("replacement carrier");
 
     assert!(captured_state(&added.buff.act_info, 600));
-    let copies = &changes.fanout[0].added;
+    let allies = &changes.fanout[0].allies;
+    let copies = allies
+        .iter()
+        .filter_map(|ally| ally.added.as_ref())
+        .collect::<Vec<_>>();
     assert_eq!(copies.len(), 3);
     assert!(
         copies
@@ -106,12 +110,28 @@ fn replacement_keeps_the_captured_value() {
             .all(|copy| captured_state(&copy.buff.act_info, 600))
     );
     assert!(old_copy_uids.iter().all(|uid| {
+        allies.iter().any(|ally| {
+            ally.replaced.iter().any(|removed| {
+                removed.buff.uid == Some(*uid) && removed.target_uid == ally.target_uid
+            })
+        })
+    }));
+    assert_eq!(
         changes
             .change
             .removed
             .iter()
-            .any(|removed| removed.buff.uid == Some(*uid))
+            .map(|removed| removed.target_uid)
+            .collect::<Vec<_>>(),
+        vec![-4]
+    );
+    assert!(copies.iter().all(|copy| {
+        copy.pre_markers
+            .iter()
+            .all(|marker| marker.target_uid == 0 && marker.act_id == 1162)
+            && !copy.pre_markers.is_empty()
     }));
+    assert!(changes.leading_pre_markers);
     assert!(
         copies
             .iter()
@@ -124,6 +144,62 @@ fn replacement_keeps_the_captured_value() {
             600
         );
     }
+}
+
+#[test]
+fn regrant_publishes_fresh_and_replaced_copies_through_one_per_ally_fanout() {
+    let mut managers = managers();
+    grant(&mut managers);
+    let cleansed = managers.buff.buff_id_uid(-1, 31560152).unwrap();
+    managers.buff.delete(-1, cleansed);
+    let changes = grant(&mut managers);
+
+    assert_eq!(changes.fanout.len(), 1);
+    let fanout = &changes.fanout[0];
+    assert!(fanout.added.is_empty());
+    assert_eq!(
+        fanout
+            .allies
+            .iter()
+            .map(|ally| (ally.target_uid, ally.replaced.len(), ally.added.is_some()))
+            .collect::<Vec<_>>(),
+        vec![(-1, 0, true), (-2, 1, true), (-3, 1, true)]
+    );
+}
+
+#[test]
+fn regrant_right_after_its_own_copies_continues_the_child_uid_lane() {
+    let uids = |changes: &crate::engine::manager::buff::BuffChanges| {
+        let master = changes
+            .change
+            .added
+            .as_ref()
+            .and_then(|added| added.buff.uid);
+        let copies = changes
+            .fanout
+            .iter()
+            .flat_map(|fanout| {
+                fanout
+                    .added
+                    .iter()
+                    .chain(fanout.allies.iter().filter_map(|ally| ally.added.as_ref()))
+            })
+            .filter_map(|copy| copy.buff.uid)
+            .collect::<Vec<_>>();
+        (master.unwrap(), copies)
+    };
+    let mut managers = managers();
+    let (first, first_copies) = uids(&grant(&mut managers));
+    assert_eq!(first_copies, [first + 1, first + 2, first + 3]);
+    let (second, second_copies) = uids(&grant(&mut managers));
+    assert_eq!(second, first + 4);
+    assert_eq!(second_copies, [second + 1, second + 2, second + 3]);
+
+    managers.buff.add(&managers.hp, -4, -1, 31560185, 0);
+    let unrelated = managers.buff.buff_id_uid(-1, 31560185).unwrap();
+    assert_eq!(unrelated, second + 5);
+    let (third, _) = uids(&grant(&mut managers));
+    assert_eq!(third, unrelated + 2);
 }
 
 #[test]

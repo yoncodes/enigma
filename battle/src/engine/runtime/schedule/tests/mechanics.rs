@@ -96,6 +96,7 @@ fn compiled_team_tag_setup_enables_impromptu_and_single_owner_bloodtithe_reactio
         attacker: Some(FightTeam {
             entitys: vec![FightEntityInfo {
                 uid: Some(10),
+                model_id: Some(3120),
                 team_type: Some(1),
                 current_hp: Some(20_000),
                 attr: Some(HeroAttribute {
@@ -291,7 +292,10 @@ fn lorentz_passive_uses_team_tags_for_moxie_and_snapshots_lingering_glow_bonuses
         .execute_gauge(crate::engine::manager::gauge::GaugeCommand::new(
             gauge_origin,
             crate::engine::mechanic::lingering_glow::key(1),
-            crate::engine::manager::gauge::GaugeOperation::ChangeValue { delta: 250 },
+            crate::engine::manager::gauge::GaugeOperation::AccumulateRawValue {
+                amount: 38_600,
+                stream: 1,
+            },
         ))
         .unwrap();
 
@@ -313,24 +317,51 @@ fn lorentz_passive_uses_team_tags_for_moxie_and_snapshots_lingering_glow_bonuses
         .unwrap();
     }
 
+    let assert_snapshots = |managers: &BattleManagers, damage_bonus, incantation_might| {
+        for uid in [10, 11] {
+            for (buff_id, expected) in [(313901734, damage_bonus), (313901744, incantation_might)] {
+                let buff = managers
+                    .buff
+                    .active_for(uid)
+                    .find(|buff| buff.buff_id == Some(buff_id))
+                    .unwrap();
+                assert_eq!(buff.act_info[0].act_id, Some(1053));
+                assert_eq!(buff.act_info[0].param, vec![expected]);
+            }
+        }
+    };
+    assert_snapshots(&managers, 42, 23);
     for uid in [10, 11] {
         assert!(managers.buff.has_buff_id(uid, 31390190));
         assert!(managers.buff.has_buff_id(uid, 31390152));
-        for (buff_id, expected) in [(313901734, 275), (313901744, 150)] {
-            let buff = managers
-                .buff
-                .active_for(uid)
-                .find(|buff| buff.buff_id == Some(buff_id))
-                .unwrap();
-            assert_eq!(buff.act_info[0].act_id, Some(1053));
-            assert_eq!(buff.act_info[0].param, vec![expected]);
-        }
     }
 
     run_attacker_round_end(&mut managers, &pool, catalog, &mut determinism, context).unwrap();
 
     assert_eq!(managers.ex_point.get(10), 5);
     assert_eq!(managers.ex_point.get(11), 1);
+
+    managers
+        .execute_gauge(crate::engine::manager::gauge::GaugeCommand::new(
+            gauge_origin,
+            crate::engine::mechanic::lingering_glow::key(1),
+            crate::engine::manager::gauge::GaugeOperation::AccumulateRawValue {
+                amount: 650_000,
+                stream: 1,
+            },
+        ))
+        .unwrap();
+    crate::engine::runtime::drain::run_setup_stage(
+        &mut managers,
+        &pool,
+        catalog,
+        &mut determinism,
+        context,
+        SetupStage::RoundStart,
+        1,
+    )
+    .unwrap();
+    assert_snapshots(&managers, 660, 360);
 }
 
 #[test]
@@ -457,37 +488,51 @@ fn action_queue_commit_collects_played_card_energy_as_inspiration() {
         }))
         .unwrap();
 
+    let queue = crate::engine::round::command::PlayerActionQueue {
+        team: 1,
+        emitter_uid: 99998,
+        actions: managers
+            .card
+            .played()
+            .iter()
+            .map(|played| {
+                let mut card = played.card.clone();
+                card.skill_id = Some(played.skill_id);
+                crate::engine::round::command::PlayerQueuedAction::Card(Box::new(card))
+            })
+            .collect(),
+    };
     let result = run_action_queue_committed(
         &mut managers,
         &pool,
         &SkillEffectCatalog::default(),
         &mut RoundDeterminism::default(),
         TargetContext::default(),
-        1,
-        99998,
-        false,
+        queue,
+        &Default::default(),
     )
     .unwrap();
 
     assert!(matches!(
         result.outcomes.as_slice(),
         [
-            RuleOutcome::Card(cards),
             RuleOutcome::Gauge(change),
             RuleOutcome::Card(queued)
         ]
-            if cards.kind == crate::engine::manager::card::CardChangeKind::ActionQueueCommitted
-                && change.applied_delta == 3
+            if change.applied_delta == 3
                 && queued.kind == crate::engine::manager::card::CardChangeKind::UseCardQueued
     ));
-    assert_eq!(
-        result
-            .events
-            .iter()
-            .map(BattleEvent::kind)
-            .collect::<Vec<_>>(),
-        vec![EventKind::ActionQueueCommitted, EventKind::GaugeChanged]
-    );
+    assert!(matches!(
+        result.events.as_slice(),
+        [
+            BattleEvent::ActionQueueSubmitted { .. },
+            BattleEvent::ActionQueueCommitted {
+                action_count: 1,
+                ..
+            },
+            BattleEvent::GaugeChanged(_),
+        ]
+    ));
     assert_eq!(
         managers.gauge.get(inspiration_key(99998)).unwrap().current,
         3

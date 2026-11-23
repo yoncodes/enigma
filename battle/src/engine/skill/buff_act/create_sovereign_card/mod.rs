@@ -1,6 +1,9 @@
 use crate::engine::{
     event::{kind::EventKind, payload::BattleEvent},
-    manager::card::{CardCommand, CardInsertSovereign},
+    manager::{
+        buff::{BuffCommand, BuffConsume, BuffSelector, DepletedBuff},
+        card::{CardCommand, CardInsertSovereign},
+    },
     skill::rule::{
         DefinitionKey,
         output::{BattleCommand, RuleOp},
@@ -79,11 +82,10 @@ pub fn scoped_rule_ops(
     {
         return Ok(Vec::new());
     }
-    let [skill_id, max_position, resource_buff_id, _max_consume] = subscriber.args.as_slice()
-    else {
+    let [skill_id, max_position, resource_buff_id, max_consume] = subscriber.args.as_slice() else {
         return Err(error(GenerationFailure::InvalidContext));
     };
-    if let Some(resource) = context
+    let resource = context
         .managers
         .buff
         .active_for(subscriber.owner_uid)
@@ -91,11 +93,21 @@ pub fn scoped_rule_ops(
             buff.buff_id == Some(*resource_buff_id)
                 && (buff.count.unwrap_or_default() > 0 || buff.layer.unwrap_or_default() > 0)
         })
+        .map(|buff| {
+            (
+                buff.uid.unwrap_or_default(),
+                buff.count.unwrap_or_default(),
+                buff.layer.unwrap_or_default(),
+            )
+        });
+    // Only stacks are spent on the card; a counted resource has no known meaning.
+    if let Some((resource_uid, count, layer)) = resource
+        && count > 0
     {
         return Err(error(GenerationFailure::PositiveResource {
-            resource_uid: resource.uid.unwrap_or_default(),
-            count: resource.count.unwrap_or_default(),
-            layer: resource.layer.unwrap_or_default(),
+            resource_uid,
+            count,
+            layer,
         }));
     }
     let hero_id = context
@@ -105,16 +117,36 @@ pub fn scoped_rule_ops(
         .ok_or_else(|| error(GenerationFailure::MissingOwner))?;
     let origin = super::command_origin(subscriber)
         .ok_or_else(|| error(GenerationFailure::InvalidContext))?;
-    Ok(vec![BuffActRuleOp::subscriber_from_owner(RuleOp::Command(
-        BattleCommand::Card(CardCommand::InsertSovereign(CardInsertSovereign {
+    let mut ops = vec![BattleCommand::Card(CardCommand::InsertSovereign(
+        CardInsertSovereign {
             origin,
             target_uid: subscriber.owner_uid,
             skill_id: *skill_id,
             hero_id,
             max_position: *max_position as usize,
             team_type: subscriber.team_type,
-        })),
-    ))])
+        },
+    ))];
+    if let Some((resource_uid, _, layer)) = resource {
+        let spent = layer.min(*max_consume);
+        ops.push(BattleCommand::Buff(BuffCommand::Consume(BuffConsume {
+            origin,
+            target_uid: subscriber.owner_uid,
+            selector: BuffSelector::Uid(resource_uid),
+            amount: spent,
+            depleted: DepletedBuff::Remove,
+        })));
+        ops.push(BattleCommand::Card(CardCommand::ShiftSovereign {
+            origin,
+            owner_uid: subscriber.owner_uid,
+            distance: spent as usize,
+            team_type: subscriber.team_type,
+        }));
+    }
+    Ok(ops
+        .into_iter()
+        .map(|command| BuffActRuleOp::subscriber_from_owner(RuleOp::Command(command)))
+        .collect())
 }
 
 #[cfg(test)]

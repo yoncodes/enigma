@@ -1,4 +1,5 @@
 use super::*;
+use crate::test_support::{contains_effect, contains_skill, find_step};
 
 #[test]
 fn side_round_end_schedules_keep_the_proven_lane_order() {
@@ -112,69 +113,187 @@ fn side_round_end_schedules_keep_the_proven_lane_order() {
 }
 
 #[test]
-fn defeated_conduit_devices_refresh_only_after_terminal_commitment() {
+fn conduit_roster_refreshes_at_the_matching_round_end_boundary() {
     init_config();
+    let entity = |uid, model_id, team_type| FightEntityInfo {
+        uid: Some(uid),
+        model_id: Some(model_id),
+        team_type: Some(team_type),
+        current_hp: Some(100),
+        attr: Some(HeroAttribute {
+            hp: Some(100),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
     let fight = Fight {
         attacker: Some(FightTeam {
-            entitys: vec![
-                FightEntityInfo {
-                    uid: Some(10),
-                    model_id: Some(3149),
-                    current_hp: Some(100),
-                    ..Default::default()
-                },
-                FightEntityInfo {
-                    uid: Some(11),
-                    model_id: Some(3134),
-                    current_hp: Some(100),
-                    ..Default::default()
-                },
-            ],
+            entitys: vec![entity(10, 3144, 1), entity(11, 3156, 1)],
             ..Default::default()
         }),
         defender: Some(FightTeam {
-            entitys: vec![FightEntityInfo {
-                uid: Some(-1),
-                current_hp: Some(100),
-                ..Default::default()
-            }],
+            entitys: vec![entity(-1, 1001, 2)],
             ..Default::default()
         }),
         ..Default::default()
     };
     let pool = TargetPool::from_fight(&fight);
-    let mut managers = BattleManagers::seeded(&fight);
-    managers.hp.lose(10, 100, -1);
-    let mut determinism = RoundDeterminism::default();
-    let catalog = SkillEffectCatalog::default();
-
-    let active = run_terminal_conduit_roster_refresh(
-        &mut managers,
+    let mut uncommitted = BattleManagers::seeded(&fight);
+    uncommitted.hp.lose(10, 100, -1);
+    run_after_ai_round_end(
+        &mut uncommitted,
         &pool,
-        &catalog,
-        &mut determinism,
+        &SkillEffectCatalog::default(),
+        &mut RoundDeterminism::default(),
         TargetContext::default(),
     )
     .unwrap();
-    assert!(active.frames.is_empty());
+    assert_eq!(uncommitted.conduit.selected_group(10), Some(1));
+
+    let commit_death = |managers: &mut BattleManagers| {
+        use crate::engine::manager::hp::{HpCommand, HpKill};
+
+        drain::run(
+            managers,
+            &pool,
+            &SkillEffectCatalog::default(),
+            &mut RoundDeterminism::default(),
+            TargetContext::default(),
+            [RuleOp::Command(BattleCommand::Hp(HpCommand::Kill(
+                HpKill {
+                    origin: CommandOrigin {
+                        domain: RuleDomain::Lifecycle,
+                        key: DefinitionKey::new(0, "TestDeath"),
+                    },
+                    source_uid: -1,
+                    target_uid: 10,
+                    config_effect: 1,
+                },
+            )))],
+        )
+        .unwrap();
+    };
+    let mut managers = BattleManagers::seeded(&fight);
+    commit_death(&mut managers);
     assert_eq!(managers.conduit.selected_group(10), Some(1));
 
-    assert!(managers.commit_terminal(crate::engine::round::outcome::BattleOutcome::Defeat));
-    let terminal = run_terminal_conduit_roster_refresh(
+    let result = run_after_ai_round_end(
         &mut managers,
         &pool,
-        &catalog,
-        &mut determinism,
+        &SkillEffectCatalog::default(),
+        &mut RoundDeterminism::default(),
         TargetContext::default(),
     )
     .unwrap();
+
     assert_eq!(managers.conduit.selected_group(10), None);
-    let steps = crate::engine::packet::timeline::project(&terminal.frames).unwrap();
-    assert_eq!(steps.len(), 1);
+    assert_eq!(managers.conduit.selected_group(11), Some(1));
+    use crate::engine::manager::conduit::{ConduitCommand, ConduitError};
     assert_eq!(
-        steps[0].act_effect[0].effect_type,
-        Some(sonettobuf::effect_type_enum::EffectType::Initdevice as i32)
+        managers.conduit.execute(ConduitCommand::SelectGroup {
+            source_uid: 10,
+            group: 2,
+        }),
+        Err(ConduitError::MissingDevice(10))
     );
+    assert!(result.frames.iter().any(|frame| {
+        frame.owner == FrameOwner::RoundPhase(RoundPhase::PostSettlementConduitRosterRefresh)
+    }));
+    assert!(!result.frames.iter().any(|frame| {
+        frame.owner == FrameOwner::RoundPhase(RoundPhase::TerminalConduitRosterRefresh)
+    }));
+    let steps = crate::engine::packet::timeline::project(&result.frames).unwrap();
+    let effects = steps
+        .iter()
+        .map(|step| &step.act_effect[0])
+        .collect::<Vec<_>>();
+    let clear = effects
+        .iter()
+        .position(|effect| {
+            effect.effect_type
+                == Some(sonettobuf::effect_type_enum::EffectType::Clearuniversalcard as i32)
+        })
+        .unwrap();
+    let refresh = effects
+        .iter()
+        .position(|effect| {
+            effect.effect_type == Some(sonettobuf::effect_type_enum::EffectType::Initdevice as i32)
+        })
+        .unwrap();
+    assert!(clear < refresh);
+    assert_eq!(
+        effects[refresh]
+            .device_area_info
+            .as_ref()
+            .unwrap()
+            .devices
+            .iter()
+            .map(|device| device.uid)
+            .collect::<Vec<_>>(),
+        vec![Some(11)]
+    );
+
+    let mut terminal_managers = BattleManagers::seeded(&fight);
+    commit_death(&mut terminal_managers);
+    assert!(
+        terminal_managers.commit_terminal(crate::engine::round::outcome::BattleOutcome::Defeat)
+    );
+    let terminal = run_after_ai_round_end(
+        &mut terminal_managers,
+        &pool,
+        &SkillEffectCatalog::default(),
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+    )
+    .unwrap();
+    let terminal_steps = crate::engine::packet::timeline::project(&terminal.frames).unwrap();
+    assert!(terminal.frames.iter().any(|frame| {
+        frame.owner == FrameOwner::RoundPhase(RoundPhase::TerminalConduitRosterRefresh)
+    }));
+    assert!(!terminal.frames.iter().any(|frame| {
+        frame.owner == FrameOwner::RoundPhase(RoundPhase::PostSettlementConduitRosterRefresh)
+    }));
+    let terminal_types = terminal_steps
+        .iter()
+        .map(|step| step.act_effect[0].effect_type.unwrap())
+        .collect::<Vec<_>>();
+    let small_round_end = terminal_types
+        .iter()
+        .position(|effect| {
+            *effect == sonettobuf::effect_type_enum::EffectType::Smallroundend as i32
+        })
+        .unwrap();
+    let refresh = terminal_types
+        .iter()
+        .position(|effect| *effect == sonettobuf::effect_type_enum::EffectType::Initdevice as i32)
+        .unwrap();
+    let clear = terminal_types
+        .iter()
+        .position(|effect| {
+            *effect == sonettobuf::effect_type_enum::EffectType::Clearuniversalcard as i32
+        })
+        .unwrap();
+    assert!(small_round_end < refresh && refresh < clear);
+    assert!(
+        terminal_managers
+            .conduit
+            .roster_refresh_commands(&terminal_managers.hp)
+            .is_empty()
+    );
+
+    let mut revived = BattleManagers::seeded(&fight);
+    commit_death(&mut revived);
+    revived.hp.heal(10, 100, 0);
+    revived.hp.lose(10, 100, 0);
+    run_after_ai_round_end(
+        &mut revived,
+        &pool,
+        &SkillEffectCatalog::default(),
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+    )
+    .unwrap();
+    assert_eq!(revived.conduit.selected_group(10), Some(1));
 }
 
 #[test]
@@ -285,26 +404,6 @@ fn final_settlement_runs_side_expiry_reactions_before_entity_expiry() {
     );
     assert!(has_output(&result.frames[1]));
     let steps = crate::engine::packet::timeline::project(&result.frames).unwrap();
-
-    fn contains_effect(step: &sonettobuf::FightStep, effect_type: i32, target_uid: i64) -> bool {
-        step.act_effect.iter().any(|effect| {
-            effect.effect_type == Some(effect_type) && effect.target_id == Some(target_uid)
-                || effect
-                    .fight_step
-                    .as_ref()
-                    .is_some_and(|child| contains_effect(child, effect_type, target_uid))
-        })
-    }
-
-    fn contains_skill(step: &sonettobuf::FightStep, skill_id: i32) -> bool {
-        step.act_id == Some(skill_id)
-            || step.act_effect.iter().any(|effect| {
-                effect
-                    .fight_step
-                    .as_ref()
-                    .is_some_and(|child| contains_skill(child, skill_id))
-            })
-    }
 
     assert_eq!(steps.len(), 2);
     assert!(contains_effect(
@@ -632,15 +731,6 @@ fn attacker_round_end_includes_the_assist_boss_passive_owner() {
     .unwrap();
 
     assert_eq!(managers.hp.current(10), 55);
-    fn contains_skill(step: &sonettobuf::FightStep, skill_id: i32) -> bool {
-        step.act_id == Some(skill_id)
-            || step.act_effect.iter().any(|effect| {
-                effect
-                    .fight_step
-                    .as_ref()
-                    .is_some_and(|nested| contains_skill(nested, skill_id))
-            })
-    }
     let steps = crate::engine::packet::timeline::project(&result.frames).unwrap();
     assert!(steps.iter().any(|step| contains_skill(step, 12_410_022)));
 }
@@ -702,15 +792,6 @@ fn defender_after_settlement_runs_its_registered_passive_skill() {
     )
     .unwrap();
 
-    fn contains_skill(step: &sonettobuf::FightStep, skill_id: i32) -> bool {
-        step.act_id == Some(skill_id)
-            || step.act_effect.iter().any(|effect| {
-                effect
-                    .fight_step
-                    .as_ref()
-                    .is_some_and(|nested| contains_skill(nested, skill_id))
-            })
-    }
     let steps = crate::engine::packet::timeline::project(&result.frames).unwrap();
     assert!(
         steps.iter().any(|step| contains_skill(step, 22_302_342)),
@@ -755,16 +836,6 @@ fn defender_entity_settlement_nests_its_periodic_passive() {
     )
     .unwrap();
     let steps = crate::engine::packet::timeline::project(&result.output.frames).unwrap();
-
-    fn contains_skill(step: &sonettobuf::FightStep, skill_id: i32) -> bool {
-        step.act_id == Some(skill_id)
-            || step.act_effect.iter().any(|effect| {
-                effect
-                    .fight_step
-                    .as_ref()
-                    .is_some_and(|nested| contains_skill(nested, skill_id))
-            })
-    }
 
     assert_eq!(steps.len(), 1);
     assert_eq!(steps[0].act_id, Some(0));
@@ -859,16 +930,6 @@ fn special_count_channel_casts_once_then_deletes_its_carrier() {
     .unwrap();
 
     assert!(!managers.buff.has_buff_id(10, 31070131));
-    fn find_step(step: &sonettobuf::FightStep, act_id: i32) -> Option<&sonettobuf::FightStep> {
-        (step.act_id == Some(act_id)).then_some(step).or_else(|| {
-            step.act_effect.iter().find_map(|effect| {
-                effect
-                    .fight_step
-                    .as_ref()
-                    .and_then(|nested| find_step(nested, act_id))
-            })
-        })
-    }
     fn collect_steps<'a>(
         step: &'a sonettobuf::FightStep,
         act_id: i32,

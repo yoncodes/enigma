@@ -1,0 +1,174 @@
+use crate::engine::{
+    entity::attr::AttrId,
+    manager::{
+        BattleManagers,
+        buff::{ActiveBuffFeature, BuffCommand, BuffManager, BuffSetState},
+    },
+    skill::{
+        rule::output::{BattleCommand, RuleOp},
+        subscriber::BuffActSubscriber,
+        target::TargetPool,
+    },
+};
+
+use super::{feature_kind, registry::BuffActKind};
+
+pub fn supports(kind: BuffActKind, args: &[i32]) -> bool {
+    match kind {
+        BuffActKind::FixAttrTeamEnergy => {
+            matches!(args, [attr_id, _, _] if AttrId::from_raw(*attr_id).is_some())
+        }
+        BuffActKind::FixAttrTeamEnergyAndBuff => {
+            matches!(args, [attr_id, _, _, _, buff_id] if AttrId::from_raw(*attr_id).is_some() && *buff_id > 0)
+        }
+        _ => false,
+    }
+}
+
+pub fn grant_params(
+    managers: &BattleManagers,
+    pool: &TargetPool,
+    buff_id: i32,
+    target_uid: i64,
+    team_type: i32,
+) -> Option<String> {
+    let feature = managers
+        .buff
+        .definition_features(buff_id)
+        .into_iter()
+        .find(|feature| {
+            matches!(
+                feature_kind(feature),
+                Some(BuffActKind::FixAttrTeamEnergy | BuffActKind::FixAttrTeamEnergyAndBuff)
+            )
+        })?;
+    let act_id = *feature.values.first()?;
+    let energy = managers
+        .gauge
+        .get(crate::engine::mechanic::impromptu::team_energy_key(
+            team_type,
+        ))?
+        .current;
+    let value = match feature_kind(&feature)? {
+        BuffActKind::FixAttrTeamEnergy => energy.max(0),
+        BuffActKind::FixAttrTeamEnergyAndBuff => team_energy_and_holder_value(
+            &feature.values[1..],
+            target_uid,
+            energy,
+            &managers.buff,
+            pool,
+        )?,
+        _ => return None,
+    };
+    Some(format!("{act_id}#{value}"))
+}
+
+pub fn rule_ops(
+    managers: &BattleManagers,
+    pool: &TargetPool,
+    subscriber: &BuffActSubscriber,
+    event: &crate::engine::event::payload::BattleEvent,
+) -> Option<Vec<RuleOp>> {
+    let kind = super::subscriber_kind(subscriber)?;
+    if kind != BuffActKind::FixAttrTeamEnergyAndBuff || !supports(kind, &subscriber.args) {
+        return None;
+    }
+    if !matches!(
+        event,
+        crate::engine::event::payload::BattleEvent::RoundStart
+    ) {
+        return Some(Vec::new());
+    }
+    let inspiration = managers
+        .gauge
+        .get(crate::engine::mechanic::impromptu::team_energy_key(
+            subscriber.team_type,
+        ))
+        .map(|state| state.current)
+        .unwrap_or_default();
+    let value = team_energy_and_holder_value(
+        &subscriber.args,
+        subscriber.owner_uid,
+        inspiration,
+        &managers.buff,
+        pool,
+    )?;
+    Some(vec![RuleOp::Command(BattleCommand::Buff(
+        BuffCommand::SetState(BuffSetState {
+            ex_info: None,
+            origin: super::command_origin(subscriber)
+                .filter(|_| super::subscriber_is_kind(subscriber, kind))?,
+            target_uid: subscriber.owner_uid,
+            buff_uid: subscriber.buff_uid,
+            params: Some(format!("{}#{value}", subscriber.key.definition.opcode)),
+            act_info: None,
+        }),
+    ))])
+}
+
+pub fn attribute_delta(
+    feature: &ActiveBuffFeature,
+    attr_id: AttrId,
+    inspiration: i32,
+    buffs: &BuffManager,
+    pool: &TargetPool,
+) -> i32 {
+    let [_, raw_attr_id, base, per_energy, ..] = feature.values.as_slice() else {
+        return 0;
+    };
+    if AttrId::from_raw(*raw_attr_id) != Some(attr_id) {
+        return 0;
+    }
+    let stored_value = buffs
+        .active_for(feature.owner_uid)
+        .find(|buff| buff.uid == Some(feature.buff_uid))
+        .and_then(|buff| buff.act_common_params.as_deref())
+        .and_then(|params| {
+            let mut parts = params.split('#');
+            let act_id = parts.next()?.parse::<i32>().ok()?;
+            (Some(&act_id) == feature.values.first())
+                .then(|| parts.next()?.parse::<i32>().ok())
+                .flatten()
+        });
+    match feature_kind(feature) {
+        Some(BuffActKind::FixAttrTeamEnergy) => {
+            base + per_energy * stored_value.unwrap_or(inspiration).max(0)
+        }
+        Some(BuffActKind::FixAttrTeamEnergyAndBuff) => stored_value.unwrap_or_else(|| {
+            team_energy_and_holder_value(
+                &feature.values[1..],
+                feature.owner_uid,
+                inspiration,
+                buffs,
+                pool,
+            )
+            .unwrap_or_default()
+        }),
+        _ => 0,
+    }
+}
+
+fn team_energy_and_holder_value(
+    args: &[i32],
+    owner_uid: i64,
+    inspiration: i32,
+    buffs: &BuffManager,
+    pool: &TargetPool,
+) -> Option<i32> {
+    let [_, base, per_energy, per_holder, holder_buff_id] = args else {
+        return None;
+    };
+    let holders = pool
+        .main_allies(owner_uid)
+        .iter()
+        .filter(|ally| ally.uid != owner_uid)
+        .filter(|ally| buffs.has_active_buff_id_or_type(ally.uid, *holder_buff_id))
+        .count() as i64;
+    let value = (i64::from(*base) + i64::from(*per_energy) * i64::from(inspiration.max(0)))
+        * (1000 + i64::from(*per_holder) * holders)
+        / 1000;
+    Some(value.clamp(i64::from(i32::MIN), i64::from(i32::MAX)) as i32)
+}
+
+#[cfg(test)]
+mod tests;

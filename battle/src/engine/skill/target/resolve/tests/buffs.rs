@@ -120,6 +120,8 @@ fn alternating_monster_targets_keep_their_exact_label_rules() {
 
     assert_eq!(resolve_code(1007, -2, &pool, &mut determinism), vec![-2]);
     assert_eq!(resolve_code(1008, -2, &pool, &mut determinism), vec![-3]);
+    assert_eq!(targets_enemy(1001), Some(false));
+    assert_eq!(targets_enemy(1002), Some(false));
     assert_eq!(targets_enemy(1007), Some(false));
     assert_eq!(targets_enemy(1008), Some(false));
 }
@@ -331,4 +333,45 @@ fn target_244_selects_the_enemy_with_most_queued_attack_incantations() {
         ),
         vec![-2]
     );
+}
+
+#[test]
+fn marked_ally_target_matches_the_exact_buff_id_on_its_own_side() {
+    init_config();
+    let mark = |uid, position| enemy_with_buff(uid, position, 80, buff(30920104, 30920104));
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![
+                entity_at(10, 1),
+                mark(11, 2),
+                enemy_with_buff(12, 3, 80, buff(30920105, 30920104)),
+            ],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![mark(-10, 1)],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let request = TargetRequest {
+        code: 310,
+        raw: vec![30920104],
+    };
+    assert!(is_supported_target(&request));
+    assert_eq!(
+        TargetResolver::resolve(
+            &request,
+            30920221,
+            10,
+            &pool,
+            &mut RoundDeterminism::default()
+        ),
+        vec![11]
+    );
+    assert!(!is_supported_target(&TargetRequest {
+        raw: Vec::new(),
+        ..request
+    }));
 }

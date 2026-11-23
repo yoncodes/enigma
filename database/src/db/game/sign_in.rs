@@ -10,6 +10,9 @@ use sqlx::{Sqlite, SqlitePool, Transaction};
 
 const DAY_SECONDS: i32 = 24 * 60 * 60;
 const HERO_TOUCH_COUNT_CONFIG_ID: i32 = 32;
+const WEEKLY_REFRESH: i32 = 2;
+const MONTHLY_REFRESH: i32 = 3;
+const ENDLESS_SUPPLY_STORE_ID: i32 = 614;
 
 /// Record sign-in for today
 async fn record_sign_in_day(pool: &SqlitePool, user_id: i64, now: i64) -> Result<bool> {
@@ -216,7 +219,7 @@ pub async fn reset_weekly_counters(pool: &SqlitePool, user_id: i64) -> Result<Ve
     let weekly_store_goods: Vec<i32> = game_data
         .store_goods
         .iter()
-        .filter(|g| g.refresh_time == 2)
+        .filter(|g| g.refresh_time == WEEKLY_REFRESH)
         .map(|g| g.id)
         .collect();
 
@@ -301,7 +304,7 @@ pub async fn reset_monthly_counters(pool: &SqlitePool, user_id: i64) -> Result<(
     let monthly_store_goods: Vec<i32> = game_data
         .store_goods
         .iter()
-        .filter(|g| g.refresh_time == 3)
+        .filter(|g| g.refresh_time == MONTHLY_REFRESH)
         .map(|g| g.id)
         .collect();
 
@@ -333,7 +336,8 @@ pub async fn reset_monthly_counters(pool: &SqlitePool, user_id: i64) -> Result<(
         .store_charge_goods
         .iter()
         .filter(|g| {
-            g.belong_store_id == 614 && matches!(g.order, 120 | 311 | 312 | 350 | 500 | 600)
+            g.belong_store_id == ENDLESS_SUPPLY_STORE_ID
+                && matches!(g.order, 120 | 311 | 312 | 350 | 500 | 600)
         })
         .map(|g| g.id)
         .collect();

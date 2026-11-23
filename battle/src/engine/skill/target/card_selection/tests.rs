@@ -4,7 +4,7 @@ use super::*;
 use crate::engine::skill::effect::{ParsedBehavior, ParsedSkillEffect, SkillEffectSlot};
 
 #[test]
-fn conduit_energy_selects_a_living_enemy_while_ordinary_source_skills_select_the_source() {
+fn conduit_energy_behaviors_select_a_living_enemy_while_ordinary_source_skills_select_the_source() {
     let fight = Fight {
         attacker: Some(FightTeam {
             entitys: vec![FightEntityInfo {
@@ -49,6 +49,14 @@ fn conduit_energy_selects_a_living_enemy_while_ordinary_source_skills_select_the
         slots: Vec::new(),
     });
     catalog.insert_logic_target(200, super::super::request::SOURCE_TARGET_CODE);
+    catalog.insert(ParsedSkillEffect {
+        skill_id: 300,
+        slots: vec![SkillEffectSlot::new(
+            ParsedBehavior::new(60334, "HedoneAddDevicePower", vec![1]),
+            TargetRequest::self_only(),
+        )],
+    });
+    catalog.insert_logic_target(300, super::super::request::SOURCE_TARGET_CODE);
     let request = TargetRequest {
         code: super::super::request::SOURCE_TARGET_CODE,
         raw: Vec::new(),
@@ -79,5 +87,18 @@ fn conduit_energy_selects_a_living_enemy_while_ordinary_source_skills_select_the
             TargetContext::default(),
         ),
         [10]
+    );
+    assert_eq!(
+        CardSelectionResolver::candidates(
+            &request,
+            300,
+            10,
+            &pool,
+            &catalog,
+            &RoundDeterminism::default(),
+            None,
+            TargetContext::default(),
+        ),
+        [-1]
     );
 }

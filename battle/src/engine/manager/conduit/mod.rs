@@ -3,7 +3,10 @@ use std::collections::{BTreeMap, HashSet};
 use crate::engine::skill::rule::CommandOrigin;
 
 mod execute;
+mod payment;
 mod projection;
+
+pub(crate) use payment::Payment;
 mod seed;
 #[cfg(test)]
 mod tests;
@@ -157,7 +160,7 @@ pub struct ConduitCounterChange {
 pub enum ConduitChange {
     Initialized(ConduitArea),
     RosterRefreshed(ConduitArea),
-    GroupSelected {
+    SelectionCommitted {
         source_uid: i64,
         team: i32,
         group: i32,
@@ -271,7 +274,6 @@ struct PendingActivation {
     event: crate::engine::event::payload::ConduitActivatedEvent,
     committed_cost: i32,
     cost_committed: bool,
-    activation_cost_measured: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -291,6 +293,7 @@ pub struct ConduitManager {
     counters_this_round: BTreeMap<(i32, ConduitCounterKind), i32>,
     pending_activations: BTreeMap<(i64, i32), PendingActivation>,
     running: HashSet<i64>,
+    pending_retirements: BTreeMap<i64, super::hp::PendingDeath>,
 }
 
 impl ConduitManager {
@@ -303,7 +306,19 @@ impl ConduitManager {
             .collect()
     }
 
-    pub fn terminal_roster_refresh_commands(&self, defeated_uids: &[i64]) -> Vec<ConduitCommand> {
+    pub(crate) fn record_death(&mut self, death: super::hp::PendingDeath) {
+        let uid = death.transition().target_uid;
+        if self.devices().any(|device| device.uid == uid) {
+            self.pending_retirements.insert(uid, death);
+        }
+    }
+
+    pub(crate) fn roster_refresh_commands(
+        &mut self,
+        hp: &super::hp::HpManager,
+    ) -> Vec<ConduitCommand> {
+        self.pending_retirements
+            .retain(|_, death| hp.is_current_death(*death));
         self.areas
             .iter()
             .filter_map(|(team, area)| {
@@ -311,7 +326,7 @@ impl ConduitManager {
                     .devices
                     .iter()
                     .map(|device| device.uid)
-                    .filter(|uid| defeated_uids.contains(uid))
+                    .filter(|uid| self.pending_retirements.contains_key(uid))
                     .collect::<Vec<_>>();
                 (!defeated_uids.is_empty()).then_some(ConduitCommand::ReconcileDefeatedDevices {
                     team: *team,
@@ -358,6 +373,14 @@ impl ConduitManager {
             .and_then(|area| area.powers.iter().find(|power| power.id == power_id))
             .map(|power| power.value)
             .unwrap_or_default()
+    }
+
+    pub(crate) fn powers(&self) -> impl Iterator<Item = ((i32, i32), i32)> + '_ {
+        self.areas.iter().flat_map(|(&team, area)| {
+            area.powers
+                .iter()
+                .map(move |power| ((team, power.id), power.value))
+        })
     }
 
     pub fn begin_round(&mut self) {
@@ -423,26 +446,46 @@ impl ConduitManager {
     }
 
     pub fn can_begin_skill(&self, source_uid: i64, skill_id: i32, cost_reduction: i32) -> bool {
-        self.skill(source_uid, skill_id)
-            .is_some_and(|(team, skill)| {
-                let cost = skill.cost_after_reduction(cost_reduction);
-                let generic_available = if skill.cost_type > 0 && skill.cost_type != 999 {
-                    self.power(team, 0)
-                } else {
-                    0
-                };
-                let available = self
-                    .power(team, skill.cost_type)
-                    .saturating_add(generic_available);
-                !skill.is_stopped && (skill.cost_type == 999 || available >= cost)
-            })
+        self.skill(source_uid, skill_id).is_some_and(|(_, skill)| {
+            !skill.is_stopped && self.can_pay(source_uid, skill, cost_reduction)
+        })
+    }
+
+    pub(crate) fn can_pay(
+        &self,
+        source_uid: i64,
+        skill: ConduitSkill,
+        cost_reduction: i32,
+    ) -> bool {
+        let Some(team) = self.areas.iter().find_map(|(team, area)| {
+            area.devices
+                .iter()
+                .any(|device| device.uid == source_uid)
+                .then_some(*team)
+        }) else {
+            return false;
+        };
+        Payment::new(skill, skill.cost_after_reduction(cost_reduction))
+            .split(|power_id| self.power(team, power_id))
+            .is_ok()
     }
 
     pub fn owns_skill(&self, source_uid: i64, skill_id: i32) -> bool {
         self.configured_skill(source_uid, skill_id).is_some()
     }
 
-    fn configured_skill(&self, source_uid: i64, skill_id: i32) -> Option<(i32, ConduitSkill)> {
+    pub(crate) fn is_unique_skill(&self, source_uid: i64, skill_id: i32) -> bool {
+        self.devices()
+            .find(|device| device.uid == source_uid)
+            .and_then(|device| device.skill_groups.get(ConduitSkillGroup::Unique as usize))
+            .is_some_and(|group| group.iter().any(|skill| skill.skill_id == skill_id))
+    }
+
+    pub(crate) fn configured_skill(
+        &self,
+        source_uid: i64,
+        skill_id: i32,
+    ) -> Option<(i32, ConduitSkill)> {
         self.areas.iter().find_map(|(team, area)| {
             let device = area
                 .devices

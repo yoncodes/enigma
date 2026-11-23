@@ -27,6 +27,16 @@ impl ActivityManager {
         act107_goods_info(db, self.player_id, activity_id).await
     }
 
+    pub async fn buy_act107_goods(
+        &self,
+        db: &SqlitePool,
+        activity_id: Option<i32>,
+        id: Option<i32>,
+        num: Option<i32>,
+    ) -> Result<Act107Purchase, AppError> {
+        buy_act107_goods(db, self.player_id, activity_id, id, num).await
+    }
+
     pub async fn infos(&mut self, db: &SqlitePool) -> Result<GetActivityInfosReply, AppError> {
         let mut infos = catalog_infos();
         apply_bp_activity(&mut infos);
@@ -394,24 +404,9 @@ impl ActivityManager {
     pub async fn report_act243_episode(
         &self,
         db: &SqlitePool,
-        activity_id: i32,
-        episode_id: i32,
-        score: i32,
-        star: i32,
-        time_ms: i32,
-        record: String,
+        report: Act243EpisodeReport,
     ) -> Result<act243::Act243Report, AppError> {
-        act243::report_episode(
-            db,
-            self.player_id,
-            activity_id,
-            episode_id,
-            score,
-            star,
-            time_ms,
-            record,
-        )
-        .await
+        act243::report_episode(db, self.player_id, report).await
     }
 
     pub async fn upgrade_act243_gift(

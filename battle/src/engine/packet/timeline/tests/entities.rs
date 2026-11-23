@@ -117,6 +117,59 @@ fn career_change_projects_committed_entity_state() {
 }
 
 #[test]
+fn cycle_substitution_projects_roster_changes_from_committed_state() {
+    let reserve = FightEntityInfo {
+        uid: Some(-7),
+        team_type: Some(2),
+        position: Some(-2),
+        current_hp: Some(100),
+        ..Default::default()
+    };
+    let queued = crate::engine::fight::reserve::ReserveQueued {
+        team_type: 2,
+        entity: reserve.clone(),
+    };
+    let promotion = crate::engine::fight::reserve::Promotion {
+        defeated_uid: -2,
+        entering_uid: -5,
+        position: 1,
+        team_type: 2,
+        entering: FightEntityInfo {
+            uid: Some(-5),
+            team_type: Some(2),
+            position: Some(1),
+            current_hp: Some(100),
+            ..Default::default()
+        },
+        queued_reserve: None,
+    };
+
+    let promoted =
+        project_change_for_test(&BattleChange::EntityPromotion(Box::new(promotion))).unwrap();
+    let arrival = project_change_for_test(&BattleChange::ReserveQueued(Box::new(queued))).unwrap();
+    let cleanup = project_change_for_test(&BattleChange::ReserveRetired(
+        crate::engine::fight::reserve::ReserveRetired {
+            uid: -2,
+            team_type: 2,
+        },
+    ))
+    .unwrap();
+
+    assert_eq!(promoted.len(), 1);
+    assert_eq!(promoted[0].effect_type, Some(EffectType::Changehero as i32));
+    assert_eq!(
+        arrival[0].effect_type,
+        Some(EffectType::Callmonstertosub as i32)
+    );
+    assert_eq!(arrival[0].entity, Some(reserve));
+    assert_eq!(
+        cleanup[0].effect_type,
+        Some(EffectType::Removemonstersub as i32)
+    );
+    assert_eq!(cleanup[0].target_id, Some(-2));
+}
+
+#[test]
 fn upgrade_offer_projects_without_loading_the_selected_entity() {
     let mut upgrades = UpgradeManager::default();
     let change = upgrades

@@ -1,9 +1,35 @@
 use super::*;
 
 #[test]
-fn other_allies_anchor_their_shared_skill_frame_to_the_caster() {
-    assert_eq!(frame_anchor_for_rule(102, 10), Some(10));
-    assert_eq!(frame_anchor_for_rule(103, 10), None);
+fn self_skills_anchor_on_the_first_lineup_ally() {
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![entity_at(11, 1), entity_at(10, 2), entity_at(12, 3)],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut catalog = crate::engine::skill::effect::SkillEffectCatalog::default();
+    catalog.insert_logic_target(
+        100,
+        crate::engine::skill::target::request::SOURCE_TARGET_CODE,
+    );
+    catalog.insert_logic_target(200, 101);
+
+    // The first unit in the lineup, not the caster.
+    assert_eq!(
+        TargetResolver::self_skill_anchor(&catalog, &pool, 12, 100),
+        Some(11)
+    );
+    assert_eq!(
+        TargetResolver::self_skill_anchor(&catalog, &pool, 11, 100),
+        Some(11)
+    );
+    assert_eq!(
+        TargetResolver::self_skill_anchor(&catalog, &pool, 12, 200),
+        None
+    );
 }
 
 #[test]
@@ -30,6 +56,22 @@ fn mass_targets_preserve_the_selected_skill_frame_target() {
     assert!(preserves_selected_frame_target(202, 10, -1, &pool, attack));
     assert!(preserves_selected_frame_target(1, 10, 11, &pool, attack));
     assert!(!preserves_selected_frame_target(1, 10, -1, &pool, attack));
+    for selected in [-1, 11] {
+        assert!(preserves_selected_frame_target(
+            112,
+            10,
+            selected,
+            &pool,
+            TargetContext::default()
+        ));
+    }
+    assert!(!preserves_selected_frame_target(
+        112,
+        10,
+        99,
+        &pool,
+        TargetContext::default()
+    ));
 }
 
 #[test]
@@ -294,4 +336,101 @@ fn side_state_target_resolves_to_the_attacker_side() {
         ),
         vec![crate::engine::fight::rules::ATTACKER_SIDE_UID]
     );
+}
+
+#[test]
+fn main_body_target_is_the_label_one_ally_not_the_action_target() {
+    init_config();
+    let part = |uid, position, model_id| FightEntityInfo {
+        model_id: Some(model_id),
+        ..entity_at(uid, position)
+    };
+    let fight = |battle_id, wave, defenders| Fight {
+        battle_id: Some(battle_id),
+        cur_wave: Some(wave),
+        attacker: Some(FightTeam {
+            entitys: vec![entity_at(10, 1)],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: defenders,
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let context = TargetContext {
+        runtime_target_uid: 10,
+        ..Default::default()
+    };
+    let resolve = |pool: &TargetPool, source_uid| {
+        resolve_code_with_context(
+            1001,
+            source_uid,
+            pool,
+            &mut RoundDeterminism::default(),
+            context,
+        )
+    };
+
+    let lord_of_dream = TargetPool::from_fight(&fight(
+        2411,
+        2,
+        vec![
+            part(-2, 1, 241102),
+            part(-4, 2, 241104),
+            part(-3, 3, 241103),
+            part(-5, 4, 241105),
+        ],
+    ));
+    for source_uid in [-4, -5, -2] {
+        assert_eq!(resolve(&lord_of_dream, source_uid), vec![-2]);
+    }
+    assert_eq!(resolve(&lord_of_dream, 10), Vec::<i64>::new());
+
+    let no_boss_id = TargetPool::from_fight(&fight(
+        1514,
+        1,
+        vec![part(-1, 1, 151401), part(-2, 2, 151402)],
+    ));
+    assert_eq!(resolve(&no_boss_id, -2), vec![-1]);
+}
+
+#[test]
+fn label_two_target_is_the_label_two_ally_not_the_action_target() {
+    init_config();
+    let part = |uid, position, model_id| FightEntityInfo {
+        model_id: Some(model_id),
+        ..entity_at(uid, position)
+    };
+    let fight = Fight {
+        battle_id: Some(1514),
+        cur_wave: Some(1),
+        attacker: Some(FightTeam {
+            entitys: vec![entity_at(10, 1)],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![part(-1, 1, 151401), part(-2, 2, 151402)],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let context = TargetContext {
+        runtime_target_uid: 10,
+        ..Default::default()
+    };
+
+    for source_uid in [-1, -2] {
+        assert_eq!(
+            resolve_code_with_context(
+                1002,
+                source_uid,
+                &pool,
+                &mut RoundDeterminism::default(),
+                context,
+            ),
+            vec![-2]
+        );
+    }
 }

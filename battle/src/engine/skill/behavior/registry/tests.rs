@@ -406,7 +406,7 @@ fn implemented_skill_casts_own_destinations_but_unimplemented_siblings_do_not() 
 }
 
 #[test]
-fn per_consume_ex_point_direct_use_skill_keeps_its_exact_five_argument_shape() {
+fn per_consume_ex_point_direct_use_skill_keeps_the_two_argument_shapes_distinct() {
     let behavior = |args| ParsedBehavior::new(60262, "PerConsumeExPointDirectUseSkill", args);
     let valid = behavior(vec![5, 31100521, 0, 31100201, 1]);
     let definition = find(&valid).expect("exact ExPoint behavior must be registered");
@@ -440,10 +440,13 @@ fn per_consume_ex_point_direct_use_skill_keeps_its_exact_five_argument_shape() {
         assert!(!crate::engine::skill::behavior::is_supported(&invalid));
     }
 
-    let unsupported = behavior(vec![6, 30920156, 1, 30920103]);
-    let references = (definition.references)(&unsupported);
-    assert!(references.skills.is_empty());
-    assert!(references.buffs.is_empty());
+    let marked_ultimate = behavior(vec![6, 30920156, 1, 30920103]);
+    assert!(crate::engine::skill::behavior::is_supported(
+        &marked_ultimate
+    ));
+    let references = (definition.references)(&marked_ultimate);
+    assert_eq!(references.skills, vec![30920156]);
+    assert_eq!(references.buffs, vec![30920103]);
 
     assert!(find_key(60262, "ConsumeExPointDirectUseSkill").is_none());
     assert!(find_key(50036, "PerConsumeExPointDirectUseSkill").is_none());

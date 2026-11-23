@@ -29,6 +29,7 @@ impl ExtraSkillKind {
 pub enum ExtraActionConditionMode {
     ActiveAction,
     OtherAllyAction,
+    TargetedActor,
     DamageAction,
     IncomingAttack,
 }
@@ -66,11 +67,38 @@ pub fn active_action_kinds(_: i32, _: &str, args: &[String]) -> Option<ParsedCon
     })
 }
 
-pub fn other_ally_action(_: i32, _: &str, args: &[String]) -> Option<ParsedConditionKind> {
-    Some(ParsedConditionKind::ExtraAction {
-        mode: ExtraActionConditionMode::OtherAllyAction,
-        kinds: parse_i32_list(args.first()?)?,
-    })
+pub fn skill_extra_type(_: i32, _: &str, args: &[String]) -> Option<ParsedConditionKind> {
+    let [raw] = args else {
+        return None;
+    };
+    match raw.as_str() {
+        "1" => Some(ParsedConditionKind::ExtraAction {
+            mode: ExtraActionConditionMode::OtherAllyAction,
+            kinds: vec![1],
+        }),
+        "3" => Some(targeted_actor(vec![3])),
+        _ => None,
+    }
+}
+
+pub fn action_skill_extra_type(_: i32, _: &str, args: &[String]) -> Option<ParsedConditionKind> {
+    let [raw] = args else {
+        return None;
+    };
+    let kinds = match raw.as_str() {
+        "1,2" => vec![1, 2],
+        "3" => vec![3],
+        "1,2,3" => vec![1, 2, 3],
+        _ => return None,
+    };
+    Some(targeted_actor(kinds))
+}
+
+fn targeted_actor(kinds: Vec<i32>) -> ParsedConditionKind {
+    ParsedConditionKind::ExtraAction {
+        mode: ExtraActionConditionMode::TargetedActor,
+        kinds,
+    }
 }
 
 #[cfg(test)]

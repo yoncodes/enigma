@@ -235,6 +235,10 @@ impl InventoryManager {
         equipment::equip_info(db, self.player_id).await
     }
 
+    pub async fn max_equip(self, db: &SqlitePool, target_uid: i64) -> Result<Equip, AppError> {
+        equipment::max_equip(db, self.player_id, target_uid).await
+    }
+
     pub async fn equip_lock(
         self,
         db: &SqlitePool,

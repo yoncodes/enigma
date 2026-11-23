@@ -2,7 +2,6 @@ use std::collections::HashMap;
 
 use crate::engine::{
     manager::{
-        BattleManagers,
         buff::{ActiveBuffFeature, BuffActInfoMarkerResult, BuffCommand, BuffSetState},
         card::CardCommand,
         gauge::{GaugeBatchId, GaugeCommand, GaugeKind, GaugeOperation},
@@ -318,73 +317,12 @@ struct HeatScaleState {
     source_buff_id: i32,
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct CrystalSelectionChanges {
-    pub state: crate::engine::manager::buff::BuffChanges,
-    pub marker: crate::engine::manager::buff::BuffActInfoMarkerResult,
-}
-
 #[derive(Debug, Clone, Default)]
 pub struct HeatScale {
     states: HashMap<i32, HeatScaleState>,
 }
 
 impl HeatScale {
-    pub fn select_crystals_from_cloth(
-        managers: &mut BattleManagers,
-        owner_uid: i64,
-        packed: i32,
-    ) -> Option<CrystalSelectionChanges> {
-        let feature = managers
-            .buff
-            .active_features(&managers.hp)
-            .into_iter()
-            .find(|feature| {
-                feature.owner_uid == owner_uid && is_kind(feature, BuffActKind::CrystalNotifySelect)
-            })?;
-        let total = feature.values.get(1).copied()?;
-        let per_crystal = feature.values.get(2).copied()?;
-        let counts = [packed / 100, packed / 10 % 10, packed % 10];
-        if counts.iter().sum::<i32>() != total
-            || counts
-                .iter()
-                .any(|count| *count < 0 || *count > per_crystal)
-            || !managers.emanation.select(owner_uid, packed)
-        {
-            return None;
-        }
-        let act_id = feature.act_id()?;
-        let params = vec![total, per_crystal, 1];
-        let state = managers
-            .execute_buff(BuffCommand::SetState(BuffSetState {
-                ex_info: None,
-                origin: crate::engine::skill::buff_act::feature_command_origin(&feature)?,
-                target_uid: owner_uid,
-                buff_uid: feature.buff_uid,
-                params: None,
-                act_info: Some(vec![sonettobuf::BuffActInfo {
-                    act_id: Some(act_id),
-                    param: params.clone(),
-                    str_param: Some(String::new()),
-                }]),
-            }))
-            .ok()?;
-        if state.change.refreshed.is_empty() {
-            return None;
-        }
-        Some(CrystalSelectionChanges {
-            state,
-            marker: crate::engine::manager::buff::BuffActInfoMarkerResult {
-                target_uid: owner_uid,
-                buff_uid: feature.buff_uid,
-                act_id,
-                params,
-                str_param: Some(String::new()),
-                team_type: feature.team_type,
-            },
-        })
-    }
-
     pub fn create_from_features(
         &mut self,
         features: &[ActiveBuffFeature],

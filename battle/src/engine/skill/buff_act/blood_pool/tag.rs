@@ -7,10 +7,12 @@ use crate::engine::{
         effect::SkillEffectCatalog,
         rule::{SetupStage, output::RuleOp},
         subscriber::BuffActSubscriber,
+        target::TargetPool,
     },
 };
 
 pub fn setup_rule_ops(
+    pool: &TargetPool,
     managers: &BattleManagers,
     catalog: &SkillEffectCatalog,
     feature: &ActiveBuffFeature,
@@ -31,7 +33,7 @@ pub fn setup_rule_ops(
                 return Some(Vec::new());
             }
             Some(
-                bloodtithe::rule::enable_rule_op(managers, feature, &features)
+                bloodtithe::rule::enable_rule_op(managers, pool, feature)
                     .into_iter()
                     .collect(),
             )

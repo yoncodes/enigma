@@ -29,7 +29,9 @@ use sonettobuf::{
     TriggerPartyResultRequest, UpdateRedDotPush, UpdateTaskPush,
 };
 use sonettobuf::{Act220EpisodePush, Act220FinishEpisodeReply, Act220FinishEpisodeRequest};
-use sonettobuf::{Get107GoodsInfoReply, Get107GoodsInfoRequest};
+use sonettobuf::{
+    Buy107GoodsReply, Buy107GoodsRequest, Get107GoodsInfoReply, Get107GoodsInfoRequest,
+};
 use sqlx::SqlitePool;
 use tokio::sync::mpsc;
 

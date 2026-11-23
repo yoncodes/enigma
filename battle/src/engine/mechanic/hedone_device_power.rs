@@ -41,24 +41,34 @@ pub(crate) fn execute(
     managers: &mut BattleManagers,
     command: HedoneDevicePowerCommand,
 ) -> Result<ConduitChange, HedoneDevicePowerError> {
+    let gain = available_gain(managers, command)?.ok_or(HedoneDevicePowerError::InvalidCommand)?;
+    Ok(managers
+        .conduit
+        .execute(ConduitCommand::ChangePower(gain))?)
+}
+
+pub(crate) fn available_gain(
+    managers: &BattleManagers,
+    command: HedoneDevicePowerCommand,
+) -> Result<Option<ConduitPowerChange>, HedoneDevicePowerError> {
     if command.owner_uid == 0 || command.power_id <= 0 {
         return Err(HedoneDevicePowerError::InvalidCommand);
     }
-    let state = owner_state(managers, command.owner_uid)?
-        .filter(|state| state.unlocked && state.stored > 0)
-        .ok_or(HedoneDevicePowerError::InvalidCommand)?;
+    let state =
+        owner_state(managers, command.owner_uid)?.ok_or(HedoneDevicePowerError::InvalidCommand)?;
+    if !state.unlocked || state.stored <= 0 {
+        return Ok(None);
+    }
     let delta = state
         .stored
         .checked_mul(state.config.power_add)
         .ok_or(HedoneDevicePowerError::InvalidCommand)?;
-    Ok(managers
-        .conduit
-        .execute(ConduitCommand::ChangePower(ConduitPowerChange {
-            origin: command.origin,
-            source_uid: state.owner_uid,
-            team: state.team_type,
-            power_id: command.power_id,
-            delta,
-            kind: ConduitPowerChangeKind::Standard,
-        }))?)
+    Ok(Some(ConduitPowerChange {
+        origin: command.origin,
+        source_uid: state.owner_uid,
+        team: state.team_type,
+        power_id: command.power_id,
+        delta,
+        kind: ConduitPowerChangeKind::Standard,
+    }))
 }

@@ -241,3 +241,125 @@ fn side_owned_temporary_card_executes_without_entity_hp() {
             })
     );
 }
+
+#[test]
+fn side_owned_ultimate_card_keeps_its_submitted_target() {
+    init_config();
+    let entity = |uid, model_id, ex_point, ex_skill, team_type| FightEntityInfo {
+        uid: Some(uid),
+        model_id: Some(model_id),
+        ex_point: Some(ex_point),
+        ex_skill: Some(ex_skill),
+        current_hp: Some(100),
+        team_type: Some(team_type),
+        ..Default::default()
+    };
+    let fight = Fight {
+        version: Some(7),
+        attacker: Some(FightTeam {
+            entitys: vec![
+                FightEntityInfo {
+                    ex_point_max: Some(7),
+                    buffs: vec![BuffInfo {
+                        uid: Some(20),
+                        buff_id: Some(31140141),
+                        from_uid: Some(10),
+                        ..Default::default()
+                    }],
+                    ..entity(10, 3114, 5, 31140131, 1)
+                },
+                entity(11, 3147, 4, 31473141, 1),
+                entity(12, 3146, 1, 31460131, 1),
+            ],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![entity(-1, 103370111, 0, 0, 2)],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let catalog = SkillEffectCatalog::from_roots(config::configs::get(), [311401511, 31473141], []);
+    for (selected, anchor) in [(-1, -1), (12, 12), (99, 11)] {
+        let mut managers = BattleManagers::seeded(&fight);
+        managers
+            .execute_card(CardCommand::Setup(CardSetup {
+                hand: vec![crate::engine::manager::card::precast_card(
+                    crate::engine::fight::rules::ATTACKER_SIDE_UID,
+                    311401511,
+                )],
+                draw_pile: Vec::new(),
+                deck_num: 1,
+            }))
+            .unwrap();
+        let result = run_player_commands(
+            &mut managers,
+            &pool,
+            &catalog,
+            &mut RoundDeterminism::default(),
+            TargetContext::default(),
+            [play(0, selected)],
+            1,
+            crate::engine::manager::emitter::UID,
+        )
+        .unwrap();
+        let steps = crate::engine::packet::timeline::project(&result.frames).unwrap();
+        let parent = steps
+            .iter()
+            .find(|step| step.act_id == Some(311401511))
+            .unwrap();
+        assert_eq!(parent.to_id, Some(anchor));
+        use crate::engine::runtime::{
+            change::BattleChange,
+            record::{FrameItem, FrameOwner},
+        };
+        let flood = result
+            .frames
+            .iter()
+            .find(|frame| {
+                matches!(
+                    frame.owner,
+                    FrameOwner::Skill {
+                        skill_id: 311401511,
+                        ..
+                    }
+                )
+            })
+            .unwrap();
+        assert!(flood.items.windows(2).any(|items| matches!(
+            items,
+            [FrameItem::Change(marker), FrameItem::Child(cast)]
+                if matches!(
+                    marker.as_ref(),
+                    BattleChange::UltimateDelegated { caster_uid: 11 }
+                ) && matches!(cast.owner, FrameOwner::Skill {
+                    source_uid: 11,
+                    skill_id: 31473141,
+                    target_uid: Some(10),
+                    ..
+                })
+        )));
+        let has_new_life = |uid| {
+            managers
+                .buff
+                .active_for(uid)
+                .any(|buff| buff.buff_id == Some(31472003))
+        };
+        assert!(has_new_life(11));
+        assert!(!has_new_life(10));
+        assert_eq!(managers.ex_point.get(11), 4);
+        let moxie = result
+            .outcomes
+            .iter()
+            .filter_map(|outcome| match outcome {
+                RuleOutcome::ExPoint(crate::engine::manager::ex_point::ExPointChanges::Value {
+                    change,
+                    ..
+                }) if change.applied_delta != 0 => Some((change.target_uid, change.applied_delta)),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(moxie, [(11, -4), (11, 4), (10, 1)]);
+    }
+}

@@ -16,6 +16,7 @@ pub mod fight_task;
 pub mod gauge;
 pub mod hedone_counter;
 pub mod hp;
+mod hp_batch;
 pub mod indicator;
 pub mod injury;
 pub mod player;
@@ -94,12 +95,23 @@ pub struct BattleManagers {
 
 struct HpPlan {
     command: hp::HpCommand,
-    fake_hp_consumed: Option<hp::FakeHpConsumption>,
+    fake_hp: Option<crate::engine::skill::buff_act::lost_hp_to_fake_hp::DamagePlan>,
     team_shared: Option<hp::TeamSharedShieldPlan>,
     team_shared_buff: Option<BuffPlan>,
     share: Option<ShareHurtPlan>,
     foundation_counter: Option<FoundationCounterPlan>,
     hp_loss_state: Vec<HpLossStatePlan>,
+    shield_counter_credits: Vec<crate::engine::skill::buff_act::shield_counter::Credit>,
+}
+
+impl HpPlan {
+    fn commit_damage(&self, hp: &mut HpManager) -> hp::HpChanges {
+        hp.commit_validated_command(
+            self.command,
+            self.team_shared,
+            self.fake_hp.as_ref().and_then(|plan| plan.loss_limit),
+        )
+    }
 }
 
 struct ShareHurtPlan {
@@ -110,6 +122,7 @@ struct ShareHurtPlan {
 struct HpLossStatePlan {
     buff: BuffPlan,
     marker: buff::BuffActInfoMarkerResult,
+    after_hp: bool,
 }
 
 struct FoundationCounterPlan {
@@ -184,19 +197,23 @@ pub(crate) fn snapshotted_attribute_delta(
 pub(crate) struct HpExecution {
     pub changes: hp::HpChanges,
     pub before_hp_markers: Vec<buff::BuffActInfoMarkerResult>,
+    pub after_hp_markers: Vec<buff::BuffActInfoMarkerResult>,
     pub indicator: Option<crate::engine::skill::rule::output::EffectMarker>,
+    pub(crate) shield_counter_credits: Vec<crate::engine::skill::buff_act::shield_counter::Credit>,
 }
 
 struct HpCommit {
     changes: hp::HpChanges,
+    shield_counter_credits: Vec<crate::engine::skill::buff_act::shield_counter::Credit>,
     before_hp_markers: Vec<buff::BuffActInfoMarkerResult>,
+    after_hp_markers: Vec<buff::BuffActInfoMarkerResult>,
 }
 
 fn hp_loss(changes: &hp::HpChanges) -> Option<(i64, i32)> {
     if changes.kill.is_some() {
         return None;
     }
-    let change = changes.hp.filter(|change| change.delta < 0)?;
+    let change = changes.hp.filter(hp::HpChange::is_loss)?;
     Some((change.target_uid, change.delta.saturating_abs()))
 }
 
@@ -397,19 +414,16 @@ impl BattleManagers {
                     self, buff_id, source_uid,
                 )
         {
-            plan.initialize_added_act_info_without_markers(act_info);
+            plan.initialize_added_snapshot_act_info(act_info);
         }
-        if let Some((source_uid, target_uid, buff_id, removed_buff_uids)) =
-            plan.after_add_attribute_route()
+        if let Some((source_uid, buff_id)) = plan.after_add_attribute_route()
             && let Some(act_info) = crate::engine::skill::buff_act::each_change_attr_one_way_after_add::definition_snapshot(
                 self,
                 buff_id,
                 source_uid,
-                target_uid,
-                &removed_buff_uids,
             )
         {
-            plan.initialize_added_and_fanout_act_info_without_markers(act_info);
+            plan.initialize_added_and_fanout_snapshot_act_info(act_info);
         }
         if let Some((source_uid, target_uid, buff_id)) = plan.each_change_attr_route() {
             let values = crate::engine::skill::buff_act::each_change_attr::definition_snapshot(
@@ -433,7 +447,8 @@ impl BattleManagers {
                 )
             })
             .sum::<i32>();
-        let flat = snapshotted_attribute_delta(&self.buff, &self.hp, uid, attack);
+        let flat = self.buff.fixed_attribute_delta(uid, attack)
+            + snapshotted_attribute_delta(&self.buff, &self.hp, uid, attack);
         let rate = 1000
             + self.attribute.get(uid, attack)
             + self.buff.attribute_delta(uid, attack)
@@ -493,83 +508,10 @@ impl BattleManagers {
         Ok(HpExecution {
             changes: commit.changes,
             before_hp_markers: commit.before_hp_markers,
+            after_hp_markers: commit.after_hp_markers,
+            shield_counter_credits: commit.shield_counter_credits,
             indicator,
         })
-    }
-
-    pub(crate) fn execute_hp_batch(
-        &mut self,
-        commands: Vec<hp::HpCommand>,
-    ) -> Result<Vec<hp::HpChanges>, hp::HpCommandError> {
-        self.execute_hp_batch_commits(commands)
-            .map(|commits| commits.into_iter().map(|commit| commit.changes).collect())
-    }
-
-    fn execute_hp_batch_commits(
-        &mut self,
-        commands: Vec<hp::HpCommand>,
-    ) -> Result<Vec<HpCommit>, hp::HpCommandError> {
-        let mut targets_by_team =
-            std::collections::HashMap::<i32, std::collections::HashSet<i64>>::new();
-        for command in &commands {
-            if let hp::HpCommand::Damage(damage) | hp::HpCommand::SettleAccumulatedDamage(damage) =
-                command
-                && damage.amount > 0
-                && let Some(team) = self.entity.team_type(damage.target_uid)
-            {
-                targets_by_team
-                    .entry(team)
-                    .or_default()
-                    .insert(damage.target_uid);
-            }
-        }
-        let mut staged = self.clone();
-        let mut shared_values = HashMap::new();
-        let mut share_spent = HashMap::new();
-        let mut plans = Vec::with_capacity(commands.len());
-        for command in commands {
-            let target_count = match command {
-                hp::HpCommand::Damage(damage) | hp::HpCommand::SettleAccumulatedDamage(damage) => {
-                    self.entity
-                        .team_type(damage.target_uid)
-                        .and_then(|team| targets_by_team.get(&team))
-                        .map_or(1, std::collections::HashSet::len)
-                }
-                _ => 1,
-            };
-            let mut plan = staged.plan_hp(
-                command,
-                target_count,
-                &staged.hp,
-                &mut shared_values,
-                &mut share_spent,
-            )?;
-            staged.prepare_hp_loss_state(&mut plan)?;
-            staged.commit_hp_preview(&plan);
-            plans.push(plan);
-        }
-        Ok(plans.into_iter().map(|plan| self.commit_hp(plan)).collect())
-    }
-
-    pub(crate) fn execute_rule_hp_batch(
-        &mut self,
-        commands: Vec<hp::HpCommand>,
-    ) -> Result<Vec<HpExecution>, hp::HpCommandError> {
-        let commits = self.execute_hp_batch_commits(commands)?;
-        Ok(commits
-            .into_iter()
-            .map(|commit| {
-                let indicator = self.record_damage_indicator(
-                    commit.changes.target_uid,
-                    commit.changes.applied_damage(),
-                );
-                HpExecution {
-                    changes: commit.changes,
-                    before_hp_markers: commit.before_hp_markers,
-                    indicator,
-                }
-            })
-            .collect())
     }
 
     pub(crate) fn execute_indicator(
@@ -618,7 +560,7 @@ impl BattleManagers {
             &mut HashMap::new(),
         )?;
         let mut staged = self.clone();
-        staged.prepare_hp_loss_state(&mut plan)?;
+        staged.prepare_damage_state(&mut plan)?;
         Ok(self.commit_hp(plan))
     }
 
@@ -748,18 +690,6 @@ impl BattleManagers {
             _ => {}
         }
         hp.validate_command(command)?;
-        let fake_hp_consumed = match command {
-            hp::HpCommand::Damage(damage) | hp::HpCommand::SettleAccumulatedDamage(damage)
-                if damage.amount > 0 && damage.effect_kind != hp::DamageEffectKind::Avoided =>
-            {
-                crate::engine::skill::buff_act::lost_hp_to_fake_hp::damage_consumption(
-                    self,
-                    damage.target_uid,
-                )
-                .map_err(|_| hp::HpCommandError::InvalidHpLossState)?
-            }
-            _ => None,
-        };
         let team_shared = match command {
             hp::HpCommand::Damage(damage) | hp::HpCommand::SettleAccumulatedDamage(damage)
                 if damage.amount > 0 =>
@@ -770,6 +700,19 @@ impl BattleManagers {
                         plan.current = *shared_values.entry(plan.buff_uid).or_insert(plan.current);
                         (plan.current > 0).then_some(plan)
                     })
+            }
+            _ => None,
+        };
+        let fake_hp = match command {
+            hp::HpCommand::Damage(damage) | hp::HpCommand::SettleAccumulatedDamage(damage)
+                if damage.amount > 0 && damage.effect_kind != hp::DamageEffectKind::Avoided =>
+            {
+                crate::engine::skill::buff_act::lost_hp_to_fake_hp::plan_damage(
+                    self,
+                    damage.target_uid,
+                    hp.damage_after_shields(damage.target_uid, damage.amount, team_shared),
+                )
+                .map_err(|_| hp::HpCommandError::InvalidHpLossState)?
             }
             _ => None,
         };
@@ -785,21 +728,36 @@ impl BattleManagers {
         };
         Ok(HpPlan {
             command,
-            fake_hp_consumed,
+            fake_hp,
             team_shared,
             team_shared_buff,
             share,
             foundation_counter,
             hp_loss_state: Vec::new(),
+            shield_counter_credits: Vec::new(),
         })
     }
 
-    fn prepare_hp_loss_state(&mut self, plan: &mut HpPlan) -> Result<(), hp::HpCommandError> {
-        let hp_losses = self.preview_hp_losses(plan);
-        for (target_uid, amount) in hp_losses {
-            let updates =
-                crate::engine::skill::buff_act::hp_loss_state_updates(self, target_uid, amount)
-                    .ok_or(hp::HpCommandError::InvalidHpLossState)?;
+    fn prepare_damage_state(&mut self, plan: &mut HpPlan) -> Result<(), hp::HpCommandError> {
+        let mut hp = self.hp.clone();
+        let mut losses = Vec::new();
+        for command in plan.share.iter().flat_map(|share| &share.shares) {
+            let changes = hp.commit_validated_command(*command, None, None);
+            losses.extend(hp_loss(&changes).map(|(uid, amount)| (uid, amount, None)));
+        }
+        let changes = plan.commit_damage(&mut hp);
+        losses.push((
+            changes.target_uid,
+            hp_loss(&changes).map_or(0, |(_, amount)| amount),
+            plan.fake_hp.as_mut().and_then(|plan| plan.update.take()),
+        ));
+        plan.shield_counter_credits =
+            crate::engine::skill::buff_act::shield_counter::credits(self, &changes);
+        for (target_uid, amount, resolved) in losses {
+            let updates = crate::engine::skill::buff_act::hp_loss_state_updates(
+                self, target_uid, amount, resolved,
+            )
+            .ok_or(hp::HpCommandError::InvalidHpLossState)?;
             for update in updates {
                 let buff = self
                     .plan_buff(update.command)
@@ -808,6 +766,7 @@ impl BattleManagers {
                 plan.hp_loss_state.push(HpLossStatePlan {
                     buff,
                     marker: update.marker,
+                    after_hp: update.after_hp,
                 });
             }
         }
@@ -819,11 +778,9 @@ impl BattleManagers {
             self.commit_buff(state.buff.clone());
         }
         for share in plan.share.iter().flat_map(|share| &share.shares) {
-            self.hp
-                .commit_validated_command_with_team_shared(*share, None);
+            self.hp.commit_validated_command(*share, None, None);
         }
-        self.hp
-            .commit_validated_command_with_team_shared(plan.command, plan.team_shared);
+        plan.commit_damage(&mut self.hp);
     }
 
     fn commit_hp(&mut self, plan: HpPlan) -> HpCommit {
@@ -832,18 +789,25 @@ impl BattleManagers {
             self.commit_buff(state.buff);
             before_hp_markers.push(state.marker);
         }
-        before_hp_markers.extend(plan.hp_loss_state.into_iter().map(|state| {
+        let mut after_hp_markers = Vec::new();
+        for state in plan.hp_loss_state {
             self.commit_buff(state.buff);
-            state.marker
-        }));
+            if state.after_hp {
+                after_hp_markers.push(state.marker);
+            } else {
+                before_hp_markers.push(state.marker);
+            }
+        }
+        let loss_limit = plan.fake_hp.as_ref().and_then(|plan| plan.loss_limit);
         let shared_hurt = plan.share.map(|share| {
             let consumed = self.commit_buff(share.consume);
             let shares = share
                 .shares
                 .into_iter()
                 .map(|share| {
-                    self.hp
-                        .commit_validated_command_with_team_shared(share, None)
+                    let changes = self.hp.commit_validated_command(share, None, None);
+                    crate::engine::damage::export::settlement(share, &changes, &self.hp, None);
+                    changes
                 })
                 .collect();
             Box::new(hp::SharedHurt { consumed, shares })
@@ -862,10 +826,20 @@ impl BattleManagers {
             _ => None,
         };
         let team_shared_shield_removed = plan.team_shared_buff.map(|plan| self.commit_buff(plan));
+        let mut command = plan.command;
+        if plan.fake_hp.is_none()
+            && plan.team_shared.is_none()
+            && shared_hurt.is_none()
+            && let hp::HpCommand::Damage(damage) = &mut command
+            && damage.hurt.damage_from == hp::HurtDamageFromType::Skill
+            && (1..damage.amount).contains(&self.hp.shield(damage.target_uid))
+        {
+            damage.hurt.display_amount.get_or_insert(damage.amount);
+        }
         let mut changes = self
             .hp
-            .commit_validated_command_with_team_shared(plan.command, plan.team_shared);
-        changes.fake_hp_consumed = plan.fake_hp_consumed;
+            .commit_validated_command(command, plan.team_shared, loss_limit);
+        changes.fake_hp_consumed = plan.fake_hp.map(|plan| plan.consumption);
         changes.toughness = toughness;
         changes.team_shared_shield_removed = team_shared_shield_removed;
         changes.shared_hurt = shared_hurt;
@@ -875,28 +849,13 @@ impl BattleManagers {
                 .shield_carrier_uid(changes.target_uid)
                 .unwrap_or_default();
         }
+        crate::engine::damage::export::settlement(command, &changes, &self.hp, loss_limit);
         HpCommit {
             changes,
+            shield_counter_credits: plan.shield_counter_credits,
             before_hp_markers,
+            after_hp_markers,
         }
-    }
-
-    fn preview_hp_losses(&self, plan: &HpPlan) -> Vec<(i64, i32)> {
-        let mut hp = self.hp.clone();
-        let mut losses = Vec::new();
-        if let Some(share) = &plan.share {
-            for command in &share.shares {
-                let changes = hp.commit_validated_command_with_team_shared(*command, None);
-                if let Some(loss) = hp_loss(&changes) {
-                    losses.push(loss);
-                }
-            }
-        }
-        let changes = hp.commit_validated_command_with_team_shared(plan.command, plan.team_shared);
-        if let Some(loss) = hp_loss(&changes) {
-            losses.push(loss);
-        }
-        losses
     }
 
     fn team_shared_shield_plans(
@@ -1222,6 +1181,13 @@ impl BattleManagers {
         self.entity.execute_skill_command(command)
     }
 
+    pub(crate) fn execute_move_front(
+        &mut self,
+        command: entity::position::MoveFrontCommand,
+    ) -> Result<entity::position::MoveFrontChanges, entity::position::MoveFrontError> {
+        self.entity.execute_move_front(command)
+    }
+
     pub(crate) fn first_open_combat_position(&self, source_uid: i64) -> Option<i32> {
         self.entity.first_open_combat_position(
             source_uid,
@@ -1511,32 +1477,32 @@ impl BattleManagers {
     pub(crate) fn promote_reserves(
         &mut self,
         fight: &mut Fight,
-    ) -> Vec<crate::engine::fight::reserve::Promotion> {
-        let mut promotions = self.entity.promote_reserves(&self.hp);
-        self.complete_promotions(&mut promotions);
+    ) -> crate::engine::fight::reserve::PromotionBatch {
+        let promotions = crate::engine::mechanic::reserve_cycle::promote(self, |_| true);
         self.sync_entities(fight);
         promotions
     }
 
     pub(crate) fn promote_immediate_reserves(
         &mut self,
-    ) -> Vec<crate::engine::fight::reserve::Promotion> {
-        let battle_rule = &self.battle_rule;
-        let mut promotions = self
-            .entity
-            .promote_immediate_reserves(&self.hp, |team_type| {
-                battle_rule.promotes_reserves_immediately(team_type)
-            });
-        self.complete_promotions(&mut promotions);
-        promotions
+    ) -> crate::engine::fight::reserve::PromotionBatch {
+        let immediate = [1, 2]
+            .into_iter()
+            .filter(|team_type| self.battle_rule.promotes_reserves_immediately(*team_type))
+            .collect::<Vec<_>>();
+        crate::engine::mechanic::reserve_cycle::promote(self, |team_type| {
+            immediate.contains(&team_type)
+        })
     }
 
-    fn complete_promotions(&self, promotions: &mut [crate::engine::fight::reserve::Promotion]) {
-        for promotion in promotions {
-            if let Some(entering) = self.entity_snapshot(promotion.entering_uid) {
-                promotion.entering = entering;
-            }
-        }
+    pub(crate) fn queue_reserve_cycle(
+        &mut self,
+        command: crate::engine::fight::reserve::CycleCommand,
+    ) -> crate::engine::fight::reserve::ReserveQueued {
+        let catalog = self.catalog();
+        let queued = self.entity.queue_reserve_cycle(catalog, command);
+        self.register_entity_state(&queued.entity);
+        queued
     }
 
     pub(crate) fn advance_wave(
@@ -1561,6 +1527,13 @@ impl BattleManagers {
             entering_uids: roster.entering_uids,
             fight: fight.clone(),
         }))
+    }
+
+    pub(crate) fn passives_disabled(&self, owner_uid: i64) -> bool {
+        self.buff.has_buff_act_kind(
+            owner_uid,
+            crate::engine::skill::buff_act::registry::BuffActKind::PassiveSkillInvalid,
+        )
     }
 
     pub(crate) fn can_fire_rule(
@@ -1623,12 +1596,12 @@ impl BattleManagers {
         self.round_rule_fires.clear();
         self.buff_act_fires.clear();
         self.configured_rule_progress.begin_round_start();
+        self.hp.begin_round();
     }
 
     pub(crate) fn begin_action_round(&mut self) {
         self.configured_rule_progress.begin_action_round();
         self.card.begin_round();
-        self.hp.begin_round();
         self.injury.begin_round();
         self.gauge.begin_combat_round();
         self.field.begin_round();
@@ -1708,6 +1681,19 @@ impl BattleManagers {
         managers.eureka.seed(fight);
         managers.buff.set_catalog(catalog);
         managers.buff.seed(fight);
+        for uid in entities(fight)
+            .chain(
+                fight
+                    .attacker
+                    .iter()
+                    .chain(fight.defender.iter())
+                    .filter_map(|team| team.assist_boss.as_ref()),
+            )
+            .filter_map(|entity| entity.uid)
+        {
+            let capacity = crate::engine::skill::buff_act::raspberry::cloak_hp(&managers, uid);
+            managers.hp.seed_capacity(uid, capacity);
+        }
         crate::engine::skill::buff_act::each_change_attr::seed(&mut managers);
         managers.card.set_catalog(catalog);
         managers.card.seed(fight);

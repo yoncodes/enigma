@@ -4,7 +4,12 @@ use super::*;
 fn forbid_discards_support_cards_but_preserves_locked_cards() {
     init_config();
     assert!(buff_act::registry::has_destination(406, "Forbid", &[]));
-    assert!(!buff_act::wire::find(406, "Forbid").unwrap().has_output());
+    assert_eq!(
+        buff_act::wire::find(406, "Forbid")
+            .unwrap()
+            .markers(buff_act::wire::WirePhase::Add),
+        &[sonettobuf::effect_type_enum::EffectType::Forbid as i32]
+    );
     assert!(buff_act::forbid::blocks(
         crate::engine::skill::effect::catalog::SkillEffectTag::Debuff as i32,
         false,

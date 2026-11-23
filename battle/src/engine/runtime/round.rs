@@ -19,41 +19,6 @@ use super::{
     schedule,
 };
 
-fn append_client_conduit_selection_confirmations(
-    mut frames: Vec<SemanticFrame>,
-) -> Vec<SemanticFrame> {
-    let confirmations = frames
-        .iter()
-        .flat_map(|frame| &frame.items)
-        .filter_map(|item| match item {
-            FrameItem::Change(change) => match change.as_ref() {
-                crate::engine::runtime::change::BattleChange::Conduit(
-                    crate::engine::manager::conduit::ConduitChange::GroupSelected {
-                        source_uid,
-                        team,
-                        group,
-                    },
-                ) => Some(RoundCue::ClientConduitSelectionConfirmed {
-                    source_uid: *source_uid,
-                    team: *team,
-                    group: *group,
-                }),
-                _ => None,
-            },
-            _ => None,
-        })
-        .map(FrameItem::Cue)
-        .collect::<Vec<_>>();
-    if !confirmations.is_empty() {
-        frames.push(SemanticFrame {
-            owner: FrameOwner::Command,
-            trigger: FrameTrigger::Active,
-            items: confirmations,
-        });
-    }
-    frames
-}
-
 struct WaveTransition {
     pool: crate::engine::skill::target::TargetPool,
     entering_uids: Vec<i64>,
@@ -140,7 +105,8 @@ impl BattleRuntime {
             .catalog_data
             .expect("battle runtime was not constructed with a catalog");
         let active_round = self.round_state.cur_round;
-        self.round_state.begin_round();
+        let action_round = self.round_state.begin_round();
+        self.cloth_redealt = false;
         self.fight.cur_round = Some(self.round_state.cur_round);
         if let Some(attacker) = self.fight.attacker.as_mut() {
             for skill in &mut attacker.skill_infos {
@@ -179,8 +145,11 @@ impl BattleRuntime {
                 std::iter::empty(),
             );
         }
-        let mut ai_turn =
-            schedule::AiTurnPlan::new(captured_ai_choices, self.managers.card.ai_queue());
+        let mut ai_turn = schedule::AiTurnPlan::new(
+            action_round,
+            captured_ai_choices,
+            self.managers.card.ai_queue(),
+        )?;
         let catalog = &mut self.catalog;
         let mut pool = crate::engine::skill::target::TargetPool::from_fight_with_catalog(
             self.catalog_data
@@ -199,29 +168,12 @@ impl BattleRuntime {
         let commands = commands_from_opers(&request.opers);
         let fight_version = self.fight.version.unwrap_or_default();
         let absorb_hurt_map_layout = self.absorb_hurt_map_layout;
-        let uses_action_phase_power_clear =
-            crate::engine::fight::versions::round_start_setup_layout(fight_version)
-                == Some(crate::engine::fight::versions::RoundStartSetupLayout::Version7);
+        let setup_layout = crate::engine::fight::versions::round_start_setup_layout(fight_version);
+        let version_seven =
+            setup_layout == Some(crate::engine::fight::versions::RoundStartSetupLayout::Version7);
+        let uses_action_phase_power_clear = version_seven;
+        let device_operations = &request.devices_opers;
 
-        let conduit_selection = drain::run_command_group(
-            &mut self.managers,
-            &pool,
-            catalog,
-            &mut self.determinism,
-            context,
-            request.devices_opers.iter().filter_map(|operation| {
-                Some(crate::engine::skill::rule::output::RuleOp::Command(
-                    crate::engine::skill::rule::output::BattleCommand::Conduit(
-                        crate::engine::manager::conduit::ConduitCommand::SelectGroup {
-                            source_uid: operation.uid?,
-                            group: operation.index?,
-                        },
-                    ),
-                ))
-            }),
-        )
-        .map_err(|error| format!("{error:?}"))?;
-        ai_turn.observe(&conduit_selection);
         let player = schedule::run_player_phase(
             &self.fight,
             &mut self.managers,
@@ -230,12 +182,13 @@ impl BattleRuntime {
             &mut self.determinism,
             context,
             commands.iter().cloned(),
-            append_client_conduit_selection_confirmations(conduit_selection.frames),
+            device_operations,
             1,
             crate::engine::manager::emitter::UID,
         )
         .map_err(|error| format!("{error:?}"))?;
         let card_energy_finalized = player.card_energy_finalized;
+        let refill_slots = player.refill_slots;
         let player = player.drain;
         let ended_by_player = battle_ended(&self.fight, &pool, &self.managers);
         self.objectives
@@ -260,7 +213,7 @@ impl BattleRuntime {
                 catalog,
                 &mut self.determinism,
                 conduit_context,
-                &request.devices_opers,
+                device_operations,
             )
             .map_err(|error| format!("{error:?}"))?
         };
@@ -351,11 +304,25 @@ impl BattleRuntime {
             absorb_hurt_map_layout,
         )?);
         let ended_after_attacker_settlement = battle_ended(&self.fight, &pool, &self.managers);
+        if ended_after_attacker_settlement {
+            let transition = schedule::run_terminal_attacker_transition(
+                &mut self.managers,
+                &pool,
+                catalog,
+                &mut self.determinism,
+                settlement_context,
+            )
+            .map_err(|error| format!("{error:?}"))?;
+            fight_steps.extend(project_result(
+                transition,
+                fight_version,
+                absorb_hurt_map_layout,
+            )?);
+        }
         let wave_defeated_after_attacker_settlement =
             crate::engine::round::outcome::defenders_defeated(&pool, &self.managers);
         let runs_phase_two = !ended_after_attacker_settlement;
-        let post_action_hand_size =
-            schedule::post_action_target_hand_len(&self.managers, &pool, hand_size);
+        let post_action_hand_size = refill_slots.target(&self.managers, &pool, hand_size);
         let needs_refill = crate::engine::mechanic::card::CardMechanic
             .refill_hand_len(&self.managers, &pool)
             < post_action_hand_size;
@@ -384,11 +351,11 @@ impl BattleRuntime {
             )?);
         }
         let promotions = if ended_during_attacker_actions {
-            Vec::new()
+            Default::default()
         } else {
             self.managers.promote_reserves(&mut self.fight)
         };
-        self.objectives.record_promotions(&promotions);
+        self.objectives.record_promotions(promotions.promotions());
         if !promotions.is_empty() {
             self.managers.sync_roster(&self.fight);
             pool = crate::engine::skill::target::TargetPool::from_fight_with_catalog(
@@ -402,7 +369,7 @@ impl BattleRuntime {
                 catalog,
                 &mut self.determinism,
                 context,
-                promotions.iter().cloned(),
+                &promotions,
             )
             .map_err(|error| format!("{error:?}"))?;
             ai_turn.observe(&promotion);
@@ -471,12 +438,17 @@ impl BattleRuntime {
         }
         if runs_phase_two {
             let wave_entry_condition_uids = std::mem::take(&mut self.wave_entry_condition_uids);
+            let defender_context = crate::engine::skill::target::TargetContext {
+                defender_start_round: version_seven
+                    .then(|| self.round_state.start_defender_round()),
+                ..context
+            };
             let before_ai = schedule::run_before_ai_round_start(
                 &mut self.managers,
                 &pool,
                 catalog,
                 &mut self.determinism,
-                context,
+                defender_context,
                 1,
                 &wave_entry_condition_uids,
                 (uses_action_phase_power_clear && !wave_defeated_after_attacker_settlement)
@@ -489,19 +461,20 @@ impl BattleRuntime {
                 fight_version,
                 absorb_hurt_map_layout,
             )?);
-            let choices = ai_turn.into_choices();
-            let ai = schedule::run_ai_actions(
-                &self.fight,
-                &mut self.managers,
-                &pool,
-                catalog,
-                &mut self.determinism,
-                context,
-                choices,
-                &promotions,
-            )
-            .map_err(|error| format!("{error:?}"))?;
-            fight_steps.extend(project_result(ai, fight_version, absorb_hurt_map_layout)?);
+            if let Some(choices) = ai_turn.into_choices() {
+                let ai = schedule::run_ai_actions(
+                    &self.fight,
+                    &mut self.managers,
+                    &pool,
+                    catalog,
+                    &mut self.determinism,
+                    context,
+                    choices,
+                    promotions.promotions(),
+                )
+                .map_err(|error| format!("{error:?}"))?;
+                fight_steps.extend(project_result(ai, fight_version, absorb_hurt_map_layout)?);
+            }
             let after_ai_round_end = schedule::run_after_ai_round_end(
                 &mut self.managers,
                 &pool,

@@ -1,5 +1,9 @@
 //! Explicit diagnostic surface for Battle Preview and BattleCheck.
 
+pub mod damage {
+    pub use crate::engine::damage::export::collect;
+}
+
 pub mod entity {
     pub use crate::engine::entity::{
         builder::EntityBuilder,
@@ -15,11 +19,14 @@ pub mod replay {
         runtime::{
             BattleRuntime as ReplayBattle, ClothSkillType,
             determinism::{
-                CrystalReuseChoice, HandRankChoice, MoxieReductionResistanceChoice,
-                RoundDeterminism, SkillTargetChoice,
+                ConditionRandomChoice, CrystalReuseChoice, HandRankChoice,
+                MoxieReductionResistanceChoice, RandomBuffChoice, RoundDeterminism,
+                SkillTargetChoice,
             },
         },
     };
+
+    pub use crate::engine::skill::rule::ConfiguredRuleKey;
 
     pub fn seed_observed_redeal(
         runtime: &mut ReplayBattle,
@@ -37,7 +44,7 @@ pub mod scan {
             condition::{ConditionTiming, ParsedCondition, ParsedConditionKind, parse_conditions},
             effect::{ParsedBehavior, ParsedSkillEffect, SkillEffectCatalog, SkillEffectSlot},
             rule::route::{ConditionDriver, ConditionRoute, RouteError},
-            target::{TargetRequest, is_mapped_target_code},
+            target::{TargetRequest, is_supported_target},
         },
     };
 
@@ -50,12 +57,43 @@ pub mod scan {
     }
 
     pub mod behavior {
+        use super::{ParsedCondition, ParsedConditionKind, SkillEffectSlot};
+        use crate::engine::skill::{
+            behavior::registry::CardPlayRole, condition::none::NoneMode, rule::SetupStage,
+        };
+
+        pub use crate::engine::skill::behavior::buff::random_buff_pool;
         pub use crate::engine::skill::behavior::{
             has_destination, is_slot_supported, is_supported,
         };
 
+        pub fn missing_queue_preparation_route(slot: &SkillEffectSlot) -> bool {
+            let Some(definition) = registry::find(&slot.behavior) else {
+                return false;
+            };
+            definition.card_play_role == CardPlayRole::QueuePreparation
+                && slot.compiled_route.is_ok()
+                && requires_queue_commit(&slot.conditions)
+                && slot
+                    .compiled_setup_keys(SetupStage::GeneratedCard, 0)
+                    .is_ok_and(|keys| keys.is_empty())
+        }
+
+        fn requires_queue_commit(conditions: &[ParsedCondition]) -> bool {
+            conditions.iter().any(|condition| match &condition.kind {
+                ParsedConditionKind::None(NoneMode::ActionQueueCommitted) => true,
+                ParsedConditionKind::Any(alternatives) => {
+                    !alternatives.is_empty()
+                        && alternatives
+                            .iter()
+                            .all(|group| requires_queue_commit(group))
+                }
+                _ => false,
+            })
+        }
+
         pub mod classify {
-            pub use crate::engine::skill::behavior::classify::BehaviorSpec;
+            pub use crate::engine::skill::behavior::classify::{BehaviorKind, BehaviorSpec};
         }
 
         pub mod registry {
@@ -127,6 +165,21 @@ pub fn configured_opening_cards(game_data: &config::GameDB, episode_id: i32) -> 
 
 pub fn moxie_down_resistance_attribute_id() -> i32 {
     crate::engine::entity::attr::AttrId::MoxieDownResistance.id()
+}
+
+pub fn conduit_ex_point_type() -> i32 {
+    crate::engine::manager::ex_point::ExPointKind::DevicePower.as_wire()
+}
+
+pub fn conduit_ex_point_overflow_bank_act() -> i32 {
+    crate::engine::skill::buff_act::registry::definitions()
+        .find(|definition| {
+            definition.kind
+                == crate::engine::skill::buff_act::registry::BuffActKind::DeviceExPointOverflowBank
+        })
+        .expect("device overflow bank has a registry owner")
+        .key
+        .opcode
 }
 
 pub fn ultimate_ignores_limit(

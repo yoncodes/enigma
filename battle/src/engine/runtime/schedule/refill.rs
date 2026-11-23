@@ -1,10 +1,8 @@
 use super::*;
 mod post_action;
 
-pub use post_action::{
-    replacement_count as post_action_replacement_count, run_post_action_refill,
-    target_hand_len as post_action_target_hand_len,
-};
+pub(crate) use post_action::RefillSlots;
+pub use post_action::run_post_action_refill;
 
 pub(super) struct OpeningRefillSeed {
     pub(super) draws: Vec<sonettobuf::CardInfo>,
@@ -222,7 +220,9 @@ fn run_card_refill(
         } else {
             Vec::new()
         };
-        let ready_special = if stage == CardRefillStage::AfterActions {
+        let ready_special = if stage == CardRefillStage::AfterActions
+            || (stage == CardRefillStage::RoundStart && needs_normal_card)
+        {
             crate::engine::mechanic::card::CardMechanic
                 .special_team_cards(pool, managers, managers.card.hand())
                 .into_iter()

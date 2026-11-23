@@ -1,3 +1,4 @@
+use crate::engine::manager::BattleManagers;
 use crate::engine::skill::{
     behavior::classify::BehaviorSpec,
     effect::slot::{ParsedBehavior, ParsedSkillEffect, SkillEffectSlot},

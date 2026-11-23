@@ -35,6 +35,8 @@ pub struct SkillEffectSlot {
     pub condition_target: TargetRequest,
     pub target: TargetRequest,
     pub target_from_condition: bool,
+    pub(crate) delegated_reward_phase: Option<SkillPhase>,
+    pub(crate) ordered_phase: Option<SkillPhase>,
     pub limit: i32,
     pub round_limit: i32,
 }
@@ -48,6 +50,8 @@ impl SkillEffectSlot {
             condition_target: TargetRequest::self_only(),
             target,
             target_from_condition: false,
+            delegated_reward_phase: None,
+            ordered_phase: None,
             limit: 0,
             round_limit: 0,
         }
@@ -148,30 +152,89 @@ impl SkillEffectSlot {
                 })
             })
             .collect::<Vec<_>>();
-        for condition in &self.conditions {
-            let Some(definition) = registry::find_key(condition.opcode, &condition.type_name)
-            else {
-                continue;
-            };
-            for &event in definition.reactivation_events {
-                let key = SubscriptionKey::new(event, definition.key)
-                    .with_publication(definition.publication)
-                    .with_timing(definition.reaction_timing.resolve(Default::default()));
-                if !subscriptions.contains(&key) {
-                    subscriptions.push(key);
-                }
+        let entry = route
+            .branches
+            .iter()
+            .filter_map(|branch| branch.driver_key())
+            .filter_map(|key| registry::find_key(key.opcode, key.type_name))
+            .flat_map(|definition| {
+                definition
+                    .reactivation_events
+                    .iter()
+                    .copied()
+                    .filter(|event| event.is_entry())
+                    .map(move |event| (definition, event))
+            });
+        let other = self
+            .conditions
+            .iter()
+            .filter_map(|condition| registry::find_key(condition.opcode, &condition.type_name))
+            .flat_map(|definition| {
+                definition
+                    .reactivation_events
+                    .iter()
+                    .copied()
+                    .filter(|event| !event.is_entry())
+                    .map(move |event| (definition, event))
+            });
+        for (definition, event) in entry.chain(other) {
+            let key = SubscriptionKey::new(event, definition.key)
+                .with_publication(definition.publication)
+                .with_timing(definition.reaction_timing.resolve(Default::default()));
+            if !subscriptions.contains(&key) {
+                subscriptions.push(key);
             }
         }
         Ok(subscriptions)
     }
 
+    pub(crate) fn entry_conditions(
+        &self,
+        subscriptions: &[SubscriptionKey],
+        event: &crate::engine::event::payload::BattleEvent,
+    ) -> Option<Vec<ParsedCondition>> {
+        use crate::engine::skill::condition::{ParsedConditionKind, satisfied_conditions};
+
+        let [condition] = self.conditions.as_slice() else {
+            return None;
+        };
+        let ParsedConditionKind::Any(groups) = &condition.kind else {
+            return None;
+        };
+        let route = self.compiled_route.as_ref().ok()?;
+        let alternatives = groups
+            .iter()
+            .zip(&route.branches)
+            .filter_map(|(conditions, branch)| {
+                let driver = branch.driver_key()?;
+                subscriptions
+                    .iter()
+                    .any(|key| {
+                        key.definition == driver
+                            && key.event.is_entry()
+                            && event.subscription_kinds().any(|kind| kind == key.event)
+                    })
+                    .then(|| satisfied_conditions(conditions, driver))
+            })
+            .collect();
+        Some(vec![ParsedCondition {
+            kind: ParsedConditionKind::Any(alternatives),
+            ..condition.clone()
+        }])
+    }
+
     pub fn active_phases(&self) -> Result<Vec<SkillPhase>, RouteError> {
+        let fallback = self
+            .delegated_reward_phase
+            .or_else(|| self.active_presence_phase());
         let mut phases = Vec::new();
         for subscription in self.compiled_subscriptions()? {
             let phase = match subscription.event {
-                crate::engine::event::kind::EventKind::SkillAction => subscription.phase,
-                // The action-start trigger runs with the action's own Immediate slots.
-                crate::engine::event::kind::EventKind::SkillEffectStarted => subscription
+                crate::engine::event::kind::EventKind::SkillAction => {
+                    subscription.phase.or(fallback)
+                }
+                crate::engine::event::kind::EventKind::SkillEffectStarted
+                | crate::engine::event::kind::EventKind::SkillEffectsPrepared => subscription
                     .phase
                     .filter(|phase| *phase == SkillPhase::Immediate),
                 _ => None,
@@ -182,7 +245,64 @@ impl SkillEffectSlot {
                 phases.push(phase);
             }
         }
+        if phases.is_empty()
+            && let Some(phase) = self.ordered_phase
+        {
+            phases.push(phase);
+        }
         Ok(phases)
+    }
+
+    fn active_presence_phase(&self) -> Option<SkillPhase> {
+        use crate::engine::skill::{
+            behavior::registry::{ConditionRouteOverride, find},
+            condition::{ParsedConditionKind, buff::BuffConditionMode},
+        };
+
+        let ConditionRouteOverride::ActiveBuffPresence { key, phase } =
+            find(&self.behavior)?.condition_route_override?
+        else {
+            return None;
+        };
+        let [condition] = self.conditions.as_slice() else {
+            return None;
+        };
+        (key.matches(condition.opcode, &condition.type_name)
+            && matches!(
+                condition.kind,
+                ParsedConditionKind::BuffId {
+                    mode: BuffConditionMode::Present,
+                    ..
+                }
+            ))
+        .then_some(phase)
+    }
+
+    pub(crate) fn completion(&self) -> Result<Option<SubscriptionKey>, RouteError> {
+        use crate::engine::skill::behavior::registry::{ConditionRouteOverride, find};
+
+        let Some(ConditionRouteOverride::ActiveCompletion(trigger)) =
+            find(&self.behavior).and_then(|definition| definition.condition_route_override)
+        else {
+            return Ok(None);
+        };
+        let [condition] = self.conditions.as_slice() else {
+            return Ok(None);
+        };
+        if !matches!(
+            condition.kind,
+            crate::engine::skill::condition::ParsedConditionKind::None(_)
+        ) || !condition.raw_args.is_empty()
+            || condition.opcode != trigger.opcode
+            || condition.type_name != trigger.type_name
+        {
+            return Ok(None);
+        }
+        let subscriptions = self.compiled_subscriptions()?;
+        let [key] = subscriptions.as_slice() else {
+            return Ok(None);
+        };
+        Ok((key.definition == trigger).then_some(*key))
     }
 
     pub fn setup_keys(
@@ -249,6 +369,7 @@ pub struct ParsedBehavior {
     pub spec: BehaviorSpec,
     pub args: Vec<i32>,
     pub raw_args: Vec<String>,
+    pub raw_arity: usize,
     pub config_effect: i32,
     pub effect_id: i32,
     pub slot: u8,
@@ -259,6 +380,7 @@ impl ParsedBehavior {
     pub fn new(opcode: i32, type_name: &str, args: Vec<i32>) -> Self {
         Self {
             spec: BehaviorSpec::new(opcode, type_name),
+            raw_arity: args.len(),
             args,
             raw_args: Vec::new(),
             config_effect: 0,
@@ -272,6 +394,7 @@ impl ParsedBehavior {
             config_effect: spec.key.opcode,
             spec,
             args,
+            raw_arity: raw_args.len(),
             raw_args,
             effect_id: 0,
             slot: 0,
@@ -306,266 +429,4 @@ fn parse_i32_list(raw: &str) -> Option<Vec<i32>> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::engine::{
-        event::kind::EventKind,
-        skill::condition::{ParsedConditionKind, none::NoneMode},
-    };
-
-    #[test]
-    fn arg_list_preserves_comma_group_from_raw_args() {
-        let behavior = ParsedBehavior::from_spec(
-            BehaviorSpec::new(60142, "ConsumePowerAddBuff"),
-            vec![2],
-            vec!["2".to_owned(), "2240001,2240002".to_owned()],
-        );
-
-        assert_eq!(behavior.arg(0), Some(2));
-        assert_eq!(behavior.arg_list(1), Some(vec![2240001, 2240002]));
-    }
-
-    #[test]
-    fn malformed_arg_list_fails_closed() {
-        let behavior = ParsedBehavior::from_spec(
-            BehaviorSpec::new(60142, "ConsumePowerAddBuff"),
-            vec![2],
-            vec!["2".to_owned(), "2240001,bad".to_owned()],
-        );
-
-        assert_eq!(behavior.arg_list(1), None);
-    }
-
-    #[test]
-    fn compound_condition_line_subscribes_once_per_event() {
-        let mut slot = SkillEffectSlot::new(
-            ParsedBehavior::new(1, "AddBuff", Vec::new()),
-            TargetRequest::self_only(),
-        );
-        slot.conditions = vec![
-            ParsedCondition {
-                opcode: 201,
-                type_name: "None".to_owned(),
-                kind: ParsedConditionKind::None(NoneMode::SkillAction),
-                raw_args: Vec::new(),
-            },
-            ParsedCondition {
-                opcode: 203,
-                type_name: "None".to_owned(),
-                kind: ParsedConditionKind::None(NoneMode::SkillAction),
-                raw_args: Vec::new(),
-            },
-        ];
-
-        assert_eq!(
-            slot.subscriptions(),
-            vec![SubscriptionKey::at_phase(
-                EventKind::SkillAction,
-                crate::engine::skill::rule::DefinitionKey::new(201, "None"),
-                Some(SkillPhase::SourceOpening),
-            )]
-        );
-    }
-
-    #[test]
-    fn first_event_condition_drives_compound_condition_line() {
-        let mut slot = SkillEffectSlot::new(
-            ParsedBehavior::new(1, "AddBuff", Vec::new()),
-            TargetRequest::self_only(),
-        );
-        slot.conditions = vec![
-            ParsedCondition {
-                opcode: 212,
-                type_name: "None".to_owned(),
-                kind: ParsedConditionKind::None(NoneMode::AllyAction),
-                raw_args: Vec::new(),
-            },
-            ParsedCondition {
-                opcode: 203,
-                type_name: "None".to_owned(),
-                kind: ParsedConditionKind::None(NoneMode::SkillAction),
-                raw_args: Vec::new(),
-            },
-        ];
-
-        assert_eq!(
-            slot.subscriptions(),
-            vec![SubscriptionKey::new(
-                EventKind::AllyAction,
-                crate::engine::skill::rule::DefinitionKey::new(212, "None"),
-            )]
-        );
-    }
-
-    #[test]
-    fn compiled_subscription_keeps_the_exact_phase() {
-        let mut slot = SkillEffectSlot::new(
-            ParsedBehavior::new(1, "AddBuff", Vec::new()),
-            TargetRequest::self_only(),
-        );
-        slot.conditions = vec![ParsedCondition {
-            opcode: 208,
-            type_name: "None".to_owned(),
-            kind: ParsedConditionKind::None(NoneMode::SkillAction),
-            raw_args: Vec::new(),
-        }];
-        slot.compiled_route = ConditionRoute::compile(&slot.conditions);
-
-        assert_eq!(
-            slot.compiled_subscriptions().unwrap(),
-            vec![SubscriptionKey::at_phase(
-                EventKind::SkillAction,
-                crate::engine::skill::rule::DefinitionKey::new(208, "None"),
-                Some(crate::engine::skill::action::SkillPhase::AfterDamage),
-            )]
-        );
-        assert_eq!(slot.active_phases().unwrap(), vec![SkillPhase::AfterDamage]);
-    }
-
-    #[test]
-    fn compound_hp_threshold_keeps_its_policy_on_the_attacked_driver() {
-        crate::test_support::init_config();
-        let mut slot = SkillEffectSlot::new(
-            ParsedBehavior::new(1, "AddBuff", Vec::new()),
-            TargetRequest::self_only(),
-        );
-        slot.conditions = crate::engine::skill::condition::parse_conditions(
-            config::configs::get(),
-            "1209#300&22209",
-        );
-        slot.compiled_route = ConditionRoute::compile(&slot.conditions);
-
-        let subscription = slot.compiled_subscriptions().unwrap().remove(0);
-        assert_eq!(
-            subscription.definition,
-            crate::engine::skill::rule::DefinitionKey::new(22209, "BeAttacked")
-        );
-        assert_eq!(
-            subscription.timing_policy,
-            crate::engine::skill::rule::DefinitionKey::new(1209, "LifeLess")
-        );
-        assert_eq!(subscription.multiplicity_policy, subscription.timing_policy);
-        assert_eq!(
-            subscription.timing,
-            crate::engine::event::subscription::ReactionTiming::HpThresholds
-        );
-    }
-
-    #[test]
-    fn attacked_compound_route_keeps_driver_timing_and_multiplicity() {
-        crate::test_support::init_config();
-        let mut slot = SkillEffectSlot::new(
-            ParsedBehavior::new(1, "AddBuff", Vec::new()),
-            TargetRequest::self_only(),
-        );
-        slot.conditions = crate::engine::skill::condition::parse_conditions(
-            config::configs::get(),
-            "19209#109380007&501209",
-        );
-        slot.compiled_route = ConditionRoute::compile(&slot.conditions);
-
-        let subscription = slot.compiled_subscriptions().unwrap().remove(0);
-        assert_eq!(
-            subscription.timing_policy,
-            crate::engine::skill::rule::DefinitionKey::new(501209, "UseHurtSkill")
-        );
-        assert_eq!(
-            subscription.multiplicity_policy,
-            crate::engine::skill::rule::DefinitionKey::new(501209, "UseHurtSkill")
-        );
-        assert_eq!(
-            subscription.timing,
-            crate::engine::event::subscription::ReactionTiming::AttackedSkills
-        );
-    }
-
-    #[test]
-    fn exact_none_condition_keeps_event_and_enter_battle_static_routes() {
-        let mut slot = SkillEffectSlot::new(
-            ParsedBehavior::new(1, "AddBuff", Vec::new()),
-            TargetRequest::self_only(),
-        );
-        slot.conditions = vec![ParsedCondition {
-            opcode: 55,
-            type_name: "None".to_owned(),
-            kind: ParsedConditionKind::None(NoneMode::EnterBattle),
-            raw_args: Vec::new(),
-        }];
-        slot.compiled_route = ConditionRoute::compile(&slot.conditions);
-
-        assert_eq!(
-            slot.compiled_subscriptions().unwrap(),
-            vec![SubscriptionKey::new(
-                EventKind::EntityEntered,
-                crate::engine::skill::rule::DefinitionKey::new(55, "None"),
-            )]
-        );
-        assert_eq!(
-            slot.compiled_setup_keys(SetupStage::EnterBattleStatic, 0)
-                .unwrap(),
-            vec![crate::engine::skill::rule::DefinitionKey::new(55, "None")]
-        );
-    }
-
-    #[test]
-    fn predicate_companion_setup_only_drives_slots_without_an_explicit_driver() {
-        crate::test_support::init_config();
-        let mut predicate_only = SkillEffectSlot::new(
-            ParsedBehavior::new(1, "AddBuff", Vec::new()),
-            TargetRequest::self_only(),
-        );
-        predicate_only.conditions = crate::engine::skill::condition::parse_conditions(
-            config::configs::get(),
-            "19002#437211",
-        );
-        predicate_only.compiled_route = ConditionRoute::compile(&predicate_only.conditions);
-
-        let mut driven = SkillEffectSlot::new(
-            ParsedBehavior::new(1, "AddBuff", Vec::new()),
-            TargetRequest::self_only(),
-        );
-        driven.conditions = crate::engine::skill::condition::parse_conditions(
-            config::configs::get(),
-            "5&19002#437211",
-        );
-        driven.compiled_route = ConditionRoute::compile(&driven.conditions);
-
-        assert_eq!(
-            predicate_only
-                .compiled_setup_keys(SetupStage::EnterFight, 0)
-                .unwrap(),
-            vec![crate::engine::skill::rule::DefinitionKey::new(
-                19002,
-                "HasBuffId"
-            )]
-        );
-        assert_eq!(
-            driven
-                .compiled_setup_keys(SetupStage::EnterFight, 0)
-                .unwrap(),
-            vec![crate::engine::skill::rule::DefinitionKey::new(
-                5,
-                "EnterFight"
-            )]
-        );
-    }
-
-    #[test]
-    fn unsupported_condition_disables_only_its_slot() {
-        let mut slot = SkillEffectSlot::new(
-            ParsedBehavior::new(1, "AddBuff", Vec::new()),
-            TargetRequest::self_only(),
-        );
-        slot.compiled_route = Err(RouteError::UnregisteredExactKey {
-            opcode: 999,
-            type_name: "FutureCondition".to_owned(),
-        });
-
-        assert!(slot.compiled_subscriptions().unwrap().is_empty());
-        assert!(
-            slot.compiled_setup_keys(SetupStage::BattleStart, 0)
-                .unwrap()
-                .is_empty()
-        );
-    }
-}
+mod tests;

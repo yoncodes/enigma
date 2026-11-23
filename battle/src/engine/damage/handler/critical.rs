@@ -37,7 +37,19 @@ pub fn chance(
     pool: &TargetPool,
     managers: &BattleManagers,
 ) -> i32 {
-    raw_chance(source_uid, target_uid, pool, managers, &managers.buff).clamp(0, 1000)
+    chance_with_attack_attributes(source_uid, target_uid, pool, managers, &[])
+}
+
+pub fn chance_with_attack_attributes(
+    source_uid: i64,
+    target_uid: i64,
+    pool: &TargetPool,
+    managers: &BattleManagers,
+    attack_attributes: &[(AttrId, i32)],
+) -> i32 {
+    raw_chance(source_uid, target_uid, pool, managers, &managers.buff)
+        .saturating_add(attack_local_chance_delta(attack_attributes))
+        .clamp(0, 1000)
 }
 
 pub fn damage_multiplier(
@@ -217,14 +229,20 @@ pub fn excess_rate(
     managers: &BattleManagers,
     attack_attributes: &[(AttrId, i32)],
 ) -> i32 {
-    let attack_local = attack_attributes
-        .iter()
-        .filter(|(attr_id, _)| *attr_id == AttrId::CriticalRate)
-        .map(|(_, delta)| *delta)
-        .fold(0, i32::saturating_add);
     let raw = raw_chance(source_uid, target_uid, pool, managers, &managers.buff)
-        .saturating_add(attack_local);
+        .saturating_add(attack_local_chance_delta(attack_attributes));
     (raw - 1000).max(0)
+}
+
+fn attack_local_chance_delta(attack_attributes: &[(AttrId, i32)]) -> i32 {
+    attack_attributes
+        .iter()
+        .filter_map(|(attr_id, delta)| match attr_id {
+            AttrId::CriticalRate => Some(*delta),
+            AttrId::CriticalResistRate => Some(delta.saturating_neg()),
+            _ => None,
+        })
+        .fold(0, i32::saturating_add)
 }
 
 #[cfg(test)]

@@ -73,10 +73,17 @@ pub(super) fn drain_command(
             )
         })
     } else {
+        let parent = super::overflow_frame::storage_scope(
+            &result.frames,
+            parent_path.as_deref(),
+            &trigger,
+            &command,
+        )
+        .or(parent_path.as_deref());
         ensure_frame(
             &mut result.frames,
             frame_path,
-            parent_path.as_deref(),
+            parent,
             frame_owner.unwrap_or(FrameOwner::Command),
             &trigger,
         )
@@ -138,6 +145,32 @@ pub(super) fn drain_command(
     // This is the single durable commit point for non-skill RuleOps.
     // The returned outcome describes committed changes and follow-ups.
     let mut outcome = execute_rule_op_with(managers, bus, determinism, command)?;
+    let damage = match &mut outcome {
+        RuleOutcome::Hp(hit) => std::slice::from_mut(hit.as_mut()),
+        RuleOutcome::HpBatch(hits) => hits.as_mut_slice(),
+        _ => &mut [],
+    };
+    if let Some(chain) = state.action_chain(&frame_path) {
+        state.shield_counter.earn(
+            chain,
+            damage
+                .iter_mut()
+                .flat_map(|hit| std::mem::take(&mut hit.shield_counter_credits)),
+        );
+    }
+    let claimed_counters =
+        match &outcome {
+            RuleOutcome::SkillLifecycle(
+                crate::engine::skill::action::SkillLifecycle::ActionCompleted(action),
+            ) if state.action_in_progress(&frame_path) => state
+                .action_chain(&frame_path)
+                .map_or_else(Vec::new, |chain| {
+                    state
+                        .shield_counter
+                        .claim(&chain, &frame_path, action, managers)
+                }),
+            _ => Vec::new(),
+        };
     let transformed = match &outcome {
         RuleOutcome::Entity(changes)
             if matches!(
@@ -234,6 +267,14 @@ pub(super) fn drain_command(
             false,
         )
     };
+    let layer_halo_fanout_output_owner = if !entry_halo_fanout
+        && current_skill.is_some()
+        && matches!(trigger, SkillOpTrigger::Setup { .. })
+    {
+        crate::engine::skill::behavior::registry::OutputOwner::Parent
+    } else {
+        fanout_output_owner
+    };
 
     // Managers publish semantic events through the bus. Reactions are
     // derived from these committed events, never fired by packet code.
@@ -268,6 +309,19 @@ pub(super) fn drain_command(
             .then_some(hit.target_uid)
         }));
         let source_uid = current_skill.map(|skill| skill.0).unwrap_or_default();
+        let results = match &outcome {
+            RuleOutcome::Buff(changes) => std::slice::from_ref(changes.as_ref()),
+            RuleOutcome::BuffBatch(changes) => changes.as_slice(),
+            _ => &[],
+        };
+        for burn in results
+            .iter()
+            .filter_map(|changes| changes.burn_application)
+        {
+            if burn.source_uid == source_uid {
+                execution.record_burn(burn);
+            }
+        }
         execution.record_buff_additions(events.iter().filter_map(|event| {
             let (BattleEvent::BuffAdded(change) | BattleEvent::BuffChanged(change)) = event else {
                 return None;
@@ -330,6 +384,98 @@ pub(super) fn drain_command(
         events = flatten_event_groups(&event_groups);
     }
 
+    let replacement = match &outcome {
+        RuleOutcome::Buff(changes) => changes.replacement_parts(),
+        _ => None,
+    };
+    if crate::engine::diagnostics::enabled(crate::engine::diagnostics::TraceArea::Drain)
+        && let RuleOutcome::Buff(changes) = &outcome
+        && changes.change.added.is_some()
+        && !changes.change.removed.is_empty()
+    {
+        eprintln!(
+            "drain buff replacement split={} removed={:?} added={:?}",
+            replacement.is_some(),
+            changes
+                .change
+                .removed
+                .iter()
+                .map(|removed| (removed.target_uid, removed.buff.buff_id, removed.buff.uid))
+                .collect::<Vec<_>>(),
+            changes.change.added.as_ref().map(|added| (
+                added.target_uid,
+                added.buff.buff_id,
+                added.buff.uid
+            )),
+        );
+    }
+    let replaced_copy_uids = fanout
+        .iter()
+        .flat_map(|fanout| &fanout.allies)
+        .flat_map(|ally| &ally.replaced)
+        .filter_map(|removed| removed.buff.uid)
+        .collect::<Vec<_>>();
+    let is_replaced_copy = |event: &BattleEvent| {
+        matches!(event, BattleEvent::BuffRemoved(change)
+            if replaced_copy_uids.contains(&change.buff_uid))
+    };
+    let all_event_groups =
+        (replacement.is_some() || !replaced_copy_uids.is_empty()).then(|| event_groups.clone());
+    if let Some(parts) = &replacement {
+        push_change(
+            &mut result.frames,
+            &frame_path,
+            crate::engine::runtime::change::BattleChange::Buff(Box::new(parts.lead.clone())),
+        );
+        let (removal_events, addition_events): (Vec<_>, Vec<_>) =
+            events.iter().cloned().partition(|event| {
+                matches!(event, BattleEvent::BuffRemoved(change)
+                    if parts.removed_buff_uids.contains(&change.buff_uid))
+            });
+        let removal_reactions = dispatch_event_groups(
+            pool,
+            managers,
+            catalog,
+            determinism,
+            state,
+            &[removal_events],
+            &event_scope,
+            &frame_path,
+            action_scope.as_deref(),
+            &entry_halo_scope,
+            current_skill,
+            false,
+            context.current_round > 0,
+            crate::engine::event::subscription::PublicationPhase::BeforePublish,
+            None,
+            None,
+            None,
+        )?;
+        if !removal_reactions.before_publish.is_empty() {
+            drain_nested_queue(
+                managers,
+                pool,
+                catalog,
+                determinism,
+                removal_reactions.before_publish.into(),
+                result,
+                state,
+            )?;
+        }
+        if !parts.removed_buff_uids.is_empty() {
+            push_change(
+                &mut result.frames,
+                &frame_path,
+                crate::engine::runtime::change::BattleChange::Buff(Box::new(parts.removal.clone())),
+            );
+        }
+        event_groups = vec![addition_events];
+    }
+
+    for group in &mut event_groups {
+        group.retain(|event| !is_replaced_copy(event));
+    }
+
     // BeforePublish reactions run before this outcome is recorded in
     // its semantic frame. Their own manager commits use nested drains.
     let mut before_reactions = dispatch_event_groups(
@@ -351,6 +497,9 @@ pub(super) fn drain_command(
         None,
         None,
     )?;
+    if let Some(groups) = all_event_groups {
+        event_groups = groups;
+    }
     let mut started_after_reactions = None;
     if matches!(
         &outcome,
@@ -465,23 +614,108 @@ pub(super) fn drain_command(
         .then_some(settlement_action_scope)
         .flatten();
     let original_pending_deaths = pending_deaths.clone();
-    let redeal_hand = match &outcome {
-        RuleOutcome::Card(changes)
-            if changes.kind == crate::engine::manager::card::CardChangeKind::RedealtKeepRanks =>
-        {
-            Some(changes.after.clone())
+    let (leading_fanout, fanout): (Vec<_>, Vec<_>) = fanout
+        .into_iter()
+        .partition(|fanout| fanout.precedes_carrier_change());
+    for fanout in leading_fanout {
+        let parent = output_frame_path(layer_halo_fanout_output_owner, &event_scope);
+        if fanout.allies.iter().all(|ally| ally.replaced.is_empty()) {
+            push_fanout(&mut result.frames, &parent, fanout, frame_trigger(&trigger));
+            continue;
         }
-        _ => None,
-    };
+        let fanout_path = push_fanout_frame(
+            &mut result.frames,
+            &parent,
+            &fanout,
+            frame_trigger(&trigger),
+        );
+        let mut lead = fanout;
+        let allies = std::mem::take(&mut lead.allies);
+        for ally in allies {
+            let part = |publish_part| {
+                let mut part = lead.clone();
+                let mut ally = ally.clone();
+                ally.part = publish_part;
+                part.allies = vec![ally];
+                crate::engine::runtime::change::BattleChange::BuffFanout(Box::new(part))
+            };
+            if ally.replaced.is_empty() {
+                push_change(
+                    &mut result.frames,
+                    &fanout_path,
+                    part(crate::engine::manager::buff::BuffPublishPart::Whole),
+                );
+                continue;
+            }
+            push_change(
+                &mut result.frames,
+                &fanout_path,
+                part(crate::engine::manager::buff::BuffPublishPart::Lead),
+            );
+            let removal_events = events
+                .iter()
+                .filter(|event| {
+                    matches!(event, BattleEvent::BuffRemoved(change)
+                        if ally.replaced.iter().any(|removed| removed.buff.uid == Some(change.buff_uid)))
+                })
+                .cloned()
+                .collect::<Vec<_>>();
+            let removal_reactions = dispatch_event_groups(
+                pool,
+                managers,
+                catalog,
+                determinism,
+                state,
+                &[removal_events],
+                &event_scope,
+                &fanout_path,
+                action_scope.as_deref(),
+                &entry_halo_scope,
+                current_skill,
+                false,
+                context.current_round > 0,
+                crate::engine::event::subscription::PublicationPhase::BeforePublish,
+                None,
+                None,
+                None,
+            )?;
+            if !removal_reactions.before_publish.is_empty() {
+                drain_nested_queue(
+                    managers,
+                    pool,
+                    catalog,
+                    determinism,
+                    removal_reactions.before_publish.into(),
+                    result,
+                    state,
+                )?;
+            }
+            push_change(
+                &mut result.frames,
+                &fanout_path,
+                part(crate::engine::manager::buff::BuffPublishPart::Removal),
+            );
+            push_change(
+                &mut result.frames,
+                &fanout_path,
+                part(crate::engine::manager::buff::BuffPublishPart::Addition),
+            );
+        }
+    }
     if let RuleOutcome::DeathSettlement(death) = &outcome {
         push_death(&mut result.frames, &frame_path, managers, *death);
     } else {
         for change in outcome.changes() {
+            let change = match (&replacement, change) {
+                (Some(parts), crate::engine::runtime::change::BattleChange::Buff(_)) => {
+                    crate::engine::runtime::change::BattleChange::Buff(Box::new(
+                        parts.addition.clone(),
+                    ))
+                }
+                (_, change) => change,
+            };
             push_change(&mut result.frames, &frame_path, change);
         }
-    }
-    if let Some(cards) = redeal_hand {
-        push_cue(&mut result.frames, RoundCue::RedealHandSync { cards });
     }
     for (owner, change) in outcome.owned_changes() {
         let nested_owner = match owner {
@@ -510,22 +744,11 @@ pub(super) fn drain_command(
         }
     }
     for fanout in fanout {
-        let fanout_parent = output_frame_path(fanout_output_owner, &event_scope);
-        let fanout_path = push_child(
+        push_fanout(
             &mut result.frames,
-            &fanout_parent,
-            FrameOwner::BuffRule {
-                emitter_uid: fanout.emitter_uid,
-                carrier_buff_uid: fanout.carrier_buff_uid,
-                carrier_buff_id: fanout.carrier_buff_id,
-                rule: fanout.rule,
-            },
+            &output_frame_path(fanout_output_owner, &event_scope),
+            fanout,
             frame_trigger(&trigger),
-        );
-        push_change(
-            &mut result.frames,
-            &fanout_path,
-            crate::engine::runtime::change::BattleChange::BuffFanout(Box::new(fanout)),
         );
     }
     let was_skill_action_started = matches!(
@@ -569,6 +792,12 @@ pub(super) fn drain_command(
                 .then_some(pending_deaths.as_slice()),
         )?
     };
+    super::overflow_frame::defer_hit_storage(
+        &frame_path,
+        action_scope.as_deref(),
+        &trigger,
+        &mut reactions,
+    );
     state.defer_hp_thresholds(
         action_scope.as_deref(),
         std::mem::take(&mut reactions.hp_thresholds),
@@ -699,6 +928,9 @@ pub(super) fn drain_command(
     let mut after_publish = reactions.after_publish;
     let after_settlement = reactions.after_settlement;
     if releases_hit_passive_skills {
+        if let Some(path) = action_scope.as_deref() {
+            state.reactions(path).hit_passives_released = true;
+        }
         let mut released_hit_passives = state
             .take_attacked_skills(action_scope.as_ref())
             .unwrap_or_default();
@@ -798,12 +1030,7 @@ pub(super) fn drain_command(
                 result,
                 state,
             )?;
-            push_death(
-                &mut result.frames,
-                action_scope,
-                managers,
-                death.transition(),
-            );
+            push_death(&mut result.frames, action_scope, managers, *death);
         }
         cleanup_deaths.extend(settled_deaths.iter().map(|death| death.transition()));
     } else if let Some(action_scope) = active_action_scope {
@@ -817,7 +1044,7 @@ pub(super) fn drain_command(
             state.record_subscriber_deaths(group, &event_scope, settled_deaths.iter().copied());
             terminal_death = None;
         } else {
-            non_action_deaths.extend(settled_deaths.iter().map(|death| death.transition()));
+            non_action_deaths.extend(settled_deaths.iter().copied());
         }
     }
     if releases_pending_hits && let Some(action_scope) = active_action_scope {
@@ -826,10 +1053,10 @@ pub(super) fn drain_command(
             .unwrap_or_default()
             .into_iter()
             .filter(|death| managers.hp.is_current_death(*death))
-            .map(crate::engine::manager::hp::PendingDeath::transition)
             .collect::<Vec<_>>();
         for death in &deaths {
-            let cleanup = queued_defeated_entity_halo_cleanup(managers, *death, action_scope);
+            let cleanup =
+                queued_defeated_entity_halo_cleanup(managers, death.transition(), action_scope);
             drain_defeated_entity_halo_cleanup(
                 managers,
                 pool,
@@ -841,8 +1068,8 @@ pub(super) fn drain_command(
             )?;
             push_death(&mut result.frames, action_scope, managers, *death);
         }
-        terminal_death = terminal_death.or_else(|| deaths.first().copied());
-        cleanup_deaths.extend(deaths);
+        terminal_death = terminal_death.or_else(|| deaths.first().map(|death| death.transition()));
+        cleanup_deaths.extend(deaths.into_iter().map(|death| death.transition()));
     }
     let death_count = settled_deaths.len() + event_grouped_deaths.len();
     if death_count != 0
@@ -870,7 +1097,9 @@ pub(super) fn drain_command(
     }));
     let mut death_settlements = Vec::new();
     for death in non_action_deaths {
-        if let Some(cleanup) = queued_defeated_entity_halo_cleanup(managers, death, &event_scope) {
+        if let Some(cleanup) =
+            queued_defeated_entity_halo_cleanup(managers, death.transition(), &event_scope)
+        {
             death_settlements.push(cleanup);
         }
         death_settlements.push(queued_death_settlement(death, &event_scope));
@@ -970,8 +1199,42 @@ pub(super) fn drain_command(
     }
     // Buff acts waiting on the action, then held casts, follow its own reactions.
     insert_after_frame(queue, &frame_path, after_action);
+    insert_after_frame(queue, &frame_path, claimed_counters);
     insert_after_frame(queue, &frame_path, held_casts);
     prepend(queue, after_publish);
 
     Ok(())
+}
+
+fn push_fanout_frame(
+    frames: &mut [SemanticFrame],
+    parent: &[usize],
+    fanout: &crate::engine::manager::buff::BuffFanoutResult,
+    trigger: FrameTrigger,
+) -> Vec<usize> {
+    push_child(
+        frames,
+        parent,
+        FrameOwner::BuffRule {
+            emitter_uid: fanout.emitter_uid,
+            carrier_buff_uid: fanout.carrier_buff_uid,
+            carrier_buff_id: fanout.carrier_buff_id,
+            rule: fanout.rule,
+        },
+        trigger,
+    )
+}
+
+fn push_fanout(
+    frames: &mut [SemanticFrame],
+    parent: &[usize],
+    fanout: crate::engine::manager::buff::BuffFanoutResult,
+    trigger: FrameTrigger,
+) {
+    let fanout_path = push_fanout_frame(frames, parent, &fanout, trigger);
+    push_change(
+        frames,
+        &fanout_path,
+        crate::engine::runtime::change::BattleChange::BuffFanout(Box::new(fanout)),
+    );
 }

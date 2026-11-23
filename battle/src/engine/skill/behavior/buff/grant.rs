@@ -41,6 +41,31 @@ pub(super) fn grant_command(
     })
 }
 
+pub(super) fn stacks_as_copies(command: BuffCommand) -> BattleCommand {
+    let (BuffCommand::Grant(grant) | BuffCommand::GrantOnDeath(grant)) = command else {
+        return BattleCommand::Buff(command);
+    };
+    let Some(stacks) = grant.amount.filter(|stacks| *stacks > 1) else {
+        return BattleCommand::Buff(command);
+    };
+    if !crate::engine::manager::buff::grants_stacks_as_copies(grant.buff_id) {
+        return BattleCommand::Buff(command);
+    }
+    let single = BuffGrant {
+        amount: None,
+        ..grant
+    };
+    let first = match command {
+        BuffCommand::GrantOnDeath(_) => BuffCommand::GrantOnDeath(single),
+        _ => BuffCommand::Grant(single),
+    };
+    BattleCommand::BuffBatch(
+        std::iter::once(first)
+            .chain((1..stacks).map(|_| BuffCommand::GrantUsingChildUid(single)))
+            .collect(),
+    )
+}
+
 pub(super) fn random_pool_grant_commands(
     context: &mut BehaviorOpContext<'_>,
     behavior: &ParsedBehavior,
@@ -67,10 +92,26 @@ pub(super) fn random_pool_grant_commands(
         })
         .collect::<Vec<_>>();
     let mut ops = Vec::new();
-    for _ in 0..((*count).max(0) as usize).min(candidates.len()) {
-        let index = context
-            .determinism
-            .take_random_buff(&candidates)
+    let count = ((*count).max(0) as usize).min(candidates.len());
+    let mut observed = context
+        .determinism
+        .take_random_buff_pool(
+            crate::engine::skill::rule::ConfiguredRuleKey::new(
+                behavior.effect_id,
+                behavior.slot,
+                definition.key,
+            ),
+            context.source_uid,
+            context.target_uid,
+            count,
+            &candidates,
+        )
+        .unwrap_or_default()
+        .into_iter();
+    for _ in 0..count {
+        let index = observed
+            .next()
+            .or_else(|| context.determinism.take_random_buff(&candidates))
             .and_then(|buff_id| {
                 candidates
                     .iter()
@@ -100,9 +141,16 @@ pub(super) fn supports_random_pool(behavior: &ParsedBehavior) -> bool {
     let [pool_buff_id, count] = behavior.args.as_slice() else {
         return false;
     };
+    let Some(definition) = super::registry::find(behavior) else {
+        return false;
+    };
     *pool_buff_id > 0
         && *count > 0
-        && random_buff_pool(behavior).is_some_and(|pool| *count as usize <= pool.len())
+        && random_buff_pool(behavior).is_some_and(|pool| {
+            !pool.is_empty()
+                && (definition.kind == BehaviorKind::AddBuffRanTypeId
+                    || *count as usize <= pool.len())
+        })
 }
 
 pub fn random_buff_pool(behavior: &ParsedBehavior) -> Option<Vec<i32>> {
