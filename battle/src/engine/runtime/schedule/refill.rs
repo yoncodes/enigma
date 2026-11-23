@@ -1,10 +1,8 @@
 use super::*;
 mod post_action;
 
-pub use post_action::{
-    replacement_count as post_action_replacement_count, run_post_action_refill,
-    target_hand_len as post_action_target_hand_len,
-};
+pub(crate) use post_action::RefillSlots;
+pub use post_action::run_post_action_refill;
 
 pub(super) struct OpeningRefillSeed {
     pub(super) draws: Vec<sonettobuf::CardInfo>,
@@ -222,7 +220,9 @@ fn run_card_refill(
         } else {
             Vec::new()
         };
-        let ready_special = if stage == CardRefillStage::AfterActions {
+        let ready_special = if stage == CardRefillStage::AfterActions
+            || (stage == CardRefillStage::RoundStart && needs_normal_card)
+        {
             crate::engine::mechanic::card::CardMechanic
                 .special_team_cards(pool, managers, managers.card.hand())
                 .into_iter()
@@ -451,18 +451,19 @@ pub fn run_ai_queue_refresh(
         .filter(|owner_uid| managers.ex_point.gains_composition_ex_point(*owner_uid))
         .map(|owner_uid| (owner_uid, 1))
         .collect::<Vec<_>>();
-    append(
-        &mut result,
-        run_card_composition_rewards(
-            managers,
-            pool,
-            catalog,
-            determinism,
-            context,
-            origin,
-            composed_owners,
-        )?,
-    );
+    for rewards in composed_owners.chunk_by(|left, right| left.0 == right.0) {
+        let ops = rewards.iter().copied().flat_map(|reward| {
+            super::card_rewards::changes(origin, [reward])
+                .into_iter()
+                .map(|change| {
+                    RuleOp::Command(BattleCommand::ExPoint(ExPointCommand::Change(change)))
+                })
+        });
+        append(
+            &mut result,
+            drain::run_command_group(managers, pool, catalog, determinism, context, ops)?,
+        );
+    }
     Ok(result)
 }
 

@@ -619,11 +619,13 @@ pub async fn increment_summon_count(
         .summon_pool
         .get(pool_id)
         .ok_or_else(|| anyhow::anyhow!("Summon pool {} not found", pool_id))?;
-    let pool_ids = if summon_pool.r#type == 3 {
+    const PROB_UP_POOL_TYPE: i32 = 3;
+
+    let pool_ids = if summon_pool.r#type == PROB_UP_POOL_TYPE {
         config::configs::get()
             .summon_pool
             .iter()
-            .filter(|pool| pool.r#type == 3)
+            .filter(|pool| pool.r#type == PROB_UP_POOL_TYPE)
             .map(|pool| pool.id)
             .collect()
     } else {

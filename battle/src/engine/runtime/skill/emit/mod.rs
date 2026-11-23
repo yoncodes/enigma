@@ -76,6 +76,32 @@ pub(super) fn effect_started(
     }
 }
 
+pub(super) fn effects_prepared(
+    invocation: &SkillInvocation,
+    managers: &BattleManagers,
+    catalog: &SkillEffectCatalog,
+    pool: &TargetPool,
+    execution: &SkillExecution,
+) -> SkillEmissionOp {
+    SkillEmissionOp {
+        op: RuleOp::Publish(
+            crate::engine::event::payload::BattleEvent::SkillEffectsPrepared(Box::new(
+                action_event(
+                    invocation,
+                    managers,
+                    catalog,
+                    pool,
+                    execution,
+                    SkillPhase::Immediate,
+                ),
+            )),
+        ),
+        owner: OutputOwner::Skill,
+        consequence: ConsequencePolicy::Default,
+        frame_owner: None,
+    }
+}
+
 fn action_event(
     invocation: &SkillInvocation,
     managers: &BattleManagers,

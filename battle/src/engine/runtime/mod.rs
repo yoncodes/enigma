@@ -22,6 +22,7 @@ pub(crate) use round::selected_enemy_target;
 
 pub(crate) mod change;
 pub mod cloth_skill;
+pub(crate) mod conduit;
 pub mod determinism;
 pub(crate) mod drain;
 pub(crate) mod executor;
@@ -52,16 +53,33 @@ pub struct BattleRuntime {
     // These owners already ran RoundStartCondition/100 while entering the wave.
     wave_entry_condition_uids: Vec<i64>,
     cloth_skill_uses: HashMap<i32, usize>,
+    cloth_redealt: bool,
     objectives: objective::ObjectiveProgress,
     absorb_hurt_map_layout: AbsorbHurtMapLayout,
 }
 
-impl BattleRuntime {
-    /// Plans client auto-battle operations without mutating authoritative state.
-    pub fn plan_auto_round(
+#[derive(Debug, Clone)]
+pub struct AutoRoundPlanner {
+    fight: Fight,
+    managers: BattleManagers,
+    catalog: SkillEffectCatalog,
+    round_state: RoundState,
+    determinism: RoundDeterminism,
+    devices: Vec<sonettobuf::FightDeviceOper>,
+    cloth_redealt: bool,
+}
+
+#[derive(Debug)]
+pub enum AutoRoundError {
+    InvalidRequest,
+    Engine(String),
+}
+
+impl AutoRoundPlanner {
+    pub fn plan(
         &self,
         request: &sonettobuf::AutoRoundRequest,
-    ) -> sonettobuf::AutoRoundReply {
+    ) -> Result<sonettobuf::AutoRoundReply, AutoRoundError> {
         crate::engine::auto_battle::plan(
             request,
             &self.fight,
@@ -69,8 +87,69 @@ impl BattleRuntime {
             &self.catalog,
             &self.round_state,
             &self.determinism,
-            self.conduit_operations(),
+            self.devices.clone(),
+            self.cloth_redealt,
         )
+        .map_err(|error| match error {
+            crate::engine::auto_battle::AutoBattleError::InvalidChoice => {
+                AutoRoundError::InvalidRequest
+            }
+            error => AutoRoundError::Engine(format!("auto-battle planning failed: {error:?}")),
+        })
+    }
+}
+
+impl BattleRuntime {
+    fn auto_round_state(&self) -> (BattleManagers, RoundState) {
+        let mut round_state = self.round_state.clone();
+        round_state.begin_round();
+        let mut managers = self.managers.clone();
+        managers.begin_action_round();
+        (managers, round_state)
+    }
+
+    pub(crate) fn auto_round_planner(&self) -> AutoRoundPlanner {
+        let (managers, round_state) = self.auto_round_state();
+        AutoRoundPlanner {
+            fight: self.fight.clone(),
+            managers,
+            catalog: self.catalog.clone(),
+            round_state,
+            determinism: self.determinism.clone(),
+            devices: self.conduit_operations(),
+            cloth_redealt: self.cloth_redealt,
+        }
+    }
+
+    /// Plans client auto-battle operations without mutating authoritative state.
+    pub fn try_plan_auto_round(
+        &self,
+        request: &sonettobuf::AutoRoundRequest,
+    ) -> Result<sonettobuf::AutoRoundReply, String> {
+        let (managers, round_state) = self.auto_round_state();
+        crate::engine::auto_battle::plan(
+            request,
+            &self.fight,
+            &managers,
+            &self.catalog,
+            &round_state,
+            &self.determinism,
+            self.conduit_operations(),
+            self.cloth_redealt,
+        )
+        .map_err(|error| format!("auto-battle planning failed: {error:?}"))
+    }
+
+    #[cfg(test)]
+    pub fn plan_auto_round(
+        &self,
+        request: &sonettobuf::AutoRoundRequest,
+    ) -> sonettobuf::AutoRoundReply {
+        let mut fixture = self.clone();
+        fixture.extend_current_card_skill_roots();
+        fixture
+            .try_plan_auto_round(request)
+            .expect("auto-battle fixture should have valid conduit state")
     }
 
     /// Evaluates the current terminal or wave outcome from manager-owned state.
@@ -165,7 +244,7 @@ impl BattleRuntime {
         &mut self,
         choices: impl IntoIterator<Item = determinism::SkillTargetChoice>,
     ) {
-        self.determinism.enqueue_skill_target_choices(choices);
+        self.determinism.replace_skill_target_choices(choices);
     }
 
     pub fn seed_hidden_crits(
@@ -198,12 +277,40 @@ impl BattleRuntime {
         self.determinism.enqueue_indirect_heal_crits(indirect_heals);
     }
 
+    /// Seeds observed hands after weighted card-energy allocations; each round replaces the last.
+    pub fn seed_card_energy_allocations(&mut self, hands: impl IntoIterator<Item = Vec<CardInfo>>) {
+        self.determinism.replace_card_energy_allocations(hands);
+    }
+
     pub fn seed_random_skills(&mut self, skills: impl IntoIterator<Item = i32>) {
         self.determinism.enqueue_random_skills(skills);
     }
 
+    pub fn seed_random_buff_pools(
+        &mut self,
+        choices: impl IntoIterator<Item = determinism::RandomBuffChoice>,
+    ) {
+        self.determinism.replace_random_buff_pools(choices);
+    }
+
+    pub fn seed_hand_rank_choices(
+        &mut self,
+        choices: impl IntoIterator<Item = determinism::HandRankChoice>,
+    ) {
+        self.determinism.replace_hand_rank_choices(choices);
+    }
+
     pub fn seed_shell_moxie_choices(&mut self, choices: impl IntoIterator<Item = bool>) {
         self.determinism.replace_shell_moxie_choices(choices);
+    }
+
+    /// Seeds observed outcomes of random skill conditions per skill and source, in roll order.
+    /// Each round's seeds replace any the previous round left unused.
+    pub fn seed_condition_random_choices(
+        &mut self,
+        choices: impl IntoIterator<Item = determinism::ConditionRandomChoice>,
+    ) {
+        self.determinism.replace_condition_random_choices(choices);
     }
 
     pub fn seed_crystal_reuse_choices(
@@ -371,6 +478,7 @@ impl BattleRuntime {
             pending_redeal: None,
             wave_entry_condition_uids: Vec::new(),
             cloth_skill_uses: HashMap::new(),
+            cloth_redealt: false,
             objectives: Default::default(),
             absorb_hurt_map_layout,
         })

@@ -1,4 +1,5 @@
 use super::*;
+use crate::test_support::contains_skill;
 
 #[test]
 fn opening_cards_exist_before_card_setup_rules_run() {
@@ -1008,15 +1009,6 @@ fn version_seven_opening_groups_sync_and_late_setup() {
     )
     .unwrap();
 
-    fn contains_skill(step: &sonettobuf::FightStep, skill_id: i32) -> bool {
-        step.act_id == Some(skill_id)
-            || step.act_effect.iter().any(|effect| {
-                effect
-                    .fight_step
-                    .as_ref()
-                    .is_some_and(|child| contains_skill(child, skill_id))
-            })
-    }
     let steps = crate::engine::packet::timeline::project(&start.frames).unwrap();
     let sync = steps
         .iter()

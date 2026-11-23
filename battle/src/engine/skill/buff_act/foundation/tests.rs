@@ -158,6 +158,21 @@ fn delivery_process_selects_the_configured_enhanced_rate() {
 }
 
 #[test]
+fn shared_delivery_process_type_does_not_select_the_enhanced_rate() {
+    crate::test_support::init_config();
+    let mut setup = fight(true);
+    setup.attacker.as_mut().unwrap().entitys[0].buffs[1].buff_id = Some(31_402_007);
+    let mut managers = BattleManagers::seeded(&setup);
+    let execution = managers
+        .execute_rule_hp_batch(vec![damage(2_066)])
+        .unwrap()
+        .pop()
+        .unwrap();
+    assert_eq!(execution.before_hp_markers[0].params, [1_696, 10_605]);
+    assert_eq!(execution.changes.shield_absorbed.unwrap().absorbed, 370);
+}
+
+#[test]
 fn critical_damage_settles_the_mitigated_remainder_through_shield_and_hp() {
     crate::test_support::init_config();
     let mut fight = fight(false);
@@ -170,9 +185,13 @@ fn critical_damage_settles_the_mitigated_remainder_through_shield_and_hp() {
 
     assert_eq!(changes.damage.unwrap().amount, 2_127);
     assert_eq!(changes.shield_absorbed.unwrap().absorbed, 1_000);
-    assert_eq!(changes.hp.unwrap().delta, -1_127);
-    assert_eq!(changes.hp.unwrap().hurt.unwrap().reduce_hp, -1_127);
-    assert!(changes.hp.unwrap().hurt.unwrap().is_crit);
+    let hp = changes.hp.unwrap();
+    let hurt = hp.hurt.unwrap();
+    assert_eq!(hp.delta, -1_127);
+    assert_eq!(hp.display_amount, Some(1_127));
+    assert_eq!(hurt.display_amount, Some(2_127));
+    assert_eq!(hurt.reduce_hp, -1_127);
+    assert!(hurt.is_crit);
 }
 
 #[test]

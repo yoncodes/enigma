@@ -3,16 +3,7 @@ use crate::engine::{
     runtime::skill::SkillExecution,
     skill::action::{SkillExecutionMode, SkillInvocation, SkillRequest, SkillTarget},
 };
-
-fn contains_effect(step: &sonettobuf::FightStep, effect_type: i32, target_uid: i64) -> bool {
-    step.act_effect.iter().any(|effect| {
-        effect.effect_type == Some(effect_type) && effect.target_id == Some(target_uid)
-            || effect
-                .fight_step
-                .as_ref()
-                .is_some_and(|child| contains_effect(child, effect_type, target_uid))
-    })
-}
+use crate::test_support::contains_effect;
 
 fn skill_contains_effect(
     step: &sonettobuf::FightStep,

@@ -371,6 +371,90 @@ fn uid_consume_removes_only_the_selected_instance() {
 }
 
 #[test]
+fn consuming_a_plain_buff_removes_it() {
+    crate::test_support::init_config();
+    let mut manager = BuffManager::default();
+    manager.seed(&Fight {
+        defender: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(-3),
+                buffs: vec![BuffInfo {
+                    buff_id: Some(303020011),
+                    uid: Some(1061),
+                    from_uid: Some(10),
+                    duration: Some(1),
+                    count: Some(0),
+                    layer: Some(0),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    });
+    let changes = manager
+        .execute(
+            &HpManager::default(),
+            BuffCommand::Consume(BuffConsume {
+                origin: CommandOrigin {
+                    domain: RuleDomain::Behavior,
+                    key: DefinitionKey::new(50014, "ConsumeBuffByTypeId"),
+                },
+                target_uid: -3,
+                selector: BuffSelector::IdOrType(303020011),
+                amount: 99,
+                depleted: DepletedBuff::Remove,
+            }),
+        )
+        .unwrap();
+
+    assert!(!manager.has_buff_id(-3, 303020011));
+    assert_eq!(changes.change.removed[0].buff.uid, Some(1061));
+    assert!(changes.change.refreshed.is_empty());
+}
+
+#[test]
+fn keep_consume_leaves_a_plain_buff_in_place() {
+    crate::test_support::init_config();
+    let mut manager = BuffManager::default();
+    manager.seed(&Fight {
+        defender: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(-3),
+                buffs: vec![BuffInfo {
+                    buff_id: Some(303020011),
+                    uid: Some(1061),
+                    count: Some(0),
+                    layer: Some(0),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    });
+    manager
+        .execute(
+            &HpManager::default(),
+            BuffCommand::Consume(BuffConsume {
+                origin: CommandOrigin {
+                    domain: RuleDomain::Behavior,
+                    key: DefinitionKey::new(50014, "ConsumeBuffByTypeId"),
+                },
+                target_uid: -3,
+                selector: BuffSelector::IdOrType(303020011),
+                amount: 99,
+                depleted: DepletedBuff::Keep,
+            }),
+        )
+        .unwrap();
+
+    assert!(manager.has_buff_id(-3, 303020011));
+}
+
+#[test]
 fn explicit_count_consume_preserves_a_layer_stacked_buffs_layer() {
     crate::test_support::init_config();
     let mut manager = BuffManager::default();
@@ -788,7 +872,7 @@ fn dispel_plans_matching_statuses_and_preserves_behavior_provenance() {
     assert_eq!(changes.change.removed[0].config_effect, 30003);
     assert!(matches!(
         changes.events().as_slice(),
-        [BattleEvent::BuffRemoved(change)] if !change.duration_expired
+        [BattleEvent::BuffRemoved(change)] if !change.expiry.expired()
     ));
     assert!(manager.has_buff_id(-1, 530000112));
 }

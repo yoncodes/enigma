@@ -47,6 +47,33 @@ fn replace_buff2_compiles_to_one_grant_without_consuming_sources() {
             "2".into(),
         ],
     );
+    let definition = super::super::super::registry::find(&behavior).unwrap();
+    assert!(
+        definition
+            .supports
+            .is_some_and(|supports| supports(&behavior))
+    );
+    for raw in [
+        "31140111,31140112#31140143#0#2",
+        "31140111,,31140112#31140143#10#2",
+        "31140111,31140111#31140143#10#2",
+        "31140111,31140112#31140143#10#2#1",
+    ] {
+        let malformed = ParsedBehavior::from_spec(
+            behavior.spec.clone(),
+            Vec::new(),
+            raw.split('#').map(str::to_owned).collect(),
+        );
+        assert!(!supports_layer_reward(&malformed), "{raw}");
+    }
+    assert!(supports_layer_reward(&ParsedBehavior::new(
+        60176,
+        "ReplaceBuff2",
+        vec![31140111, 31140143, 10, 2],
+    )));
+    let mut trailing_empty = behavior.clone();
+    trailing_empty.raw_arity = 5;
+    assert!(!supports_layer_reward(&trailing_empty));
     let fight = Fight {
         attacker: Some(FightTeam {
             entitys: vec![FightEntityInfo {

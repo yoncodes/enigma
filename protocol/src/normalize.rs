@@ -118,6 +118,13 @@ pub fn normalize_live_json(value: &mut serde_json::Value) {
                     map.insert("damageFromType".to_owned(), value.into());
                 }
             }
+            if let Some(kind) = map
+                .get("immunityFromType")
+                .and_then(|value| value.as_str())
+                .and_then(crate::fight_hurt_info::ImmunityFromType::from_str_name)
+            {
+                map.insert("immunityFromType".to_owned(), (kind as i32).into());
+            }
             for (field, value) in map.iter_mut() {
                 if field != "cardDataes" {
                     normalize_live_json(value);

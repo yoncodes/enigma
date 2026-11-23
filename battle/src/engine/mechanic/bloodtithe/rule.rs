@@ -1,4 +1,3 @@
-use super::shared_blood_pool_tag_owner_count;
 use crate::engine::{
     event::payload::GaugeChangeEvent,
     manager::{
@@ -8,14 +7,17 @@ use crate::engine::{
         gauge::{GaugeChangeKind, GaugeCommand, GaugeKey, GaugeKind, GaugeOperation, GaugeOwner},
     },
     skill::{
-        buff_act::{self, registry::BuffActKind},
+        buff_act,
         rule::{
             CommandOrigin,
             output::{BattleCommand, RuleOp},
         },
+        target::TargetPool,
     },
 };
-use std::collections::BTreeSet;
+
+// character_battle_tag 111 "Bloodtithe"
+const BLOODTITHE_BATTLE_TAG: i32 = 111;
 
 pub const fn key(team: i32) -> GaugeKey {
     GaugeKey {
@@ -26,8 +28,8 @@ pub const fn key(team: i32) -> GaugeKey {
 
 pub fn enable_rule_op(
     managers: &BattleManagers,
+    pool: &TargetPool,
     enabler: &ActiveBuffFeature,
-    features: &[ActiveBuffFeature],
 ) -> Option<RuleOp> {
     let team = enabler.team_type;
     if managers
@@ -40,8 +42,15 @@ pub fn enable_rule_op(
     {
         return None;
     }
-    let enablers = shared_blood_pool_tag_owner_count(team, features);
-    if enablers <= 0 {
+    if !managers
+        .buff
+        .alive_team_uids(team, &managers.hp)
+        .into_iter()
+        .any(|uid| {
+            pool.entity(uid)
+                .is_some_and(|entity| entity.battle_tags.contains(&BLOODTITHE_BATTLE_TAG))
+        })
+    {
         return None;
     }
     let origin = buff_act::feature_command_origin(enabler)?;
@@ -52,26 +61,6 @@ pub fn enable_rule_op(
             max: Some(team_max_hp(managers, team)),
         },
     ))))
-}
-
-pub fn enable_rule_ops(managers: &BattleManagers, features: &[ActiveBuffFeature]) -> Vec<RuleOp> {
-    features
-        .iter()
-        .filter(|feature| buff_act::is_kind(feature, BuffActKind::BloodPoolTag))
-        .map(|feature| feature.team_type)
-        .collect::<BTreeSet<_>>()
-        .into_iter()
-        .filter_map(|team| {
-            features
-                .iter()
-                .filter(|feature| {
-                    feature.team_type == team
-                        && buff_act::is_kind(feature, BuffActKind::BloodPoolTag)
-                })
-                .min_by_key(|feature| (feature.owner_uid, feature.buff_uid))
-        })
-        .filter_map(|feature| enable_rule_op(managers, feature, features))
-        .collect()
 }
 
 pub fn sync_base_max_rule_op(
@@ -174,90 +163,4 @@ pub fn faith_ex_point_rule_ops(
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::engine::skill::rule::{DefinitionKey, RuleDomain};
-
-    const ORIGIN: CommandOrigin = CommandOrigin {
-        domain: RuleDomain::BuffAct,
-        key: DefinitionKey::new(953, "BloodPoolTag"),
-    };
-
-    #[test]
-    fn hp_loss_uses_the_current_bloodtithe_limit_for_conversion() {
-        let mut managers = BattleManagers::default();
-        managers
-            .gauge
-            .execute_command(GaugeCommand::new(
-                ORIGIN,
-                key(1),
-                GaugeOperation::Enable { max: Some(56) },
-            ))
-            .unwrap();
-        managers
-            .gauge
-            .execute_command(GaugeCommand::new(
-                ORIGIN,
-                key(1),
-                GaugeOperation::ChangeMax { delta: 28 },
-            ))
-            .unwrap();
-
-        assert!(matches!(
-            hp_loss_event_rule_op(&managers, ORIGIN, 1, 10, 2_940, 20).as_slice(),
-            [RuleOp::Command(BattleCommand::Gauge(GaugeCommand {
-                operation: GaugeOperation::AccumulateValue {
-                    amount: 2_940,
-                    threshold: 2_940,
-                },
-                ..
-            }))]
-        ));
-    }
-
-    #[test]
-    fn sole_blood_pool_tag_owner_emits_enable_rule_without_overriding_lingering_glow() {
-        let feature = ActiveBuffFeature {
-            owner_uid: 10,
-            source_uid: 10,
-            buff_uid: 20,
-            buff_id: 6270501,
-            amount: 1,
-            team_type: 1,
-            owner_alive: true,
-            act_type: "BloodPoolTag".to_owned(),
-            effect_time: 0,
-            effect_condition: 0,
-            raw: "953".to_owned(),
-            values: vec![953],
-        };
-        let features = [feature];
-
-        let managers = BattleManagers::default();
-        assert!(matches!(
-            enable_rule_ops(&managers, &features).as_slice(),
-            [RuleOp::Command(BattleCommand::Gauge(GaugeCommand {
-                key: GaugeKey {
-                    kind: GaugeKind::Bloodtithe,
-                    owner: GaugeOwner::Team(1),
-                },
-                operation: GaugeOperation::Enable { .. },
-                ..
-            }))]
-        ));
-
-        let mut managers = BattleManagers::default();
-        managers
-            .gauge
-            .execute_command(GaugeCommand::new(
-                ORIGIN,
-                GaugeKey {
-                    kind: GaugeKind::LingeringGlow,
-                    owner: GaugeOwner::Team(1),
-                },
-                GaugeOperation::Enable { max: Some(1) },
-            ))
-            .unwrap();
-        assert!(enable_rule_ops(&managers, &features).is_empty());
-    }
-}
+mod tests;

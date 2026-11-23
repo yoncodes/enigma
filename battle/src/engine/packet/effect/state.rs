@@ -1,6 +1,26 @@
 use super::*;
 
 impl EffectPacket {
+    pub fn move_front(
+        changes: &crate::engine::manager::entity::position::MoveFrontChanges,
+    ) -> ActEffect {
+        ActEffect {
+            target_id: Some(changes.target.uid),
+            effect_type: Some(EffectType::Movefront as i32),
+            effect_num: Some(changes.target.after),
+            config_effect: Some(changes.origin.key.opcode),
+            reserve_str: Some(
+                changes
+                    .displaced
+                    .iter()
+                    .map(|change| format!("{}#{}", change.uid, change.after))
+                    .collect::<Vec<_>>()
+                    .join("|"),
+            ),
+            ..Default::default()
+        }
+    }
+
     pub fn fight_task_update(
         change: &crate::engine::manager::fight_task::FightTaskChange,
     ) -> ActEffect {
@@ -248,6 +268,25 @@ impl EffectPacket {
             reserve_id: Some(0),
             team_type: Some(0),
             effect_num1: Some(0),
+            ..Default::default()
+        }
+    }
+
+    pub fn call_monster_to_sub(team_type: i32, entity: FightEntityInfo) -> ActEffect {
+        ActEffect {
+            target_id: Some(0),
+            effect_type: Some(EffectType::Callmonstertosub as i32),
+            entity: Some(entity),
+            team_type: Some(team_type),
+            ..Default::default()
+        }
+    }
+
+    pub fn remove_monster_sub(target_uid: i64, team_type: i32) -> ActEffect {
+        ActEffect {
+            target_id: Some(target_uid),
+            effect_type: Some(EffectType::Removemonstersub as i32),
+            team_type: Some(team_type),
             ..Default::default()
         }
     }

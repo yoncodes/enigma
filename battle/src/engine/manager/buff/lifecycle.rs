@@ -1,8 +1,10 @@
 use super::*;
+use crate::engine::skill::action::SkillPhase;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(i32)]
 pub(crate) enum BuffTakeActionTrigger {
+    Attacked = 2,
     OwnerCastSkill = 9,
     OwnerAttackedBySkill = 10,
 }
@@ -18,6 +20,9 @@ impl BuffTakeActionTrigger {
 
     pub(crate) fn key(self) -> crate::engine::skill::rule::DefinitionKey {
         match self {
+            Self::Attacked => {
+                crate::engine::skill::rule::DefinitionKey::new(self as i32, "Attacked")
+            }
             Self::OwnerCastSkill => {
                 crate::engine::skill::rule::DefinitionKey::new(self as i32, "OwnerCastSkillSlot")
             }
@@ -37,6 +42,12 @@ pub(crate) struct BuffTakeAction {
 
 impl BuffTakeAction {
     pub(crate) fn parse(value: &str) -> Option<Self> {
+        if value.trim() == "2" {
+            return Some(Self {
+                trigger: BuffTakeActionTrigger::Attacked,
+                skill_slots: Vec::new(),
+            });
+        }
         let (trigger, slots) = value.split_once('#')?;
         let trigger = BuffTakeActionTrigger::parse(trigger)?;
         let skill_slots = slots
@@ -50,13 +61,16 @@ impl BuffTakeAction {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct BuffActionExpiry {
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct BuffActionSettlement {
     pub(crate) owner_uid: i64,
     pub(crate) source_uid: i64,
     pub(crate) buff_uid: i64,
     pub(crate) buff_id: i32,
     pub(crate) trigger: BuffTakeActionTrigger,
+    pub(crate) command: BuffCommand,
+    pub(crate) in_action: bool,
+    pub(crate) after_hit_reactions: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -116,15 +130,27 @@ impl BuffManager {
         )
     }
 
-    pub(crate) fn plan_action_expiries(
+    pub(crate) fn settles_on_owner_cast(&self, owner_uid: i64, buff_uid: i64) -> bool {
+        self.buffs
+            .iter()
+            .find(|active| active.owner_uid == owner_uid && active.buff.uid == Some(buff_uid))
+            .and_then(|active| active.definition.as_ref())
+            .filter(|definition| !definition.preserves_action_lifetime())
+            .and_then(BuffDefinition::take_action)
+            .is_some_and(|action| action.trigger == BuffTakeActionTrigger::OwnerCastSkill)
+    }
+
+    pub(crate) fn plan_action_settlements(
         &self,
         action: &crate::engine::skill::action::SkillActionEvent,
-    ) -> Vec<BuffActionExpiry> {
+    ) -> Vec<BuffActionSettlement> {
         if action.phase != crate::engine::skill::action::SkillPhase::HitPassives {
             return Vec::new();
         }
 
-        self.buffs
+        let mut settled_copies = Vec::new();
+        let mut settlements = self
+            .buffs
             .iter()
             .filter_map(|active| {
                 let definition = active.definition.as_ref()?;
@@ -132,26 +158,106 @@ impl BuffManager {
                     return None;
                 }
                 let take_action = definition.take_action()?;
-                if !take_action.skill_slots.contains(&action.skill_slot) {
-                    return None;
-                }
+                let attacked = action.is_attack
+                    && (action.target_uid == active.owner_uid
+                        || action.target_uids.contains(&active.owner_uid));
+                let copy = take_action.trigger == BuffTakeActionTrigger::Attacked
+                    && definition.stacks_as_copies();
                 let matches = match take_action.trigger {
-                    BuffTakeActionTrigger::OwnerCastSkill => active.owner_uid == action.source_uid,
+                    BuffTakeActionTrigger::Attacked => {
+                        let key = (active.owner_uid, active.buff.buff_id);
+                        attacked
+                            && if copy {
+                                !settled_copies.contains(&key) && {
+                                    settled_copies.push(key);
+                                    true
+                                }
+                            } else {
+                                definition.features().is_empty() && !definition.uses_stack_layer()
+                            }
+                    }
+                    BuffTakeActionTrigger::OwnerCastSkill => {
+                        take_action.skill_slots.contains(&action.skill_slot)
+                            && active.owner_uid == action.source_uid
+                    }
                     BuffTakeActionTrigger::OwnerAttackedBySkill => {
-                        action.is_attack
-                            && (action.target_uid == active.owner_uid
-                                || action.target_uids.contains(&active.owner_uid))
+                        take_action.skill_slots.contains(&action.skill_slot) && attacked
                     }
                 };
-                matches.then_some(BuffActionExpiry {
+                if !matches {
+                    return None;
+                }
+                let buff_uid = active.buff.uid?;
+                let origin = crate::engine::skill::rule::CommandOrigin {
+                    domain: crate::engine::skill::rule::RuleDomain::Lifecycle,
+                    key: take_action.trigger.key(),
+                };
+                let command = if definition.has_effect_count()
+                    && active.buff.count.unwrap_or_default() > 0
+                    && !copy
+                    && matches!(
+                        take_action.trigger,
+                        BuffTakeActionTrigger::OwnerCastSkill | BuffTakeActionTrigger::Attacked
+                    ) {
+                    BuffCommand::ConsumeCount(BuffConsume {
+                        origin,
+                        target_uid: active.owner_uid,
+                        selector: BuffSelector::Uid(buff_uid),
+                        amount: 1,
+                        depleted: DepletedBuff::Remove,
+                    })
+                } else {
+                    let remove = BuffRemove {
+                        origin,
+                        target_uid: active.owner_uid,
+                        selector: BuffRemoveSelector::Uid(buff_uid),
+                    };
+                    if copy {
+                        BuffCommand::LoseStack(remove)
+                    } else {
+                        BuffCommand::ExpireAction(remove)
+                    }
+                };
+                Some(BuffActionSettlement {
                     owner_uid: active.owner_uid,
                     source_uid: active.buff.from_uid.unwrap_or(active.owner_uid),
-                    buff_uid: active.buff.uid?,
+                    buff_uid,
                     buff_id: active.buff.buff_id?,
                     trigger: take_action.trigger,
+                    command,
+                    in_action: copy,
+                    after_hit_reactions: take_action.trigger == BuffTakeActionTrigger::OwnerCastSkill
+                        && definition.features().iter().any(|feature| {
+                            feature.arguments_supported
+                                && feature.kind
+                                    == Some(
+                                        crate::engine::skill::buff_act::registry::BuffActKind::AttrOnlyCalDamageAttack,
+                                    )
+                        }),
                 })
             })
-            .collect()
+            .collect::<Vec<_>>();
+        let attacked_slots = settlements
+            .iter()
+            .enumerate()
+            .filter(|(_, settlement)| settlement.trigger == BuffTakeActionTrigger::Attacked)
+            .map(|(index, _)| index)
+            .collect::<Vec<_>>();
+        let target_rank = |owner_uid: i64| {
+            std::iter::once(action.target_uid)
+                .chain(action.target_uids.iter().copied())
+                .position(|uid| uid == owner_uid)
+                .unwrap_or(usize::MAX)
+        };
+        let mut attacked = attacked_slots
+            .iter()
+            .map(|index| settlements[*index].clone())
+            .collect::<Vec<_>>();
+        attacked.sort_by_key(|settlement| target_rank(settlement.owner_uid));
+        for (index, settlement) in attacked_slots.into_iter().zip(attacked) {
+            settlements[index] = settlement;
+        }
+        settlements
     }
 
     pub(crate) fn defeated_entity_halo_cleanup(
@@ -204,7 +310,7 @@ impl BuffManager {
         self.act_values.clear();
         self.grant_values.clear();
         self.attr_snapshots.clear();
-        self.mode_attributes = rouge2_attributes(fight);
+        (self.mode_career, self.mode_attributes) = rouge2_mode(fight);
         self.transition_progress.clear();
         let fight_version = fight.version.unwrap_or_default();
         self.shared_uid_lane = uid::uses_shared_lane(fight_version);
@@ -224,6 +330,10 @@ impl BuffManager {
 
     pub(crate) fn mode_attribute(&self, id: i32) -> i32 {
         self.mode_attributes.get(&id).copied().unwrap_or_default()
+    }
+
+    pub(crate) fn mode_career(&self) -> i32 {
+        self.mode_career
     }
 
     fn seed_rouge2_hp_deltas(&mut self) {
@@ -263,7 +373,15 @@ impl BuffManager {
 
     pub(crate) fn sync_entity(&self, entity: &mut FightEntityInfo) {
         let Some(uid) = entity.uid else { return };
-        entity.buffs = self.active_for(uid).cloned().collect();
+        entity.buffs.clear();
+        entity.no_effect_buffs.clear();
+        for active in self.buffs.iter().filter(|active| active.owner_uid == uid) {
+            if active.effective {
+                entity.buffs.push(active.buff.clone());
+            } else {
+                entity.no_effect_buffs.push(active.buff.clone());
+            }
+        }
     }
 
     pub(crate) fn plan_round_start_duration_sync(
@@ -339,7 +457,8 @@ impl BuffManager {
         owner_uids: &[i64],
         buff_uids: &[i64],
     ) -> Vec<BuffReplaceResult> {
-        let plans = self.plan_duration_advances_matching(take_stage, owner_uids, Some(buff_uids));
+        let plans =
+            self.plan_duration_advances_matching(take_stage, owner_uids, Some(buff_uids), None);
         plans
             .into_iter()
             .filter_map(|plan| self.commit_duration_advance(plan))
@@ -351,7 +470,7 @@ impl BuffManager {
         take_stage: i32,
         owner_uids: &[i64],
     ) -> Vec<BuffDurationPlan> {
-        self.plan_duration_advances_matching(take_stage, owner_uids, None)
+        self.plan_duration_advances_matching(take_stage, owner_uids, None, None)
     }
 
     pub(crate) fn duration_buff_uids(&self, take_stage: i32, owner_uids: &[i64]) -> Vec<i64> {
@@ -387,20 +506,46 @@ impl BuffManager {
             .collect()
     }
 
-    pub(crate) fn plan_duration_advances_for_snapshot(
+    pub(crate) fn settling_expiries(
         &self,
         take_stage: i32,
-        owner_uids: &[i64],
-        buff_uids: &[i64],
-    ) -> Vec<BuffDurationPlan> {
-        self.plan_duration_advances_matching(take_stage, owner_uids, Some(buff_uids))
+        fight_version: i32,
+    ) -> HashSet<(i64, i64)> {
+        use crate::engine::skill::buff_act::registry;
+        self.buffs
+            .iter()
+            .filter_map(|active| {
+                let definition = active.definition.as_ref()?;
+                if !active.effective
+                    || active.buff.duration != Some(1)
+                    || definition.take_stage != take_stage
+                {
+                    return None;
+                }
+                definition
+                    .features()
+                    .iter()
+                    .any(|feature| {
+                        feature.arguments_supported
+                            && registry::expiry_publication(
+                                &feature.values,
+                                &feature.act_type,
+                                take_stage,
+                                fight_version,
+                            )
+                            .is_some()
+                    })
+                    .then_some((active.owner_uid, active.buff.uid?))
+            })
+            .collect()
     }
 
-    fn plan_duration_advances_matching(
+    pub(super) fn plan_duration_advances_matching(
         &self,
         take_stage: i32,
         owner_uids: &[i64],
         buff_uids: Option<&[i64]>,
+        non_attack_phase: Option<SkillPhase>,
     ) -> Vec<BuffDurationPlan> {
         let mut indices = if owner_uids.is_empty() {
             (0..self.buffs.len()).collect::<Vec<_>>()
@@ -435,10 +580,16 @@ impl BuffManager {
                 let buff_uid = active.buff.uid?;
                 let duration = active.buff.duration.unwrap_or_default();
                 (duration > 0
-                    && active
-                        .definition
-                        .as_ref()
-                        .is_some_and(|definition| definition.take_stage == take_stage)
+                    && !self.follows_layer_halo_master(active)
+                    && active.definition.as_ref().is_some_and(|definition| {
+                        definition.take_stage == take_stage
+                            && non_attack_phase.is_none_or(|phase| {
+                                definition
+                                    .non_attack_duration()
+                                    .unwrap_or(SkillPhase::HitPassives)
+                                    == phase
+                            })
+                    })
                     && buff_uids.is_none_or(|buff_uids| buff_uids.contains(&buff_uid)))
                 .then_some(BuffDurationPlan {
                     target_uid: active.owner_uid,
@@ -469,13 +620,37 @@ impl BuffManager {
         let before = active.buff.clone();
         self.buffs[index].buff.duration = Some(duration - 1);
         let after = self.buffs[index].buff.clone();
+        for copy in self
+            .buffs
+            .iter_mut()
+            .filter(|copy| super::layer_halo_carrier_uid(copy) == Some(plan.buff_uid))
+        {
+            copy.buff.duration = Some(duration - 1);
+        }
         if duration == 1 {
             let mut removed = self.delete(plan.target_uid, plan.buff_uid);
-            if let Some(expired) = removed
-                .iter_mut()
-                .find(|removed| removed.buff.uid == Some(plan.buff_uid))
-            {
-                expired.buff.count = before.count;
+            use crate::engine::event::payload::BuffExpiry;
+            for removed in &mut removed {
+                if removed.target_uid == plan.target_uid && removed.buff.uid == Some(plan.buff_uid)
+                {
+                    removed.buff.count = before.count;
+                    removed.expiry = BuffExpiry::Duration(plan.take_stage);
+                } else {
+                    removed.expiry = BuffExpiry::Forced;
+                }
+            }
+            while let Some((owner_uid, copy_uid)) = self.buffs.iter().find_map(|copy| {
+                (super::layer_halo_carrier_uid(copy) == Some(plan.buff_uid))
+                    .then_some((copy.owner_uid, copy.buff.uid?))
+            }) {
+                let copies = self.delete(owner_uid, copy_uid);
+                if copies.is_empty() {
+                    break;
+                }
+                removed.extend(copies.into_iter().map(|mut copy| {
+                    copy.expiry = BuffExpiry::Duration(plan.take_stage);
+                    copy
+                }));
             }
             Some(BuffReplaceResult {
                 removed,
@@ -543,6 +718,7 @@ impl BuffManager {
                 type_id,
                 definition,
                 fanout_emitter_uid: None,
+                fanout_carrier_uid: None,
                 effective: true,
                 buff,
             });
@@ -553,8 +729,39 @@ impl BuffManager {
         let Some(uid) = entity.uid else { return };
         self.entities.retain(|tracked| tracked.uid != uid);
         self.team_types.remove(&uid);
-        self.buffs.retain(|active| active.owner_uid != uid);
+        let (mut previous, kept): (Vec<_>, Vec<_>) = std::mem::take(&mut self.buffs)
+            .into_iter()
+            .partition(|active| active.owner_uid == uid);
+        self.buffs = kept;
         self.seed_entity(entity, fallback_team_type, true);
+        // An unchanged record keeps the manager-only state the wire cannot
+        // carry, such as its halo emitter and effective flag.
+        for active in self
+            .buffs
+            .iter_mut()
+            .filter(|active| active.owner_uid == uid)
+        {
+            if let Some(index) = previous
+                .iter()
+                .position(|tracked| tracked.buff == active.buff)
+            {
+                *active = previous.remove(index);
+            }
+        }
+        // Inactive copies exist only in the manager; keep those still listed.
+        let (kept, dropped): (Vec<_>, Vec<_>) = previous.into_iter().partition(|tracked| {
+            !tracked.effective && entity.no_effect_buffs.contains(&tracked.buff)
+        });
+        self.buffs.extend(kept);
+        for buff_uid in dropped.into_iter().filter_map(|dropped| dropped.buff.uid) {
+            if !self
+                .buffs
+                .iter()
+                .any(|active| active.buff.uid == Some(buff_uid))
+            {
+                self.remove_act_states(buff_uid);
+            }
+        }
         self.reconcile_transition_progress();
     }
 
@@ -583,30 +790,39 @@ impl BuffManager {
 #[path = "lifecycle/tests.rs"]
 mod tests;
 
-fn rouge2_attributes(fight: &Fight) -> HashMap<i32, i32> {
-    #[derive(serde::Deserialize)]
-    #[serde(rename_all = "camelCase")]
-    struct Rouge2Data {
-        #[serde(deserialize_with = "deserialize_rouge2_attributes")]
-        attr_final_val: HashMap<i32, i32>,
-    }
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct Rouge2Data {
+    #[serde(default)]
+    career: i32,
+    #[serde(deserialize_with = "deserialize_rouge2_attributes")]
+    attr_final_val: HashMap<i32, i32>,
+    #[serde(default)]
+    event_type: i32,
+}
 
+pub(crate) fn rouge2_mode(fight: &Fight) -> (i32, HashMap<i32, i32>) {
+    rouge2_data(fight).map_or((0, HashMap::new()), |data| {
+        (data.career, data.attr_final_val)
+    })
+}
+
+pub(crate) fn rouge2_event_type(fight: &Fight) -> i32 {
+    rouge2_data(fight).map_or(0, |data| data.event_type)
+}
+
+fn rouge2_data(fight: &Fight) -> Option<Rouge2Data> {
     let mut entries = fight
         .custom_data
         .iter()
         .filter(|data| data.r#type == Some(sonettobuf::custom_data::CustomDataType::Rouge2 as i32));
     let (Some(entry), None) = (entries.next(), entries.next()) else {
-        return HashMap::new();
+        return None;
     };
-    let Some(data) = entry
+    entry
         .data
         .as_deref()
         .and_then(|data| serde_json::from_str::<Rouge2Data>(data).ok())
-    else {
-        return HashMap::new();
-    };
-
-    data.attr_final_val
 }
 
 fn deserialize_rouge2_attributes<'de, D>(deserializer: D) -> Result<HashMap<i32, i32>, D::Error>

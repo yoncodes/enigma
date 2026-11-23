@@ -39,7 +39,7 @@ fn afflatus_target_codes_select_matching_allies() {
 fn overlapping_enemy_codes_keep_their_exact_rules() {
     assert_eq!(target_rule(210), Some(TargetRule::LowestHpPercentageEnemy));
     assert_eq!(target_rule(221), Some(TargetRule::PriorityBossEnemy));
-    assert_eq!(target_rule(231), Some(TargetRule::EnemyPosition(2)));
+    assert_eq!(target_rule(231), Some(TargetRule::BurnPriorityEnemy));
     assert_eq!(target_rule(233), Some(TargetRule::Runtime));
     assert_eq!(target_rule(232), Some(TargetRule::EnemyPosition(7)));
     assert_eq!(target_rule(234), Some(TargetRule::AssistBoss));
@@ -247,6 +247,72 @@ fn hp_percentage_targets_use_widened_ratio_arithmetic() {
 }
 
 #[test]
+fn highest_hp_enemy_waits_for_reserve_entry() {
+    init_config();
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![entity_at(10, 1)],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![entity_stats(-2, 1, 40, 100, 0)],
+            sub_entitys: vec![entity_stats(-3, -1, 100, 100, 0)],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    let select = |managers: &BattleManagers| {
+        resolve_code(
+            208,
+            10,
+            &pool.runtime_view(managers),
+            &mut RoundDeterminism::default(),
+        )
+    };
+
+    assert_eq!(select(&managers), vec![-2]);
+    managers.hp.lose(-2, 40, 0);
+    assert!(select(&managers).is_empty());
+    assert_eq!(managers.entity.promote_reserves(&managers.hp).len(), 1);
+    assert_eq!(select(&managers), vec![-3]);
+}
+
+#[test]
+fn enemy_rules_skip_waiting_reserves() {
+    init_config();
+    let enemy = |uid, position, current_hp, attack| FightEntityInfo {
+        attr: Some(HeroAttribute {
+            hp: Some(100),
+            attack: Some(attack),
+            ..Default::default()
+        }),
+        ..entity_stats(uid, position, current_hp, 100, 0)
+    };
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![entity_at(10, 1)],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![enemy(-2, 1, 80, 100), enemy(-3, 2, 60, 200)],
+            // Would win every ranking below if it were on the field.
+            sub_entitys: vec![enemy(-4, -1, 10, 900)],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let select = |code| resolve_code(code, 10, &pool, &mut RoundDeterminism::default());
+
+    assert_eq!(select(302), vec![-2, -3]);
+    assert_eq!(select(207), vec![-3]);
+    assert_eq!(select(208), vec![-2]);
+    assert_eq!(select(210), vec![-3]);
+}
+
+#[test]
 fn target_207_selects_the_enemy_with_the_highest_attack() {
     init_config();
     let enemy = |uid, position, attack| FightEntityInfo {
@@ -408,4 +474,52 @@ fn target_132_selects_allies_with_the_configured_battle_tag() {
         ),
         vec![10, 11, 12]
     );
+}
+
+#[test]
+fn target_2001_selects_enemies_carrying_monster_label_one() {
+    init_config();
+    let marked = enemy_with_buff(20, 2, 100, buff(11410111, 11410111));
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![entity_at(10, 1), marked],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![entity_at(-1, 1)],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+
+    assert_eq!(
+        resolve_code(2001, -1, &pool, &mut RoundDeterminism::default()),
+        vec![20]
+    );
+}
+
+#[test]
+fn ally_pickers_skip_waiting_reserves() {
+    init_config();
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![
+                entity_stats(10, 1, 60, 100, 3),
+                entity_stats(20, 2, 80, 100, 2),
+            ],
+            sub_entitys: vec![entity_stats(30, -1, 10, 100, 0)],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![entity_at(-1, 1)],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let select = |code| resolve_code(code, 20, &pool, &mut RoundDeterminism::default());
+
+    assert_eq!(select(107), vec![10]);
+    assert_eq!(select(111), vec![20]);
 }

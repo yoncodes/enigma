@@ -62,6 +62,7 @@ fn configured_cloth_skills_drive_universal_and_redeal_card_rules() {
         ))
         .unwrap();
 
+    runtime.fight.version = Some(7);
     let universal = runtime
         .use_cloth_skill(UseClothSkillRequest {
             skill_id: Some(30010201),
@@ -77,6 +78,10 @@ fn configured_cloth_skills_drive_universal_and_redeal_card_rules() {
     let universal = universal.round.unwrap();
     assert_eq!(universal.power, Some(59));
     assert_eq!(
+        universal.ex_point_info,
+        runtime.managers.ex_point_info(&runtime.fight)
+    );
+    assert_eq!(
         universal
             .skill_infos
             .iter()
@@ -90,7 +95,13 @@ fn configured_cloth_skills_drive_universal_and_redeal_card_rules() {
                 == Some(sonettobuf::effect_type_enum::EffectType::Universalcard as i32)
         })
     }));
+    assert_eq!(
+        universal.fight_step[1].act_effect[1].effect_type,
+        Some(sonettobuf::effect_type_enum::EffectType::Carddecknum as i32)
+    );
+    assert_eq!(universal.fight_step[1].act_effect[1].effect_num, Some(16));
 
+    runtime.fight.version = Some(6);
     runtime.determinism.enqueue_card_draws(vec![card(201)]);
     let redeal = runtime
         .use_cloth_skill(UseClothSkillRequest {
@@ -128,6 +139,10 @@ fn configured_cloth_skills_drive_universal_and_redeal_card_rules() {
         .round
         .unwrap();
     assert_eq!(redeal.power, Some(9));
+    assert_eq!(
+        redeal.ex_point_info,
+        runtime.managers.ex_point_info(&runtime.fight)
+    );
     assert_eq!(redeal.fight_step.len(), 2);
     assert_eq!(
         redeal.fight_step[0].act_effect[0].effect_type,
@@ -152,6 +167,11 @@ fn configured_cloth_skills_drive_universal_and_redeal_card_rules() {
     assert_eq!(redeal.fight_step[1].act_effect[0].effect_num, Some(0));
     assert_eq!(redeal.fight_step[1].act_effect[0].effect_num1, Some(0));
     assert_eq!(redeal.fight_step[1].act_effect[0].team_type, Some(0));
+    assert_eq!(
+        redeal.fight_step[1].act_effect[1].effect_type,
+        Some(sonettobuf::effect_type_enum::EffectType::Carddecknum as i32)
+    );
+    assert_eq!(redeal.fight_step[1].act_effect[1].effect_num, Some(16));
     assert!(
         redeal.fight_step[1].act_effect[0]
             .card_info_list
@@ -458,8 +478,11 @@ fn owned_charge_starts_the_captured_extra_round_flow() {
             entitys: vec![FightEntityInfo {
                 uid: Some(-1),
                 team_type: Some(2),
+                model_id: Some(109390001),
+                skill_group1: vec![109390002],
                 current_hp: Some(100_000),
                 attr: Some(sonettobuf::HeroAttribute {
+                    attack: Some(1000),
                     hp: Some(100_000),
                     ..Default::default()
                 }),
@@ -481,6 +504,24 @@ fn owned_charge_starts_the_captured_extra_round_flow() {
                 }],
                 draw_pile: Vec::new(),
                 deck_num: 59,
+            },
+        ))
+        .unwrap();
+    let enemy_card = CardInfo {
+        uid: Some(-1),
+        skill_id: Some(109390002),
+        target_uid: Some(10),
+        ..Default::default()
+    };
+    runtime
+        .managers
+        .execute_card(crate::engine::manager::card::CardCommand::SetAiQueue(
+            crate::engine::manager::card::CardSetAiQueue {
+                origin: crate::engine::skill::rule::CommandOrigin {
+                    domain: crate::engine::skill::rule::RuleDomain::Lifecycle,
+                    key: crate::engine::skill::rule::DefinitionKey::new(0, "TestAiQueue"),
+                },
+                cards: vec![enemy_card.clone()],
             },
         ))
         .unwrap();
@@ -555,12 +596,21 @@ fn owned_charge_starts_the_captured_extra_round_flow() {
             .is_none()
     );
     let active_round = runtime.current_round();
+    assert_eq!(round.ai_use_cards, vec![enemy_card.clone()]);
+    runtime.seed_next_ai_cards(vec![enemy_card]);
     assert_eq!(
         runtime
             .advance_round(sonettobuf::BeginRoundRequest::default())
             .unwrap()
             .cur_round,
         Some(active_round)
+    );
+    assert_eq!(runtime.managers.hp.current(10), 100);
+    let next = runtime.advance_round(BeginRoundRequest::default()).unwrap();
+    assert!(
+        next.fight_step
+            .iter()
+            .any(|step| { step.from_id == Some(-1) && step.act_id == Some(109390002) })
     );
 }
 

@@ -6,6 +6,7 @@ use super::*;
 #[derive(Debug, Clone, PartialEq)]
 pub struct BuffChanges {
     pub origin: CommandOrigin,
+    pub(crate) burn_application: Option<BurnApplication>,
     pub change: BuffReplaceResult,
     pub lifecycle_transitions: Vec<BuffLifecycleTransition>,
     pub pre_add_refreshes: usize,
@@ -16,8 +17,26 @@ pub struct BuffChanges {
     pub refresh_initial_state_markers: Vec<BuffActInfoMarkerResult>,
     pub shield_removed: Vec<BuffShieldRemoveResult>,
     pub act_info_markers: Vec<BuffActInfoMarkerResult>,
-    duration_expired: bool,
+    pub publish_part: BuffPublishPart,
+    pub replaced_uids: Vec<i64>,
+    pub leading_pre_markers: bool,
     wire_visible: bool,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum BuffPublishPart {
+    #[default]
+    Whole,
+    Lead,
+    Removal,
+    Addition,
+}
+
+pub struct BuffReplacementParts {
+    pub lead: BuffChanges,
+    pub removal: BuffChanges,
+    pub addition: BuffChanges,
+    pub removed_buff_uids: Vec<i64>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -109,7 +128,6 @@ impl BuffChanges {
                                     target_uid: refresh.target_uid,
                                     effect_type,
                                     effect_num: definition.marker_effect_num(
-                                        catalog.game_data(),
                                         effect_type,
                                         refresh.after.act_common_params.as_deref(),
                                     ),
@@ -156,6 +174,7 @@ impl BuffChanges {
                                 carrier_buff_id,
                                 added: vec![child],
                                 refreshed: Vec::new(),
+                                allies: Vec::new(),
                             });
                         }
                     }
@@ -165,6 +184,7 @@ impl BuffChanges {
         );
         Self {
             origin,
+            burn_application: None,
             change,
             lifecycle_transitions: Vec::new(),
             pre_add_refreshes: 0,
@@ -175,9 +195,48 @@ impl BuffChanges {
             refresh_initial_state_markers: Vec::new(),
             shield_removed: Vec::new(),
             act_info_markers: Vec::new(),
-            duration_expired: false,
+            publish_part: BuffPublishPart::Whole,
+            replaced_uids: Vec::new(),
+            leading_pre_markers: false,
             wire_visible: true,
         }
+    }
+
+    pub fn replacement_parts(&self) -> Option<BuffReplacementParts> {
+        let added = self.change.added.as_ref()?;
+        let replacing = !self.change.removed.is_empty()
+            && self.change.removed.iter().all(|removed| {
+                removed.target_uid == added.target_uid
+                    && removed
+                        .buff
+                        .uid
+                        .is_some_and(|uid| self.replaced_uids.contains(&uid))
+            });
+        if !self.wire_visible
+            || self.change.rejected.is_some()
+            || !self.lifecycle_transitions.is_empty()
+            || !(replacing || self.leading_pre_markers && self.change.removed.is_empty())
+        {
+            return None;
+        }
+        let leads_pre_markers = !added.pre_markers.is_empty();
+        let part = |publish_part| {
+            let mut part = self.clone();
+            part.publish_part = publish_part;
+            part.pre_add_markers_before_remove = leads_pre_markers;
+            part
+        };
+        Some(BuffReplacementParts {
+            lead: part(BuffPublishPart::Lead),
+            removal: part(BuffPublishPart::Removal),
+            addition: part(BuffPublishPart::Addition),
+            removed_buff_uids: self
+                .change
+                .removed
+                .iter()
+                .filter_map(|removed| removed.buff.uid)
+                .collect(),
+        })
     }
 
     pub(super) fn with_lifecycle_transitions(
@@ -190,11 +249,6 @@ impl BuffChanges {
 
     pub(super) fn with_pre_add_refreshes(mut self, count: usize) -> Self {
         self.pre_add_refreshes = count.min(self.change.refreshed.len());
-        self
-    }
-
-    pub(super) fn with_duration_expiry(mut self) -> Self {
-        self.duration_expired = true;
         self
     }
 
@@ -279,14 +333,34 @@ impl BuffChanges {
                 })
                 .collect()
         };
-        if self.duration_expired {
-            for event in &mut events {
-                if let BattleEvent::BuffRemoved(change) = event {
-                    change.duration_expired = true;
+        for fanout in &self.fanout {
+            for ally in &fanout.allies {
+                for change in [
+                    BuffReplaceResult {
+                        removed: ally.replaced.clone(),
+                        ..Default::default()
+                    },
+                    BuffReplaceResult {
+                        removed: ally.trimmed.clone(),
+                        refreshed: ally.trim_refreshed.clone(),
+                        ..Default::default()
+                    },
+                    BuffReplaceResult {
+                        added: ally.added.clone(),
+                        ..Default::default()
+                    },
+                    BuffReplaceResult {
+                        refreshed: ally
+                            .refreshed
+                            .iter()
+                            .map(|refreshed| refreshed.update.clone())
+                            .collect(),
+                        ..Default::default()
+                    },
+                ] {
+                    events.extend(change.events());
                 }
             }
-        }
-        for fanout in &self.fanout {
             for added in &fanout.added {
                 events.extend(
                     BuffReplaceResult {
@@ -304,6 +378,32 @@ impl BuffChanges {
                     }
                     .events(),
                 );
+            }
+        }
+        if let Some(replaced_buff_id) = self
+            .change
+            .removed
+            .iter()
+            .find(|removed| {
+                removed
+                    .buff
+                    .uid
+                    .is_some_and(|uid| self.replaced_uids.contains(&uid))
+                    && self
+                        .change
+                        .added
+                        .as_ref()
+                        .is_some_and(|added| removed.buff.from_uid == Some(added.source_uid))
+            })
+            .and_then(|removed| removed.buff.buff_id)
+            && let Some(added_uid) = self.change.added.as_ref().and_then(|added| added.buff.uid)
+        {
+            for event in &mut events {
+                if let BattleEvent::BuffAdded(change) = event
+                    && change.buff_uid == added_uid
+                {
+                    change.replaced_buff_id = Some(replaced_buff_id);
+                }
             }
         }
         events

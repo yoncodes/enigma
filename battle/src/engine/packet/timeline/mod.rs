@@ -93,20 +93,23 @@ fn project_frames(
     redeal_layout: RedealWireLayout,
     change_round_layout: ChangeRoundWireLayout,
 ) -> Result<Vec<FightStep>, ProjectionError> {
-    let frames = frames
-        .iter()
-        .map(|frame| {
-            project_frame(
-                frame,
-                writes_reduce_hp,
-                hurt_info_layout,
-                absorb_map_layout,
-                redeal_layout,
-                change_round_layout,
-            )
-        })
-        .collect::<Result<Vec<_>, _>>()?;
-    Ok(frames.into_iter().flatten().collect())
+    let mut steps = Vec::new();
+    for frame in frames {
+        if let Some(step) = project_frame(
+            frame,
+            writes_reduce_hp,
+            hurt_info_layout,
+            absorb_map_layout,
+            redeal_layout,
+            change_round_layout,
+        )? {
+            if frame.owner == FrameOwner::ConduitSelectionCommit {
+                steps.push(step.clone());
+            }
+            steps.push(step);
+        }
+    }
+    Ok(steps)
 }
 
 fn project_frame(
@@ -221,6 +224,8 @@ fn project_frame(
         | FrameOwner::EventRule
         | FrameOwner::InitialSovereignBoost
         | FrameOwner::RoundPhase(_)
+        | FrameOwner::PlayerActionCommit
+        | FrameOwner::ConduitSelectionCommit
         | FrameOwner::SynchronizationCardState { .. }
         | FrameOwner::Command => Ok(StepPacket::effect(effects)),
     }
@@ -327,11 +332,9 @@ fn project_change(
     redeal_layout: RedealWireLayout,
 ) -> Result<Vec<ActEffect>, ProjectionError> {
     Ok(match change {
-        BattleChange::SkillLifecycle(
-            crate::engine::skill::action::SkillLifecycle::DirectUltimateBodyCompleted {
-                source_uid,
-            },
-        ) => vec![EffectPacket::direct_use_ex_skill(*source_uid)],
+        BattleChange::UltimateDelegated { caster_uid } => {
+            vec![EffectPacket::direct_use_ex_skill(*caster_uid)]
+        }
         BattleChange::SkillLifecycle(
             crate::engine::skill::action::SkillLifecycle::EmitterAttackStarted(attack),
         ) => vec![EffectPacket::emitter_attack_marker(*attack)],
@@ -353,6 +356,7 @@ fn project_change(
                 std::iter::once(EffectPacket::buff_update(&refreshed.update))
                     .chain(refreshed.markers.iter().map(EffectPacket::buff_marker))
             }))
+            .chain(fanout.allies.iter().flat_map(layer_halo_ally_wire))
             .collect(),
         BattleChange::RaspberryCapacity(result) => match result.as_ref() {
             crate::engine::skill::buff_act::raspberry::CapacityResult::Applied(changes) => {
@@ -386,6 +390,7 @@ fn project_change(
         },
         BattleChange::BuffFeatureMarker(marker) => vec![EffectPacket::buff_marker(marker)],
         BattleChange::EffectMarker(marker) => vec![EffectPacket::effect_marker(marker.clone())],
+        BattleChange::CopyPreview { target_uid } => vec![EffectPacket::copy_preview(*target_uid)],
         BattleChange::SceneChange { scene_id } => EffectPacket::scene_change(*scene_id).to_vec(),
         BattleChange::Contract(crate::engine::manager::contract::ContractChange::Offered {
             origin,
@@ -425,6 +430,7 @@ fn project_change(
                 marker.team_type,
             )]
         }
+        BattleChange::CrystalSelected(choice) => vec![EffectPacket::crystal_selected(*choice)],
         BattleChange::Hp(changes) => {
             if let Some(config_effect) = changes.kill {
                 return Ok(vec![EffectPacket::kill(changes.target_uid, config_effect)]);
@@ -533,13 +539,19 @@ fn project_change(
                         buff_act_id: 0,
                     },
                     |rule| {
-                        rule.plan(
-                            changes.source_uid,
-                            changes.target_uid,
-                            max_hp.before_current,
-                            max_hp.after_current,
-                            max_hp.delta,
-                        )
+                        max_hp
+                            .replaced_removal
+                            .then(|| rule.replaced_removal_plan())
+                            .flatten()
+                            .unwrap_or_else(|| {
+                                rule.plan(
+                                    changes.source_uid,
+                                    changes.target_uid,
+                                    max_hp.before_current,
+                                    max_hp.after_current,
+                                    max_hp.delta,
+                                )
+                            })
                     },
                 );
                 for index in 0..plan.max_hp_repeats {
@@ -747,11 +759,13 @@ fn project_change(
         BattleChange::Conduit(crate::engine::manager::conduit::ConduitChange::RosterRefreshed(
             area,
         )) => vec![EffectPacket::conduit_initialized(area)],
-        BattleChange::Conduit(crate::engine::manager::conduit::ConduitChange::GroupSelected {
-            source_uid,
-            team,
-            group,
-        }) => vec![EffectPacket::conduit_group_selected(
+        BattleChange::Conduit(
+            crate::engine::manager::conduit::ConduitChange::SelectionCommitted {
+                source_uid,
+                team,
+                group,
+            },
+        ) => vec![EffectPacket::conduit_group_selected(
             *source_uid,
             *team,
             *group,
@@ -880,7 +894,14 @@ fn project_change(
         BattleChange::Card(changes) if changes.kind == CardChangeKind::AiQueueRefreshed => {
             Vec::new()
         }
-        BattleChange::Card(changes) if changes.kind == CardChangeKind::AiQueueSet => Vec::new(),
+        BattleChange::Card(changes)
+            if matches!(
+                changes.kind,
+                CardChangeKind::AiQueueSet | CardChangeKind::AiCastRecorded
+            ) =>
+        {
+            Vec::new()
+        }
         BattleChange::Card(changes) if changes.kind == CardChangeKind::TeamCardsSet => Vec::new(),
         BattleChange::Card(changes) if changes.kind == CardChangeKind::OwnerSkillsReplaced => {
             let Some(entity) = changes.entity.as_ref() else {
@@ -924,6 +945,13 @@ fn project_change(
                 .collect()
         }
         BattleChange::Card(changes) if changes.kind == CardChangeKind::InitialSovereignBoost => {
+            let boost = changes
+                .sovereign_boost
+                .as_ref()
+                .ok_or(ProjectionError::Card(changes.kind))?;
+            super::card::sovereign::initial_boost(boost)
+        }
+        BattleChange::Card(changes) if changes.kind == CardChangeKind::SovereignShifted => {
             let boost = changes
                 .sovereign_boost
                 .as_ref()
@@ -986,6 +1014,10 @@ fn project_change(
             ));
             effects
         }
+        BattleChange::ActionQueueCardState(snapshot) => vec![
+            CardPacket::hand_after_use_cards(snapshot.hand.clone()),
+            CardPacket::card_deck_num(snapshot.deck_num, snapshot.team_type),
+        ],
         BattleChange::Card(changes)
             if matches!(
                 changes.kind,
@@ -1051,27 +1083,13 @@ fn project_change(
                 })
                 .collect()
         }
-        BattleChange::Card(changes) if changes.kind == CardChangeKind::ActionQueueCommitted => {
-            let queue = changes
-                .action_queue
-                .as_ref()
-                .expect("action-queue commits retain their historical snapshots");
-            vec![
-                CardPacket::use_cards(queue.cards.clone()),
-                CardPacket::hand_after_use_cards(changes.after.clone()),
-                CardPacket::card_deck_num(queue.deck_num, queue.team),
-            ]
-        }
+        BattleChange::PlayerActionQueue(queue) => vec![CardPacket::use_cards(&queue.actions)],
         BattleChange::Card(changes) if changes.kind == CardChangeKind::UseCardQueued => {
             let queued = changes
                 .queued_use_card
                 .as_ref()
                 .expect("queued use-card changes retain their historical card");
-            vec![CardPacket::add_use_card(
-                queued.card_index,
-                queued.card.clone(),
-                queued.source_skill_id,
-            )]
+            vec![CardPacket::add_use_card(queued)]
         }
         BattleChange::Card(changes) if changes.kind == CardChangeKind::EnergyAllocated => {
             vec![CardPacket::allocate_card_energy(changes.after.clone(), 1)]
@@ -1285,12 +1303,13 @@ fn project_change(
             .map(EffectPacket::crystal_add_card)
             .into_iter()
             .collect(),
-        BattleChange::Card(changes) if changes.kind == CardChangeKind::PrecastAdded => changes
-            .added
-            .clone()
-            .map(EffectPacket::butterfly_add_hand_card)
-            .into_iter()
-            .collect(),
+        BattleChange::Card(changes) if changes.kind == CardChangeKind::PrecastAdded => {
+            let operation = changes
+                .operation
+                .clone()
+                .ok_or(ProjectionError::Card(changes.kind))?;
+            vec![CardPacket::from_change(operation)]
+        }
         BattleChange::Card(changes) if changes.kind == CardChangeKind::Refilled => Vec::new(),
         BattleChange::Card(changes)
             if changes.kind == CardChangeKind::UltimateAvailabilityChanged =>
@@ -1409,6 +1428,7 @@ fn project_change(
                 )]
             }
         },
+        BattleChange::MoveFront(changes) => vec![EffectPacket::move_front(changes)],
         BattleChange::ToughnessReset(change) => {
             vec![EffectPacket::toughness_reset(*change)]
         }
@@ -1455,10 +1475,61 @@ fn project_change(
             promotion.position,
             promotion.entering.clone(),
         )],
+        BattleChange::ReserveQueued(queued) => vec![EffectPacket::call_monster_to_sub(
+            queued.team_type,
+            queued.entity.clone(),
+        )],
+        BattleChange::ReserveRetired(retired) => vec![EffectPacket::remove_monster_sub(
+            retired.uid,
+            retired.team_type,
+        )],
         BattleChange::WaveAdvanced(change) => {
             vec![EffectPacket::new_change_wave(change.fight.clone())]
         }
     })
+}
+
+fn layer_halo_ally_wire(
+    ally: &crate::engine::manager::buff::LayerHaloAllyResult,
+) -> Vec<ActEffect> {
+    use crate::engine::manager::buff::BuffPublishPart;
+    let leads = !ally.replaced.is_empty();
+    let lead = || {
+        ally.added
+            .iter()
+            .flat_map(EffectPacket::buff_add_pre_markers)
+            .collect::<Vec<_>>()
+    };
+    let removal = || {
+        ally.replaced
+            .iter()
+            .map(EffectPacket::buff_delete)
+            .collect::<Vec<_>>()
+    };
+    let addition = || {
+        ally.trimmed
+            .iter()
+            .map(EffectPacket::buff_delete)
+            .chain(ally.trim_refreshed.iter().map(EffectPacket::buff_update))
+            .chain(ally.added.iter().flat_map(|added| {
+                if leads {
+                    EffectPacket::buff_add_body(added)
+                } else {
+                    EffectPacket::buff_add_direct(added)
+                }
+            }))
+            .chain(ally.refreshed.iter().flat_map(|refreshed| {
+                std::iter::once(EffectPacket::buff_update(&refreshed.update))
+                    .chain(refreshed.markers.iter().map(EffectPacket::buff_marker))
+            }))
+            .collect::<Vec<_>>()
+    };
+    match ally.part {
+        BuffPublishPart::Whole if leads => [lead(), removal(), addition()].concat(),
+        BuffPublishPart::Whole | BuffPublishPart::Addition => addition(),
+        BuffPublishPart::Lead => lead(),
+        BuffPublishPart::Removal => removal(),
+    }
 }
 
 fn apply_absorbed_shield_wire(
@@ -1575,16 +1646,6 @@ fn project_cue(
             })]
         }
         RoundCue::ExtraRoundGranted => vec![EffectPacket::fight_param_change(18, 1)],
-        RoundCue::ClientConduitSelectionConfirmed {
-            source_uid,
-            team,
-            group,
-        } => vec![EffectPacket::conduit_group_selected(
-            *source_uid,
-            *team,
-            *group,
-            0,
-        )],
     }
 }
 

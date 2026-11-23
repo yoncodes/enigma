@@ -47,6 +47,7 @@ fn direct_use_skill_publishes_an_action_but_no_act_does_not() {
                 == crate::engine::skill::action::SkillExecutionMode::Active
                 && invocation.start
                     == crate::engine::skill::action::SkillStart::AfterCurrentAction
+                && invocation.frame_target == Some(-1)
     ));
     assert!(matches!(
         no_act.as_slice(),

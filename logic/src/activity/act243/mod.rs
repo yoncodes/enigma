@@ -10,7 +10,7 @@ mod growth;
 mod report;
 
 pub use growth::{Act243Cost, unlock_racer, upgrade_gift};
-pub use report::{Act243Report, report_episode};
+pub use report::{Act243EpisodeReport, Act243Report, report_episode};
 
 const ACTIVITY_TYPE_ID: i32 = 243;
 

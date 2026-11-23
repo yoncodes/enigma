@@ -2,6 +2,95 @@ use super::*;
 use crate::engine::manager::buff::BuffGrant;
 
 #[test]
+fn prism_settles_after_its_owners_duration() {
+    use crate::engine::manager::gauge::{GaugeCommand, GaugeOperation};
+    use sonettobuf::effect_type_enum::EffectType;
+
+    init_config();
+    let fight = Fight {
+        version: Some(7),
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                team_type: Some(1),
+                current_hp: Some(1000),
+                ex_point: Some(1),
+                attr: Some(HeroAttribute {
+                    hp: Some(1000),
+                    ..Default::default()
+                }),
+                passive_skill: vec![31340143],
+                buffs: vec![BuffInfo {
+                    uid: Some(20),
+                    buff_id: Some(103374114),
+                    from_uid: Some(-1),
+                    duration: Some(2),
+                    layer: Some(2),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let catalog = SkillEffectCatalog::from_fight(config::configs::get(), &fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    let key = crate::engine::mechanic::lingering_glow::key(1);
+    let origin = CommandOrigin {
+        domain: RuleDomain::Lifecycle,
+        key: DefinitionKey::new(0, "TestLingeringGlow"),
+    };
+    managers
+        .execute_gauge(GaugeCommand::new(
+            origin,
+            key,
+            GaugeOperation::Enable { max: Some(750) },
+        ))
+        .unwrap();
+    managers
+        .execute_gauge(GaugeCommand::new(
+            origin,
+            key,
+            GaugeOperation::ChangeValue { delta: 60 },
+        ))
+        .unwrap();
+
+    let settlement = run_entity_settlement(
+        &mut managers,
+        &pool,
+        &catalog,
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+        &[10],
+        SettlementSide::Attacker,
+    )
+    .unwrap();
+
+    assert_eq!(managers.buff.snapshot(10, 20).unwrap().duration, Some(1));
+    assert_eq!(managers.ex_point.get(10), 2);
+    let steps =
+        crate::engine::packet::timeline::project_for_version(&settlement.output.frames, 7).unwrap();
+    let [group] = steps.as_slice() else {
+        panic!("expected one post-settlement group, got {steps:?}");
+    };
+    let [timer, prism] = group.act_effect.as_slice() else {
+        panic!("expected the timer and Prism in one group");
+    };
+    assert_eq!(timer.effect_type, Some(EffectType::Buffupdate as i32));
+    assert_eq!(timer.target_id, Some(10));
+    assert_eq!(prism.effect_type, Some(EffectType::Fightstep as i32));
+    let event = prism.fight_step.as_ref().unwrap();
+    assert!(event.act_effect.iter().any(|effect| {
+        effect
+            .fight_step
+            .as_ref()
+            .is_some_and(|step| step.act_id == Some(31340143) && step.from_id == Some(10))
+    }));
+}
+
+#[test]
 fn final_settlement_advances_final_stage_durations() {
     init_config();
     let fight = Fight {
@@ -47,7 +136,7 @@ fn final_settlement_advances_final_stage_durations() {
         .enumerate()
         .find_map(|(index, event)| match event {
             BattleEvent::BuffRemoved(change) if change.buff_id == 109320002 => {
-                Some((index, change.duration_expired))
+                Some((index, change.expiry.expired()))
             }
             _ => None,
         })
@@ -236,9 +325,14 @@ fn blood_debt_replaces_its_expired_defense_debuff_after_settlement() {
 
 #[test]
 fn obscurity_break_enters_the_witness_round_on_the_next_round() {
+    use crate::engine::event::payload::{BuffChangeEvent, BuffExpiry};
+    use crate::engine::manager::entity::{EntityCommand, EntityOperation};
+    use crate::test_support::contains_skill;
+
     init_config();
     let entity = |uid, buffs, passive_skill| FightEntityInfo {
         uid: Some(uid),
+        team_type: Some(if uid > 0 { 1 } else { 2 }),
         current_hp: Some(10_000),
         attr: Some(HeroAttribute {
             hp: Some(10_000),
@@ -248,30 +342,51 @@ fn obscurity_break_enters_the_witness_round_on_the_next_round() {
         passive_skill,
         ..Default::default()
     };
+    let mut boss = entity(
+        -1,
+        vec![BuffInfo {
+            uid: Some(21),
+            buff_id: Some(109320101),
+            duration: Some(2),
+            from_uid: Some(-1),
+            ..Default::default()
+        }],
+        vec![109320102, 109320105, 109320112],
+    );
+    boss.skill_group1 = vec![103374111];
     let fight = Fight {
         attacker: Some(FightTeam {
-            entitys: vec![entity(10, Vec::new(), Vec::new())],
+            entitys: vec![entity(10, Vec::new(), vec![30810311])],
             ..Default::default()
         }),
         defender: Some(FightTeam {
-            entitys: vec![entity(
-                -1,
-                vec![BuffInfo {
-                    uid: Some(21),
-                    buff_id: Some(109320101),
-                    duration: Some(2),
-                    from_uid: Some(-1),
-                    ..Default::default()
-                }],
-                vec![109320102, 109320105, 109320112],
-            )],
+            entitys: vec![boss],
             ..Default::default()
         }),
+        version: Some(7),
         ..Default::default()
     };
     let pool = TargetPool::from_fight(&fight);
     let catalog = SkillEffectCatalog::from_fight(config::configs::get(), &fight);
     let mut managers = BattleManagers::seeded(&fight);
+    let entrant = managers
+        .execute_entity(EntityCommand {
+            origin: CommandOrigin {
+                domain: RuleDomain::Behavior,
+                key: DefinitionKey::new(60008, "Summon"),
+            },
+            source_uid: -1,
+            target_uid: -1,
+            operation: EntityOperation::SummonCombatant {
+                model_id: 103370112,
+                position: 2,
+            },
+        })
+        .unwrap()
+        .entity
+        .uid
+        .unwrap();
+    assert!(pool.entity(entrant).is_none());
     managers
         .buff
         .execute(
@@ -304,7 +419,19 @@ fn obscurity_break_enters_the_witness_round_on_the_next_round() {
         &catalog,
         &mut RoundDeterminism::default(),
         TargetContext::default(),
-        Vec::new(),
+        vec![BuffChangeEvent {
+            source_uid: 10,
+            target_uid: -1,
+            buff_uid: 30,
+            buff_id: 4150001,
+            before_amount: 8,
+            after_amount: 5,
+            act_id: 0,
+            act_value: 0,
+            replaced_fixed_max_hp: None,
+            replaced_buff_id: None,
+            expiry: BuffExpiry::None,
+        }],
     )
     .unwrap();
 
@@ -321,13 +448,21 @@ fn obscurity_break_enters_the_witness_round_on_the_next_round() {
             .has_active_buff_id(crate::engine::fight::rules::ATTACKER_SIDE_UID, 109320002)
     );
     assert!(managers.buff.has_active_buff_id(-1, 109320103));
+    assert!(managers.buff.has_active_buff_id(entrant, 109320103));
     assert_eq!(managers.buff.snapshot(-1, 21).unwrap().duration, Some(1));
+    assert_eq!(managers.buff.buff_id_amount(10, 30810108), 3);
     let marker = managers
         .buff
         .active_for(-1)
         .find(|buff| buff.buff_id == Some(109320112))
         .unwrap();
     assert_eq!(marker.duration, Some(1));
+    let other_marker = managers
+        .buff
+        .active_for(entrant)
+        .find(|buff| buff.buff_id == Some(109320112))
+        .unwrap();
+    assert_eq!(other_marker.duration, Some(1));
 
     fn collect_duration_owners(
         frame: &crate::engine::runtime::record::SemanticFrame,
@@ -365,6 +500,11 @@ fn obscurity_break_enters_the_witness_round_on_the_next_round() {
                 marker.uid.unwrap(),
                 effect_time::ROUND_END_FINAL_SETTLEMENT
             ),
+            (
+                entrant,
+                other_marker.uid.unwrap(),
+                effect_time::ROUND_END_FINAL_SETTLEMENT
+            ),
         ]
     );
 
@@ -380,7 +520,19 @@ fn obscurity_break_enters_the_witness_round_on_the_next_round() {
                     .collect::<Vec<_>>()
             })
             .collect::<Vec<_>>(),
-        vec![vec![6, 162, 162], vec![7, 7, 162]]
+        vec![vec![6, 162, 162, 162, 162], vec![7, 7, 7, 162, 162]]
+    );
+    let heat = steps[0].act_effect[4].fight_step.as_ref().unwrap();
+    assert!(contains_skill(heat, 30810311));
+    assert_eq!(
+        steps[0]
+            .act_effect
+            .iter()
+            .filter_map(|effect| effect.fight_step.as_ref())
+            .filter(|step| step.act_id == Some(109320112))
+            .map(|step| (step.from_id, step.to_id))
+            .collect::<Vec<_>>(),
+        vec![(Some(-1), Some(-1)), (Some(entrant), Some(entrant))]
     );
 }
 
@@ -489,6 +641,15 @@ fn defender_round_end_keeps_buff_acts_and_owner_passives_in_one_frame() {
         buffs: vec![burn(buff_uid)],
         ..Default::default()
     };
+    let mut sentinel = defender(-1, vec![103374116], 31);
+    sentinel.buffs.push(BuffInfo {
+        uid: Some(40),
+        buff_id: Some(103374118),
+        from_uid: Some(-1),
+        count: Some(1),
+        duration: Some(1),
+        ..Default::default()
+    });
     let fight = Fight {
         version: Some(7),
         attacker: Some(FightTeam {
@@ -506,7 +667,7 @@ fn defender_round_end_keeps_buff_acts_and_owner_passives_in_one_frame() {
         }),
         defender: Some(FightTeam {
             entitys: vec![
-                defender(-1, Vec::new(), 31),
+                sentinel,
                 defender(-2, vec![116330101], 32),
                 defender(-3, vec![116330101], 33),
             ],
@@ -527,9 +688,9 @@ fn defender_round_end_keeps_buff_acts_and_owner_passives_in_one_frame() {
     )
     .unwrap();
     let steps = crate::engine::packet::timeline::project(&result.frames).unwrap();
-    let round_end = steps
+    let round_end_index = steps
         .iter()
-        .find(|step| {
+        .position(|step| {
             step.act_effect
                 .iter()
                 .filter(|effect| {
@@ -542,6 +703,18 @@ fn defender_round_end_keeps_buff_acts_and_owner_passives_in_one_frame() {
                 == 3
         })
         .unwrap();
+    assert_eq!(managers.buff.buff_id_amount(-1, 103374117), 1);
+    let small_round_end = &steps[round_end_index - 1];
+    assert!(
+        small_round_end
+            .act_effect
+            .iter()
+            .filter_map(|effect| effect.fight_step.as_ref())
+            .flat_map(|step| &step.act_effect)
+            .filter_map(|effect| effect.fight_step.as_ref())
+            .any(|step| step.act_id == Some(103374116))
+    );
+    let round_end = &steps[round_end_index];
     assert_eq!(round_end.act_effect.len(), 5);
 
     let passives = round_end.act_effect[3..]

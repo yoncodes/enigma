@@ -10,7 +10,7 @@ pub(super) fn queued_entity_entry_halo_fanout(
     entry_scope: Option<&[usize]>,
     parent_path: Option<&[usize]>,
 ) -> Option<QueuedOp> {
-    let BattleEvent::EntityEntered { target_uid } = event else {
+    let BattleEvent::EntityEntered { target_uid, .. } = event else {
         return None;
     };
     let (frame_path, parent_path) = match entry_scope {
@@ -56,10 +56,7 @@ fn queued_invalid_ultimate_removal(
         .card
         .hand()
         .iter()
-        .find(|card| {
-            !crate::engine::manager::card::CardManager::is_sovereign(card)
-                && mechanic.is_ultimate(managers, card, entity)
-        })
+        .find(|card| mechanic.is_dealt_ultimate(managers, card, entity))
         .cloned();
     if mechanic.ultimate_ready(managers, entity) {
         return None;
@@ -175,10 +172,11 @@ pub(in crate::engine::runtime::drain) fn dispatch_event_groups(
         batch_id: drain_state.next_event_batch_id(),
         ..Default::default()
     };
-    let mut unscoped_reactions = std::collections::HashSet::new();
-    let fired_once_per_action = action_path.map_or(&mut unscoped_reactions, |action_path| {
-        drain_state.action_reactions(action_path)
-    });
+    let mut unscoped_reactions = super::super::state::ActionReactions::default();
+    let action_open = action_path.is_some_and(|path| drain_state.action_in_progress(path));
+    let action_reactions =
+        action_path.map_or(&mut unscoped_reactions, |path| drain_state.reactions(path));
+    state.hit_passives_pending = action_open && !action_reactions.hit_passives_released;
     let mut reactions = ReactionBatch::default();
     let mut scheduled_death_completions = Vec::<crate::engine::manager::hp::PendingDeath>::new();
     let mut event_offset = 0;
@@ -203,7 +201,7 @@ pub(in crate::engine::runtime::drain) fn dispatch_event_groups(
             owner_uids,
             lane,
             &mut state,
-            fired_once_per_action,
+            action_reactions,
         )?;
         if publication_phase == crate::engine::event::subscription::PublicationPhase::AfterPublish
             && lane.is_none()
@@ -278,7 +276,7 @@ pub(in crate::engine::runtime::drain) fn dispatch_event_batch(
         owner_uids,
         None,
         &mut EventBatchState::default(),
-        &mut std::collections::HashSet::new(),
+        &mut super::super::state::ActionReactions::default(),
     )?;
     reactions.assign_subscriber_death_groups(action_path);
     Ok(reactions)
@@ -288,7 +286,8 @@ pub(in crate::engine::runtime::drain) fn dispatch_event_batch(
 struct EventBatchState {
     batch_id: u64,
     queued_attack_consumption: bool,
-    fired_once_per_target:
+    hit_passives_pending: bool,
+    fired_once_per_batch_target:
         std::collections::HashSet<crate::engine::event::dispatcher::OncePerTargetKey>,
     fired_once_per_event_batch:
         std::collections::HashSet<crate::engine::event::dispatcher::ReactionMultiplicityKey>,
@@ -313,9 +312,7 @@ fn dispatch_event_batch_inner(
     owner_uids: Option<&[i64]>,
     lane: Option<ReactionLane>,
     state: &mut EventBatchState,
-    fired_once_per_action: &mut std::collections::HashSet<
-        crate::engine::event::dispatcher::ReactionMultiplicityKey,
-    >,
+    action_reactions: &mut super::super::state::ActionReactions,
 ) -> Result<ReactionBatch, DrainError> {
     let scoped_owner_uids = terminal_owner_scope(pool, managers, owner_uids);
     let owner_uids = scoped_owner_uids.as_deref();
@@ -386,6 +383,8 @@ fn dispatch_event_batch_inner(
                         managers,
                         *target_uid,
                         &damage_types,
+                        current_skill
+                            .is_some_and(|(_, skill_id, _)| catalog.is_big_skill(skill_id)),
                     )
                 {
                     reactions.after_publish.push(queued_buff_act_feature_op(
@@ -403,12 +402,14 @@ fn dispatch_event_batch_inner(
                 event.kind(),
                 crate::engine::event::kind::EventKind::BuffAdded
                     | crate::engine::event::kind::EventKind::BuffRejected
+                    | crate::engine::event::kind::EventKind::AllyAction
             )
         });
         let mut multiplicity = crate::engine::event::dispatcher::DispatchMultiplicity {
-            once_per_target: &mut state.fired_once_per_target,
+            once_per_batch_target: &mut state.fired_once_per_batch_target,
+            once_per_action_target: &mut action_reactions.buff_targets,
             once_per_event_batch: &mut state.fired_once_per_event_batch,
-            once_per_action: fired_once_per_action,
+            once_per_action: &mut action_reactions.skills,
             event_batch_id: state.batch_id,
             action_path,
         };
@@ -417,17 +418,20 @@ fn dispatch_event_batch_inner(
             managers,
             catalog,
             determinism,
-            event,
-            Some(parent_path),
-            Some(reuse_path),
-            action_path,
-            entry_halo_scope,
-            reentry_skill,
-            current_skill_target,
-            lane,
-            owner_uids,
-            execute_unscoped_after_action,
-            Some(publication_phase),
+            ReactionDispatch {
+                event,
+                parent_path: Some(parent_path),
+                reuse_path: Some(reuse_path),
+                action_path,
+                entry_halo_scope,
+                reentry_skill,
+                current_skill_target,
+                lane,
+                owner_uids,
+                execute_unscoped_after_action,
+                publication_phase: Some(publication_phase),
+                hit_passives_pending: state.hit_passives_pending,
+            },
             Some(&mut multiplicity),
         )?;
         reactions.append(dispatched);

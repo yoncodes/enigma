@@ -6,8 +6,7 @@ pub mod resolve;
 pub(crate) use card_selection::CardSelectionResolver;
 pub use pool::{EntityDamageType, TargetContext, TargetEntity, TargetPool};
 pub use request::TargetRequest;
-pub(crate) use resolve::frame_anchor_for_rule;
-pub use resolve::{TargetResolver, is_mapped_target_code, targets_enemy};
+pub use resolve::{TargetResolver, is_mapped_target_code, is_supported_target, targets_enemy};
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum BehaviorTargetOrder {

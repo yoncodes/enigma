@@ -19,7 +19,16 @@ fn lost_life_attack_uses_all_characters_and_the_configured_hp_basis() {
             ..Default::default()
         }),
         defender: Some(FightTeam {
-            entitys: vec![entity(-1, 8_000)],
+            entitys: vec![FightEntityInfo {
+                buffs: vec![BuffInfo {
+                    uid: Some(20),
+                    buff_id: Some(109390001),
+                    from_uid: Some(-1),
+                    layer: Some(3),
+                    ..Default::default()
+                }],
+                ..entity(-1, 8_000)
+            }],
             ..Default::default()
         }),
         ..Default::default()
@@ -95,7 +104,7 @@ fn lost_life_attack_uses_all_characters_and_the_configured_hp_basis() {
         damage.as_slice(),
         [RuleOp::Command(BattleCommand::Hp(HpCommand::Damage(
             HpDamage {
-                amount: 3_000,
+                amount: 2_100,
                 target_uid: -1,
                 ..
             }

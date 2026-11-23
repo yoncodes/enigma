@@ -436,18 +436,19 @@ pub async fn save_claimed_return_rewards_in_transaction(
     Ok((result.rows_affected() == 1).then(|| ids.to_vec()))
 }
 
+pub struct ReturnTaskRotation<L> {
+    pub active: i32,
+    pub left: L,
+    pub last: i32,
+    pub refresh_day: i64,
+}
+
 pub async fn save_return_task_rotation(
     pool: &SqlitePool,
     user_id: i64,
     turnback_id: i32,
-    expected_active: i32,
-    expected_left: &str,
-    expected_last: i32,
-    expected_refresh_day: i64,
-    active: i32,
-    left: &[i32],
-    last: i32,
-    refresh_day: i64,
+    expected: ReturnTaskRotation<&str>,
+    next: ReturnTaskRotation<&[i32]>,
 ) -> Result<bool> {
     let result = sqlx::query(
         "UPDATE user_turnback_state
@@ -457,17 +458,17 @@ pub async fn save_return_task_rotation(
            AND return_random_task_id = ? AND return_left_task_ids = ?
            AND return_last_random_task_id = ? AND return_random_refresh_day = ?",
     )
-    .bind(active)
-    .bind(serde_json::to_string(left)?)
-    .bind(last)
-    .bind(refresh_day)
+    .bind(next.active)
+    .bind(serde_json::to_string(next.left)?)
+    .bind(next.last)
+    .bind(next.refresh_day)
     .bind(common::time::ServerTime::now_ms())
     .bind(user_id)
     .bind(turnback_id)
-    .bind(expected_active)
-    .bind(expected_left)
-    .bind(expected_last)
-    .bind(expected_refresh_day)
+    .bind(expected.active)
+    .bind(expected.left)
+    .bind(expected.last)
+    .bind(expected.refresh_day)
     .execute(pool)
     .await?;
     Ok(result.rows_affected() == 1)

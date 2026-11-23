@@ -12,7 +12,7 @@ use battle::tooling::scan::{
     },
     condition_registry as registry, halo,
     hero_skill::{parse_skill_group, split_ids},
-    is_mapped_target_code,
+    is_supported_target,
 };
 
 use crate::options::Options;

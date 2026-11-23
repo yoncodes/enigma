@@ -3,10 +3,7 @@ use crate::engine::{
     manager::{
         buff::{BuffCommand, BuffConsume, BuffGrant, BuffSelector, DepletedBuff},
         card::{CardCommand, CardConsumeForEffect, CardConsumptionKind},
-        conduit::{
-            ConduitCommand, ConduitCounterChange, ConduitCounterKind, ConduitPowerChange,
-            ConduitPowerChangeKind,
-        },
+        conduit::{ConduitCommand, ConduitCounterChange, ConduitCounterKind, ConduitPowerChange},
         eureka::{EUREKA_RESOURCE_ID, EurekaChange, EurekaCommand, EurekaProgress},
         ex_point::{ExPointChange, ExPointCommand, ExPointKind, ExPointTransfer},
         gauge::{GaugeCommand, GaugeOperation},
@@ -31,6 +28,11 @@ use crate::engine::{
 #[cfg(test)]
 use crate::engine::manager::BattleManagers;
 use sonettobuf::effect_type_enum::EffectType;
+
+mod conduit_power;
+
+use conduit_power::conduit_power_args;
+pub(crate) use conduit_power::fixed_conduit_gain;
 
 pub(super) struct Handler;
 
@@ -725,18 +727,6 @@ fn power_args(args: &[i32]) -> Option<(i32, i32)> {
     match args {
         [amount] => Some((EUREKA_RESOURCE_ID, *amount)),
         [power_id, amount] => Some((*power_id, *amount)),
-        _ => None,
-    }
-}
-
-fn conduit_power_args(args: &[i32]) -> Option<(i32, i32, ConduitPowerChangeKind)> {
-    match args {
-        [power_id, delta] if *power_id >= 0 => {
-            Some((*power_id, *delta, ConduitPowerChangeKind::Standard))
-        }
-        [power_id, delta, 1] if *power_id >= 0 => {
-            Some((*power_id, *delta, ConduitPowerChangeKind::Interval))
-        }
         _ => None,
     }
 }

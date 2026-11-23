@@ -6,11 +6,13 @@ pub enum TraceArea {
     Damage,
     Drain,
     Gauge,
+    Conduit,
     Skill,
     Target,
     Buff,
     Condition,
     Event,
+    Toughness,
 }
 
 #[derive(Debug, Default)]
@@ -19,11 +21,13 @@ struct TraceFlags {
     damage: bool,
     drain: bool,
     gauge: bool,
+    conduit: bool,
     skill: bool,
     target: bool,
     buff: bool,
     condition: bool,
     event: bool,
+    toughness: bool,
 }
 
 /// Returns whether diagnostics are enabled for one source-owned subsystem.
@@ -39,11 +43,13 @@ pub fn enabled(area: TraceArea) -> bool {
             TraceArea::Damage => flags.damage,
             TraceArea::Drain => flags.drain,
             TraceArea::Gauge => flags.gauge,
+            TraceArea::Conduit => flags.conduit,
             TraceArea::Skill => flags.skill,
             TraceArea::Target => flags.target,
             TraceArea::Buff => flags.buff,
             TraceArea::Condition => flags.condition,
             TraceArea::Event => flags.event,
+            TraceArea::Toughness => flags.toughness,
         }
 }
 
@@ -68,11 +74,13 @@ impl TraceFlags {
                 "damage" => flags.damage = true,
                 "drain" => flags.drain = true,
                 "gauge" => flags.gauge = true,
+                "conduit" => flags.conduit = true,
                 "skill" => flags.skill = true,
                 "target" | "targets" => flags.target = true,
                 "buff" | "buffs" => flags.buff = true,
                 "condition" | "conditions" => flags.condition = true,
                 "event" | "events" => flags.event = true,
+                "toughness" => flags.toughness = true,
                 "" => {}
                 _ => {}
             }

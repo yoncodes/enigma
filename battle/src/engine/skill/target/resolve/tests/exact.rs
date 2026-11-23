@@ -72,6 +72,60 @@ fn mass_enemy_target_prioritizes_the_causing_skill_target() {
 }
 
 #[test]
+fn non_attack_mass_enemy_card_starts_with_the_selected_enemy() {
+    init_config();
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![entity_at(10, 1)],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![entity_at(-1, 1), entity_at(-2, 2), entity_at(-3, 3)],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let managers = BattleManagers::seeded(&fight);
+    assert!(!managers.catalog().skill_is_attack(30200121));
+    let resolve = |context| {
+        TargetResolver::resolve_with_managers_and_context(
+            &TargetRequest {
+                code: 202,
+                raw: Vec::new(),
+            },
+            30200121,
+            10,
+            &pool,
+            &mut RoundDeterminism::default(),
+            Some(&managers),
+            TargetContext {
+                runtime_target_uid: -2,
+                active_skill_id: 30200121,
+                active_skill_source_uid: 10,
+                ..context
+            },
+        )
+    };
+
+    assert_eq!(
+        resolve(TargetContext {
+            card_selected_target_uid: -2,
+            ..Default::default()
+        }),
+        vec![-2, -1, -3]
+    );
+    assert_eq!(resolve(TargetContext::default()), vec![-1, -2, -3]);
+    assert_eq!(
+        resolve(TargetContext {
+            causing_skill_target_uid: -3,
+            ..Default::default()
+        }),
+        vec![-1, -2, -3]
+    );
+}
+
+#[test]
 fn selected_attack_rejects_an_ally_without_changing_non_attack_selection() {
     let fight = Fight {
         attacker: Some(FightTeam {
@@ -185,7 +239,7 @@ fn resolves_lowest_highest_and_position_targets() {
     assert_eq!(resolve_code(112, 10, &pool, &mut determinism), vec![11]);
     assert_eq!(resolve_code(113, 10, &pool, &mut determinism), vec![10]);
     assert_eq!(resolve_code(208, 10, &pool, &mut determinism), vec![-11]);
-    assert_eq!(resolve_code(231, 10, &pool, &mut determinism), vec![-11]);
+    assert_eq!(resolve_code(223, 10, &pool, &mut determinism), vec![-11]);
     assert_eq!(resolve_code(228, 10, &pool, &mut determinism), vec![-12]);
     assert_eq!(resolve_code(117, 11, &pool, &mut determinism), vec![10, 12]);
     assert_eq!(resolve_code(118, 11, &pool, &mut determinism), vec![12]);
@@ -196,17 +250,139 @@ fn resolves_lowest_highest_and_position_targets() {
 }
 
 #[test]
+fn burn_priority_uses_current_stacks_and_observed_ties() {
+    init_config();
+    for layers in [[8, 7, 13], [0, 0, 0]] {
+        let enemy = |uid, position, layers| FightEntityInfo {
+            buffs: if layers > 0 {
+                vec![BuffInfo {
+                    buff_id: Some(4150001),
+                    uid: Some(100 - uid),
+                    from_uid: Some(10),
+                    layer: Some(layers),
+                    ..Default::default()
+                }]
+            } else {
+                Vec::new()
+            },
+            ..entity_at(uid, position)
+        };
+        let fight = Fight {
+            attacker: Some(FightTeam {
+                entitys: vec![entity_at(10, 1)],
+                ..Default::default()
+            }),
+            defender: Some(FightTeam {
+                entitys: vec![
+                    enemy(-1, 1, layers[0]),
+                    enemy(-2, 2, layers[1]),
+                    enemy(-3, 3, layers[2]),
+                ],
+                sub_entitys: vec![enemy(-4, 4, 99)],
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let pool = TargetPool::from_fight(&fight);
+        let managers = BattleManagers::seeded(&fight);
+        let mut determinism = RoundDeterminism::default();
+        determinism.enqueue_skill_target_choices([SkillTargetChoice {
+            skill_id: 31020141,
+            source_uid: 10,
+            target_code: 231,
+            targets: vec![-3],
+            additional_targets: vec![],
+            crit_targets: vec![],
+            additional_crit_targets: vec![],
+        }]);
+        let request = TargetRequest {
+            code: 231,
+            raw: vec![],
+        };
+        let context = TargetContext {
+            runtime_target_uid: -2,
+            ..Default::default()
+        };
+        let mut expected = determinism.clone();
+        assert_eq!(
+            TargetResolver::resolve_with_managers_and_context(
+                &request,
+                31020141,
+                10,
+                &pool,
+                &mut determinism,
+                Some(&managers),
+                // The hit target, even when it no longer has the most Burn.
+                TargetContext {
+                    runtime_target_uid: -1,
+                    ..context
+                },
+            ),
+            vec![-1],
+        );
+        assert_eq!(determinism.skill_targets.len(), 1);
+        assert_eq!(
+            determinism.lua_random_index(100),
+            expected.lua_random_index(100)
+        );
+        assert_eq!(
+            TargetResolver::resolve_action_targets(
+                &request,
+                31020141,
+                10,
+                &pool,
+                &mut determinism,
+                Some(&managers),
+                context,
+            ),
+            vec![-3],
+        );
+        assert_eq!(resolve_code(223, 10, &pool, &mut determinism), vec![-2]);
+        if layers == [8, 7, 13] {
+            for captured in [None, Some(-2)] {
+                let mut determinism = RoundDeterminism::default();
+                if let Some(target) = captured {
+                    determinism.enqueue_skill_target_choices([SkillTargetChoice {
+                        skill_id: 31020141,
+                        source_uid: 10,
+                        target_code: 231,
+                        targets: vec![target],
+                        additional_targets: vec![],
+                        crit_targets: vec![],
+                        additional_crit_targets: vec![],
+                    }]);
+                }
+                let mut expected = determinism.clone();
+                assert_eq!(
+                    TargetResolver::resolve_action_targets(
+                        &request,
+                        31020141,
+                        10,
+                        &pool,
+                        &mut determinism,
+                        Some(&managers),
+                        context,
+                    ),
+                    vec![-3],
+                );
+                assert_eq!(
+                    determinism.lua_random_index(100),
+                    expected.lua_random_index(100),
+                );
+            }
+        }
+    }
+}
+#[test]
 fn highest_ex_point_uses_current_main_ally_moxie() {
+    let mut recoleta = entity_stats(10, 1, 100, 100, 0);
+    recoleta.model_id = Some(3114);
     let mut device = entity_stats(13, 3, 100, 100, 65);
     device.ex_point_type =
         Some(crate::engine::manager::ex_point::ExPointKind::DevicePower.as_wire());
     let fight = Fight {
         attacker: Some(FightTeam {
-            entitys: vec![
-                entity_stats(10, 1, 100, 100, 0),
-                entity_stats(11, 2, 100, 100, 0),
-                device,
-            ],
+            entitys: vec![recoleta, entity_stats(11, 2, 100, 100, 0), device],
             sub_entitys: vec![entity_stats(12, -1, 100, 100, 10)],
             ..Default::default()
         }),
@@ -230,8 +406,118 @@ fn highest_ex_point_uses_current_main_ally_moxie() {
     );
 
     assert_eq!(targets, vec![11]);
+
+    managers.ex_point.set(10, 10, 7, 0);
+    let catalog = crate::engine::skill::effect::SkillEffectCatalog::from_roots(
+        crate::test_support::game_data(),
+        [311401511],
+        [],
+    );
+    let request = catalog.logic_request(311401511);
+    assert!(!is_supported_target(request));
+    assert!(
+        TargetResolver::resolve_with_managers_and_context(
+            request,
+            311401511,
+            0,
+            &pool,
+            &mut RoundDeterminism::default(),
+            Some(&managers),
+            TargetContext::default(),
+        )
+        .is_empty()
+    );
+    let resolve = |request: &TargetRequest, pool: &TargetPool| {
+        TargetResolver::resolve_action_targets(
+            request,
+            311401511,
+            0,
+            pool,
+            &mut RoundDeterminism::default(),
+            Some(&managers),
+            TargetContext::default(),
+        )
+    };
+    assert_eq!(resolve(request, &pool), vec![11]);
+    assert_eq!(
+        resolve(
+            &TargetRequest {
+                code: 112,
+                raw: Vec::new()
+            },
+            &pool
+        ),
+        vec![10]
+    );
+
+    let mut solo = fight;
+    solo.attacker.as_mut().unwrap().entitys.truncate(1);
+    assert!(resolve(request, &TargetPool::from_fight(&solo)).is_empty());
 }
 
+#[test]
+fn highest_moxie_action_prefers_selected_ally_only_when_tied() {
+    let mut recoleta = entity_stats(10, 2, 100, 100, 4);
+    recoleta.model_id = Some(3114);
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![
+                entity_stats(11, 1, 100, 100, 2),
+                recoleta,
+                entity_stats(12, 3, 100, 100, 2),
+            ],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    let request = TargetRequest {
+        code: 112,
+        raw: vec![3114],
+    };
+    let bare = TargetRequest {
+        code: 112,
+        raw: vec![],
+    };
+    let resolve = |request: &TargetRequest, skill_id, selected, managers: &BattleManagers| {
+        TargetResolver::resolve_action_targets(
+            request,
+            skill_id,
+            0,
+            &pool,
+            &mut RoundDeterminism::default(),
+            Some(managers),
+            TargetContext {
+                runtime_target_uid: selected,
+                ..Default::default()
+            },
+        )
+    };
+    // The tie order without a usable selection is unproven, so it is not pinned here.
+    assert_eq!(resolve(&request, 311401511, 12, &managers), vec![12]);
+    managers.ex_point.set(10, 10, 0, 0);
+    assert_eq!(resolve(&bare, 31140151, 12, &managers), vec![12]);
+    // Effect slots have no selection of their own; the action's target must not
+    // steer them.
+    let effect = |selected| {
+        TargetResolver::resolve_with_managers_and_context(
+            &bare,
+            1001,
+            11,
+            &pool,
+            &mut RoundDeterminism::default(),
+            Some(&managers),
+            TargetContext {
+                runtime_target_uid: selected,
+                ..Default::default()
+            },
+        )
+    };
+    assert_eq!(effect(12), effect(-1));
+    managers.ex_point.set(12, 12, 1, 0);
+    assert_eq!(resolve(&request, 311401511, 12, &managers), vec![11]);
+}
 #[test]
 fn bound_ally_target_requires_the_sources_completed_contract() {
     init_config();

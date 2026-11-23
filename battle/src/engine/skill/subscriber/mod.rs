@@ -76,7 +76,7 @@ pub fn for_entity(
 
 pub fn active_skills(pool: &TargetPool, managers: &BattleManagers) -> Vec<(i64, i32)> {
     let mut skills = Vec::new();
-    for entity in pool.active_entities() {
+    for entity in subscriber_entities(pool) {
         skills.extend(entity_skill_owners(entity, pool, managers));
     }
     skills.extend(
@@ -149,7 +149,11 @@ pub fn for_active_buffs(managers: &BattleManagers, event: EventKind) -> Vec<Buff
                     phase,
                     buff_act::registry::runtime_publication(act_id, &feature.act_type, event),
                 )
-                .with_timing(definition.runtime.reaction_timing),
+                .with_timing(definition.runtime.timing_for(
+                    managers.catalog(),
+                    feature.buff_id,
+                    args,
+                )),
                 act_type: feature.act_type,
                 effect_time: feature.effect_time,
                 effect_condition: feature.effect_condition,
@@ -293,7 +297,7 @@ pub fn for_event(
     catalog: &SkillEffectCatalog,
     event: EventKind,
 ) -> EventSubscribers {
-    let skills = collect_event_skills(pool, managers, catalog, &[event], |skill_id| {
+    let skills = collect_event_skills(pool, managers, catalog, &[event], None, |skill_id| {
         Ok(catalog
             .subscriptions(skill_id)
             .into_iter()
@@ -315,7 +319,7 @@ pub fn for_compiled_event(
     let mut buff_acts = for_active_buffs(managers, event);
     buff_acts.extend(for_configured_buff_acts(pool, managers, catalog, event));
     Ok(EventSubscribers {
-        skills: collect_event_skills(pool, managers, catalog, &[event], |skill_id| {
+        skills: collect_event_skills(pool, managers, catalog, &[event], None, |skill_id| {
             catalog.compiled_subscription_lanes(skill_id).map(|lanes| {
                 lanes
                     .into_iter()
@@ -336,7 +340,7 @@ pub fn for_compiled_events(
     let events = events.into_iter().collect::<Vec<_>>();
     // One owner's skills answer an event in their own order, whichever kind each slot listens on.
     let mut merged = EventSubscribers {
-        skills: collect_event_skills(pool, managers, catalog, &events, |skill_id| {
+        skills: collect_event_skills(pool, managers, catalog, &events, None, |skill_id| {
             catalog.compiled_subscription_lanes(skill_id).map(|lanes| {
                 lanes
                     .into_iter()
@@ -355,6 +359,34 @@ pub fn for_compiled_events(
         }
     }
     Ok(merged)
+}
+
+pub(crate) fn for_compiled_owner_skill_event(
+    pool: &TargetPool,
+    managers: &BattleManagers,
+    catalog: &SkillEffectCatalog,
+    event: EventKind,
+    owner_uid: i64,
+) -> Result<EventSubscribers, SubscriberError> {
+    let skills = collect_event_skills(
+        pool,
+        managers,
+        catalog,
+        &[event],
+        Some(owner_uid),
+        |skill_id| {
+            catalog.compiled_subscription_lanes(skill_id).map(|lanes| {
+                lanes
+                    .into_iter()
+                    .map(|(slot, key)| (Some(slot), key))
+                    .collect()
+            })
+        },
+    )?;
+    Ok(EventSubscribers {
+        skills,
+        buff_acts: Vec::new(),
+    })
 }
 
 pub fn for_compiled_owner_events(
@@ -407,11 +439,15 @@ fn collect_event_skills(
     managers: &BattleManagers,
     catalog: &SkillEffectCatalog,
     events: &[EventKind],
+    selected_owner: Option<i64>,
     subscriptions: impl Fn(i32) -> Result<Vec<(Option<usize>, SubscriptionKey)>, RouteError>,
 ) -> Result<Vec<SkillSubscriber>, SubscriberError> {
     let mut skills = Vec::new();
-    for entity in pool.active_entities() {
+    for entity in subscriber_entities(pool) {
         for (owner_uid, skill_id) in entity_skill_owners(entity, pool, managers) {
+            if selected_owner.is_some_and(|selected| selected != owner_uid) {
+                continue;
+            }
             push_skill_subscribers(
                 &mut skills,
                 owner_uid,
@@ -424,6 +460,9 @@ fn collect_event_skills(
         }
     }
     for (owner_uid, skill_id, passive_source) in additional_skill_owners(pool, managers) {
+        if selected_owner.is_some_and(|selected| selected != owner_uid) {
+            continue;
+        }
         push_skill_subscribers(
             &mut skills,
             owner_uid,
@@ -455,10 +494,19 @@ fn push_skill_subscribers(
         }
         let keys = subscriptions(skill_id)
             .map_err(|route| SubscriberError::UncompiledRoute { skill_id, route })?;
+        let mut entry_slot = None;
         for (slot_index, mut key) in keys
             .into_iter()
             .filter(|(_, key)| events.contains(&key.event))
         {
+            if key.event.is_entry()
+                && let Some(slot_index) = slot_index
+            {
+                if entry_slot == Some(slot_index) {
+                    continue;
+                }
+                entry_slot = Some(slot_index);
+            }
             if let Some(definition) =
                 condition_registry::find_key(key.timing_policy.opcode, key.timing_policy.type_name)
             {
@@ -493,12 +541,15 @@ pub(crate) fn for_compiled_skill_event(
         catalog,
         &[event],
         &|skill_id| {
-            catalog.compiled_subscription_lanes(skill_id).map(|lanes| {
-                lanes
-                    .into_iter()
-                    .map(|(slot, key)| (Some(slot), key))
-                    .collect()
-            })
+            let lanes = if event == EventKind::AllyAction {
+                catalog.completion_lanes(skill_id)
+            } else {
+                catalog.compiled_subscription_lanes(skill_id)
+            }?;
+            Ok(lanes
+                .into_iter()
+                .map(|(slot, key)| (Some(slot), key))
+                .collect())
         },
         managers.entity.passive_source(owner_uid, skill_id),
     )?;
@@ -558,7 +609,7 @@ fn collect_setup_stage(
     mut keys: impl FnMut(&SkillEffectSlot) -> Result<Vec<DefinitionKey>, RouteError>,
 ) -> Result<Vec<SetupSubscriber>, SubscriberError> {
     let mut skills = Vec::new();
-    for entity in pool.active_entities() {
+    for entity in subscriber_entities(pool) {
         skills.extend(entity_skill_owners(entity, pool, managers));
     }
     skills.extend(
@@ -595,6 +646,11 @@ fn collect_setup_stage(
     Ok(subscribers)
 }
 
+fn subscriber_entities(pool: &TargetPool) -> impl Iterator<Item = &TargetEntity> {
+    pool.entities()
+        .filter(|entity| !pool.is_reserve(entity.uid))
+}
+
 fn entity_skill_owners(
     entity: &TargetEntity,
     pool: &TargetPool,
@@ -603,6 +659,7 @@ fn entity_skill_owners(
     let mut skills = managers
         .entity
         .passive_skills(entity.uid)
+        .filter(|_| !managers.passives_disabled(entity.uid))
         .into_iter()
         .flatten()
         .map(|&skill_id| (entity.uid, skill_id))

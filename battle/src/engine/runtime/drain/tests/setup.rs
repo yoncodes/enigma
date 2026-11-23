@@ -519,7 +519,17 @@ fn entry_halo_summon() -> SkillInvocation {
 
 #[test]
 fn combatant_entry_runs_its_enter_fight_passives() {
-    let (pool, mut managers, catalog) = entry_halo_summon_fixture();
+    let (pool, mut managers, mut catalog) = entry_halo_summon_fixture();
+    let mut passive = catalog.get(109330114).unwrap().clone();
+    let mut opening = SkillEffectSlot::new(
+        ParsedBehavior::new(20002, "AddExPoint", vec![2]),
+        TargetRequest::self_only(),
+    );
+    opening.conditions =
+        crate::engine::skill::condition::parse_conditions(config::configs::get(), "5021");
+    opening.compiled_route = ConditionRoute::compile(&opening.conditions);
+    passive.slots.push(opening);
+    catalog.insert(passive);
 
     let result = run_skill(
         &mut managers,
@@ -536,11 +546,12 @@ fn combatant_entry_runs_its_enter_fight_passives() {
         .events
         .iter()
         .find_map(|event| match event {
-            BattleEvent::EntityEntered { target_uid } => Some(*target_uid),
+            BattleEvent::EntityEntered { target_uid, .. } => Some(*target_uid),
             _ => None,
         })
         .expect("combatant entry event");
     assert!(managers.buff.has_buff_id(entered_uid, 109330114));
+    assert_eq!(managers.ex_point.get(entered_uid), 0);
     assert_eq!(managers.buff.buff_id_amount(entered_uid, 109320111), 2);
     let skill = result
         .frames
@@ -555,6 +566,74 @@ fn combatant_entry_runs_its_enter_fight_passives() {
             .count(),
         1
     );
+}
+
+#[test]
+fn special_entry_runs_its_enter_fight_passives() {
+    crate::test_support::init_config();
+    let fight = Fight {
+        defender: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(-1),
+                model_id: Some(151401),
+                team_type: Some(2),
+                position: Some(1),
+                current_hp: Some(100),
+                attr: Some(HeroAttribute {
+                    hp: Some(100),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    let summoned =
+        crate::engine::fight::defender::Defender::build_monster_with_uid(151416, -2, 5, 2).unwrap();
+    let mut catalog = SkillEffectCatalog::from_roots(
+        config::configs::get(),
+        summoned.passive_skill,
+        std::iter::empty(),
+    );
+    catalog.insert(ParsedSkillEffect {
+        skill_id: 100,
+        slots: vec![SkillEffectSlot::new(
+            ParsedBehavior::from_spec(
+                BehaviorSpec::new(60056, "SummonSp2"),
+                vec![151416],
+                vec!["151416".to_owned()],
+            ),
+            TargetRequest::self_only(),
+        )],
+    });
+
+    let result = run_skill(
+        &mut managers,
+        &pool,
+        &catalog,
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+        SkillRequest {
+            source_uid: -1,
+            skill_id: 100,
+        }
+        .into(),
+        Default::default(),
+    )
+    .unwrap();
+
+    let entered_uid = result
+        .events
+        .iter()
+        .find_map(|event| match event {
+            BattleEvent::EntityEntered { target_uid, .. } => Some(*target_uid),
+            _ => None,
+        })
+        .expect("special entry event");
+    assert!(managers.buff.has_buff_id(entered_uid, 11430021));
 }
 
 #[test]
@@ -656,7 +735,7 @@ fn entry_halos_stay_in_a_nested_active_skill() {
 }
 
 #[test]
-fn enter_fight_tag_threshold_applies_the_configured_team_buff() {
+fn battle_start_tag_threshold_applies_the_configured_team_buff() {
     crate::test_support::init_config();
     let entity = |uid, model_id, passive_skill| FightEntityInfo {
         uid: Some(uid),
@@ -688,7 +767,7 @@ fn enter_fight_tag_threshold_applies_the_configured_team_buff() {
         &catalog,
         &mut RoundDeterminism::default(),
         TargetContext::default(),
-        SetupStage::EnterFight,
+        SetupStage::BattleStart,
         0,
     )
     .unwrap();
@@ -804,6 +883,13 @@ fn grant_time_buff_acts_stay_in_the_granting_skill_frame() {
                 )
             )
     )));
+    assert!(matches!(
+        skill.items.last(),
+        Some(crate::engine::runtime::record::FrameItem::Change(change))
+            if matches!(change.as_ref(), BattleChange::BuffFeatureMarker(marker)
+                if marker.target_uid == 10
+                    && marker.effect_type == sonettobuf::effect_type_enum::EffectType::None as i32)
+    ));
 }
 
 #[test]

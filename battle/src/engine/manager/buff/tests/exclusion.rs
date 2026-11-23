@@ -172,6 +172,72 @@ fn resident_status_exclusion_rejects_a_matching_category() {
 }
 
 #[test]
+fn a_refusing_buff_type_rejects_its_described_types_only_while_held() {
+    init_config();
+    let holder = |uid, marker| FightEntityInfo {
+        uid: Some(uid),
+        team_type: Some(1),
+        buffs: vec![BuffInfo {
+            uid: Some(uid * 10),
+            buff_id: Some(marker),
+            from_uid: Some(uid),
+            ..Default::default()
+        }],
+        ..Default::default()
+    };
+    let mut manager = BuffManager::default();
+    manager.seed(&Fight {
+        attacker: Some(FightTeam {
+            // J's ultimate marker (type 30940191), Refuse Absolute Defense (type 8092),
+            // Refuse Chorus (type 8304).
+            entitys: vec![holder(10, 30940191), holder(11, 22341), holder(12, 30485)],
+            ..Default::default()
+        }),
+        ..Default::default()
+    });
+    let hp = HpManager::default();
+
+    let rejected = manager
+        .add_replacing_excluded(&hp, 10, 10, 4150001, 1)
+        .rejected
+        .unwrap();
+    assert_eq!(rejected.blocker_buff_id, 30940191);
+    assert!(!manager.has_buff_id(10, 4150001));
+
+    // Both defense types, including another skill's defense.
+    for defense in [3113, 3123] {
+        let rejected = manager
+            .add_replacing_excluded(&hp, 12, 11, defense, 0)
+            .rejected
+            .unwrap();
+        assert_eq!(rejected.blocker_buff_id, 22341);
+    }
+    let rejected = manager
+        .add_replacing_excluded(&hp, 12, 12, 30483, 1)
+        .rejected
+        .unwrap();
+    assert_eq!(rejected.blocker_buff_id, 30485);
+
+    // Types the rule does not name still land.
+    assert!(
+        manager
+            .add_replacing_excluded(&hp, 11, 11, 205, 0)
+            .rejected
+            .is_none()
+    );
+
+    // Once the attack's marker is removed, Burn lands again.
+    manager.delete(10, 100);
+    assert!(
+        manager
+            .add_replacing_excluded(&hp, 10, 10, 4150001, 1)
+            .rejected
+            .is_none()
+    );
+    assert!(manager.has_buff_id(10, 4150001));
+}
+
+#[test]
 fn incoming_buff_wins_mutual_exclusion() {
     init_config();
     let fight = Fight {

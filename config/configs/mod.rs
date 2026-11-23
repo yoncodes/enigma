@@ -451,6 +451,7 @@ pub mod turnback_task_bonus;
 pub mod udimo;
 pub mod udimo_background;
 pub mod udimo_decoration;
+pub mod ui_audio;
 pub mod weekwalk;
 pub mod weekwalk_dialog;
 pub mod weekwalk_element;
@@ -916,6 +917,7 @@ pub struct GameDB {
     pub udimo: udimo::UdimoTable,
     pub udimo_background: udimo_background::UdimoBackgroundTable,
     pub udimo_decoration: udimo_decoration::UdimoDecorationTable,
+    pub ui_audio: ui_audio::UiAudioTable,
     pub weekwalk: weekwalk::WeekwalkTable,
     pub weekwalk_dialog: weekwalk_dialog::WeekwalkDialogTable,
     pub weekwalk_element: weekwalk_element::WeekwalkElementTable,
@@ -2284,6 +2286,9 @@ impl GameDB {
         let udimo_decoration = udimo_decoration::UdimoDecorationTable::load(
             &format!("{}/udimo_decoration.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load udimo_decoration.json: {}", e))?;
+        let ui_audio = ui_audio::UiAudioTable::load(
+            &format!("{}/ui_audio.json", data_dir)
+        ).map_err(|e| anyhow::anyhow!("Failed to load ui_audio.json: {}", e))?;
         let weekwalk = weekwalk::WeekwalkTable::load(
             &format!("{}/weekwalk.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load weekwalk.json: {}", e))?;
@@ -2768,6 +2773,7 @@ impl GameDB {
             udimo,
             udimo_background,
             udimo_decoration,
+            ui_audio,
             weekwalk,
             weekwalk_dialog,
             weekwalk_element,

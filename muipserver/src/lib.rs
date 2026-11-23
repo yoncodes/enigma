@@ -30,9 +30,26 @@ pub enum GmRequest {
     Status,
     ListPlayers,
     Dungeons,
-    Heroes { player_uid: i64 },
-    Materials { query: MaterialQuery },
-    Execute { player_uid: String, command: String },
+    Events,
+    Heroes {
+        player_uid: i64,
+    },
+    Equipment {
+        player_uid: i64,
+    },
+    Materials {
+        query: MaterialQuery,
+    },
+    UpdateEvent {
+        id: i32,
+        enabled: bool,
+        start_time: u64,
+        end_time: u64,
+    },
+    Execute {
+        player_uid: String,
+        command: String,
+    },
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]

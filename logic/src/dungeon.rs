@@ -13,6 +13,7 @@ use sqlx::{Sqlite, SqlitePool, Transaction};
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 
 const SHARED_REWARD_POINT_CHAPTER_ID: i32 = 0;
+const PERMANENT_RETRO_TYPE: i32 = 2;
 const MAX_MAP_ELEMENT_RECORD_BYTES: usize = 64 * 1024;
 const MAX_MAP_ELEMENT_DIALOGS: usize = 1024;
 
@@ -354,7 +355,7 @@ fn map_element_reward<'a>(
         && tables
             .activity
             .get(chapter.act_id)
-            .is_some_and(|activity| activity.is_retro_acitivity == 2)
+            .is_some_and(|activity| activity.is_retro_acitivity == PERMANENT_RETRO_TYPE)
         && !element.permanent_reward.is_empty()
     {
         return Ok(&element.permanent_reward);

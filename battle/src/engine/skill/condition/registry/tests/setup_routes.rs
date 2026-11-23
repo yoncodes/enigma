@@ -150,6 +150,25 @@ fn summoned_count_keeps_its_round_start_condition_lane() {
 }
 
 #[test]
+fn teammate_count_keeps_its_exact_round_start_condition_lane() {
+    assert_eq!(
+        parse(73102, "TeammateAliveNum", &["4".into()]),
+        Some(ParsedConditionKind::EntityCount {
+            scope: super::super::super::parse::EntityCountScope::AliveOtherTeammates,
+            compare: ConditionCompare::Equal,
+            count: 4,
+        })
+    );
+    assert_eq!(
+        find_key(73102, "TeammateAliveNum").map(|definition| definition.role),
+        Some(ConditionRole::Setup {
+            stage: SetupStage::RoundStartCondition,
+            priority: 102,
+        })
+    );
+}
+
+#[test]
 fn teammate_count_keeps_its_late_round_start_lane() {
     for count in 0..=3 {
         assert_eq!(
@@ -235,10 +254,32 @@ fn missing_buff_round_end_gate_keeps_the_actor_target() {
 }
 
 #[test]
+fn missing_buff_shares_the_final_settlement_trigger() {
+    assert_eq!(
+        parse(57307, "NoBuffId", &["303020011".into()]),
+        Some(ParsedConditionKind::BuffId {
+            mode: BuffConditionMode::Absent,
+            buff_ids: vec![303020011],
+        })
+    );
+    let definition = find_key(57307, "NoBuffId").unwrap();
+    assert_eq!(definition.role, find_key(307, "None").unwrap().role);
+    assert_eq!(definition.reaction_frame_target, ReactionFrameTarget::Owner);
+    assert_eq!(
+        definition.role,
+        ConditionRole::Trigger {
+            event: EventKind::RoundEndFinalSettlement,
+            phase: None,
+        }
+    );
+    assert!(definition.filters_behavior_targets);
+}
+
+#[test]
 fn conditional_round_start_interval_preserves_period_then_start_order() {
     assert_eq!(
         parse(45101, "HeroRoundInterval", &["99".into(), "15".into()]),
-        Some(ParsedConditionKind::RoundInterval {
+        Some(ParsedConditionKind::RoundStartInterval {
             start_round: 15,
             period: 99,
         })
@@ -711,7 +752,7 @@ fn received_hit_skill_rank_is_an_exact_target_attacked_filter() {
 }
 
 #[test]
-fn round_start_buff_type_threshold_keeps_its_exact_late_lane() {
+fn round_start_buff_type_thresholds_keep_their_exact_late_lanes() {
     assert_eq!(
         parse(
             535104,
@@ -726,6 +767,25 @@ fn round_start_buff_type_threshold_keeps_its_exact_late_lane() {
     );
     assert_eq!(
         find_key(535104, "TypeIdBuffCountMoreThan").map(|definition| definition.role),
+        Some(ConditionRole::Setup {
+            stage: SetupStage::RoundStartLate,
+            priority: 0,
+        })
+    );
+    assert_eq!(
+        parse(
+            537104,
+            "HasTypeIdBuffTotalCountMoreThan",
+            &["109390001".into(), "6".into()]
+        ),
+        Some(ParsedConditionKind::BuffTypeCount {
+            type_ids: vec![109_390_001],
+            compare: crate::engine::skill::condition::parse::ConditionCompare::GreaterThanOrEqual,
+            threshold: 6,
+        })
+    );
+    assert_eq!(
+        find_key(537104, "HasTypeIdBuffTotalCountMoreThan").map(|definition| definition.role),
         Some(ConditionRole::Setup {
             stage: SetupStage::RoundStartLate,
             priority: 0,

@@ -112,6 +112,31 @@ fn target_preview_does_not_consume_the_damage_decision() {
 }
 
 #[test]
+fn new_action_observations_replace_leftover_targets() {
+    let mut determinism = RoundDeterminism::default();
+    let choice = |target| super::SkillTargetChoice {
+        skill_id: 10,
+        source_uid: 1,
+        target_code: 206,
+        targets: vec![target],
+        additional_targets: Vec::new(),
+        crit_targets: Vec::new(),
+        additional_crit_targets: Vec::new(),
+    };
+
+    determinism.replace_skill_target_choices([choice(-3)]);
+    assert_eq!(determinism.take_skill_targets(10, 1, 206), Some(vec![-3]));
+
+    determinism.replace_skill_target_choices([choice(-1), choice(-2)]);
+    assert_eq!(determinism.take_skill_targets(10, 1, 206), Some(vec![-1]));
+    determinism.take_skill_target_choice(10, 1, 206).unwrap();
+    assert_eq!(determinism.take_skill_targets(10, 1, 206), Some(vec![-2]));
+
+    determinism.replace_skill_target_choices([]);
+    assert_eq!(determinism.take_skill_targets(10, 1, 206), None);
+}
+
+#[test]
 fn zero_seed_lua_pool_order_matches_start_battle_rng() {
     let mut determinism = RoundDeterminism::default();
 
@@ -143,17 +168,25 @@ fn card_draws_are_seeded_but_preview_can_supply_the_decision() {
 }
 
 #[test]
-fn captured_condition_roll_is_owned_by_skill_and_opcode() {
+fn injected_condition_roll_is_owned_by_source_skill_and_opcode() {
     let mut determinism = RoundDeterminism::default();
     determinism.enqueue_condition_random_choices(vec![ConditionRandomChoice {
         skill_id: 31260161,
+        source_uid: 7,
         opcode: 552210,
         roll: 499,
     }]);
 
-    assert_eq!(determinism.condition_random_roll(31260161, 552210), 499);
-    assert_eq!(determinism.condition_random_roll(31260161, 552210), 999);
-    assert!((0..1000).contains(&determinism.condition_random_roll(1, 552210)));
+    let mut unseeded = RoundDeterminism::default();
+    assert_eq!(
+        determinism.condition_random_roll(31260161, 6, 552210),
+        unseeded.condition_random_roll(31260161, 6, 552210),
+    );
+    assert_eq!(determinism.condition_random_roll(31260161, 7, 552210), 499);
+    assert_eq!(
+        determinism.condition_random_roll(31260161, 7, 552210),
+        unseeded.condition_random_roll(31260161, 7, 552210),
+    );
 }
 
 #[test]

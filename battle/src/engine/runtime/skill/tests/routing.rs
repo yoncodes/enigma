@@ -62,12 +62,12 @@ fn configured_target_rule_owns_slots_that_use_logic_target() {
             entitys: vec![
                 FightEntityInfo {
                     uid: Some(10),
-                    ex_point: Some(1),
+                    ex_point: Some(3),
                     ..Default::default()
                 },
                 FightEntityInfo {
                     uid: Some(11),
-                    ex_point: Some(3),
+                    ex_point: Some(1),
                     ..Default::default()
                 },
             ],
@@ -108,7 +108,7 @@ fn configured_target_rule_owns_slots_that_use_logic_target() {
             TargetRequest::self_only(),
         )],
     });
-    catalog.insert_logic_target(100, 112);
+    catalog.insert_logic_target(100, 111);
     let mut invocation: SkillInvocation = SkillRequest {
         source_uid: 10,
         skill_id: 100,
@@ -149,7 +149,7 @@ fn configured_target_rule_owns_slots_that_use_logic_target() {
     assert_eq!(emission.target_uid, Some(-1));
     assert!(!execution.configured_target_replaces(invocation.target, 10, &pool));
 
-    catalog.insert_logic_target(100, 112);
+    catalog.insert_logic_target(100, 111);
 
     assert!(matches!(
         emit_all_ops(

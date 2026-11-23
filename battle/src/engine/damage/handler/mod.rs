@@ -1,5 +1,5 @@
 use crate::engine::{
-    damage::butterfly_damage,
+    damage::{butterfly_damage, formula::scaled_butterfly_damage},
     entity::attr::AttrId,
     manager::hp::{
         DamageEffectKind, HpCommand, HpDamage, HpHeal, HpHealKind, HpLoss, HurtDamageFromType,
@@ -27,8 +27,10 @@ mod resolve;
 use affinity::{critical_technique_bonus, regular_multiplier};
 pub(crate) use affinity::{restrains_target, restrains_target_either};
 pub(crate) use critical::{
-    CriticalHealMultiplier, chance as crit_chance, damage_multiplier as crit_damage_multiplier,
-    excess_rate as excess_crit_rate, heal_multiplier as crit_heal_multiplier,
+    CriticalHealMultiplier, chance as crit_chance,
+    chance_with_attack_attributes as crit_chance_with_attack_attributes,
+    damage_multiplier as crit_damage_multiplier, excess_rate as excess_crit_rate,
+    heal_multiplier as crit_heal_multiplier,
 };
 pub(crate) use heal::{modified as modified_heal, modified_fraction as modified_fractional_heal};
 pub(crate) use resolve::{
@@ -65,6 +67,38 @@ pub fn supports_attribute_damage(behavior: &ParsedBehavior) -> bool {
 
 pub fn supports_bloodlust(behavior: &ParsedBehavior) -> bool {
     matches!(behavior.args.as_slice(), [rate] if *rate > 0)
+}
+
+pub(crate) fn leech_rate(
+    managers: &crate::engine::manager::BattleManagers,
+    source_uid: i64,
+    attack_rate: i32,
+) -> i32 {
+    attack_rate
+        .saturating_add(managers.attribute.get(source_uid, AttrId::LeechRate))
+        .saturating_add(managers.buff.attribute_delta(source_uid, AttrId::LeechRate))
+}
+
+pub(crate) fn leech_amount(
+    managers: &crate::engine::manager::BattleManagers,
+    source_uid: i64,
+    damage: i32,
+    attack_rate: i32,
+) -> i32 {
+    let efficacy = 1000_i32
+        .saturating_sub(
+            managers
+                .buff
+                .buff_act_scalar(source_uid, BuffActKind::InjuryAbsorb),
+        )
+        .max(0);
+    crate::engine::damage::scale_permille(
+        crate::engine::damage::scale_permille(
+            damage,
+            leech_rate(managers, source_uid, attack_rate),
+        ),
+        efficacy,
+    )
 }
 
 impl BehaviorHandler for Handler {
@@ -174,34 +208,12 @@ impl BehaviorHandler for Handler {
                 let [rate] = behavior.args.as_slice() else {
                     return None;
                 };
-                let leech_rate = rate
-                    .saturating_add(
-                        context
-                            .managers
-                            .attribute
-                            .get(source_uid, AttrId::LeechRate),
-                    )
-                    .saturating_add(
-                        context
-                            .managers
-                            .buff
-                            .attribute_delta(source_uid, AttrId::LeechRate),
-                    );
-                let efficacy = 1000_i32
-                    .saturating_sub(
-                        context
-                            .managers
-                            .buff
-                            .buff_act_scalar(source_uid, BuffActKind::InjuryAbsorb),
-                    )
-                    .max(0);
                 return Some(heal(
-                    crate::engine::damage::scale_permille(
-                        crate::engine::damage::scale_permille(
-                            context.target.action_damage_amount,
-                            leech_rate,
-                        ),
-                        efficacy,
+                    leech_amount(
+                        context.managers,
+                        source_uid,
+                        context.target.action_damage_amount,
+                        *rate,
                     ),
                     HpHealKind::Bloodlust,
                 ));
@@ -236,7 +248,11 @@ impl BehaviorHandler for Handler {
                     is_crit,
                     career_restraint: false,
                     reduce_hp: 0,
-                    effect_id: context.active_skill_id,
+                    effect_id: if behavior.spec.kind == BehaviorKind::OriginDamage {
+                        behavior.effect_id
+                    } else {
+                        context.active_skill_id
+                    },
                     skill_id: context.target.active_skill_id,
                     damage_from: HurtDamageFromType::SkillEffect,
                     buff_act_id: 0,
@@ -385,7 +401,12 @@ impl BehaviorHandler for Handler {
                     .managers
                     .hp
                     .skill_damage_from_sources(target_uid, &allied_sources);
-                let amount = butterfly_damage(
+                let formula = if matches!((*raw_step, *raw_cap), (100_000, 600_000)) {
+                    scaled_butterfly_damage
+                } else {
+                    butterfly_damage
+                };
+                let amount = formula(
                     recorded_damage,
                     *base_rate,
                     gauge_raw,
@@ -535,11 +556,29 @@ impl BehaviorHandler for Handler {
                 let mut source = context.pool.entity(source_uid)?.clone();
                 source.damage_type = crate::engine::skill::target::EntityDamageType::Reality;
                 let target = context.pool.entity(target_uid)?;
+                let mut attack_attributes = context.modifiers.primary_attack_attributes();
+                attack_attributes.extend(
+                    crate::engine::skill::buff_act::incoming_target_attack_attributes(
+                        context.managers,
+                        target_uid,
+                        source.damage_type,
+                        context
+                            .managers
+                            .catalog()
+                            .skill_is_big(context.active_skill_id),
+                    ),
+                );
                 let is_crit = context.determinism.roll_hidden_crit(
                     context.active_skill_id,
                     source_uid,
                     target_uid,
-                    crit_chance(source_uid, target_uid, context.pool, context.managers),
+                    crit_chance_with_attack_attributes(
+                        source_uid,
+                        target_uid,
+                        context.pool,
+                        context.managers,
+                        &attack_attributes,
+                    ),
                 );
                 let rate = character_count * *rate_per_character;
                 let amount = direct_damage(
@@ -550,7 +589,8 @@ impl BehaviorHandler for Handler {
                         skill_id: context.active_skill_id,
                         rate,
                         rate_terms: &[],
-                        attack_attributes: &context.modifiers.attack_attributes,
+                        attack_bonus: context.modifiers.caster_attack_bonus,
+                        attack_attributes: &attack_attributes,
                         career_ratio_bonus: context.modifiers.career_ratio_bonus,
                         attack_career: context.modifiers.attack_career,
                         additional_attack_career: context.modifiers.additional_attack_career,

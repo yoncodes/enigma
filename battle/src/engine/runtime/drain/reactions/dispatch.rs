@@ -2,26 +2,70 @@ use super::{
     event::{queued_entity_entry_halo_fanout, route_skill_start_settlement},
     *,
 };
+use crate::engine::{
+    event::subscription::{PublicationPhase, ReactionTiming},
+    skill::buff_act::registry::RuntimeFrameScope,
+};
 
-#[allow(clippy::too_many_arguments)]
+/// One dispatch of an event's reactions: where they attach and which ones are selected.
+#[derive(Clone, Copy)]
+pub(in crate::engine::runtime::drain) struct ReactionDispatch<'a> {
+    pub event: &'a BattleEvent,
+    pub parent_path: Option<&'a [usize]>,
+    pub reuse_path: Option<&'a [usize]>,
+    pub action_path: Option<&'a [usize]>,
+    pub entry_halo_scope: Option<&'a [usize]>,
+    pub reentry_skill: Option<(i64, i32, Option<i64>)>,
+    pub current_skill_target: Option<i64>,
+    pub lane: Option<ReactionLane>,
+    pub owner_uids: Option<&'a [i64]>,
+    pub execute_unscoped_after_action: bool,
+    pub publication_phase: Option<PublicationPhase>,
+    pub hit_passives_pending: bool,
+}
+
+impl<'a> ReactionDispatch<'a> {
+    /// An unscoped dispatch of every reaction to `event`.
+    pub(in crate::engine::runtime::drain) fn for_event(event: &'a BattleEvent) -> Self {
+        Self {
+            event,
+            parent_path: None,
+            reuse_path: None,
+            action_path: None,
+            entry_halo_scope: None,
+            reentry_skill: None,
+            current_skill_target: None,
+            lane: None,
+            owner_uids: None,
+            execute_unscoped_after_action: false,
+            publication_phase: None,
+            hit_passives_pending: false,
+        }
+    }
+}
+
 pub(in crate::engine::runtime::drain) fn dispatch_reactions(
     pool: &TargetPool,
     managers: &BattleManagers,
     catalog: &SkillEffectCatalog,
     determinism: &mut RoundDeterminism,
-    event: &BattleEvent,
-    parent_path: Option<&[usize]>,
-    reuse_path: Option<&[usize]>,
-    action_path: Option<&[usize]>,
-    entry_halo_scope: Option<&[usize]>,
-    reentry_skill: Option<(i64, i32, Option<i64>)>,
-    current_skill_target: Option<i64>,
-    lane: Option<ReactionLane>,
-    owner_uids: Option<&[i64]>,
-    execute_unscoped_after_action: bool,
-    publication_phase: Option<crate::engine::event::subscription::PublicationPhase>,
+    dispatch: ReactionDispatch<'_>,
     mut multiplicity: Option<&mut crate::engine::event::dispatcher::DispatchMultiplicity<'_>>,
 ) -> Result<ReactionBatch, DrainError> {
+    let ReactionDispatch {
+        event,
+        parent_path,
+        reuse_path,
+        action_path,
+        entry_halo_scope,
+        reentry_skill: _,
+        current_skill_target: _,
+        lane,
+        owner_uids,
+        execute_unscoped_after_action,
+        publication_phase,
+        ..
+    } = dispatch;
     let mut reactions = ReactionBatch::default();
     let lifecycle_pool = matches!(
         event,
@@ -30,7 +74,7 @@ pub(in crate::engine::runtime::drain) fn dispatch_reactions(
     .then(|| pool.runtime_view(managers));
     let pool = lifecycle_pool.as_ref().unwrap_or(pool);
     let lifecycle_owner = match event {
-        BattleEvent::EntityEntered { target_uid }
+        BattleEvent::EntityEntered { target_uid, .. }
         | BattleEvent::EntityTransformed { target_uid } => Some([*target_uid]),
         _ => None,
     };
@@ -38,6 +82,27 @@ pub(in crate::engine::runtime::drain) fn dispatch_reactions(
         owner_uids.or_else(|| lifecycle_owner.as_ref().map(|owners| owners.as_slice()));
     let scoped_owner_uids = terminal_owner_scope(pool, managers, requested_owner_uids);
     let owner_uids = scoped_owner_uids.as_deref();
+    if let BattleEvent::SkillEffectsPrepared(action) = event {
+        if publication_phase != Some(PublicationPhase::BeforePublish)
+            && matches!(lane, None | Some(ReactionLane::Skills))
+            && owner_uids.is_none_or(|owners| owners.contains(&action.source_uid))
+        {
+            reactions.after_publish = queued_selected_timing(
+                pool,
+                managers,
+                catalog,
+                determinism,
+                ReactionDispatch {
+                    lane: Some(ReactionLane::Skills),
+                    owner_uids: Some(&[action.source_uid]),
+                    ..dispatch
+                },
+                (PublicationPhase::AfterPublish, ReactionTiming::Immediate),
+                multiplicity,
+            )?;
+        }
+        return Ok(reactions);
+    }
     let transaction_ops = if !matches!(lane, Some(ReactionLane::Skills)) {
         crate::engine::skill::buff_act::transaction_rule_ops_for(managers, event, |definition| {
             reaction_lane_accepts_buff_act(lane, definition.key.opcode, definition.key.type_name)
@@ -56,14 +121,14 @@ pub(in crate::engine::runtime::drain) fn dispatch_reactions(
         }
         let timing = definition.runtime.reaction_timing;
         let publication =
-            crate::engine::skill::buff_act::transaction_publication(&feature, &op, event.kind())
+            crate::engine::skill::buff_act::transaction_publication(&feature, &op, event, managers)
                 .ok_or_else(|| DrainError::MissingBuffActDefinition {
                     opcode: feature.act_id(),
                     type_name: feature.act_type.clone(),
                 })?;
         let selected_for_pass = publication_phase.is_none_or(|phase| {
-            if timing == crate::engine::event::subscription::ReactionTiming::AfterAction {
-                phase == crate::engine::event::subscription::PublicationPhase::AfterPublish
+            if timing == ReactionTiming::AfterAction {
+                phase == PublicationPhase::AfterPublish
             } else {
                 publication == phase
             }
@@ -71,7 +136,7 @@ pub(in crate::engine::runtime::drain) fn dispatch_reactions(
         if !selected_for_pass {
             continue;
         }
-        if timing == crate::engine::event::subscription::ReactionTiming::AfterAction
+        if timing == ReactionTiming::AfterAction
             && action_path.is_none()
             && !execute_unscoped_after_action
         {
@@ -80,27 +145,21 @@ pub(in crate::engine::runtime::drain) fn dispatch_reactions(
         let frame_scope = definition.runtime.frame_scope;
         let causing_path = reuse_path.or(parent_path);
         let (frame_path, parent_path) = match frame_scope {
-            crate::engine::skill::buff_act::registry::RuntimeFrameScope::CausingFrame => {
-                (causing_path.map(|path| path.to_vec()), None)
-            }
-            crate::engine::skill::buff_act::registry::RuntimeFrameScope::SubscriberFrame => {
-                let parent =
-                    if timing == crate::engine::event::subscription::ReactionTiming::AfterAction {
-                        action_path.or(causing_path)
-                    } else {
-                        causing_path
-                    };
+            RuntimeFrameScope::CausingFrame => (causing_path.map(|path| path.to_vec()), None),
+            RuntimeFrameScope::SubscriberFrame => {
+                let parent = if timing == ReactionTiming::AfterAction {
+                    action_path.or(causing_path)
+                } else {
+                    causing_path
+                };
                 (None, parent.map(|path| path.to_vec()))
             }
-            crate::engine::skill::buff_act::registry::RuntimeFrameScope::IndependentEvent => {
-                (None, None)
-            }
+            RuntimeFrameScope::IndependentEvent => (None, None),
         };
 
         let frame_group = matches!(
             frame_scope,
-            crate::engine::skill::buff_act::registry::RuntimeFrameScope::CausingFrame
-                | crate::engine::skill::buff_act::registry::RuntimeFrameScope::SubscriberFrame
+            RuntimeFrameScope::CausingFrame | RuntimeFrameScope::SubscriberFrame
         )
         .then(|| {
             transaction_frame_groups
@@ -126,102 +185,72 @@ pub(in crate::engine::runtime::drain) fn dispatch_reactions(
             subscriber: Some(SubscriberContext::new(feature.owner_uid)),
             caster_frame: None,
         };
-        if timing == crate::engine::event::subscription::ReactionTiming::AfterAction {
-            reactions.after_action.push(queued);
-        } else if timing == crate::engine::event::subscription::ReactionTiming::AttackedSkills
-            && action_path.is_some()
-        {
-            reactions.attacked_skills.push(queued);
-        } else if timing == crate::engine::event::subscription::ReactionTiming::HpThresholds {
-            reactions.hp_thresholds.push(queued);
-        } else if timing
-            == crate::engine::event::subscription::ReactionTiming::BeforeAfterHitObservers
-        {
-            reactions.before_after_hit_observers.push(queued);
-        } else if timing == crate::engine::event::subscription::ReactionTiming::AfterHitObservers {
-            reactions.after_hit_skills.push(queued);
-        } else if timing == crate::engine::event::subscription::ReactionTiming::AfterHitShell {
-            reactions.after_hit_shell.push(queued);
-        } else if timing == crate::engine::event::subscription::ReactionTiming::AfterSettlement {
-            reactions.after_settlement.push(queued);
-        } else if publication == crate::engine::event::subscription::PublicationPhase::BeforePublish
-        {
-            reactions.before_publish.push(queued);
-        } else {
-            reactions.after_publish.push(queued);
-        }
+        let destination = match timing {
+            ReactionTiming::AfterAction => &mut reactions.after_action,
+            ReactionTiming::AttackedSkills if action_path.is_some() => {
+                &mut reactions.attacked_skills
+            }
+            ReactionTiming::HpThresholds => &mut reactions.hp_thresholds,
+            ReactionTiming::BeforeAfterHitObservers => &mut reactions.before_after_hit_observers,
+            ReactionTiming::AfterHitObservers => &mut reactions.after_hit_skills,
+            ReactionTiming::AfterHitShell => &mut reactions.after_hit_shell,
+            ReactionTiming::AfterSettlement => &mut reactions.after_settlement,
+            _ if publication == PublicationPhase::BeforePublish => &mut reactions.before_publish,
+            _ => &mut reactions.after_publish,
+        };
+        destination.push(queued);
     }
-    let runs_before = publication_phase.is_none_or(|phase| {
-        phase == crate::engine::event::subscription::PublicationPhase::BeforePublish
-    });
-    let runs_after = publication_phase.is_none_or(|phase| {
-        phase == crate::engine::event::subscription::PublicationPhase::AfterPublish
-    });
+    let runs_before =
+        publication_phase.is_none_or(|phase| phase == PublicationPhase::BeforePublish);
+    let runs_after = publication_phase.is_none_or(|phase| phase == PublicationPhase::AfterPublish);
     if runs_before {
         reactions.before_publish.extend(queued_selected_timing(
             pool,
             managers,
             catalog,
             determinism,
-            event,
-            parent_path,
-            reuse_path,
-            action_path,
-            reentry_skill,
-            current_skill_target,
-            lane,
-            owner_uids,
-            crate::engine::event::subscription::PublicationPhase::BeforePublish,
-            crate::engine::event::subscription::ReactionTiming::Immediate,
+            ReactionDispatch {
+                owner_uids,
+                ..dispatch
+            },
+            (PublicationPhase::BeforePublish, ReactionTiming::Immediate),
             multiplicity.as_deref_mut(),
         )?);
     }
+    let mut after_hit_settlements = Vec::new();
     if lane.is_none()
         && let BattleEvent::SkillAction(action) = event
     {
-        reactions
-            .after_publish
-            .extend(
-                managers
-                    .buff
-                    .plan_action_expiries(action)
-                    .into_iter()
-                    .map(|expiry| QueuedOp {
-                        op: RuleOp::Command(
-                            crate::engine::skill::rule::output::BattleCommand::Buff(
-                                crate::engine::manager::buff::BuffCommand::ExpireAction(
-                                    crate::engine::manager::buff::BuffRemove {
-                                        origin: crate::engine::skill::rule::CommandOrigin {
-                                            domain:
-                                                crate::engine::skill::rule::RuleDomain::Lifecycle,
-                                            key: expiry.trigger.key(),
-                                        },
-                                        target_uid: expiry.owner_uid,
-                                        selector:
-                                            crate::engine::manager::buff::BuffRemoveSelector::Uid(
-                                                expiry.buff_uid,
-                                            ),
-                                    },
-                                ),
-                            ),
-                        ),
-                        trigger: SkillOpTrigger::Event(event.clone()),
-                        skill_execution: None,
-                        frame_path: None,
-                        parent_path: parent_path.map(|path| path.to_vec()),
-                        frame_group: None,
-                        independent_parent_group: None,
-                        frame_owner: Some(FrameOwner::BuffAct {
-                            owner_uid: expiry.owner_uid,
-                            source_uid: expiry.source_uid,
-                            buff_uid: expiry.buff_uid,
-                            buff_id: expiry.buff_id,
-                            key: expiry.trigger.key(),
-                        }),
-                        subscriber: None,
-                        caster_frame: None,
-                    }),
-            );
+        for settlement in managers.buff.plan_action_settlements(action) {
+            let in_action = settlement.in_action;
+            let queue = if settlement.after_hit_reactions {
+                &mut after_hit_settlements
+            } else {
+                &mut reactions.after_publish
+            };
+            queue.push(QueuedOp {
+                op: RuleOp::Command(crate::engine::skill::rule::output::BattleCommand::Buff(
+                    settlement.command,
+                )),
+                trigger: SkillOpTrigger::Event(event.clone()),
+                skill_execution: None,
+                frame_path: in_action
+                    .then(|| parent_path.map(|path| path.to_vec()))
+                    .flatten(),
+                parent_path: parent_path.map(|path| path.to_vec()),
+                frame_group: None,
+                independent_parent_group: None,
+                frame_owner: (!in_action).then_some(FrameOwner::BuffAct {
+                    owner_uid: settlement.owner_uid,
+                    source_uid: settlement.source_uid,
+                    buff_uid: settlement.buff_uid,
+                    buff_id: settlement.buff_id,
+                    key: settlement.trigger.key(),
+                }),
+                subscriber: None,
+                caster_frame: None,
+            });
+        }
     }
     if runs_after {
         let mut selected = queued_selected_timing(
@@ -229,16 +258,11 @@ pub(in crate::engine::runtime::drain) fn dispatch_reactions(
             managers,
             catalog,
             determinism,
-            event,
-            parent_path,
-            reuse_path,
-            action_path,
-            reentry_skill,
-            current_skill_target,
-            lane,
-            owner_uids,
-            crate::engine::event::subscription::PublicationPhase::AfterPublish,
-            crate::engine::event::subscription::ReactionTiming::Immediate,
+            ReactionDispatch {
+                owner_uids,
+                ..dispatch
+            },
+            (PublicationPhase::AfterPublish, ReactionTiming::Immediate),
             multiplicity.as_deref_mut(),
         )?;
         let settlement = if lane.is_none() {
@@ -251,61 +275,47 @@ pub(in crate::engine::runtime::drain) fn dispatch_reactions(
             reactions.after_publish.push(settlement);
         }
     }
+    reactions.after_publish.extend(after_hit_settlements);
     for (timing, destination) in [
         (
-            crate::engine::event::subscription::ReactionTiming::AfterSettlement,
+            ReactionTiming::AfterSettlement,
             &mut reactions.after_settlement,
         ),
+        (ReactionTiming::AfterSkill, &mut reactions.after_skill),
+        (ReactionTiming::AfterHitSkills, &mut reactions.after_hit),
         (
-            crate::engine::event::subscription::ReactionTiming::AfterSkill,
-            &mut reactions.after_skill,
-        ),
-        (
-            crate::engine::event::subscription::ReactionTiming::AfterHitSkills,
-            &mut reactions.after_hit,
-        ),
-        (
-            crate::engine::event::subscription::ReactionTiming::AttackedSkills,
+            ReactionTiming::AttackedSkills,
             if action_path.is_some() {
                 &mut reactions.attacked_skills
             } else {
                 &mut reactions.after_publish
             },
         ),
+        (ReactionTiming::HpThresholds, &mut reactions.hp_thresholds),
         (
-            crate::engine::event::subscription::ReactionTiming::HpThresholds,
-            &mut reactions.hp_thresholds,
-        ),
-        (
-            crate::engine::event::subscription::ReactionTiming::BeforeAfterHitObservers,
+            ReactionTiming::BeforeAfterHitObservers,
             &mut reactions.before_after_hit_observers,
         ),
         (
-            crate::engine::event::subscription::ReactionTiming::AfterHitObservers,
+            ReactionTiming::AfterHitObservers,
             &mut reactions.after_hit_skills,
         ),
         (
-            crate::engine::event::subscription::ReactionTiming::AfterHitShell,
+            ReactionTiming::AfterHitShell,
             &mut reactions.after_hit_shell,
         ),
         (
-            crate::engine::event::subscription::ReactionTiming::AfterSharedHit,
+            ReactionTiming::AfterSharedHit,
             &mut reactions.shared_hit_skills,
         ),
-        (
-            crate::engine::event::subscription::ReactionTiming::AfterAction,
-            &mut reactions.after_action,
-        ),
+        (ReactionTiming::AfterAction, &mut reactions.after_action),
     ] {
         for publication in [
-            crate::engine::event::subscription::PublicationPhase::BeforePublish,
-            crate::engine::event::subscription::PublicationPhase::AfterPublish,
+            PublicationPhase::BeforePublish,
+            PublicationPhase::AfterPublish,
         ] {
-            if (publication == crate::engine::event::subscription::PublicationPhase::BeforePublish
-                && !runs_before)
-                || (publication
-                    == crate::engine::event::subscription::PublicationPhase::AfterPublish
-                    && !runs_after)
+            if (publication == PublicationPhase::BeforePublish && !runs_before)
+                || (publication == PublicationPhase::AfterPublish && !runs_after)
             {
                 continue;
             }
@@ -314,16 +324,11 @@ pub(in crate::engine::runtime::drain) fn dispatch_reactions(
                 managers,
                 catalog,
                 determinism,
-                event,
-                parent_path,
-                reuse_path,
-                action_path,
-                reentry_skill,
-                current_skill_target,
-                lane,
-                owner_uids,
-                publication,
-                timing,
+                ReactionDispatch {
+                    owner_uids,
+                    ..dispatch
+                },
+                (publication, timing),
                 multiplicity.as_deref_mut(),
             )?);
         }
@@ -377,10 +382,9 @@ pub(in crate::engine::runtime::drain) fn dispatch_reactions(
                 subscriber: None,
                 caster_frame: None,
             }));
-        if publication_phase.is_none_or(|phase| {
-            phase == crate::engine::event::subscription::PublicationPhase::AfterPublish
-        }) && let Some(fanout) =
-            queued_entity_entry_halo_fanout(event, entry_halo_scope, parent_path)
+        if publication_phase.is_none_or(|phase| phase == PublicationPhase::AfterPublish)
+            && let Some(fanout) =
+                queued_entity_entry_halo_fanout(event, entry_halo_scope, parent_path)
         {
             reactions.after_publish.push(fanout);
         }
@@ -389,8 +393,6 @@ pub(in crate::engine::runtime::drain) fn dispatch_reactions(
 }
 
 fn reaction_lane_accepts_buff_act(lane: Option<ReactionLane>, act_id: i32, act_type: &str) -> bool {
-    use crate::engine::event::subscription::ReactionTiming;
-
     match lane {
         Some(ReactionLane::BuffActsBeforeSettlement) => {
             crate::engine::skill::buff_act::registry::reaction_timing(act_id, act_type)
@@ -404,30 +406,41 @@ fn reaction_lane_accepts_buff_act(lane: Option<ReactionLane>, act_id: i32, act_t
     }
 }
 
-#[allow(clippy::too_many_arguments)]
 fn queued_selected_timing(
     pool: &TargetPool,
     managers: &BattleManagers,
     catalog: &SkillEffectCatalog,
     determinism: &mut RoundDeterminism,
-    event: &BattleEvent,
-    parent_path: Option<&[usize]>,
-    reuse_path: Option<&[usize]>,
-    action_path: Option<&[usize]>,
-    reentry_skill: Option<(i64, i32, Option<i64>)>,
-    current_skill_target: Option<i64>,
-    lane: Option<ReactionLane>,
-    owner_uids: Option<&[i64]>,
-    publication: crate::engine::event::subscription::PublicationPhase,
-    timing: crate::engine::event::subscription::ReactionTiming,
+    dispatch: ReactionDispatch<'_>,
+    (publication, timing): (PublicationPhase, ReactionTiming),
     multiplicity: Option<&mut crate::engine::event::dispatcher::DispatchMultiplicity<'_>>,
 ) -> Result<Vec<QueuedOp>, DrainError> {
+    let ReactionDispatch {
+        event,
+        parent_path,
+        reuse_path,
+        action_path,
+        reentry_skill,
+        current_skill_target,
+        lane,
+        owner_uids,
+        ..
+    } = dispatch;
     let reaction_scope = multiplicity.as_ref().map(|multiplicity| {
         (
             multiplicity.event_batch_id,
             multiplicity.action_path.map(|path| path.to_vec()),
         )
     });
+    let selected_completion = match (event, reentry_skill) {
+        (BattleEvent::AllyAction(action), Some((owner_uid, skill_id, _)))
+            if (owner_uid, skill_id) == (action.source_uid, action.skill_id)
+                && action.mode.completes_action() =>
+        {
+            Some((owner_uid, skill_id))
+        }
+        _ => None,
+    };
     let mut dispatched = dispatcher::dispatch_selected_event(
         pool,
         managers,
@@ -437,19 +450,15 @@ fn queued_selected_timing(
         dispatcher::DispatchSelection {
             owner_uids,
             publication: Some(publication),
+            completing_skill: selected_completion,
             lane,
             timing,
+            hit_passives_pending: dispatch.hit_passives_pending,
         },
         multiplicity,
     )?;
-    if !matches!(
-        lane,
-        Some(
-            ReactionLane::BuffActs
-                | ReactionLane::BuffActsBeforeSettlement
-                | ReactionLane::BuffActsAfterSettlement
-        )
-    ) && event.kind() == crate::engine::event::kind::EventKind::BuffRejected
+    if matches!(lane, None | Some(ReactionLane::Skills))
+        && event.kind() == crate::engine::event::kind::EventKind::BuffRejected
         && let Some((owner_uid, skill_id, _)) = reentry_skill
     {
         let current = dispatcher::dispatch_selected_skill_event(
@@ -470,7 +479,7 @@ fn queued_selected_timing(
             }
         }
     }
-    queued_reactions(
+    let mut queued = queued_reactions(
         pool,
         catalog,
         dispatched,
@@ -478,10 +487,41 @@ fn queued_selected_timing(
         parent_path,
         reuse_path,
         action_path,
-        reentry_skill,
+        reentry_skill.filter(|_| !matches!(event, BattleEvent::AllyAction(_))),
         current_skill_target,
         reaction_scope,
-    )
+    )?;
+    if matches!(lane, None | Some(ReactionLane::Skills))
+        && publication == PublicationPhase::BeforePublish
+        && timing == ReactionTiming::Immediate
+        && let Some(owner_skill) = selected_completion
+    {
+        let selected = dispatcher::dispatch_selected_skill_event(
+            pool,
+            managers,
+            catalog,
+            determinism,
+            event,
+            dispatcher::DispatchSkillSelection {
+                owner_skill,
+                publication,
+                timing,
+            },
+        )?;
+        queued.extend(queued_reactions(
+            pool,
+            catalog,
+            selected,
+            event,
+            parent_path,
+            reuse_path,
+            action_path,
+            reentry_skill,
+            current_skill_target,
+            None,
+        )?);
+    }
+    Ok(queued)
 }
 
 pub(in crate::engine::runtime::drain) fn dispatch_owner_reactions(

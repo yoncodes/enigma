@@ -106,6 +106,7 @@ pub(crate) fn parse_unique_skill_point(spec: &str) -> anyhow::Result<(ExPointKin
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ExPointState {
+    base_max: i32,
     pub current: i32,
     pub max: i32,
     pub kind: i32,
@@ -118,6 +119,7 @@ pub struct ExPointState {
 impl Default for ExPointState {
     fn default() -> Self {
         Self {
+            base_max: ExPointKind::Common.default_max(),
             current: 0,
             max: ExPointKind::Common.default_max(),
             kind: ExPointKind::Common.as_wire(),
@@ -818,6 +820,7 @@ impl ExPointManager {
         self.states.insert(
             uid,
             Self::normalize(ExPointState {
+                base_max,
                 current: entity.ex_point.unwrap_or_default(),
                 max: base_max + entity.expoint_max_add.unwrap_or_default(),
                 kind: kind.as_wire(),
@@ -839,6 +842,10 @@ impl ExPointManager {
             .get(&uid)
             .map(|state| state.current)
             .unwrap_or_default()
+    }
+
+    pub(crate) fn base_maximum(&self, uid: i64) -> Option<i32> {
+        self.states.get(&uid).map(|state| state.base_max)
     }
 
     pub fn maximum(&self, uid: i64) -> Option<i32> {

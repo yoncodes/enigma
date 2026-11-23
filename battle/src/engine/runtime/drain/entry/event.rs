@@ -1,4 +1,5 @@
 use super::*;
+use crate::engine::manager::buff::BuffDurationAdvance;
 
 pub fn run_event(
     managers: &mut BattleManagers,
@@ -14,17 +15,10 @@ pub fn run_event(
         managers,
         catalog,
         determinism,
-        &event,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        context.current_round > 0,
-        None,
+        ReactionDispatch {
+            execute_unscoped_after_action: context.current_round > 0,
+            ..ReactionDispatch::for_event(&event)
+        },
         None,
     )?;
     initial.assign_subscriber_death_groups(None);
@@ -77,15 +71,10 @@ pub fn run_round_start_card_event(
         .into_iter()
         .filter_map(|take_stage| {
             let buff_uids = managers.buff.duration_buff_uids(take_stage, owner_uids);
-            (!buff_uids.is_empty())
-                .then(|| {
-                    crate::engine::manager::buff::BuffDurationAdvance::new(
-                        take_stage,
-                        owner_uids.to_vec(),
-                        Some(buff_uids),
-                    )
-                })
-                .flatten()
+            if buff_uids.is_empty() {
+                return None;
+            }
+            BuffDurationAdvance::new(take_stage, owner_uids.to_vec(), Some(buff_uids))
         })
         .collect::<Vec<_>>();
     let mut result = run_group_event_lanes(
@@ -94,49 +83,62 @@ pub fn run_round_start_card_event(
         catalog,
         determinism,
         context,
-        event.clone(),
+        event,
         &[ReactionLane::BuffActs, ReactionLane::Skills],
         Some(owner_uids),
     )?;
-    if advances.is_empty() {
-        return Ok(result);
-    }
+    let duration =
+        run_round_start_card_duration(managers, pool, catalog, determinism, context, advances)?;
+    result.outcomes.extend(duration.outcomes);
+    result.events.extend(duration.events);
+    result.frames.extend(duration.frames);
+    Ok(result)
+}
 
-    let mut frames = Vec::new();
-    let scope = push_root(
-        &mut frames,
-        FrameOwner::EventRule,
-        FrameTrigger::Event(event.clone()),
-    );
-    let mut queue = advances
-        .into_iter()
-        .map(|advance| QueuedOp {
+pub(crate) fn run_round_start_card_duration(
+    managers: &mut BattleManagers,
+    pool: &TargetPool,
+    catalog: &SkillEffectCatalog,
+    determinism: &mut RoundDeterminism,
+    context: TargetContext,
+    advances: impl IntoIterator<Item = BuffDurationAdvance>,
+) -> Result<DrainResult, DrainError> {
+    let event = BattleEvent::Kind(crate::engine::event::kind::EventKind::RoundStartCard);
+    let mut result = DrainResult::default();
+    for advance in advances {
+        let mut frames = Vec::new();
+        let scope = push_root(
+            &mut frames,
+            FrameOwner::EventRule,
+            FrameTrigger::Event(event.clone()),
+        );
+        let mut queue = VecDeque::from([QueuedOp {
             op: RuleOp::Command(crate::engine::skill::rule::output::BattleCommand::Buff(
                 crate::engine::manager::buff::BuffCommand::AdvanceDuration(advance),
             )),
             trigger: SkillOpTrigger::Event(event.clone()),
             skill_execution: None,
-            frame_path: Some(scope.clone()),
+            frame_path: Some(scope),
             parent_path: None,
             frame_group: None,
             independent_parent_group: None,
             frame_owner: None,
             subscriber: None,
             caster_frame: None,
-        })
-        .collect::<VecDeque<_>>();
-    let duration = drain_queue_with_frames(
-        managers,
-        pool,
-        catalog,
-        determinism,
-        context,
-        &mut queue,
-        frames,
-    )?;
-    result.outcomes.extend(duration.outcomes);
-    result.events.extend(duration.events);
-    result.frames.extend(duration.frames);
+        }]);
+        let settled = drain_queue_with_frames(
+            managers,
+            pool,
+            catalog,
+            determinism,
+            context,
+            &mut queue,
+            frames,
+        )?;
+        result.outcomes.extend(settled.outcomes);
+        result.events.extend(settled.events);
+        result.frames.extend(settled.frames);
+    }
     Ok(result)
 }
 
@@ -237,17 +239,13 @@ fn drain_group_event_lane(
         managers,
         catalog,
         determinism,
-        event,
-        Some(scope),
-        None,
-        None,
-        None,
-        None,
-        None,
-        Some(lane),
-        owner_uids,
-        context.current_round > 0,
-        None,
+        ReactionDispatch {
+            parent_path: Some(scope),
+            lane: Some(lane),
+            owner_uids,
+            execute_unscoped_after_action: context.current_round > 0,
+            ..ReactionDispatch::for_event(event)
+        },
         None,
     )?;
     reactions.assign_subscriber_death_groups(None);
@@ -297,14 +295,74 @@ pub fn run_grouped_owner_event_lanes(
     owner_uids: &[i64],
     lanes: &[ReactionLane],
 ) -> Result<DrainResult, DrainError> {
+    let mut result = DrainResult::default();
+    let root = push_root(
+        &mut result.frames,
+        FrameOwner::Command,
+        FrameTrigger::Active,
+    );
+    run_grouped_owner_event_at(
+        managers,
+        pool,
+        catalog,
+        determinism,
+        context,
+        event,
+        owner_uids,
+        lanes,
+        result,
+        root,
+    )
+}
+
+pub(in crate::engine::runtime) fn run_settlement_tail(
+    managers: &mut BattleManagers,
+    pool: &TargetPool,
+    catalog: &SkillEffectCatalog,
+    determinism: &mut RoundDeterminism,
+    context: TargetContext,
+    owner_uids: &[i64],
+    operations: impl IntoIterator<Item = (FrameOwner, RuleOp)>,
+) -> Result<DrainResult, DrainError> {
+    let (result, root) = super::schedule::run_owned_command_group_as(
+        managers,
+        pool,
+        catalog,
+        determinism,
+        context,
+        FrameOwner::RoundPhase(RoundPhase::AfterOwnerSettlement),
+        operations,
+    )?;
+    run_grouped_owner_event_at(
+        managers,
+        pool,
+        catalog,
+        determinism,
+        context,
+        BattleEvent::Kind(crate::engine::event::kind::EventKind::RoundEndAfterOwnerSettlement),
+        owner_uids,
+        &[ReactionLane::Skills],
+        result,
+        root,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn run_grouped_owner_event_at(
+    managers: &mut BattleManagers,
+    pool: &TargetPool,
+    catalog: &SkillEffectCatalog,
+    determinism: &mut RoundDeterminism,
+    context: TargetContext,
+    event: BattleEvent,
+    owner_uids: &[i64],
+    lanes: &[ReactionLane],
+    mut result: DrainResult,
+    root: FramePath,
+) -> Result<DrainResult, DrainError> {
+    let event_index = result.events.len();
     managers.buff.begin_transaction();
     let result = (|| {
-        let mut result = DrainResult::default();
-        let root = push_root(
-            &mut result.frames,
-            FrameOwner::Command,
-            FrameTrigger::Active,
-        );
         for &lane in lanes {
             for owner_uid in owner_uids {
                 let scope = match lane {
@@ -322,17 +380,13 @@ pub fn run_grouped_owner_event_lanes(
                     managers,
                     catalog,
                     determinism,
-                    &event,
-                    Some(&scope),
-                    None,
-                    None,
-                    None,
-                    None,
-                    None,
-                    Some(lane),
-                    Some(std::slice::from_ref(owner_uid)),
-                    context.current_round > 0,
-                    None,
+                    ReactionDispatch {
+                        parent_path: Some(&scope),
+                        lane: Some(lane),
+                        owner_uids: Some(std::slice::from_ref(owner_uid)),
+                        execute_unscoped_after_action: context.current_round > 0,
+                        ..ReactionDispatch::for_event(&event)
+                    },
                     None,
                 )?;
                 reactions.assign_subscriber_death_groups(None);
@@ -351,7 +405,7 @@ pub fn run_grouped_owner_event_lanes(
                 result.frames = next.frames;
             }
         }
-        result.events.insert(0, event);
+        result.events.insert(event_index, event);
         Ok(result)
     })();
     managers.buff.end_transaction();

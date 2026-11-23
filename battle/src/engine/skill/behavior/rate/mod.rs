@@ -192,15 +192,29 @@ impl BehaviorHandler for Handler {
             return Some(Vec::new());
         }
         if behavior.spec.kind == BehaviorKind::SkillRateUp2 {
-            let target_uid = context.target.runtime_target_uid;
-            let delta = status_skill_rate(&context.managers.buff, target_uid, behavior);
-            if context.active_skill_id != 0 && target_uid != 0 && delta != 0 {
-                context.modifiers.rates.push(SkillRateModifier::fixed(
-                    target_uid,
-                    behavior.spec.key.opcode,
-                    delta,
-                    true,
-                ));
+            if context.active_skill_id == 0 {
+                return Some(Vec::new());
+            }
+            let runtime_target = context.target.runtime_target_uid;
+            let mut targets = context
+                .pool
+                .field_enemies(context.source_uid)
+                .into_iter()
+                .map(|enemy| enemy.uid)
+                .collect::<Vec<_>>();
+            if runtime_target != 0 && !targets.contains(&runtime_target) {
+                targets.insert(0, runtime_target);
+            }
+            for target_uid in targets {
+                let delta = status_skill_rate(&context.managers.buff, target_uid, behavior);
+                if delta != 0 {
+                    context.modifiers.rates.push(SkillRateModifier::fixed(
+                        target_uid,
+                        behavior.spec.key.opcode,
+                        delta,
+                        true,
+                    ));
+                }
             }
             return Some(Vec::new());
         }
@@ -224,6 +238,14 @@ impl BehaviorHandler for Handler {
         context: AttackModifierContext<'_>,
         behavior: &ParsedBehavior,
     ) -> bool {
+        if matches!(
+            (behavior.spec.key.opcode, behavior.spec.kind),
+            (10004, BehaviorKind::AttrFix)
+        ) {
+            let op = context.operation;
+            attr_fix(op.modifiers, op.active_skill_id, behavior, false);
+            return true;
+        }
         if behavior.spec.kind == BehaviorKind::ConsumeExPointAddAttr
             && context.owner_skill_id != context.operation.active_skill_id
         {
@@ -625,10 +647,12 @@ fn collect_attack_modifier_slot(
                         None | Some(crate::engine::skill::action::SkillPhase::Immediate)
                             | Some(crate::engine::skill::action::SkillPhase::Damage)
                     ))
-                    || (trigger.event
-                        == crate::engine::event::kind::EventKind::SkillEffectStarted
-                        && trigger.phase
-                            == Some(crate::engine::skill::action::SkillPhase::Immediate)) =>
+                    || (matches!(
+                        trigger.event,
+                        crate::engine::event::kind::EventKind::SkillEffectStarted
+                            | crate::engine::event::kind::EventKind::SkillEffectsPrepared
+                    ) && trigger.phase
+                        == Some(crate::engine::skill::action::SkillPhase::Immediate)) =>
             {
                 Some(trigger.key)
             }
@@ -812,6 +836,9 @@ pub fn emit_passive_attack_attributes(
         .passive_override(source_uid)
         .unwrap_or(passive_skills)
         .to_vec();
+    if managers.passives_disabled(source_uid) {
+        passive_skills.clear();
+    }
     for link in managers.buff.passive_skill_links_for(source_uid) {
         if !passive_skills.contains(&link.skill_id) {
             passive_skills.push(link.skill_id);
@@ -828,6 +855,7 @@ pub fn emit_passive_attack_attributes(
         };
         for slot in &effect.slots {
             let attribute_count_before = modifiers.attack_attributes.len();
+            let caster_attack_before = modifiers.caster_attack_bonus;
             let career_ratio_before = modifiers.career_ratio_bonus;
             collect_attack_modifier_slot(
                 modifiers,
@@ -843,12 +871,14 @@ pub fn emit_passive_attack_attributes(
             );
             if crate::engine::diagnostics::enabled(crate::engine::diagnostics::TraceArea::Damage)
                 && (modifiers.attack_attributes.len() > attribute_count_before
+                    || modifiers.caster_attack_bonus != caster_attack_before
                     || modifiers.career_ratio_bonus != career_ratio_before)
             {
                 eprintln!(
-                    "attack modifier owner={source_uid} passive={passive_skill} active_skill={active_skill_id} opcode={} attributes={:?} career_ratio_bonus={}",
+                    "attack modifier owner={source_uid} passive={passive_skill} active_skill={active_skill_id} opcode={} attributes={:?} caster_attack_bonus={} career_ratio_bonus={}",
                     slot.behavior.spec.key.opcode,
                     &modifiers.attack_attributes[attribute_count_before..],
+                    modifiers.caster_attack_bonus - caster_attack_before,
                     modifiers.career_ratio_bonus - career_ratio_before,
                 );
             }
@@ -898,6 +928,39 @@ pub fn emit_active_target_attack_attributes(
     }
 }
 
+pub(crate) fn active_modifiers(
+    source_uid: i64,
+    skill_id: i32,
+    target_uid: i64,
+    runtime: RateRuntime<'_>,
+    determinism: &RoundDeterminism,
+) -> SkillModifiers {
+    let Some(effect) = runtime.effects.get(skill_id) else {
+        return SkillModifiers::default();
+    };
+    let mut modifiers = SkillModifiers::default();
+    let mut determinism = determinism.clone();
+    let mut context = runtime.context;
+    context.hit_source_uid = source_uid;
+    context.hit_target_uid = target_uid;
+    context.runtime_target_uid = target_uid;
+    for slot in &effect.slots {
+        collect_attack_modifier_slot(
+            &mut modifiers,
+            ModifierOwner {
+                uid: source_uid,
+                skill_id,
+            },
+            skill_id,
+            slot,
+            RateRuntime { context, ..runtime },
+            &mut determinism,
+            ModifierSide::Source,
+        );
+    }
+    modifiers
+}
+
 pub(crate) fn incoming_target_attack_modifiers(
     source_uid: i64,
     target_uid: i64,
@@ -930,6 +993,9 @@ pub(crate) fn incoming_target_attack_modifiers(
         })
         .unwrap_or_default()
         .to_vec();
+    if managers.passives_disabled(target_uid) {
+        passive_skills.clear();
+    }
     for link in managers.buff.passive_skill_links_for(target_uid) {
         if !passive_skills.contains(&link.skill_id) {
             passive_skills.push(link.skill_id);
@@ -1018,15 +1084,12 @@ pub fn emit(
             return true;
         }
         (10004, BehaviorKind::AttrFix) => {
-            let [attr_id, delta] = behavior.args.as_slice() else {
-                return true;
-            };
-            let Some(attr_id) = AttrId::from_raw(*attr_id) else {
-                return true;
-            };
-            if active_skill_id != 0 && *delta != 0 {
-                modifiers.attack_attributes.push((attr_id, *delta));
-            }
+            attr_fix(
+                modifiers,
+                active_skill_id,
+                behavior,
+                source_uid != 0 && target_uid == source_uid,
+            );
             return true;
         }
         (10001, BehaviorKind::SkillRateUp) => behavior.args.first().copied().unwrap_or_default(),
@@ -1093,6 +1156,28 @@ pub fn emit(
         ));
     }
     true
+}
+
+fn attr_fix(
+    modifiers: &mut SkillModifiers,
+    active_skill_id: i32,
+    behavior: &ParsedBehavior,
+    caster_owned: bool,
+) {
+    let [attr_id, delta] = behavior.args.as_slice() else {
+        return;
+    };
+    let Some(attr_id) = AttrId::from_raw(*attr_id) else {
+        return;
+    };
+    if active_skill_id == 0 || *delta == 0 {
+        return;
+    }
+    if caster_owned && attr_id == AttrId::Penetration {
+        modifiers.caster_penetration += delta;
+    } else {
+        modifiers.attack_attributes.push((attr_id, *delta));
+    }
 }
 
 fn first_enemy_with_highest_buff_amount(

@@ -10,7 +10,7 @@ use crate::engine::{
     runtime::determinism::RoundDeterminism,
     skill::{
         effect::SkillEffectCatalog,
-        target::{TargetContext, TargetPool, TargetRequest, TargetResolver},
+        target::{TargetContext, TargetPool, TargetResolver},
     },
 };
 
@@ -41,6 +41,7 @@ pub fn generate_ai_deck_with_extra_actions<R: Rng + ?Sized>(
     if target_uids.is_empty() {
         return Vec::new();
     }
+    let enemy_count = enemies.len();
     let mut cards = selectable_cards(enemies, ex_point, eureka)
         .into_iter()
         .map(|mut card| {
@@ -51,7 +52,7 @@ pub fn generate_ai_deck_with_extra_actions<R: Rng + ?Sized>(
         })
         .collect::<Vec<_>>();
     let candidates = cards.clone();
-    let action_count = action_count(cards.len(), extra_actions);
+    let action_count = action_count(enemy_count, candidates.len(), extra_actions);
     cards.truncate(action_count);
     if candidates.is_empty() {
         return cards;
@@ -75,8 +76,11 @@ pub(crate) fn generated_ai_action_count(
     if active_player_uids(fight).is_empty() {
         return 0;
     }
+    let enemies = active_enemy_entities(fight);
+    let enemy_count = enemies.len();
     action_count(
-        selectable_cards(active_enemy_entities(fight), ex_point, eureka).len(),
+        enemy_count,
+        selectable_cards(enemies, ex_point, eureka).len(),
         extra_actions,
     )
 }
@@ -126,18 +130,16 @@ pub(crate) fn resolve_targets(
                 "generated AI skill {skill_id} is missing from the effect catalog"
             ));
         }
-        let code = catalog.logic_target(skill_id);
-        if code == 0 {
+        let request = catalog.logic_request(skill_id);
+        if request.code == 0 {
             return Err(format!(
                 "generated AI skill {skill_id} has no configured target"
             ));
         }
+        let code = request.code;
         let attack = catalog.is_attack(skill_id);
         let candidates = TargetResolver::resolve_primary_candidates(
-            &TargetRequest {
-                code,
-                raw: Vec::new(),
-            },
+            request,
             skill_id,
             source_uid,
             &runtime_pool,
@@ -180,11 +182,11 @@ fn selectable_cards(
         .collect()
 }
 
-fn action_count(candidate_count: usize, extra_actions: i32) -> usize {
+fn action_count(enemy_count: usize, candidate_count: usize, extra_actions: i32) -> usize {
     if candidate_count == 0 {
         return 0;
     }
-    i32::try_from(candidate_count)
+    i32::try_from(enemy_count)
         .unwrap_or(i32::MAX)
         .saturating_add(extra_actions)
         .max(0) as usize

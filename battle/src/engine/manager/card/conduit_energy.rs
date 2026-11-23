@@ -1,14 +1,33 @@
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct ConduitCardEnergy {
+    pub power_id: i32,
+    pub amount: i32,
+    pub special: bool,
+}
+
 impl super::CardManager {
+    pub(crate) fn conduit_skill_energy(&self, skill_id: i32) -> Option<ConduitCardEnergy> {
+        let energy = self
+            .deck
+            .catalog()?
+            .game_data()
+            .skill_energy
+            .get(skill_id)?;
+        Some(ConduitCardEnergy {
+            power_id: energy.energy_type,
+            amount: energy.count,
+            special: energy.is_special_card != 0,
+        })
+    }
+
     pub(crate) fn conduit_energy_cards(&self) -> Option<Vec<(usize, i32)>> {
-        let game = self.deck.catalog()?.game_data();
         Some(
             self.hand()
                 .iter()
                 .enumerate()
                 .filter_map(|(index, card)| {
-                    let energy = game.skill_energy.get(card.skill_id?)?;
-                    (energy.is_special_card == 0 && energy.count > 0)
-                        .then_some((index, energy.count))
+                    let energy = self.conduit_skill_energy(card.skill_id?)?;
+                    (!energy.special && energy.amount > 0).then_some((index, energy.amount))
                 })
                 .collect(),
         )

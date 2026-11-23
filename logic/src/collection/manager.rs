@@ -73,6 +73,17 @@ impl CollectionManager {
         })
     }
 
+    pub async fn complete_all_achievements(
+        &mut self,
+        db: &SqlitePool,
+    ) -> Result<UpdateAchievementPush, AppError> {
+        let achievements = achievements::complete_all(db, self.player_id).await?;
+        self.track(&achievements);
+        Ok(UpdateAchievementPush {
+            infos: achievements.into_iter().map(Into::into).collect(),
+        })
+    }
+
     pub async fn read_new_achievement(
         &mut self,
         db: &SqlitePool,

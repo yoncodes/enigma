@@ -11,6 +11,7 @@ fn battle_crates_keep_their_dependency_boundary() {
         &workspace.join("battle/Cargo.toml"),
         &[
             "anyhow",
+            "common",
             "config",
             "protocol",
             "rand",
@@ -53,7 +54,10 @@ fn runtime_uses_the_catalog_instead_of_raw_config() {
     for path in production_rust_files(&root) {
         let source = fs::read_to_string(&path).unwrap();
         for (line_index, line) in source.lines().enumerate() {
-            if line.contains("config::") || line.contains(".game_data()") {
+            if line.contains("config::")
+                || line.contains("common::")
+                || line.contains(".game_data()")
+            {
                 violations.push(format!("{}:{}: {line}", path.display(), line_index + 1));
             }
         }

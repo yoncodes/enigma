@@ -1,5 +1,7 @@
 use super::*;
 
+const FIRST_STAGE_NODE: i32 = 1;
+
 impl HeroManager {
     pub async fn destiny_stone(
         self,
@@ -43,7 +45,8 @@ impl HeroManager {
             current.record.destiny_level,
         )
         .filter(|slot| {
-            slot.node == 1 && slot.stage == current.record.destiny_rank.saturating_add(1)
+            slot.node == FIRST_STAGE_NODE
+                && slot.stage == current.record.destiny_rank.saturating_add(1)
         })
         .ok_or(AppError::InvalidRequest)?;
         let mut tx = db.begin().await?;

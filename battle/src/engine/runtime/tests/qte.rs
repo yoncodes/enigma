@@ -1,4 +1,5 @@
 use super::*;
+use crate::test_support::contains_skill;
 
 #[test]
 fn ezio_cloth_choice_runs_the_configured_skill_and_advances_qte_state() {
@@ -296,16 +297,6 @@ fn ezio_cloth_choice_runs_the_configured_skill_and_advances_qte_state() {
             .unwrap()
     };
     assert!(buff_position(229100) < buff_position(31090112));
-    fn contains_skill(steps: &[sonettobuf::FightStep], skill_id: i32) -> bool {
-        steps.iter().any(|step| {
-            step.act_id == Some(skill_id)
-                || step.act_effect.iter().any(|effect| {
-                    effect.fight_step.as_ref().is_some_and(|nested| {
-                        contains_skill(std::slice::from_ref(nested), skill_id)
-                    })
-                })
-        })
-    }
     fn count_skill(steps: &[sonettobuf::FightStep], skill_id: i32) -> usize {
         steps
             .iter()
@@ -335,7 +326,11 @@ fn ezio_cloth_choice_runs_the_configured_skill_and_advances_qte_state() {
         }
     }
     let final_steps = &replies.last().unwrap().round.as_ref().unwrap().fight_step;
-    assert!(contains_skill(final_steps, 312301343,));
+    assert!(
+        final_steps
+            .iter()
+            .any(|step| contains_skill(step, 312301343))
+    );
     assert_eq!(count_skill(final_steps, 31050141), 2);
     let mut order = Vec::new();
     skill_order(final_steps, &mut order);
@@ -439,4 +434,133 @@ fn battle_start_configures_synchronization_from_the_owner_passive() {
             .map(|definition| definition.skills),
         Some([312301323, 312301333, 312301343])
     );
+}
+
+#[test]
+fn ally_psychube_assassination_waits_for_the_synchronization_finisher() {
+    crate::test_support::init_config();
+    let entity = |uid, team_type, hp, passive_skill| FightEntityInfo {
+        uid: Some(uid),
+        team_type: Some(team_type),
+        current_hp: Some(hp),
+        ex_point: (uid == 10).then_some(99),
+        ex_point_type: Some(if uid > 0 { 2 } else { 0 }),
+        attr: Some(sonettobuf::HeroAttribute {
+            hp: Some(hp),
+            attack: Some(1_000),
+            ..Default::default()
+        }),
+        passive_skill,
+        ..Default::default()
+    };
+    let mut runtime = runtime(Fight {
+        version: Some(7),
+        attacker: Some(FightTeam {
+            entitys: vec![
+                entity(10, 1, 1_000, Vec::new()),
+                FightEntityInfo {
+                    equips: vec![sonettobuf::EquipRecord {
+                        equip_id: Some(1552),
+                        refine_lv: Some(1),
+                        ..Default::default()
+                    }],
+                    ..entity(20, 1, 1_000, vec![435211])
+                },
+            ],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![entity(-1, 2, 100_000, Vec::new())],
+            ..Default::default()
+        }),
+        ..Default::default()
+    });
+    let origin = crate::engine::skill::rule::CommandOrigin {
+        domain: crate::engine::skill::rule::RuleDomain::Behavior,
+        key: crate::engine::skill::rule::DefinitionKey::new(100000, "EzioProps"),
+    };
+    runtime
+        .managers
+        .execute_ex_point(
+            crate::engine::manager::ex_point::ExPointCommand::ConfigureSynchronization(
+                crate::engine::manager::ex_point::ExPointConfigureSynchronization {
+                    origin,
+                    target_uid: 10,
+                    definition: crate::engine::manager::ex_point::SynchronizationDefinition::new(
+                        [312301323, 312301333, 312301343],
+                        4,
+                        100,
+                    )
+                    .unwrap(),
+                },
+            ),
+        )
+        .unwrap();
+    runtime
+        .managers
+        .execute_buff(crate::engine::manager::buff::BuffCommand::Grant(
+            crate::engine::manager::buff::BuffGrant {
+                origin,
+                source_uid: 10,
+                target_uid: 10,
+                buff_id: 229100,
+                amount: None,
+                occurrences: 1,
+                child_uid_reservations: 0,
+            },
+        ))
+        .unwrap();
+    runtime.catalog = SkillEffectCatalog::from_roots(
+        config::configs::get(),
+        [312301323, 312301333, 312301343, 435211],
+        [],
+    );
+    runtime
+        .managers
+        .execute_ex_point(crate::engine::manager::ex_point::ExPointCommand::Change(
+            crate::engine::manager::ex_point::ExPointChange {
+                origin,
+                source_uid: 10,
+                target_uid: 10,
+                delta: 1,
+                config_effect: 0,
+                effect_type: 0,
+            },
+        ))
+        .unwrap();
+
+    fn count_skill(steps: &[sonettobuf::FightStep], skill_id: i32, source_uid: i64) -> usize {
+        steps
+            .iter()
+            .map(|step| {
+                usize::from(step.act_id == Some(skill_id) && step.from_id == Some(source_uid))
+                    + step
+                        .act_effect
+                        .iter()
+                        .filter_map(|effect| effect.fight_step.as_ref())
+                        .map(|nested| {
+                            count_skill(std::slice::from_ref(nested), skill_id, source_uid)
+                        })
+                        .sum::<usize>()
+            })
+            .sum()
+    }
+    let request = UseClothSkillRequest {
+        skill_id: Some(2),
+        from_id: Some(10),
+        to_id: Some(-1),
+        r#type: Some(ClothSkillType::EzioBigSkill as i32),
+    };
+    let casts = (0..4)
+        .map(|_| {
+            let reply = runtime.use_cloth_skill(request).unwrap();
+            let steps = &reply.round.as_ref().unwrap().fight_step;
+            (
+                count_skill(steps, 312301343, 10),
+                count_skill(steps, 435211, 20),
+            )
+        })
+        .collect::<Vec<_>>();
+
+    assert_eq!(casts, [(0, 0), (0, 0), (0, 0), (1, 1)]);
 }

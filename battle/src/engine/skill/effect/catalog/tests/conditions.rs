@@ -1,6 +1,50 @@
 use super::*;
 
 #[test]
+fn rouge2_card_copy_listens_for_the_committed_action_queue() {
+    init_config();
+    let catalog = SkillEffectCatalog::from_game_db(config::configs::get());
+    let slot = &catalog.get(103335020).unwrap().slots[0];
+
+    assert_eq!(
+        slot.compiled_subscriptions().unwrap()[0].event,
+        crate::engine::event::kind::EventKind::ActionQueueCommitted
+    );
+    assert_eq!(slot.behavior.spec.kind, BehaviorKind::UseCardCopy);
+}
+
+#[test]
+fn rouge2_round_resource_uses_the_configured_multiplier_and_rolls_only_at_round_start() {
+    init_config();
+    let catalog = SkillEffectCatalog::from_game_db(config::configs::get());
+    let slot = &catalog.get(103377010).unwrap().slots[0];
+
+    assert!(slot.conditions.iter().any(|condition| {
+        condition.kind == ParsedConditionKind::Rouge2AttributeRandom { multiplier: 12 }
+    }));
+    assert!(slot.compiled_subscriptions().unwrap().is_empty());
+    let metadata =
+        crate::engine::skill::condition::registry::find_key(1022101, "Rouge2AttrExRand").unwrap();
+    assert!(metadata.companion_setup.is_empty());
+    assert_eq!(
+        metadata.role,
+        crate::engine::skill::condition::registry::ConditionRole::Setup {
+            stage: crate::engine::skill::rule::SetupStage::RoundStartCondition,
+            priority: 101,
+        }
+    );
+}
+
+#[test]
+fn shared_rouge2_battle_tag_does_not_invent_a_round_end_trigger() {
+    init_config();
+    let catalog = SkillEffectCatalog::from_game_db(config::configs::get());
+    let slot = &catalog.get(109370116).unwrap().slots[0];
+
+    assert!(slot.compiled_subscriptions().unwrap().is_empty());
+}
+
+#[test]
 fn device_ultimate_compound_uses_the_activation_driver_in_either_order() {
     init_config();
 
@@ -358,4 +402,22 @@ fn active_and_passive_use_skill_type_not_damage_type() {
     assert!(!catalog.is_passive(30610111));
     assert!(catalog.is_passive(30610141));
     assert_eq!(catalog.skill_type(30950127), 2);
+}
+
+#[test]
+fn preparation_index_removes_the_last_supported_observer_on_replacement() {
+    init_config();
+    let mut catalog = SkillEffectCatalog::from_roots(config::configs::get(), [103374322], []);
+    assert!(catalog.has_preparation_observers());
+
+    let mut replacement = catalog.get(103374322).unwrap().clone();
+    for slot in &mut replacement.slots {
+        slot.behavior = ParsedBehavior::from_spec(
+            BehaviorSpec::new(60058, "CareerRatioFix"),
+            vec![0],
+            Vec::new(),
+        );
+    }
+    catalog.insert(replacement);
+    assert!(!catalog.has_preparation_observers());
 }

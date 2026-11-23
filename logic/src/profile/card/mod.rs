@@ -13,6 +13,10 @@ use sqlx::SqlitePool;
 use std::{collections::HashSet, ops::RangeInclusive};
 
 const PLAYER_CARD_THEME_ITEM_SUB_TYPE: i32 = 21;
+const SHOW_EQUIP_TYPE_SETTING: i32 = 1;
+const HIDE_BADGE_SETTING: i32 = 2;
+const EQUIP_CRITTER: i32 = 1;
+const EQUIP_BADGE: i32 = 2;
 
 impl ProfileManager {
     pub async fn card_info(&self, db: &SqlitePool) -> Result<GetPlayerCardInfoReply, AppError> {
@@ -245,7 +249,12 @@ fn valid_show_settings(settings: &[String]) -> bool {
         let Ok(value) = value.parse::<i32>() else {
             return false;
         };
-        keys.insert(key) && matches!((key, value), (1, 1 | 2) | (2, 0 | 1))
+        keys.insert(key)
+            && matches!(
+                (key, value),
+                (SHOW_EQUIP_TYPE_SETTING, EQUIP_CRITTER | EQUIP_BADGE)
+                    | (HIDE_BADGE_SETTING, 0 | 1)
+            )
     })
 }
 

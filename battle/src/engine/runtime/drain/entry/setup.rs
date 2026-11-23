@@ -436,7 +436,14 @@ fn append_buff_act_setup_stage(
     let mut frames = std::mem::take(&mut state.result.frames);
     let side_paths = &mut state.side_paths;
     let mut queue = VecDeque::new();
-    let setup_subscribers = dispatcher::dispatch_buff_act_setup(managers, catalog, stage, priority);
+    let setup_subscribers = dispatcher::dispatch_buff_act_setup(
+        pool,
+        managers,
+        catalog,
+        stage,
+        priority,
+        context.defender_start_round,
+    );
     let setup_subscribers = setup_subscribers
         .into_iter()
         .filter(|(subscriber, _)| {

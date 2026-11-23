@@ -139,7 +139,9 @@ fn promoted_reserve_does_not_erase_casualty_objectives() {
 
     runtime.managers.hp.lose(1, 100, -1);
     let promotions = runtime.managers.promote_reserves(&mut runtime.fight);
-    runtime.objectives.record_promotions(&promotions);
+    runtime
+        .objectives
+        .record_promotions(promotions.promotions());
     runtime.managers.sync_roster(&runtime.fight);
 
     assert_eq!(

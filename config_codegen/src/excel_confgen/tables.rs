@@ -85,6 +85,7 @@ pub const FILTER_TABLES: &[&str] = &[
     "achievement",
     "achievement_task",
     "bgm_switch",
+    "ui_audio",
     "bonus",
     "reward",
     "reward_group",

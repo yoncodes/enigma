@@ -361,7 +361,7 @@ fn reduced_spend_keeps_the_configured_activation_cost() {
 }
 
 #[test]
-fn unique_activation_publishes_the_current_cost_without_committing_it_again() {
+fn counter_increase_does_not_become_unique_activation_cost() {
     crate::test_support::init_config();
     let fight = Fight {
         attacker: Some(FightTeam {
@@ -429,8 +429,9 @@ fn unique_activation_publishes_the_current_cost_without_committing_it_again() {
         .unwrap();
 
     assert!(matches!(
-        change.events().as_slice(),
-        [crate::engine::event::payload::BattleEvent::ConduitActivated(event)]
-            if event.activation_cost == 3 && event.spent == 0
+        &change,
+        ConduitChange::ActivationCompleted(event)
+            if event.activation_cost == 0 && event.spent == 0
     ));
+    assert!(change.events().is_empty());
 }

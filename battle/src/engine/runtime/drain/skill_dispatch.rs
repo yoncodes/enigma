@@ -1,3 +1,5 @@
+use crate::engine::{runtime::change::BattleChange, skill::action::SkillExecutionMode};
+
 use super::*;
 
 #[allow(clippy::too_many_arguments)]
@@ -11,7 +13,7 @@ pub(super) fn drain_skill(
     queue: &mut VecDeque<QueuedOp>,
     result: &mut DrainResult,
     state: &mut DrainState,
-    invocation: crate::engine::skill::action::SkillInvocation,
+    mut invocation: crate::engine::skill::action::SkillInvocation,
     trigger: SkillOpTrigger,
     skill_execution: Option<SkillExecution>,
     frame_path: Option<FramePath>,
@@ -21,6 +23,15 @@ pub(super) fn drain_skill(
     subscriber: Option<SubscriberContext>,
     caster_frame: Option<FrameOwner>,
 ) -> Result<(), DrainError> {
+    if let Some(FrameOwner::BuffAct { key, .. }) = &frame_owner
+        && let Some(route) =
+            crate::engine::skill::buff_act::registry::find(key.opcode, key.type_name)
+                .and_then(|definition| definition.state.shield_hit)
+        && !(route.admits_cast)(managers, invocation.plan.source_uid)
+    {
+        cancel_invocation_progress(managers, state, None, &invocation);
+        return Ok(());
+    }
     let active_cast = matches!(trigger, SkillOpTrigger::Active)
         || matches!(&frame_owner, Some(FrameOwner::BuffAct { .. }));
     // After terminal commitment, skip active skills that have not
@@ -32,6 +43,19 @@ pub(super) fn drain_skill(
     {
         cancel_invocation_progress(managers, state, None, &invocation);
         return Ok(());
+    }
+    let paid_ultimate = invocation.paid_ultimate.take();
+    if let Some(paid) = paid_ultimate {
+        if managers.ex_point.get(paid.cost.target_uid) < -paid.cost.delta {
+            return Ok(());
+        }
+        invocation.target = TargetResolver::preferred_enemy(
+            invocation.plan.source_uid,
+            paid.priority_buff,
+            pool,
+            managers,
+        )
+        .map_or(SkillTarget::Configured, SkillTarget::Explicit);
     }
     let attack_has_no_target = active_cast
         && attack_has_no_target(&invocation, catalog, pool, managers, determinism, context);
@@ -82,6 +106,26 @@ pub(super) fn drain_skill(
     } else {
         trigger
     };
+    if frame_path.is_none()
+        && invocation.mode == SkillExecutionMode::DirectBig
+        && let Some(parent) = parent_path.as_deref()
+    {
+        if invocation.target == SkillTarget::Configured && invocation.frame_target.is_none() {
+            invocation.frame_target = TargetResolver::self_skill_anchor(
+                catalog,
+                pool,
+                invocation.plan.source_uid,
+                invocation.plan.skill_id,
+            );
+        }
+        push_change(
+            &mut result.frames,
+            parent,
+            BattleChange::UltimateDelegated {
+                caster_uid: invocation.plan.source_uid,
+            },
+        );
+    }
     let frame_path = ensure_frame(
         &mut result.frames,
         frame_path,
@@ -106,6 +150,26 @@ pub(super) fn drain_skill(
     }
     if !skill_from_buff_act && let Some(group) = &frame_group {
         *group.borrow_mut() = Some(frame_path.clone());
+    }
+    if let Some(paid) = paid_ultimate {
+        invocation.moxie_spent = -paid.cost.delta;
+        return paid_ultimate::start(
+            queue,
+            &result.frames,
+            paid,
+            QueuedOp {
+                op: RuleOp::Skill(invocation),
+                trigger,
+                skill_execution,
+                frame_path: Some(frame_path),
+                parent_path: None,
+                frame_group: None,
+                independent_parent_group: None,
+                frame_owner: None,
+                subscriber,
+                caster_frame: None,
+            },
+        );
     }
     if invocation.phase.is_none()
         && matches!(trigger, SkillOpTrigger::Active)
@@ -132,10 +196,10 @@ pub(super) fn drain_skill(
         let deaths = deaths
             .into_iter()
             .filter(|death| managers.hp.is_current_death(*death))
-            .map(crate::engine::manager::hp::PendingDeath::transition)
             .collect::<Vec<_>>();
         for death in deaths {
-            let cleanup = queued_defeated_entity_halo_cleanup(managers, death, &frame_path);
+            let cleanup =
+                queued_defeated_entity_halo_cleanup(managers, death.transition(), &frame_path);
             drain_defeated_entity_halo_cleanup(
                 managers,
                 pool,
@@ -146,7 +210,7 @@ pub(super) fn drain_skill(
                 state,
             )?;
             push_death(&mut result.frames, &frame_path, managers, death);
-            defeated_owner_card_cleanups.push(death);
+            defeated_owner_card_cleanups.push(death.transition());
         }
     }
     let mut execution = skill_execution.unwrap_or_else(|| SkillExecution::new(context));
@@ -171,7 +235,7 @@ pub(super) fn drain_skill(
                 .filter(|target_uid| pool.source_is_attacker(*target_uid) == source_is_attacker),
         );
     }
-    if invocation.mode == crate::engine::skill::action::SkillExecutionMode::DirectBig {
+    if invocation.mode == SkillExecutionMode::DirectBig {
         execution.prepare_direct_big(invocation.additional_moxie);
     }
 
@@ -221,7 +285,7 @@ pub(super) fn drain_skill(
     let completes_action = emission
         .continuation
         .as_ref()
-        .is_some_and(|continuation| continuation.mode.completes_action())
+        .is_some_and(|continuation| continuation.mode.publishes_completion())
         || emission.ops.iter().any(|emitted| {
             matches!(
                 emitted.op,

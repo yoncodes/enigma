@@ -27,6 +27,7 @@ pub enum DrainError {
     OperationLimitExceeded,
     RecursionLimitExceeded,
     MissingActiveSkillContext,
+    MissingRoundEndPaymentFrame,
     MissingReactionSide(i64),
     MissingCardStateTeam(i64),
 }
@@ -233,15 +234,15 @@ pub(super) fn queued_defeated_entity_halo_cleanup(
 }
 
 pub(super) fn queued_death_settlement(
-    death: crate::engine::manager::hp::DeathTransition,
+    death: crate::engine::manager::hp::PendingDeath,
     parent_path: &[usize],
 ) -> QueuedOp {
     QueuedOp {
         op: RuleOp::DeathSettlement(death),
         trigger: SkillOpTrigger::Event(BattleEvent::EntityDied(
             crate::engine::event::payload::EntityDiedEvent {
-                source_uid: death.source_uid,
-                target_uid: death.target_uid,
+                source_uid: death.transition().source_uid,
+                target_uid: death.transition().target_uid,
             },
         )),
         skill_execution: None,
@@ -256,7 +257,7 @@ pub(super) fn queued_death_settlement(
 }
 
 pub(super) fn queued_death_event_group_settlement(
-    death: crate::engine::manager::hp::DeathTransition,
+    death: crate::engine::manager::hp::PendingDeath,
     frame_path: &[usize],
 ) -> QueuedOp {
     let mut queued = queued_death_settlement(death, frame_path);
@@ -315,19 +316,24 @@ pub(in crate::engine::runtime) fn attack_has_no_target(
     {
         return false;
     }
-    let logic_target = match invocation.target {
-        SkillTarget::LogicRule(code) => code,
-        _ => catalog.logic_target(invocation.plan.skill_id),
+    let fallback;
+    let request = match invocation.target {
+        SkillTarget::LogicRule(code) => {
+            fallback = TargetRequest {
+                code,
+                raw: Vec::new(),
+            };
+            &fallback
+        }
+        _ => catalog.logic_request(invocation.plan.skill_id),
     };
+    let logic_target = request.code;
     match invocation.target {
         SkillTarget::Configured | SkillTarget::LogicRule(_)
             if targets_enemy(logic_target).is_some() =>
         {
             TargetResolver::resolve_primary_candidates(
-                &TargetRequest {
-                    code: logic_target,
-                    raw: Vec::new(),
-                },
+                request,
                 invocation.plan.skill_id,
                 invocation.plan.source_uid,
                 pool,

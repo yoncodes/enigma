@@ -50,6 +50,10 @@ impl SkillExecutionMode {
         )
     }
 
+    pub(crate) fn publishes_completion(self) -> bool {
+        self.completes_action() || self == Self::NestedExtra
+    }
+
     pub(crate) fn finishes_selected_conduit_phase(self) -> bool {
         self == Self::Device
     }
@@ -84,7 +88,6 @@ impl SkillStart {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SkillLifecycle {
-    DirectUltimateBodyCompleted { source_uid: i64 },
     EmitterAttackStarted(crate::engine::manager::emitter::EmitterAttack),
     EmitterSkillEnded { source_uid: i64 },
     PhaseCompleted(SkillActionEvent),
@@ -118,7 +121,14 @@ pub struct SkillActionEvent {
     pub teammate_injury_count_not_reset: i32,
     pub team_injury_count_round: i32,
     pub card_enchants: Vec<i32>,
-    pub buff_additions: Vec<(i32, i32)>,
+    pub buff_additions: Vec<BuffAddition>,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct BuffAddition {
+    pub buff_id: i32,
+    pub stored: i32,
+    pub admitted: i32,
 }
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
@@ -167,12 +177,19 @@ pub enum SkillTrigger {
     Explicit(i32),
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct PaidUltimate {
+    pub cost: crate::engine::manager::ex_point::ExPointChange,
+    pub priority_buff: i32,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SkillInvocation {
     pub plan: SkillRequest,
     pub card_index: i32,
     pub additional_moxie: i32,
     pub moxie_spent: i32,
+    pub(crate) paid_ultimate: Option<PaidUltimate>,
     pub condition_key: Option<DefinitionKey>,
     pub(crate) reaction_multiplicity_key: Option<DefinitionKey>,
     pub condition_slot: Option<usize>,
@@ -195,6 +212,15 @@ pub struct SkillInvocation {
     pub action_hand_settlement: Option<CommandOrigin>,
     pub card_enchants: Vec<i32>,
     pub recorded_skill: Option<SkillRequest>,
+    pub(crate) round_cap: Option<BuffActRoundCap>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct BuffActRoundCap {
+    pub owner_uid: i64,
+    pub buff_uid: i64,
+    pub key: DefinitionKey,
+    pub limit: i32,
 }
 
 impl From<SkillRequest> for SkillInvocation {
@@ -204,6 +230,7 @@ impl From<SkillRequest> for SkillInvocation {
             card_index: 0,
             additional_moxie: 0,
             moxie_spent: 0,
+            paid_ultimate: None,
             condition_key: None,
             reaction_multiplicity_key: None,
             condition_slot: None,
@@ -222,69 +249,13 @@ impl From<SkillRequest> for SkillInvocation {
             action_hand_settlement: None,
             card_enchants: Vec::new(),
             recorded_skill: None,
+            round_cap: None,
         }
     }
 }
 
 #[cfg(test)]
-mod invocation_tests {
-    use super::*;
-    use crate::engine::skill::condition::extra::ExtraSkillKind;
-
-    #[test]
-    fn invocation_keeps_runtime_target_and_action_kind() {
-        let invocation = SkillInvocation {
-            plan: SkillRequest {
-                source_uid: 10,
-                skill_id: 20,
-            },
-            card_index: 4,
-            additional_moxie: 0,
-            moxie_spent: 0,
-            condition_key: Some(DefinitionKey::new(30, "TestCondition")),
-            reaction_multiplicity_key: None,
-            condition_slot: Some(2),
-            reaction_batch_id: None,
-            reaction_action_path: None,
-            phase: Some(SkillPhase::AfterDamage),
-            target: SkillTarget::Explicit(-1),
-            frame_target: None,
-            extra_skill_kind: Some(ExtraSkillKind::FollowUp),
-            target_observed_extra_action: None,
-            rate_modifier: None,
-            trigger: SkillTrigger::Explicit(30),
-            mode: SkillExecutionMode::Nested,
-            start: SkillStart::Immediate,
-            release_progress: None,
-            action_hand_settlement: None,
-            card_enchants: Vec::new(),
-            recorded_skill: None,
-        };
-
-        assert_eq!(invocation.target, SkillTarget::Explicit(-1));
-        assert_eq!(
-            invocation.condition_key,
-            Some(DefinitionKey::new(30, "TestCondition"))
-        );
-        assert_eq!(invocation.card_index, 4);
-        assert_eq!(invocation.condition_slot, Some(2));
-        assert_eq!(invocation.phase, Some(SkillPhase::AfterDamage));
-        assert_eq!(invocation.extra_skill_kind.unwrap().id(), 2);
-        assert_eq!(invocation.trigger, SkillTrigger::Explicit(30));
-    }
-
-    #[test]
-    fn plain_configured_skill_does_not_inherit_runtime_context() {
-        let invocation: SkillInvocation = SkillRequest {
-            source_uid: 10,
-            skill_id: 20,
-        }
-        .into();
-
-        assert_eq!(invocation.target, SkillTarget::Configured);
-        assert_eq!(invocation.trigger, SkillTrigger::None);
-    }
-}
+mod invocation_tests;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SkillRateAmount {
@@ -410,6 +381,8 @@ pub struct PostImmediateTargetBuffModifier {
 pub struct SkillModifiers {
     pub rates: Vec<SkillRateModifier>,
     pub attack_attributes: Vec<(AttrId, i32)>,
+    pub caster_attack_bonus: i32,
+    pub caster_penetration: i32,
     pub shared_attack_attributes: Vec<(AttrId, i32)>,
     pub redirected_damage_targets: Vec<i64>,
     pub force_critical: bool,
@@ -425,9 +398,21 @@ pub struct SkillModifiers {
 }
 
 impl SkillModifiers {
+    pub(crate) fn primary_attack_attributes(&self) -> Vec<(AttrId, i32)> {
+        let mut attributes = self.attack_attributes.clone();
+        if self.caster_penetration != 0 {
+            attributes.push((AttrId::Penetration, self.caster_penetration));
+        }
+        attributes
+    }
+
     pub(crate) fn merge(&mut self, mut other: Self) {
         self.rates.append(&mut other.rates);
         self.attack_attributes.append(&mut other.attack_attributes);
+        self.caster_attack_bonus = self
+            .caster_attack_bonus
+            .saturating_add(other.caster_attack_bonus);
+        self.caster_penetration += other.caster_penetration;
         self.shared_attack_attributes
             .append(&mut other.shared_attack_attributes);
         for target_uid in other.redirected_damage_targets {
@@ -463,64 +448,7 @@ impl SkillModifiers {
 }
 
 #[cfg(test)]
-mod rate_amount_tests {
-    use super::*;
-    use crate::engine::{
-        manager::gauge::{GaugeCommand, GaugeManager, GaugeOperation},
-        mechanic::lingering_glow,
-        skill::rule::{DefinitionKey, RuleDomain},
-    };
-
-    #[test]
-    fn freezing_dynamic_rates_excludes_later_gauge_changes() {
-        let origin = CommandOrigin {
-            domain: RuleDomain::Behavior,
-            key: DefinitionKey::new(60243, "CrystalAddSkillRate"),
-        };
-        let key = lingering_glow::key(1);
-        let mut gauges = GaugeManager::default();
-        gauges
-            .execute_command(GaugeCommand::new(
-                origin,
-                key,
-                GaugeOperation::Enable { max: Some(1_000) },
-            ))
-            .unwrap();
-        gauges
-            .execute_command(GaugeCommand::new(
-                origin,
-                key,
-                GaugeOperation::AccumulateRawValue {
-                    amount: 139_000,
-                    stream: 60243,
-                },
-            ))
-            .unwrap();
-        let mut modifiers = SkillModifiers {
-            rates: vec![SkillRateModifier::new(
-                0,
-                60243,
-                SkillRateAmount::gauge_current(key, 1_000, 4, 1),
-                true,
-            )],
-            ..Default::default()
-        };
-
-        modifiers.freeze_rate_amounts(&gauges);
-        gauges
-            .execute_command(GaugeCommand::new(
-                origin,
-                key,
-                GaugeOperation::AccumulateRawValue {
-                    amount: 10_000,
-                    stream: 60243,
-                },
-            ))
-            .unwrap();
-
-        assert_eq!(modifiers.rates[0].fixed_value(), Some(556));
-    }
-}
+mod rate_amount_tests;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct PlannedSkill {

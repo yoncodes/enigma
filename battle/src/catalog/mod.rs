@@ -427,6 +427,13 @@ impl BattleCatalog {
         crate::engine::skill::buff_act::registry::find(opcode, &act.r#type)
     }
 
+    pub(crate) fn buff_act_name(self, opcode: i32) -> Option<&'static str> {
+        self.game_data
+            .buff_act
+            .get(opcode)
+            .map(|act| act.r#type.as_str())
+    }
+
     pub(crate) fn buff_act_origin(
         self,
         opcode: i32,
@@ -464,6 +471,20 @@ impl BattleCatalog {
     pub(crate) fn skill_moxie_exempt(self, skill_id: i32) -> bool {
         self.skill_effect(skill_id)
             .is_some_and(|effect| effect.need_ex_point == 1)
+    }
+
+    pub(crate) fn rouge2_recommended_attributes(self, career_id: i32) -> Vec<i32> {
+        self.game_data
+            .rouge2_career
+            .get(career_id)
+            .map(|career| {
+                career
+                    .recommend_attribute
+                    .split('|')
+                    .filter_map(|id| id.parse().ok())
+                    .collect()
+            })
+            .unwrap_or_default()
     }
 
     pub(crate) fn skill_is_big(self, skill_id: i32) -> bool {
@@ -593,6 +614,16 @@ impl BattleCatalog {
             .unwrap_or_else(|| card.card_effect.unwrap_or_default())
     }
 
+    pub(crate) fn card_choice_skills(self, skill_id: i32) -> Vec<i32> {
+        self.game_data
+            .fight_card_choice
+            .get(skill_id)
+            .into_iter()
+            .flat_map(|row| row.choice_sk_ills.split('#'))
+            .filter_map(|skill_id| skill_id.trim().parse().ok())
+            .collect()
+    }
+
     pub(crate) fn skill_is_ultimate_for_model(self, skill_id: i32, model_id: i32) -> bool {
         self.game_data
             .skill
@@ -703,11 +734,10 @@ impl BattleCatalog {
                 group2: Vec::new(),
             });
         }
-        let (group1, group2, _) = crate::engine::entity::skill::Skill::active_skills(
+        let (group1, group2, _) = crate::engine::entity::skill::Skill::trial(
             self.game_data,
-            model_id,
+            trial,
             crate::engine::entity::stats::configured_rank(self.game_data, model_id, trial.level),
-            trial.ex_skill_lv,
         );
         Some(ConfiguredSkillGroups { group1, group2 })
     }
@@ -1284,6 +1314,143 @@ pub(crate) fn configured_wave_start_actions(
         }
     }
     Ok(actions)
+}
+
+pub(crate) fn rouge2_entry_rule_skills(
+    game_data: &config::GameDB,
+    fight: &sonettobuf::Fight,
+) -> Vec<crate::engine::fight::rules::OwnedBattleSkill> {
+    let (career_id, _) = crate::engine::manager::buff::rouge2_mode(fight);
+    let event_type = crate::engine::manager::buff::rouge2_event_type(fight);
+    let Some(career) = game_data.rouge2_career.get(career_id) else {
+        return Vec::new();
+    };
+    career
+        .initial_effects
+        .split('#')
+        .filter_map(|id| game_data.rouge2_relics.get(id.parse().ok()?))
+        .flat_map(|relic| rouge2_battle_start_side_skills(relic, event_type))
+        .filter(|skill_id| game_data.skill.get(*skill_id).is_some())
+        .map(|skill_id| crate::engine::fight::rules::OwnedBattleSkill {
+            owner_uid: crate::engine::fight::rules::ATTACKER_SIDE_UID,
+            skill_id,
+        })
+        .collect()
+}
+
+fn rouge2_battle_start_side_skills(
+    relic: &config::rouge2_relics::Rouge2Relics,
+    event_type: i32,
+) -> Vec<i32> {
+    const BATTLE_START: &str = "none#battleStart";
+    const ADD_SIDE_SKILL: &str = "addSkill#4#0#0#";
+
+    let slots = [
+        (&relic.condition1, &relic.effect1),
+        (&relic.condition2, &relic.effect2),
+        (&relic.condition3, &relic.effect3),
+        (&relic.condition4, &relic.effect4),
+        (&relic.condition5, &relic.effect5),
+        (&relic.condition6, &relic.effect6),
+        (&relic.condition7, &relic.effect7),
+        (&relic.condition8, &relic.effect8),
+        (&relic.condition9, &relic.effect9),
+        (&relic.condition10, &relic.effect10),
+        (&relic.condition11, &relic.effect11),
+        (&relic.condition12, &relic.effect12),
+        (&relic.condition13, &relic.effect13),
+        (&relic.condition14, &relic.effect14),
+        (&relic.condition15, &relic.effect15),
+        (&relic.condition16, &relic.effect16),
+        (&relic.condition17, &relic.effect17),
+        (&relic.condition18, &relic.effect18),
+        (&relic.condition19, &relic.effect19),
+        (&relic.condition20, &relic.effect20),
+        (&relic.condition21, &relic.effect21),
+        (&relic.condition22, &relic.effect22),
+        (&relic.condition23, &relic.effect23),
+        (&relic.condition24, &relic.effect24),
+        (&relic.condition25, &relic.effect25),
+    ];
+    let mut skills = Vec::new();
+    for (condition, effects) in slots {
+        if !condition.contains("battleStart") {
+            continue;
+        }
+        let applies = if condition.as_str() == BATTLE_START {
+            Some(true)
+        } else {
+            rouge2_relic_attribute_met(&slots, condition, event_type)
+        };
+        for effect in effects.split('|') {
+            match (effect.strip_prefix(ADD_SIDE_SKILL), applies) {
+                (Some(skill_ids), Some(true)) => {
+                    skills.extend(skill_ids.split(',').filter_map(|id| id.parse::<i32>().ok()));
+                }
+                (Some(_), Some(false)) => {}
+                _ => tracing::warn!(
+                    relic_id = relic.id,
+                    condition,
+                    effect,
+                    "unsupported roguelike battle-start effect"
+                ),
+            }
+        }
+    }
+    skills
+}
+
+fn rouge2_relic_attribute_met(
+    slots: &[(&String, &String)],
+    condition: &str,
+    event_type: i32,
+) -> Option<bool> {
+    let mut fields = condition
+        .strip_prefix("relicsAttr#battleStart#")?
+        .split('#');
+    let attr = fields.next()?.parse::<i32>().ok()?;
+    let operator = fields.next()?.parse::<i32>().ok()?;
+    let threshold = fields.next()?.parse::<i32>().ok()?;
+    if fields.next().is_some() || operator != 1 {
+        return None;
+    }
+    let value = rouge2_event_relic_attribute(slots, attr, event_type)?;
+    (value <= threshold).then_some(value == threshold)
+}
+
+fn rouge2_event_relic_attribute(
+    slots: &[(&String, &String)],
+    attr: i32,
+    event_type: i32,
+) -> Option<i32> {
+    let prefix = format!("relicsAttrPermFix#{attr}#");
+    let mut value = 0;
+    let mut balance = 0;
+    let mut event = None;
+    for (slot_condition, effects) in slots {
+        for effect in effects.split('|') {
+            let Some(fields) = effect.strip_prefix(&prefix) else {
+                continue;
+            };
+            let delta = fields.strip_prefix("0#")?.parse::<i32>().ok()?;
+            let (entered, slot_event) =
+                if let Some(id) = slot_condition.strip_prefix("event#enterEvent#") {
+                    (true, id.parse::<i32>().ok()?)
+                } else if let Some(id) = slot_condition.strip_prefix("event#completeEvent#") {
+                    (false, id.parse::<i32>().ok()?)
+                } else {
+                    return None;
+                };
+            if *event.get_or_insert(slot_event) != slot_event {
+                return None;
+            }
+            balance += delta;
+            if entered && slot_event == event_type {
+                value += delta;
+            }
+        }
+    }
+    (event.is_some() && balance == 0).then_some(value)
 }
 
 pub(crate) fn configured_teaching_cards(

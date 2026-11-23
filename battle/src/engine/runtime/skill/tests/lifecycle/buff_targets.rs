@@ -116,6 +116,60 @@ fn hit_bound_target_301_add_buff_stays_on_attacked_enemies() {
 }
 
 #[test]
+fn hit_bound_self_target_add_buff_stays_on_the_owner() {
+    crate::test_support::init_config();
+    let fight = target_301_fight();
+    let mut invocation: SkillInvocation = SkillRequest {
+        source_uid: 10,
+        skill_id: 119381141,
+    }
+    .into();
+    invocation.condition_key = Some(DefinitionKey::new(208, "None"));
+    invocation.phase = Some(SkillPhase::AfterDamage);
+    invocation.mode = SkillExecutionMode::Active;
+    let event = BattleEvent::SkillAction(crate::engine::skill::action::SkillActionEvent {
+        source_uid: 10,
+        card_index: 0,
+        skill_id: 30060117,
+        target_uid: -1,
+        target_uids: vec![-1],
+        attacked_target_uids: vec![-1],
+        phase: SkillPhase::AfterDamage,
+        skill_slot: 1,
+        is_attack: true,
+        rank: 1,
+        skill_type: 1,
+        effect_tag: 0,
+        assassinate: false,
+        ignore_riposte: false,
+        damage_amount: 1,
+        kill_count: 0,
+        crit_count: 0,
+        guard_break_count: 0,
+        additional_moxie: 0,
+        extra_skill_kind: 0,
+        mode: SkillExecutionMode::Active,
+        teammate_injury_count: 0,
+        teammate_injury_count_not_reset: 0,
+        team_injury_count_round: 0,
+        card_enchants: Vec::new(),
+        buff_additions: Vec::new(),
+    });
+    let ops = emit_all_ops(
+        invocation,
+        &BattleManagers::seeded(&fight),
+        &TargetPool::from_fight(&fight),
+        crate::engine::skill::effect::catalog::global(),
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+        &SkillOpTrigger::Event(event),
+    )
+    .unwrap();
+
+    assert_eq!(buff_grant_targets(&ops, 119381141), [10]);
+}
+
+#[test]
 fn unsupported_behavior_is_skipped_without_aborting_the_skill() {
     crate::test_support::init_config();
     let mut catalog = SkillEffectCatalog::default();
@@ -345,4 +399,68 @@ fn aggregate_buff_count_with_target_999_applies_to_the_action_targets() {
         "present={present:?} events={:?}",
         result.events
     );
+}
+
+#[test]
+fn after_damage_reaction_requires_an_action_for_other_skills() {
+    crate::test_support::init_config();
+    let fight = target_301_fight();
+    let mut invocation: SkillInvocation = SkillRequest {
+        source_uid: 10,
+        skill_id: 119381141,
+    }
+    .into();
+    invocation.condition_key = Some(DefinitionKey::new(208, "None"));
+    invocation.phase = Some(SkillPhase::AfterDamage);
+    invocation.mode = SkillExecutionMode::Active;
+    let action = crate::engine::skill::action::SkillActionEvent {
+        source_uid: 10,
+        card_index: 0,
+        skill_id: 30060151,
+        target_uid: -1,
+        target_uids: vec![-1],
+        attacked_target_uids: vec![-1],
+        phase: SkillPhase::AfterDamage,
+        skill_slot: 1,
+        is_attack: true,
+        rank: 1,
+        skill_type: 1,
+        effect_tag: 0,
+        assassinate: false,
+        ignore_riposte: false,
+        damage_amount: 1,
+        kill_count: 0,
+        crit_count: 0,
+        guard_break_count: 0,
+        additional_moxie: 0,
+        extra_skill_kind: 0,
+        mode: SkillExecutionMode::Nested,
+        teammate_injury_count: 0,
+        teammate_injury_count_not_reset: 0,
+        team_injury_count_round: 0,
+        card_enchants: Vec::new(),
+        buff_additions: Vec::new(),
+    };
+    for (skill_id, mode, grants) in [
+        (30060151, SkillExecutionMode::Nested, false),
+        (30060151, SkillExecutionMode::Active, true),
+        (119381141, SkillExecutionMode::Nested, true),
+    ] {
+        let event = BattleEvent::SkillAction(crate::engine::skill::action::SkillActionEvent {
+            skill_id,
+            mode,
+            ..action.clone()
+        });
+        let ops = emit_all_ops(
+            invocation.clone(),
+            &BattleManagers::seeded(&fight),
+            &TargetPool::from_fight(&fight),
+            crate::engine::skill::effect::catalog::global(),
+            &mut RoundDeterminism::default(),
+            TargetContext::default(),
+            &SkillOpTrigger::Event(event),
+        )
+        .unwrap();
+        assert_eq!(buff_grant_targets(&ops, 119381141).contains(&10), grants);
+    }
 }

@@ -953,6 +953,51 @@ fn resolves_base_device_when_no_exact_skill_level_device_exists() {
 }
 
 #[test]
+fn trial_kit_uses_configured_destiny_exchanges() {
+    crate::test_support::init_config();
+    let catalog = BattleCatalog::new(crate::test_support::game_data());
+    let (j, _) = crate::engine::entity::builder::EntityBuilder::trial(114380004, -2, 2, 1).unwrap();
+    assert_eq!((j.destiny_stone, j.destiny_rank), (Some(309401), Some(4)));
+    assert_eq!(j.skill_group1, [30941111, 30941112, 30941113]);
+    assert_eq!(j.skill_group2, [30941124, 30941125, 30941126]);
+    assert_eq!(j.ex_skill, Some(30941131));
+    assert_eq!(
+        catalog.trial_skill_groups(114380004, 3094),
+        Some(ConfiguredSkillGroups {
+            group1: j.skill_group1,
+            group2: j.skill_group2
+        }),
+    );
+
+    let (cornerstone, _) =
+        crate::engine::entity::builder::EntityBuilder::trial(114380001, -1, 1, 1).unwrap();
+    assert_eq!(cornerstone.skill_group1, [31402111, 31402112, 31402113]);
+    assert_eq!(cornerstone.skill_group2, [31402121, 31402122, 31402123]);
+    assert_eq!(cornerstone.ex_skill, Some(31402141));
+
+    let (isolde, _) =
+        crate::engine::entity::builder::EntityBuilder::trial(114330002, -2, 2, 1).unwrap();
+    let base = crate::engine::entity::skill::Skill::active_skills(
+        catalog.game_data(),
+        3081,
+        crate::engine::entity::stats::configured_rank(
+            catalog.game_data(),
+            3081,
+            isolde.level.unwrap(),
+        ),
+        2,
+    );
+    assert_eq!(
+        (
+            isolde.skill_group1,
+            isolde.skill_group2,
+            isolde.ex_skill.unwrap()
+        ),
+        base
+    );
+}
+
+#[test]
 fn trial_skill_groups_require_exact_positive_identity() {
     crate::test_support::init_config();
     let catalog = BattleCatalog::new(crate::test_support::game_data());
@@ -1015,4 +1060,61 @@ fn rejects_unsupported_lingering_glow_attribute_buff() {
         None
     );
     assert!(lingering_glow_attribute_origin(game_data, "1053#201#5#1000000#10000").is_some());
+}
+
+#[test]
+fn roguelike_career_owns_its_battle_start_side_skills() {
+    crate::test_support::init_config();
+    let game_data = crate::test_support::game_data();
+    let fight = |data: &str| sonettobuf::Fight {
+        custom_data: vec![sonettobuf::CustomData {
+            r#type: Some(sonettobuf::custom_data::CustomDataType::Rouge2 as i32),
+            data: Some(data.to_owned()),
+        }],
+        ..Default::default()
+    };
+
+    assert_eq!(
+        rouge2_entry_rule_skills(
+            game_data,
+            &fight(r#"{"career":4,"attrFinalVal":{"101":5}}"#)
+        )
+        .into_iter()
+        .map(|skill| (skill.owner_uid, skill.skill_id))
+        .collect::<Vec<_>>(),
+        [(0, 108300001), (0, 108300002), (0, 108300003)]
+    );
+    assert_eq!(
+        rouge2_entry_rule_skills(
+            game_data,
+            &fight(r#"{"career":4,"eventType":7,"attrFinalVal":{"101":5}}"#)
+        )
+        .into_iter()
+        .map(|skill| (skill.owner_uid, skill.skill_id))
+        .collect::<Vec<_>>(),
+        [
+            (0, 108300005),
+            (0, 108300001),
+            (0, 108300002),
+            (0, 108300003)
+        ]
+    );
+    assert_eq!(
+        rouge2_entry_rule_skills(
+            game_data,
+            &fight(r#"{"career":4,"eventType":3,"attrFinalVal":{"101":5}}"#)
+        )
+        .into_iter()
+        .map(|skill| skill.skill_id)
+        .collect::<Vec<_>>(),
+        [108300001, 108300002, 108300003]
+    );
+    assert!(
+        rouge2_entry_rule_skills(
+            game_data,
+            &fight(r#"{"career":99,"attrFinalVal":{"101":5}}"#)
+        )
+        .is_empty()
+    );
+    assert!(rouge2_entry_rule_skills(game_data, &sonettobuf::Fight::default()).is_empty());
 }

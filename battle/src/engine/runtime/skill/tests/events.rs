@@ -507,6 +507,7 @@ fn event_conditions_use_the_deterministic_random_stream() {
     determinism.enqueue_condition_random_choices(vec![
         crate::engine::runtime::determinism::ConditionRandomChoice {
             skill_id: 100,
+            source_uid: 10,
             opcode: 552210,
             roll: 499,
         },
@@ -669,7 +670,9 @@ fn event_context_does_not_override_a_reactive_skills_own_target_rule() {
         after_amount: 1,
         act_id: 0,
         act_value: 0,
-        duration_expired: false,
+        replaced_fixed_max_hp: None,
+        replaced_buff_id: None,
+        expiry: crate::engine::event::payload::BuffExpiry::None,
     });
 
     let emission = emit_ops(

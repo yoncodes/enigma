@@ -141,6 +141,25 @@ pub(super) fn last_was_child(manager: &BuffManager, target_uid: i64) -> bool {
     allocator_snapshot(manager, target_uid).last_was_child()
 }
 
+pub(super) fn follows_replaced_halo_copies(
+    manager: &BuffManager,
+    replaced_uids: &[i64],
+    target_uid: i64,
+) -> bool {
+    let Some(last) = allocator_snapshot(manager, target_uid).last_child() else {
+        return false;
+    };
+    replaced_uids.iter().any(|master_uid| {
+        manager
+            .buffs
+            .iter()
+            .filter(|copy| super::layer_halo_carrier_uid(copy) == Some(*master_uid))
+            .filter_map(|copy| copy.buff.uid)
+            .max()
+            == Some(last)
+    })
+}
+
 pub(super) fn children_after_sequence(
     manager: &BuffManager,
     target_uid: i64,

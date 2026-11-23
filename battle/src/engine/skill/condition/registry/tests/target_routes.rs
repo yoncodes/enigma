@@ -76,7 +76,7 @@ fn effect_entity_keeps_its_exact_actor_predicate() {
 }
 
 #[test]
-fn other_ally_extra_action_keeps_its_exact_route() {
+fn skill_extra_type_keeps_its_exact_route() {
     assert_eq!(
         parse(403212, "SkillExtraType", &["1".into()]),
         Some(ParsedConditionKind::ExtraAction {
@@ -92,14 +92,23 @@ fn other_ally_extra_action_keeps_its_exact_route() {
         })
     );
     assert!(find_key(403212, "UseSkill").is_none());
+    assert!(parse(403212, "SkillExtraType", &["3".into()]).is_some());
+    for invalid in [
+        vec![],
+        vec!["0".into()],
+        vec!["1,2".into()],
+        vec!["3".into(), "junk".into()],
+    ] {
+        assert!(parse(403212, "SkillExtraType", &invalid).is_none());
+    }
 }
 
 #[test]
-fn other_ally_action_kind_keeps_its_exact_route() {
+fn action_skill_extra_type_keeps_its_exact_route() {
     assert_eq!(
         parse(626212, "ActionSkillExtraType", &["1,2,3".into()]),
         Some(ParsedConditionKind::ExtraAction {
-            mode: super::super::super::extra::ExtraActionConditionMode::OtherAllyAction,
+            mode: super::super::super::extra::ExtraActionConditionMode::TargetedActor,
             kinds: vec![1, 2, 3],
         })
     );
@@ -111,6 +120,16 @@ fn other_ally_action_kind_keeps_its_exact_route() {
         })
     );
     assert!(find_key(626212, "SkillExtraType").is_none());
+    assert!(parse(626212, "ActionSkillExtraType", &["1,2".into()]).is_some());
+    assert!(parse(626212, "ActionSkillExtraType", &["3".into()]).is_some());
+    for invalid in [
+        vec![],
+        vec!["0".into()],
+        vec!["1".into()],
+        vec!["3".into(), "junk".into()],
+    ] {
+        assert!(parse(626212, "ActionSkillExtraType", &invalid).is_none());
+    }
 }
 
 #[test]
@@ -456,6 +475,7 @@ fn round_start_card_buff_gate_is_a_pure_exact_predicate() {
 
 #[test]
 fn mirror_rule_buff_gates_keep_their_exact_phases() {
+    crate::test_support::init_config();
     assert_eq!(
         parse(57100, "NoBuffId", &["11790011".into()]),
         Some(ParsedConditionKind::BuffId {
@@ -465,11 +485,39 @@ fn mirror_rule_buff_gates_keep_their_exact_phases() {
     );
     assert_eq!(
         find_key(57100, "NoBuffId").map(|definition| definition.role),
-        Some(ConditionRole::Predicate)
+        Some(ConditionRole::Setup {
+            stage: SetupStage::RoundStart,
+            priority: -1,
+        })
     );
+    // Paired with the round interval condition, the interval stays the driver.
+    let paired = crate::engine::skill::rule::route::ConditionRoute::compile(
+        &crate::engine::skill::condition::parse_conditions(
+            config::configs::get(),
+            "45100#2#1&57100#11790011",
+        ),
+    )
+    .unwrap();
     assert_eq!(
-        find_key(57100, "NoBuffId").map(|definition| definition.dependencies),
-        Some(&[EventKind::RoundStart][..])
+        paired.branches[0].driver_key(),
+        Some(crate::engine::skill::rule::DefinitionKey::new(
+            45100,
+            "HeroRoundInterval"
+        ))
+    );
+    // Alone, it schedules its slot at round start, including for side-owned skills.
+    let alone = crate::engine::skill::rule::route::ConditionRoute::compile(
+        &crate::engine::skill::condition::parse_conditions(
+            config::configs::get(),
+            "57100#108300000",
+        ),
+    )
+    .unwrap();
+    assert_eq!(
+        alone.branches[0].driver_key(),
+        Some(crate::engine::skill::rule::DefinitionKey::new(
+            57100, "NoBuffId"
+        ))
     );
 
     assert_eq!(
@@ -757,6 +805,20 @@ fn entity_settlement_buff_id_gate_keeps_owner_scope_and_exact_key() {
         definition.role,
         ConditionRole::Trigger {
             event: EventKind::RoundEndEntitySettlement,
+            phase: None,
+        }
+    );
+    assert_eq!(definition.reaction_frame_target, ReactionFrameTarget::Owner);
+    assert!(definition.filters_behavior_targets);
+}
+
+#[test]
+fn round_end_buff_id_gate_frames_on_its_owner() {
+    let definition = find_key(19302, "HasBuffId").unwrap();
+    assert_eq!(
+        definition.role,
+        ConditionRole::Trigger {
+            event: EventKind::RoundEnd,
             phase: None,
         }
     );
@@ -1086,6 +1148,25 @@ fn buff_type_totals_keep_their_exact_routes() {
     assert_eq!(
         find_key(537203, "HasTypeIdBuffTotalCountMoreThan").map(|definition| definition.role),
         Some(ConditionRole::Predicate)
+    );
+    assert_eq!(
+        parse(
+            537208,
+            "HasTypeIdBuffTotalCountMoreThan",
+            &["109390005".into(), "5".into()],
+        ),
+        Some(ParsedConditionKind::BuffTypeCount {
+            type_ids: vec![109390005],
+            compare: ConditionCompare::GreaterThanOrEqual,
+            threshold: 5,
+        })
+    );
+    assert_eq!(
+        find_key(537208, "HasTypeIdBuffTotalCountMoreThan").map(|definition| definition.role),
+        Some(ConditionRole::Trigger {
+            event: EventKind::SkillAction,
+            phase: Some(SkillPhase::AfterDamage),
+        })
     );
     assert_eq!(
         parse(

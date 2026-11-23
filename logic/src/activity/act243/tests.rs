@@ -76,12 +76,14 @@ async fn report_preserves_bests_and_claims_only_new_star_rewards() {
         report_episode(
             &db,
             71,
-            activity_id,
-            second.episode_id,
-            0,
-            1,
-            900,
-            "100".into(),
+            Act243EpisodeReport {
+                activity_id,
+                episode_id: second.episode_id,
+                score: 0,
+                star: 1,
+                time_ms: 900,
+                record: "100".into(),
+            },
         )
         .await
         .is_err()
@@ -98,12 +100,14 @@ async fn report_preserves_bests_and_claims_only_new_star_rewards() {
     let report = report_episode(
         &db,
         71,
-        activity_id,
-        first.episode_id,
-        100,
-        2,
-        900,
-        "110".into(),
+        Act243EpisodeReport {
+            activity_id,
+            episode_id: first.episode_id,
+            score: 100,
+            star: 2,
+            time_ms: 900,
+            record: "110".into(),
+        },
     )
     .await
     .unwrap();
@@ -118,12 +122,14 @@ async fn report_preserves_bests_and_claims_only_new_star_rewards() {
     let report = report_episode(
         &db,
         71,
-        activity_id,
-        first.episode_id,
-        50,
-        1,
-        1200,
-        "100".into(),
+        Act243EpisodeReport {
+            activity_id,
+            episode_id: first.episode_id,
+            score: 50,
+            star: 1,
+            time_ms: 1200,
+            record: "100".into(),
+        },
     )
     .await
     .unwrap();
@@ -142,12 +148,14 @@ async fn report_preserves_bests_and_claims_only_new_star_rewards() {
     let report = report_episode(
         &db,
         71,
-        activity_id,
-        first.episode_id,
-        0,
-        1,
-        800,
-        "100".into(),
+        Act243EpisodeReport {
+            activity_id,
+            episode_id: first.episode_id,
+            score: 0,
+            star: 1,
+            time_ms: 800,
+            record: "100".into(),
+        },
     )
     .await
     .unwrap();
@@ -159,12 +167,14 @@ async fn report_preserves_bests_and_claims_only_new_star_rewards() {
     let report = report_episode(
         &db,
         71,
-        activity_id,
-        first.episode_id,
-        0,
-        2,
-        700,
-        "101".into(),
+        Act243EpisodeReport {
+            activity_id,
+            episode_id: first.episode_id,
+            score: 0,
+            star: 2,
+            time_ms: 700,
+            record: "101".into(),
+        },
     )
     .await
     .unwrap();

@@ -481,6 +481,7 @@ fn max_hp_adjustment_mutates_current_and_max_without_hp_loss() {
             delta: 20,
             after_current: 70,
             after_max: 120,
+            replaced_removal: false,
         })
     );
     assert!(changes.events().is_empty());

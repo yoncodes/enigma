@@ -9,7 +9,7 @@ fn queued_death_updates_kill_task_before_dead() {
             entitys: vec![FightEntityInfo {
                 uid: Some(-1),
                 model_id: Some(116_370_081),
-                current_hp: Some(0),
+                current_hp: Some(1),
                 ..Default::default()
             }],
             ..Default::default()
@@ -24,6 +24,21 @@ fn queued_death_updates_kill_task_before_dead() {
     let mut managers = BattleManagers::seeded_with_catalog(catalog, &fight).unwrap();
     let effects = SkillEffectCatalog::from_fight(config::configs::get(), &fight);
     let mut determinism = RoundDeterminism::default();
+    use crate::engine::manager::hp::{HpCommand, HpKill};
+    let death = managers
+        .hp
+        .execute_command(HpCommand::Kill(HpKill {
+            origin: CommandOrigin {
+                domain: RuleDomain::Lifecycle,
+                key: DefinitionKey::new(0, "TestDeath"),
+            },
+            source_uid: 10,
+            target_uid: -1,
+            config_effect: 1,
+        }))
+        .unwrap()
+        .death
+        .unwrap();
 
     let result = run_command_group(
         &mut managers,
@@ -31,12 +46,7 @@ fn queued_death_updates_kill_task_before_dead() {
         &effects,
         &mut determinism,
         TargetContext::default(),
-        [RuleOp::DeathSettlement(
-            crate::engine::manager::hp::DeathTransition {
-                source_uid: 10,
-                target_uid: -1,
-            },
-        )],
+        [RuleOp::DeathSettlement(death)],
     )
     .unwrap();
 

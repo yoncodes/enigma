@@ -11,6 +11,8 @@ use std::collections::BTreeMap;
 
 mod schedule;
 
+const FINISHED_STEP: i32 = -1;
+
 pub struct StoryUpdate {
     pub reply: UpdateStoryReply,
     pub finished_story_id: Option<i32>,
@@ -54,7 +56,7 @@ impl StoryManager {
         step_id: i32,
         favor: i32,
     ) -> Result<StoryUpdate, AppError> {
-        if step_id == -1 {
+        if step_id == FINISHED_STEP {
             stories::finish_story(db, self.player_id, story_id).await?;
             return Ok(StoryUpdate {
                 reply: UpdateStoryReply {},

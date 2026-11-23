@@ -250,13 +250,14 @@ fn assassination_psychubes_wait_for_synchronization_damage() {
     );
 
     let synchronization = crate::engine::skill::action::SkillExecutionMode::Synchronization;
-    assert!(policy.rejects_action(true, synchronization, PassiveSourceKind::Psychube, 0,));
-    assert!(!policy.rejects_action(true, synchronization, PassiveSourceKind::Psychube, 1,));
-    assert!(!policy.rejects_action(true, synchronization, PassiveSourceKind::Insight, 0,));
+    assert!(policy.rejects_action(true, synchronization, PassiveSourceKind::Psychube, 0, false));
+    assert!(!policy.rejects_action(true, synchronization, PassiveSourceKind::Psychube, 1, false));
+    assert!(!policy.rejects_action(true, synchronization, PassiveSourceKind::Insight, 0, false));
     assert!(!policy.rejects_action(
         true,
         crate::engine::skill::action::SkillExecutionMode::Active,
         PassiveSourceKind::Psychube,
         0,
+        false
     ));
 }

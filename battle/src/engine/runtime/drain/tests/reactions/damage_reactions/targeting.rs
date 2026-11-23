@@ -95,7 +95,9 @@ fn side_state_reactions_anchor_their_frame_to_the_applier() {
         after_amount: 0,
         act_id: 0,
         act_value: 0,
-        duration_expired: true,
+        replaced_fixed_max_hp: None,
+        replaced_buff_id: None,
+        expiry: crate::engine::event::payload::BuffExpiry::Forced,
     });
 
     assert_eq!(reaction_counterparty(&pool, &event, -1), Some(-1));
@@ -143,7 +145,7 @@ fn attack_consumption_waits_for_hit_reactions() {
                 uid: Some(10),
                 buffs: vec![BuffInfo {
                     uid: Some(30),
-                    buff_id: Some(430111),
+                    buff_id: Some(301),
                     count: Some(1),
                     from_uid: Some(10),
                     ..Default::default()
