@@ -24,6 +24,7 @@ use crate::engine::{
 };
 
 mod conduit;
+mod sovereign;
 
 #[derive(Debug)]
 pub(crate) enum AutoBattleError {
@@ -47,6 +48,7 @@ struct Candidate {
     free: bool,
     ultimate: bool,
     fractal_attack: bool,
+    sovereign_charge: bool,
     conduit_priority: conduit::Priority,
     opening_skill_two: bool,
     first_for_owner: bool,
@@ -725,6 +727,7 @@ fn best_candidate(
                     && !device
                     && damage_rate > 0
                     && has_enchant_type(card, EnchantedType::Lorenz),
+                sovereign_charge: sovereign::is_charge(card, skill_id, catalog),
                 conduit_priority: conduit::Priority::new(
                     energy,
                     device,
@@ -745,11 +748,14 @@ fn best_candidate(
     let has_paid_ultimate = candidates
         .iter()
         .any(|candidate| candidate.ultimate && !candidate.free);
+    let sovereign_order = sovereign::Order::new(&candidates);
     Ok(candidates.into_iter().max_by_key(|candidate| {
         // Official auto casts ready ultimates left to right.
         (
-            candidate.free && !(has_paid_ultimate && candidate.fractal_attack),
-            candidate.ultimate,
+            candidate.free
+                && !(has_paid_ultimate && candidate.fractal_attack)
+                && !sovereign_order.holds_charge(candidate),
+            candidate.ultimate && !sovereign_order.holds_ultimate(candidate),
             candidate.support == Support::Urgent,
             candidate.conduit_priority,
             // Give every hero a card before any hero plays a second one when utility is equal.

@@ -11,6 +11,7 @@ use sonettobuf::{AutoRoundRequest, CardInfo, FightDeviceAreaInfo, HeroAttribute}
 
 mod conduit;
 mod record_skill;
+mod sovereign;
 mod team_cards;
 
 fn auto_runtime() -> BattleRuntime {
