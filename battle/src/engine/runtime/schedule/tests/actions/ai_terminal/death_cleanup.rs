@@ -26,6 +26,22 @@ fn version_seven_card_cleanup_follows_deferred_round_start_settlement() {
     };
     let pool = TargetPool::from_fight(&fight);
     let mut managers = BattleManagers::seeded(&fight);
+    let summon = managers
+        .execute_entity(crate::engine::manager::entity::EntityCommand {
+            origin: CommandOrigin {
+                domain: RuleDomain::Behavior,
+                key: DefinitionKey::new(60008, "Summon"),
+            },
+            source_uid: -1,
+            target_uid: -1,
+            operation: crate::engine::manager::entity::EntityOperation::SummonCombatant {
+                model_id: 30111002,
+                position: 2,
+            },
+        })
+        .unwrap();
+    let summon_uid = summon.entity.uid.unwrap();
+    assert!(pool.entity(summon_uid).is_none());
     managers
         .execute_card(CardCommand::SetAiQueue(
             crate::engine::manager::card::CardSetAiQueue {
@@ -33,11 +49,14 @@ fn version_seven_card_cleanup_follows_deferred_round_start_settlement() {
                     domain: RuleDomain::Lifecycle,
                     key: DefinitionKey::new(0, "TestAiQueue"),
                 },
-                cards: vec![CardInfo {
-                    uid: Some(-1),
-                    skill_id: Some(100),
-                    ..Default::default()
-                }],
+                cards: [-1, summon_uid]
+                    .into_iter()
+                    .map(|uid| CardInfo {
+                        uid: Some(uid),
+                        skill_id: Some(100),
+                        ..Default::default()
+                    })
+                    .collect(),
             },
         ))
         .unwrap();
@@ -56,6 +75,9 @@ fn version_seven_card_cleanup_follows_deferred_round_start_settlement() {
     }];
     slot.compiled_route = ConditionRoute::compile(&slot.conditions);
     let mut catalog = SkillEffectCatalog::default();
+    managers
+        .catalog()
+        .extend_skill_entities(&mut catalog, [&summon.entity]);
     catalog.insert(ParsedSkillEffect {
         skill_id: 100,
         slots: vec![slot],
@@ -82,7 +104,7 @@ fn version_seven_card_cleanup_follows_deferred_round_start_settlement() {
     assert!(position(RoundPhase::RoundStartSettlement) < position(RoundPhase::EntityCardCleanup));
     assert!(position(RoundPhase::RoundStartSync) < position(RoundPhase::EntityCardCleanup));
     assert_eq!(managers.hp.current(-1), 0);
-    assert!(managers.card.ai_queue().is_empty());
+    assert_eq!(managers.hp.current(summon_uid), 0);
 
     let steps = crate::engine::packet::timeline::project(&round.frames).unwrap();
     assert!(steps.iter().any(|step| skill_contains_effect(
@@ -107,6 +129,12 @@ fn version_seven_card_cleanup_follows_deferred_round_start_settlement() {
             )
         })
         .expect("dead defender cards are cleaned in a standalone step");
+    assert!(contains_effect(
+        &steps[cleanup],
+        sonettobuf::effect_type_enum::EffectType::Removeentitycards as i32,
+        summon_uid,
+    ));
+    assert!(managers.card.ai_queue().is_empty());
     let deck_count = steps
         .iter()
         .position(|step| {
