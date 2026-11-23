@@ -116,7 +116,7 @@ pub fn run_action_with_cost(
     action_cost: Option<crate::engine::manager::ex_point::ExPointCommand>,
     invocation: crate::engine::skill::action::SkillInvocation,
 ) -> Result<DrainResult, DrainError> {
-    run_action_with_cleanup_owner(
+    run_root_action(
         managers,
         pool,
         catalog,
@@ -128,7 +128,7 @@ pub fn run_action_with_cost(
             composition: Vec::new(),
         }),
         invocation,
-        DefenderCardCleanupOwner::DeathAction,
+        RootAction::Standalone,
     )
 }
 
@@ -143,7 +143,7 @@ pub fn run_round_action(
     payment: Option<crate::engine::skill::action::ActionPayment>,
     invocation: crate::engine::skill::action::SkillInvocation,
 ) -> Result<DrainResult, DrainError> {
-    run_action_with_cleanup_owner(
+    run_root_action(
         managers,
         pool,
         catalog,
@@ -152,12 +152,27 @@ pub fn run_round_action(
         prelude,
         payment,
         invocation,
-        DefenderCardCleanupOwner::ScheduledRoundPhase,
+        RootAction::Round,
     )
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum RootAction {
+    Standalone,
+    Round,
+}
+
+impl RootAction {
+    fn defender_cleanup(self) -> DefenderCardCleanupOwner {
+        match self {
+            Self::Standalone => DefenderCardCleanupOwner::DeathAction,
+            Self::Round => DefenderCardCleanupOwner::ScheduledRoundPhase,
+        }
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
-fn run_action_with_cleanup_owner(
+fn run_root_action(
     managers: &mut BattleManagers,
     pool: &TargetPool,
     catalog: &SkillEffectCatalog,
@@ -166,7 +181,7 @@ fn run_action_with_cleanup_owner(
     prelude: impl IntoIterator<Item = RuleOp>,
     payment: Option<crate::engine::skill::action::ActionPayment>,
     invocation: crate::engine::skill::action::SkillInvocation,
-    cleanup_owner: DefenderCardCleanupOwner,
+    root_action: RootAction,
 ) -> Result<DrainResult, DrainError> {
     let current_pool = pool.runtime_view(managers);
     if attack_has_no_target(
@@ -178,6 +193,15 @@ fn run_action_with_cleanup_owner(
         context,
     ) {
         return Ok(DrainResult::default());
+    }
+    let source_uid = invocation.plan.source_uid;
+    if root_action == RootAction::Round
+        && invocation.card_index > 0
+        && current_pool.team_type(source_uid) == Some(2)
+    {
+        managers
+            .outgoing_loss_rate
+            .begin(source_uid, &managers.buff, &managers.hp);
     }
     let mut frames = Vec::new();
     let root = push_root(
@@ -225,7 +249,7 @@ fn run_action_with_cleanup_owner(
         context,
         &mut queue,
         frames,
-        cleanup_owner,
+        root_action.defender_cleanup(),
     )?;
     append_fight_task_update(&mut result, managers);
     Ok(result)
