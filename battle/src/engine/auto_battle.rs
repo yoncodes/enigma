@@ -25,6 +25,7 @@ use crate::engine::{
 
 mod conduit;
 mod defense_setup;
+mod queue_setup;
 mod sovereign;
 mod tuning;
 
@@ -200,14 +201,15 @@ fn plan_cards_inner(
         return prefix.map(|_| None);
     }
     let live_pool = pool.runtime_view(managers);
-    let basic_opening = fight.cur_round == Some(1)
-        && request.opers.is_empty()
+    let ordinary_queue = request.opers.is_empty()
         && planned_devices.is_empty()
         && fight.attacker.as_ref().is_some_and(|team| {
             team.device_area
                 .as_ref()
                 .is_none_or(|area| area.devices.is_empty() && area.powers.is_empty())
-        })
+        });
+    let basic_opening = fight.cur_round == Some(1)
+        && ordinary_queue
         && cards.visible_cards().all(|card| {
             !card.temp_card.unwrap_or_default()
                 && card_choice_options(card, managers).is_empty()
@@ -227,6 +229,7 @@ fn plan_cards_inner(
     )
     .into_iter()
     .collect::<Vec<_>>();
+    let queue_setup = fight.version == Some(7) && ordinary_queue;
     let mut opening_setup = basic_opening
         && fight.version == Some(7)
         && opers.is_empty()
@@ -260,6 +263,7 @@ fn plan_cards_inner(
             &mut reported_unsupported,
             basic_opening && opers.is_empty(),
             opening_setup && !opers.is_empty(),
+            queue_setup,
         )?
         else {
             break;
@@ -586,6 +590,7 @@ fn best_candidate(
     reported_unsupported: &mut HashSet<i32>,
     opening: bool,
     opening_after_setup: bool,
+    queue_setup: bool,
 ) -> Result<Option<Candidate>, AutoBattleError> {
     let candidates = cards
         .visible_cards()
@@ -807,8 +812,7 @@ fn best_candidate(
     };
     let best = candidates.iter().max_by_key(|candidate| rank(candidate));
     if let Some(best) = best.filter(|candidate| {
-        opening_after_setup
-            && candidate.first_for_owner
+        candidate.first_for_owner
             && !candidate.free
             && candidate.support == Support::None
             && candidate.strength.is_some_and(|(rate, _)| rate > 0)
@@ -818,6 +822,29 @@ fn best_candidate(
                 .iter()
                 .filter(|candidate| candidate.defense_setup)
                 .max_by_key(|candidate| rank(candidate))
+                .or_else(|| {
+                    let equal_rank_paid = best.strength.is_some_and(|(_, rank)| rank == 1)
+                        && cards.visible_card(best.card_index).is_some_and(|card| {
+                            !card.temp_card.unwrap_or_default()
+                                && card.energy.unwrap_or_default() == 0
+                        });
+                    if !queue_setup || !equal_rank_paid {
+                        return None;
+                    }
+                    candidates
+                        .iter()
+                        .filter(|candidate| {
+                            queue_setup::available(
+                                candidate,
+                                cards,
+                                managers,
+                                catalog,
+                                live_pool,
+                                determinism,
+                            )
+                        })
+                        .max_by_key(|candidate| rank(candidate))
+                })
                 .unwrap_or(best)
                 .clone(),
         ));

@@ -30,11 +30,7 @@ impl BehaviorHandler for Handler {
         }
 
         let catalog = context.managers.catalog();
-        let is_match = |skill_id| {
-            catalog.skill_rank(skill_id) > 0
-                && !catalog.skill_is_big(skill_id)
-                && catalog.skill_effect_tag(skill_id) == *tag
-        };
+        let is_match = |skill_id| matches_card(catalog, skill_id, *tag);
         let matching_count = cards
             .iter()
             .filter_map(|card| card.skill_id)
@@ -74,6 +70,12 @@ impl BehaviorHandler for Handler {
             },
         ))])
     }
+}
+
+pub(crate) fn matches_card(catalog: crate::catalog::BattleCatalog, skill: i32, tag: i32) -> bool {
+    catalog.skill_rank(skill) > 0
+        && !catalog.skill_is_big(skill)
+        && catalog.skill_effect_tag(skill) == tag
 }
 
 pub(super) fn supports_arguments(behavior: &ParsedBehavior) -> bool {

@@ -10,6 +10,7 @@ use crate::engine::{
 use sonettobuf::{AutoRoundRequest, CardInfo, FightDeviceAreaInfo, HeroAttribute};
 
 mod conduit;
+mod queue_setup;
 mod record_skill;
 mod sovereign;
 mod team_cards;

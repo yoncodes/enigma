@@ -648,6 +648,10 @@ impl CardManager {
         self.refilled.push(card);
     }
 
+    pub(crate) fn next_rank(&self, owner: i64, skill: i32) -> Option<i32> {
+        self.rank_up.get(&(owner, skill)).copied()
+    }
+
     pub fn rank_up_played(&mut self, card_index: i32, levels: i32, rewritten: bool) -> Option<i32> {
         let played = self
             .played
@@ -656,7 +660,7 @@ impl CardManager {
         let owner_uid = played.caster_uid;
         let mut skill_id = played.skill_id;
         for _ in 0..levels.max(0) {
-            let Some(next) = self.rank_up.get(&(owner_uid, skill_id)).copied() else {
+            let Some(next) = self.next_rank(owner_uid, skill_id) else {
                 break;
             };
             skill_id = next;
