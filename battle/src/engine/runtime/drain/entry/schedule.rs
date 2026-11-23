@@ -50,6 +50,7 @@ pub fn run_command_group_as(
                 | RuleOp::PaidSkillStarted(_)
                 | RuleOp::BuffFeatureMarker { .. }
                 | RuleOp::EffectMarker { .. }
+                | RuleOp::CopyPreview { .. }
                 | RuleOp::SceneChange { .. }
                 | RuleOp::BuffActTrigger(_)
                 | RuleOp::BuffActInfoMarker(_)

@@ -59,10 +59,30 @@ fn check_recording(own_attack: bool, recorded_skill: i32) {
         .unwrap();
     assert_eq!(ultimate.to_id, Some(-2));
     let record = format!("3,{recorded_skill},10");
-    assert!(ultimate.act_effect.iter().any(|effect| {
-        effect.target_id == Some(10)
-            && effect.buff_act_info.as_ref().is_some_and(|info| {
-                info.act_id == Some(1104) && info.str_param.as_deref() == Some(record.as_str())
-            })
-    }));
+    let recording = ultimate
+        .act_effect
+        .iter()
+        .position(|effect| {
+            effect.target_id == Some(10)
+                && effect.buff_act_info.as_ref().is_some_and(|info| {
+                    info.act_id == Some(1104) && info.str_param.as_deref() == Some(record.as_str())
+                })
+        })
+        .expect("recorded incantation");
+    let previews = ultimate
+        .act_effect
+        .iter()
+        .enumerate()
+        .filter(|(_, effect)| {
+            effect.effect_type
+                == Some(sonettobuf::effect_type_enum::EffectType::Clienteffect as i32)
+        })
+        .collect::<Vec<_>>();
+    let [(index, preview)] = previews.as_slice() else {
+        panic!("expected one copy preview");
+    };
+    assert!(recording < *index);
+    assert_eq!(preview.target_id, Some(10));
+    assert_eq!(preview.effect_num, Some(5));
+    assert_eq!(preview.config_effect, Some(0));
 }

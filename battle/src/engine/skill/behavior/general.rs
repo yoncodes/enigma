@@ -8,17 +8,6 @@ use crate::engine::{
 };
 
 pub fn rule_op(target_uid: i64, behavior: &ParsedBehavior) -> Option<RuleOp> {
-    if behavior.spec.kind == BehaviorKind::ClientEffect {
-        return Some(RuleOp::EffectMarker {
-            target_uid,
-            effect_type: sonettobuf::effect_type_enum::EffectType::Clienteffect as i32,
-            effect_num: behavior.arg(0)?,
-            effect_num1: None,
-            config_effect: behavior.spec.key.opcode,
-            reserve_id: None,
-            reserve_str: None,
-        });
-    }
     if behavior.spec.kind != BehaviorKind::NotifyUpgradeHero {
         return None;
     }

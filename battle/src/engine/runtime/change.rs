@@ -25,6 +25,7 @@ pub enum BattleChange {
     BuffFanout(Box<BuffFanoutResult>),
     BuffFeatureMarker(crate::engine::manager::buff::BuffMarkerResult),
     EffectMarker(crate::engine::skill::rule::output::EffectMarker),
+    CopyPreview { target_uid: i64 },
     SceneChange { scene_id: i32 },
     BuffActTrigger(crate::engine::manager::buff::BuffActTriggerResult),
     BuffActInfoMarker(crate::engine::manager::buff::BuffActInfoMarkerResult),

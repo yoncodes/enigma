@@ -157,6 +157,9 @@ pub enum RuleOp {
         reserve_id: Option<i64>,
         reserve_str: Option<String>,
     },
+    CopyPreview {
+        target_uid: i64,
+    },
     SceneChange {
         scene_id: i32,
     },

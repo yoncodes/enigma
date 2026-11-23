@@ -64,6 +64,15 @@ impl EffectPacket {
         }
     }
 
+    pub fn copy_preview(target_uid: i64) -> ActEffect {
+        ActEffect {
+            target_id: Some(target_uid),
+            effect_type: Some(EffectType::Clienteffect as i32),
+            effect_num: Some(crate::engine::skill::behavior::client_effect::COPY_PREVIEW),
+            ..Default::default()
+        }
+    }
+
     pub fn scene_change(scene_id: i32) -> [ActEffect; 2] {
         [
             ActEffect {

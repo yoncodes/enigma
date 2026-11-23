@@ -811,7 +811,7 @@ behavior_definitions! {
     [60037] "NotifyUpgradeHero" => super::general::Handler, NotifyUpgradeHero, Immediate, destination, super::general::supports_notify_upgrade;
     [60092] "NotifyHeroContract" => super::contract::Handler, NotifyHeroContract, Immediate, destination;
     [60093] "ContractEndClearBuff" => super::contract::EndHandler, ContractEndClearBuff, Immediate, destination;
-    [60198] "ClientEffect" => super::general::Handler, ClientEffect, Immediate, destination, arguments::at_least_one;
+    [60198] "ClientEffect" => super::client_effect::Handler, ClientEffect, Immediate, destination, arguments::at_least_one;
     [60304] "UnnamedClientEffect" => super::strengthen::Handler, UnnamedClientEffect, Immediate, destination;
     [60249] "AddMaxRound" => super::general::AddMaxRoundHandler, AddMaxRound, Immediate, destination;
     [60016] "AddIndicator" => super::general::AddIndicatorHandler, AddIndicator, Immediate, destination;

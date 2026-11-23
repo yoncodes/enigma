@@ -580,6 +580,7 @@ fn drain_queue_with_deferred(
             | RuleOp::PaidSkillStarted(_)
             | RuleOp::BuffFeatureMarker { .. }
             | RuleOp::EffectMarker { .. }
+            | RuleOp::CopyPreview { .. }
             | RuleOp::SceneChange { .. }
             | RuleOp::BuffActTrigger(_)
             | RuleOp::BuffActInfoMarker(_)

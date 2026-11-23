@@ -390,6 +390,7 @@ fn project_change(
         },
         BattleChange::BuffFeatureMarker(marker) => vec![EffectPacket::buff_marker(marker)],
         BattleChange::EffectMarker(marker) => vec![EffectPacket::effect_marker(marker.clone())],
+        BattleChange::CopyPreview { target_uid } => vec![EffectPacket::copy_preview(*target_uid)],
         BattleChange::SceneChange { scene_id } => EffectPacket::scene_change(*scene_id).to_vec(),
         BattleChange::Contract(crate::engine::manager::contract::ContractChange::Offered {
             origin,
