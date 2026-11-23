@@ -1,10 +1,8 @@
 use super::*;
 mod post_action;
 
-pub use post_action::{
-    replacement_count as post_action_replacement_count, run_post_action_refill,
-    target_hand_len as post_action_target_hand_len,
-};
+pub(crate) use post_action::RefillSlots;
+pub use post_action::run_post_action_refill;
 
 pub(super) struct OpeningRefillSeed {
     pub(super) draws: Vec<sonettobuf::CardInfo>,

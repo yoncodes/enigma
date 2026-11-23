@@ -402,7 +402,7 @@ fn aggregate_buff_count_with_target_999_applies_to_the_action_targets() {
 }
 
 #[test]
-fn another_skills_after_damage_reaction_skips_non_action_casts() {
+fn after_damage_reaction_requires_an_action_for_other_skills() {
     crate::test_support::init_config();
     let fight = target_301_fight();
     let mut invocation: SkillInvocation = SkillRequest {
@@ -413,7 +413,7 @@ fn another_skills_after_damage_reaction_skips_non_action_casts() {
     invocation.condition_key = Some(DefinitionKey::new(208, "None"));
     invocation.phase = Some(SkillPhase::AfterDamage);
     invocation.mode = SkillExecutionMode::Active;
-    let event = BattleEvent::SkillAction(crate::engine::skill::action::SkillActionEvent {
+    let action = crate::engine::skill::action::SkillActionEvent {
         source_uid: 10,
         card_index: 0,
         skill_id: 30060151,
@@ -440,17 +440,27 @@ fn another_skills_after_damage_reaction_skips_non_action_casts() {
         team_injury_count_round: 0,
         card_enchants: Vec::new(),
         buff_additions: Vec::new(),
-    });
-    let ops = emit_all_ops(
-        invocation,
-        &BattleManagers::seeded(&fight),
-        &TargetPool::from_fight(&fight),
-        crate::engine::skill::effect::catalog::global(),
-        &mut RoundDeterminism::default(),
-        TargetContext::default(),
-        &SkillOpTrigger::Event(event),
-    )
-    .unwrap();
-
-    assert!(buff_grant_targets(&ops, 119381141).is_empty());
+    };
+    for (skill_id, mode, grants) in [
+        (30060151, SkillExecutionMode::Nested, false),
+        (30060151, SkillExecutionMode::Active, true),
+        (119381141, SkillExecutionMode::Nested, true),
+    ] {
+        let event = BattleEvent::SkillAction(crate::engine::skill::action::SkillActionEvent {
+            skill_id,
+            mode,
+            ..action.clone()
+        });
+        let ops = emit_all_ops(
+            invocation.clone(),
+            &BattleManagers::seeded(&fight),
+            &TargetPool::from_fight(&fight),
+            crate::engine::skill::effect::catalog::global(),
+            &mut RoundDeterminism::default(),
+            TargetContext::default(),
+            &SkillOpTrigger::Event(event),
+        )
+        .unwrap();
+        assert_eq!(buff_grant_targets(&ops, 119381141).contains(&10), grants);
+    }
 }

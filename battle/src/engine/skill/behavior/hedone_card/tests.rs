@@ -1,3 +1,4 @@
+use crate::test_support::effects;
 use sonettobuf::{ActEffect, Fight, FightEntityInfo, FightTeam, effect_type_enum::EffectType};
 
 use crate::engine::{
@@ -16,17 +17,6 @@ use crate::engine::{
 };
 
 use super::*;
-
-fn effects<'a>(steps: &'a [sonettobuf::FightStep], output: &mut Vec<&'a ActEffect>) {
-    for step in steps {
-        for effect in &step.act_effect {
-            output.push(effect);
-            if let Some(child) = &effect.fight_step {
-                effects(std::slice::from_ref(child), output);
-            }
-        }
-    }
-}
 
 fn tagged(card: &sonettobuf::CardInfo, key: i32) -> bool {
     card.extra_infos

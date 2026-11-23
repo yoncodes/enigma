@@ -52,6 +52,7 @@ pub(crate) struct DispatchSelection<'a> {
     pub completing_skill: Option<(i64, i32)>,
     pub lane: Option<ReactionLane>,
     pub timing: crate::engine::event::subscription::ReactionTiming,
+    pub hit_passives_pending: bool,
 }
 
 pub(crate) type ReactionMultiplicityKey = (
@@ -69,7 +70,8 @@ pub(crate) type OncePerTargetKey = (
 );
 
 pub(crate) struct DispatchMultiplicity<'a> {
-    pub once_per_target: &'a mut std::collections::HashSet<OncePerTargetKey>,
+    pub once_per_batch_target: &'a mut std::collections::HashSet<OncePerTargetKey>,
+    pub once_per_action_target: &'a mut std::collections::HashSet<OncePerTargetKey>,
     pub once_per_event_batch: &'a mut std::collections::HashSet<ReactionMultiplicityKey>,
     pub once_per_action: &'a mut std::collections::HashSet<ReactionMultiplicityKey>,
     pub event_batch_id: u64,
@@ -276,7 +278,21 @@ pub(crate) fn dispatch_selected_event(
     selection: DispatchSelection<'_>,
     multiplicity: Option<&mut DispatchMultiplicity<'_>>,
 ) -> Result<DispatchBatch, SubscriberError> {
-    let mut subscribers = if let Some(owner_uids) = selection.owner_uids {
+    let mut subscribers = if let BattleEvent::SkillEffectsPrepared(action) = event {
+        if selection
+            .owner_uids
+            .is_some_and(|owners| !owners.contains(&action.source_uid))
+        {
+            return Ok(DispatchBatch::default());
+        }
+        subscriber::for_compiled_owner_skill_event(
+            pool,
+            managers,
+            catalog,
+            EventKind::SkillEffectsPrepared,
+            action.source_uid,
+        )?
+    } else if let Some(owner_uids) = selection.owner_uids {
         subscriber::for_compiled_owner_events(
             pool,
             managers,
@@ -312,6 +328,7 @@ pub(crate) fn dispatch_selected_event(
         selection.timing,
         event,
         matches!(selection.lane, Some(ReactionLane::Skills)),
+        selection.hit_passives_pending,
     );
     Ok(if let Some(multiplicity) = multiplicity {
         dispatch_subscribers_with_multiplicity(
@@ -400,7 +417,7 @@ pub(crate) fn dispatch_selected_skill_event(
     } else {
         retain_publication(&mut subscribers, selection.publication);
     }
-    retain_reaction_timing(&mut subscribers, selection.timing, event, false);
+    retain_reaction_timing(&mut subscribers, selection.timing, event, false, false);
     Ok(dispatch_subscribers(
         subscribers,
         pool,
@@ -489,29 +506,51 @@ fn dispatch_subscribers_with_multiplicity(
             }
         }
     });
-    subscribers.buff_acts.retain(|subscriber| {
-        let BattleEvent::Hit(hit) = event else {
-            return true;
-        };
-        let Some(definition) =
+    let BattleEvent::Hit(hit) = event else {
+        return output_passes(subscribers, managers, pool, catalog, determinism, event);
+    };
+    let claim = |subscriber: &BuffActSubscriber| {
+        use buff_act::registry::RuntimeEventMultiplicity;
+        let policy =
             buff_act::registry::find(subscriber.key.definition.opcode, &subscriber.act_type)
-        else {
-            return true;
-        };
-        if definition.runtime.event_multiplicity
-            != buff_act::registry::RuntimeEventMultiplicity::OncePerActionTarget
-        {
-            return true;
-        }
-        multiplicity.once_per_target.insert((
+                .map_or(RuntimeEventMultiplicity::EveryEvent, |definition| {
+                    definition.runtime.event_multiplicity
+                });
+        let key = (
             subscriber.owner_uid,
             subscriber.buff_uid,
             subscriber.key.definition,
             hit.source_uid,
             hit.target_uid,
-        ))
-    });
-    output_passes(subscribers, managers, pool, catalog, determinism, event)
+        );
+        (policy, key)
+    };
+    use buff_act::registry::RuntimeEventMultiplicity;
+    subscribers
+        .buff_acts
+        .retain(|subscriber| match claim(subscriber) {
+            (RuntimeEventMultiplicity::EveryEvent, _) => true,
+            (RuntimeEventMultiplicity::OncePerActionTarget, key) => {
+                !multiplicity.once_per_action_target.contains(&key)
+            }
+            (RuntimeEventMultiplicity::OncePerBatchTarget, key) => {
+                multiplicity.once_per_batch_target.insert(key)
+            }
+        });
+    let mut batch = output_passes(subscribers, managers, pool, catalog, determinism, event);
+    let claims = &mut multiplicity.once_per_action_target;
+    for dispatches in std::iter::once(&mut batch.buff_acts)
+        .chain(batch.following.iter_mut().map(|pass| &mut pass.buff_acts))
+    {
+        dispatches.retain(|(subscriber, output)| {
+            matches!(output, Ok(Some(ops)) if !ops.is_empty())
+                .then(|| claim(subscriber))
+                .is_none_or(|(policy, key)| {
+                    policy != RuntimeEventMultiplicity::OncePerActionTarget || claims.insert(key)
+                })
+        });
+    }
+    batch
 }
 
 fn retain_observing_subscribers(
@@ -836,6 +875,7 @@ fn retain_reaction_timing(
     timing: crate::engine::event::subscription::ReactionTiming,
     event: &BattleEvent,
     delay_shared_hit: bool,
+    hit_passives_pending: bool,
 ) {
     use crate::engine::event::subscription::ReactionTiming;
 
@@ -844,6 +884,10 @@ fn retain_reaction_timing(
     let selected = |declared| match declared {
         ReactionTiming::AfterSharedHit if shared_hit => timing == ReactionTiming::AfterSharedHit,
         ReactionTiming::AfterSharedHit => timing == ReactionTiming::Immediate,
+        ReactionTiming::AfterHitPassives if hit_passives_pending => {
+            timing == ReactionTiming::BeforeAfterHitObservers
+        }
+        ReactionTiming::AfterHitPassives => timing == ReactionTiming::Immediate,
         declared => declared == timing,
     };
     subscribers

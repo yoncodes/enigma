@@ -310,6 +310,7 @@ pub enum BuffActKind {
     MasterHalo,
     MockTaunt,
     Petrified,
+    PassiveSkillInvalid,
     MonsterLabel,
     NuoDiKaCastChannel,
     PowerMaxAdd,
@@ -434,6 +435,7 @@ pub enum RuntimeEventMultiplicity {
     #[default]
     EveryEvent,
     OncePerActionTarget,
+    OncePerBatchTarget,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -442,6 +444,8 @@ pub struct RuntimeMarker {
     pub target: RuntimeMarkerTarget,
     pub effect_type: Option<i32>,
 }
+
+type RuntimeTiming = fn(crate::catalog::BattleCatalog, i32, &[i32]) -> Option<ReactionTiming>;
 
 #[derive(Debug, Clone, Copy)]
 pub struct BuffActRuntimeDefinition {
@@ -456,13 +460,28 @@ pub struct BuffActRuntimeDefinition {
     pub team_scope: RuntimeTeamScope,
     pub actor_scope: RuntimeActorScope,
     pub reaction_timing: ReactionTiming,
+    timing_override: Option<RuntimeTiming>,
     pub event_multiplicity: RuntimeEventMultiplicity,
     pub reserves_trigger_child_uid: bool,
     pub owns_duration: bool,
+    pub(crate) non_attack_duration: Option<(i32, crate::engine::skill::action::SkillPhase)>,
     pub marker: Option<RuntimeMarker>,
     pub handler: Option<RuntimeHandler>,
     pub scoped_handler: Option<ScopedRuntimeHandler>,
     pub fallible_scoped_handler: Option<FallibleScopedRuntimeHandler>,
+}
+
+impl BuffActRuntimeDefinition {
+    pub(crate) fn timing_for(
+        self,
+        catalog: crate::catalog::BattleCatalog,
+        buff_id: i32,
+        args: &[i32],
+    ) -> ReactionTiming {
+        self.timing_override
+            .and_then(|timing| timing(catalog, buff_id, args))
+            .unwrap_or(self.reaction_timing)
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -660,9 +679,11 @@ macro_rules! buff_act_definitions {
             $(, team: $team:ident)?
             $(, actor: $actor:ident)?
             $(, timing: $timing:ident)?
+            $(, timing_override: $timing_override:expr)?
             $(, multiplicity: $multiplicity:ident)?
             $(, trigger_child_uid: $trigger_child_uid:expr)?
             $(, owns_duration: $owns_duration:expr)?
+            $(, non_attack_duration: ($duration_stage:expr, $duration_phase:ident))?
             $(, stat_read: $stat_read:ident)?
             $(, runtime_marker: $marker_position:ident($marker_target:ident $(, $marker_effect_type:expr)?))?
             $(, runtime: $runtime:expr)?
@@ -705,9 +726,11 @@ macro_rules! buff_act_definitions {
                     team_scope: buff_act_definitions!(@team $($team)?),
                     actor_scope: buff_act_definitions!(@actor $($actor)?),
                     reaction_timing: buff_act_definitions!(@timing $($timing)?),
+                    timing_override: buff_act_definitions!(@timing_override $($timing_override)?),
                     event_multiplicity: buff_act_definitions!(@multiplicity $($multiplicity)?),
                     reserves_trigger_child_uid: buff_act_definitions!(@trigger_child_uid $($trigger_child_uid)?),
                     owns_duration: buff_act_definitions!(@owns_duration $($owns_duration)?),
+                    non_attack_duration: buff_act_definitions!(@non_attack_duration $($duration_stage => $duration_phase)?),
                     marker: buff_act_definitions!(@runtime_marker $($marker_position($marker_target $(, $marker_effect_type)?))?),
                     handler: buff_act_definitions!(@runtime $($runtime)?),
                     scoped_handler: buff_act_definitions!(@scoped_runtime $($scoped_runtime)?),
@@ -771,12 +794,18 @@ macro_rules! buff_act_definitions {
     (@actor) => { RuntimeActorScope::Owner };
     (@timing $timing:ident) => { ReactionTiming::$timing };
     (@timing) => { ReactionTiming::Immediate };
+    (@timing_override $handler:expr) => { Some($handler) };
+    (@timing_override) => { None };
     (@multiplicity $multiplicity:ident) => { RuntimeEventMultiplicity::$multiplicity };
     (@multiplicity) => { RuntimeEventMultiplicity::EveryEvent };
     (@trigger_child_uid $value:expr) => { $value };
     (@trigger_child_uid) => { false };
     (@owns_duration $value:expr) => { $value };
     (@owns_duration) => { false };
+    (@non_attack_duration $stage:expr => $phase:ident) => {
+        Some(($stage, crate::engine::skill::action::SkillPhase::$phase))
+    };
+    (@non_attack_duration) => { None };
     (@stat_read $value:ident) => { StatReadTiming::$value };
     (@stat_read) => { StatReadTiming::None };
     (@runtime_marker $position:ident($target:ident $(, $effect_type:expr)?)) => {
@@ -919,8 +948,8 @@ buff_act_definitions! {
         supports: super::riposte::supports_holder, references: references_for_feature, wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(302, "BeatBack"), &[EffectType::Beatback as i32]));
     (301, "Taunt") => Taunt, effect_time_subscription: false, supports: |_| true, state_consumer: true, wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(301, "Taunt"), &[EffectType::Taunt as i32]));
     (303, "Rebound") => Rebound, source: Owner,
+        timing_override: super::rebound::timing,
         multiplicity: OncePerActionTarget,
-        runtime_marker: BeforeChanges(EventSource),
         runtime: |context| super::rebound::rule_ops(context.managers, context.subscriber, context.event?),
         supports: super::rebound::supports, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(303, "Rebound"), &[EffectType::Rebound as i32]));
     (305, "AddToAttacker") => AddToAttacker,
@@ -940,6 +969,8 @@ buff_act_definitions! {
             .without_initial_state_marker());
     (401, "Dizzy") => Dizzy, effect_time_subscription: false,
         supports: |args| args.is_empty(), state_consumer: true, wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(401, "Dizzy"), &[EffectType::Dizzy as i32]));
+    (706, "PassiveSkillInvalid") => PassiveSkillInvalid, effect_time_subscription: false,
+        supports: |args| args.is_empty(), state_consumer: true, wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(706, "PassiveSkillInvalid"), &[EffectType::Passiveskillinvalid as i32]));
     (402, "Petrified") => Petrified, event: EventKind::TargetAttacked, frame: CausingFrame,
         runtime: |context| super::petrified::rule_ops(context.catalog, context.subscriber, context.event?),
         supports: |args| args.is_empty(), state_consumer: true,
@@ -1061,7 +1092,7 @@ buff_act_definitions! {
         scoped_runtime: |context| super::dot_no_limit::rule_ops(context.managers, context.subscriber, context.event?),
         supports: |_| true, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(721, "DotNoLimit"), &[EffectType::Dot as i32]));
     (743, "ReboundBasedOnDamage") => ReboundBasedOnDamage, source: Owner,
-        multiplicity: OncePerActionTarget,
+        multiplicity: OncePerBatchTarget,
         runtime_marker: BeforeChanges(EventSource, EffectType::Rebound as i32),
         runtime: |context| super::rebound::damage_based_rule_ops(context.managers, context.subscriber, context.event?),
         supports: super::rebound::supports_damage_based,
@@ -1090,7 +1121,8 @@ buff_act_definitions! {
         effect_time_subscription: false,
         events: [EventKind::SkillCast, EventKind::SkillEffectStarted],
         scoped_runtime: |context| super::use_damage_skill_add_to_target::rule_ops(context.managers, context.catalog, context.subscriber, context.event?),
-        supports: |_| true, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(748, "UseDamageSkillAddToTarget"), &[EffectType::None as i32]));
+        supports: super::use_damage_skill_add_to_target::supports,
+        wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(748, "UseDamageSkillAddToTarget"), &[EffectType::None as i32]));
     (757, "UseSkillLoseHpNotFixed") => UseSkillLoseHpNotFixed,
         runtime: |context| super::use_skill_modifier::loss_rule_ops(context.managers, context.subscriber, context.event?),
         supports: super::use_skill_modifier::supports_loss, wire: (super::wire::BuffActWireDefinition::all(DefinitionKey::new(757, "UseSkillLoseHpNotFixed"), &[EffectType::None as i32]));
@@ -1152,6 +1184,7 @@ buff_act_definitions! {
         supports: |args| args.is_empty(), state_consumer: true,
         wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(763, "IgnoreRebound"), &[EffectType::Ignorerebound as i32]));
     (764, "CareerRestraint") => CareerRestraint, effect_time_subscription: false,
+        non_attack_duration: (super::effect_time::AFTER_HIT_DURATION, AfterHit),
         supports: |args| args.is_empty(), state_consumer: true,
         wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(764, "CareerRestraint"), &[EffectType::Careerrestraint as i32]));
     (765, "CareerRatioFix") => CareerRatioFix, effect_time_subscription: false,

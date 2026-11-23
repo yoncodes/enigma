@@ -106,6 +106,7 @@ impl BattleRuntime {
             .expect("battle runtime was not constructed with a catalog");
         let active_round = self.round_state.cur_round;
         let action_round = self.round_state.begin_round();
+        self.cloth_redealt = false;
         self.fight.cur_round = Some(self.round_state.cur_round);
         if let Some(attacker) = self.fight.attacker.as_mut() {
             for skill in &mut attacker.skill_infos {
@@ -187,6 +188,7 @@ impl BattleRuntime {
         )
         .map_err(|error| format!("{error:?}"))?;
         let card_energy_finalized = player.card_energy_finalized;
+        let refill_slots = player.refill_slots;
         let player = player.drain;
         let ended_by_player = battle_ended(&self.fight, &pool, &self.managers);
         self.objectives
@@ -320,8 +322,7 @@ impl BattleRuntime {
         let wave_defeated_after_attacker_settlement =
             crate::engine::round::outcome::defenders_defeated(&pool, &self.managers);
         let runs_phase_two = !ended_after_attacker_settlement;
-        let post_action_hand_size =
-            schedule::post_action_target_hand_len(&self.managers, &pool, hand_size);
+        let post_action_hand_size = refill_slots.target(&self.managers, &pool, hand_size);
         let needs_refill = crate::engine::mechanic::card::CardMechanic
             .refill_hand_len(&self.managers, &pool)
             < post_action_hand_size;

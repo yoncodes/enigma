@@ -34,6 +34,7 @@ mod command_dispatch;
 mod command_prepare;
 mod entry;
 mod model;
+mod overflow_frame;
 mod paid_ultimate;
 mod reactions;
 mod shield_counter;
@@ -579,6 +580,7 @@ fn drain_queue_with_deferred(
             | RuleOp::PaidSkillStarted(_)
             | RuleOp::BuffFeatureMarker { .. }
             | RuleOp::EffectMarker { .. }
+            | RuleOp::CopyPreview { .. }
             | RuleOp::SceneChange { .. }
             | RuleOp::BuffActTrigger(_)
             | RuleOp::BuffActInfoMarker(_)

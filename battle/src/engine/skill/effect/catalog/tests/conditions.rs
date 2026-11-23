@@ -403,3 +403,21 @@ fn active_and_passive_use_skill_type_not_damage_type() {
     assert!(catalog.is_passive(30610141));
     assert_eq!(catalog.skill_type(30950127), 2);
 }
+
+#[test]
+fn preparation_index_removes_the_last_supported_observer_on_replacement() {
+    init_config();
+    let mut catalog = SkillEffectCatalog::from_roots(config::configs::get(), [103374322], []);
+    assert!(catalog.has_preparation_observers());
+
+    let mut replacement = catalog.get(103374322).unwrap().clone();
+    for slot in &mut replacement.slots {
+        slot.behavior = ParsedBehavior::from_spec(
+            BehaviorSpec::new(60058, "CareerRatioFix"),
+            vec![0],
+            Vec::new(),
+        );
+    }
+    catalog.insert(replacement);
+    assert!(!catalog.has_preparation_observers());
+}

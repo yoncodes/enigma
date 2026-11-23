@@ -285,7 +285,7 @@ pub(super) fn drain_skill(
     let completes_action = emission
         .continuation
         .as_ref()
-        .is_some_and(|continuation| continuation.mode.completes_action())
+        .is_some_and(|continuation| continuation.mode.publishes_completion())
         || emission.ops.iter().any(|emitted| {
             matches!(
                 emitted.op,

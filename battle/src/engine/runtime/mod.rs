@@ -53,6 +53,7 @@ pub struct BattleRuntime {
     // These owners already ran RoundStartCondition/100 while entering the wave.
     wave_entry_condition_uids: Vec<i64>,
     cloth_skill_uses: HashMap<i32, usize>,
+    cloth_redealt: bool,
     objectives: objective::ObjectiveProgress,
     absorb_hurt_map_layout: AbsorbHurtMapLayout,
 }
@@ -65,6 +66,7 @@ pub struct AutoRoundPlanner {
     round_state: RoundState,
     determinism: RoundDeterminism,
     devices: Vec<sonettobuf::FightDeviceOper>,
+    cloth_redealt: bool,
 }
 
 #[derive(Debug)]
@@ -86,6 +88,7 @@ impl AutoRoundPlanner {
             &self.round_state,
             &self.determinism,
             self.devices.clone(),
+            self.cloth_redealt,
         )
         .map_err(|error| match error {
             crate::engine::auto_battle::AutoBattleError::InvalidChoice => {
@@ -114,6 +117,7 @@ impl BattleRuntime {
             round_state,
             determinism: self.determinism.clone(),
             devices: self.conduit_operations(),
+            cloth_redealt: self.cloth_redealt,
         }
     }
 
@@ -131,6 +135,7 @@ impl BattleRuntime {
             &round_state,
             &self.determinism,
             self.conduit_operations(),
+            self.cloth_redealt,
         )
         .map_err(|error| format!("auto-battle planning failed: {error:?}"))
     }
@@ -239,7 +244,7 @@ impl BattleRuntime {
         &mut self,
         choices: impl IntoIterator<Item = determinism::SkillTargetChoice>,
     ) {
-        self.determinism.enqueue_skill_target_choices(choices);
+        self.determinism.replace_skill_target_choices(choices);
     }
 
     pub fn seed_hidden_crits(
@@ -270,6 +275,11 @@ impl BattleRuntime {
                 .enqueue_additional_crits(skill_id, source_uid, target_uid, [crit]);
         }
         self.determinism.enqueue_indirect_heal_crits(indirect_heals);
+    }
+
+    /// Seeds observed hands after weighted card-energy allocations; each round replaces the last.
+    pub fn seed_card_energy_allocations(&mut self, hands: impl IntoIterator<Item = Vec<CardInfo>>) {
+        self.determinism.replace_card_energy_allocations(hands);
     }
 
     pub fn seed_random_skills(&mut self, skills: impl IntoIterator<Item = i32>) {
@@ -468,6 +478,7 @@ impl BattleRuntime {
             pending_redeal: None,
             wave_entry_condition_uids: Vec::new(),
             cloth_skill_uses: HashMap::new(),
+            cloth_redealt: false,
             objectives: Default::default(),
             absorb_hurt_map_layout,
         })

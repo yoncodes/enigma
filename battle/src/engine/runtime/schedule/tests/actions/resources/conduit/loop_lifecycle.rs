@@ -1,4 +1,5 @@
 use super::*;
+use crate::test_support::find_step;
 
 #[test]
 fn conduit_attacks_complete_loop_chain_and_grant_moxie() {
@@ -94,14 +95,6 @@ fn conduit_attacks_complete_loop_chain_and_grant_moxie() {
     assert_eq!(managers.buff.buff_id_amount(30, 31430151), 1);
     assert_eq!(managers.ex_point.get(30), 5);
 
-    fn find_step(step: &sonettobuf::FightStep, act_id: i32) -> Option<&sonettobuf::FightStep> {
-        (step.act_id == Some(act_id)).then_some(step).or_else(|| {
-            step.act_effect
-                .iter()
-                .filter_map(|effect| effect.fight_step.as_ref())
-                .find_map(|nested| find_step(nested, act_id))
-        })
-    }
     fn collect_loop_chain_layers(step: &sonettobuf::FightStep, layers: &mut Vec<i32>) {
         for effect in &step.act_effect {
             if let Some(buff) = effect

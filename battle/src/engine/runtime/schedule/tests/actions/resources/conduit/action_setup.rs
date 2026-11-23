@@ -1,4 +1,5 @@
 use super::*;
+use crate::test_support::find_step;
 
 #[test]
 fn conduit_dead_source_does_not_complete_activation() {
@@ -469,15 +470,6 @@ fn device_power_card_keeps_ally_action_without_granting_loop_chain() {
             if action.skill_id == 31430111 && action.mode == SkillExecutionMode::Active
     )));
     assert_eq!(managers.buff.buff_id_amount(30, 31430151), 1);
-
-    fn find_step(step: &sonettobuf::FightStep, act_id: i32) -> Option<&sonettobuf::FightStep> {
-        (step.act_id == Some(act_id)).then_some(step).or_else(|| {
-            step.act_effect
-                .iter()
-                .filter_map(|effect| effect.fight_step.as_ref())
-                .find_map(|nested| find_step(nested, act_id))
-        })
-    }
 
     let steps = crate::engine::packet::timeline::project(&active.frames).unwrap();
     let reaction = steps

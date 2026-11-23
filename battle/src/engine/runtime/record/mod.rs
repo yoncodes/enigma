@@ -89,6 +89,7 @@ pub enum RoundPhase {
     TerminalConduitRosterRefresh,
     PostSettlementConduitRosterRefresh,
     EntitySettlement,
+    AfterOwnerSettlement,
     EntityBuffCleanup,
     EntityCardCleanup,
     EntityEntrySetup,
@@ -244,6 +245,25 @@ pub(crate) fn event_scope_path(frames: &[SemanticFrame], path: &[usize]) -> Fram
     } else {
         path.to_vec()
     }
+}
+
+pub(crate) fn round_end_owner_scope<'a>(
+    frames: &[SemanticFrame],
+    path: &'a [usize],
+) -> Option<&'a [usize]> {
+    use crate::engine::event::kind::EventKind;
+
+    (1..path.len())
+        .rev()
+        .map(|length| &path[..length])
+        .find(|ancestor| {
+            let frame = frame_at(frames, ancestor);
+            matches!(frame.owner, FrameOwner::EventRule)
+                && matches!(
+                    frame.trigger,
+                    FrameTrigger::Event(BattleEvent::Kind(EventKind::RoundEnd))
+                )
+        })
 }
 
 pub(crate) fn entity_entry_halo_scope_path(frames: &[SemanticFrame], path: &[usize]) -> FramePath {

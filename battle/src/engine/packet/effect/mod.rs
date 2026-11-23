@@ -28,6 +28,19 @@ mod buff;
 pub struct EffectPacket;
 
 impl EffectPacket {
+    pub fn crystal_selected(
+        choice: crate::engine::mechanic::crystal_selection::CrystalChoice,
+    ) -> ActEffect {
+        ActEffect {
+            target_id: Some(choice.owner_uid),
+            effect_type: Some(EffectType::Crystalselect as i32),
+            effect_num: Some(choice.packed),
+            reserve_str: Some(choice.packed.to_string()),
+            team_type: Some(choice.team_type),
+            ..Default::default()
+        }
+    }
+
     pub fn fight_param_change(key: i32, delta: i32) -> ActEffect {
         ActEffect {
             target_id: Some(0),
@@ -47,6 +60,15 @@ impl EffectPacket {
             config_effect: Some(marker.config_effect),
             reserve_id: marker.reserve_id,
             reserve_str: marker.reserve_str,
+            ..Default::default()
+        }
+    }
+
+    pub fn copy_preview(target_uid: i64) -> ActEffect {
+        ActEffect {
+            target_id: Some(target_uid),
+            effect_type: Some(EffectType::Clienteffect as i32),
+            effect_num: Some(crate::engine::skill::behavior::client_effect::COPY_PREVIEW),
             ..Default::default()
         }
     }

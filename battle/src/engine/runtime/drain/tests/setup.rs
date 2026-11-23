@@ -735,7 +735,7 @@ fn entry_halos_stay_in_a_nested_active_skill() {
 }
 
 #[test]
-fn enter_fight_tag_threshold_applies_the_configured_team_buff() {
+fn battle_start_tag_threshold_applies_the_configured_team_buff() {
     crate::test_support::init_config();
     let entity = |uid, model_id, passive_skill| FightEntityInfo {
         uid: Some(uid),
@@ -767,7 +767,7 @@ fn enter_fight_tag_threshold_applies_the_configured_team_buff() {
         &catalog,
         &mut RoundDeterminism::default(),
         TargetContext::default(),
-        SetupStage::EnterFight,
+        SetupStage::BattleStart,
         0,
     )
     .unwrap();

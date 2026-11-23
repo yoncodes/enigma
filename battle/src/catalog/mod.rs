@@ -427,6 +427,13 @@ impl BattleCatalog {
         crate::engine::skill::buff_act::registry::find(opcode, &act.r#type)
     }
 
+    pub(crate) fn buff_act_name(self, opcode: i32) -> Option<&'static str> {
+        self.game_data
+            .buff_act
+            .get(opcode)
+            .map(|act| act.r#type.as_str())
+    }
+
     pub(crate) fn buff_act_origin(
         self,
         opcode: i32,

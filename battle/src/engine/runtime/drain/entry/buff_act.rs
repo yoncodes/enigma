@@ -146,6 +146,7 @@ fn run_owned_buff_act_groups(
                 | RuleOp::PaidSkillStarted(_)
                 | RuleOp::BuffFeatureMarker { .. }
                 | RuleOp::EffectMarker { .. }
+                | RuleOp::CopyPreview { .. }
                 | RuleOp::SceneChange { .. }
                 | RuleOp::BuffActTrigger(_)
                 | RuleOp::BuffActInfoMarker(_)

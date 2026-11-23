@@ -10,7 +10,11 @@ use crate::engine::{
 use sonettobuf::{AutoRoundRequest, CardInfo, FightDeviceAreaInfo, HeroAttribute};
 
 mod conduit;
+mod queue_setup;
+mod record_skill;
+mod sovereign;
 mod team_cards;
+mod tuning;
 
 fn auto_runtime() -> BattleRuntime {
     crate::test_support::init_config();

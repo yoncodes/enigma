@@ -390,6 +390,7 @@ fn project_change(
         },
         BattleChange::BuffFeatureMarker(marker) => vec![EffectPacket::buff_marker(marker)],
         BattleChange::EffectMarker(marker) => vec![EffectPacket::effect_marker(marker.clone())],
+        BattleChange::CopyPreview { target_uid } => vec![EffectPacket::copy_preview(*target_uid)],
         BattleChange::SceneChange { scene_id } => EffectPacket::scene_change(*scene_id).to_vec(),
         BattleChange::Contract(crate::engine::manager::contract::ContractChange::Offered {
             origin,
@@ -429,6 +430,7 @@ fn project_change(
                 marker.team_type,
             )]
         }
+        BattleChange::CrystalSelected(choice) => vec![EffectPacket::crystal_selected(*choice)],
         BattleChange::Hp(changes) => {
             if let Some(config_effect) = changes.kill {
                 return Ok(vec![EffectPacket::kill(changes.target_uid, config_effect)]);
@@ -1301,12 +1303,13 @@ fn project_change(
             .map(EffectPacket::crystal_add_card)
             .into_iter()
             .collect(),
-        BattleChange::Card(changes) if changes.kind == CardChangeKind::PrecastAdded => changes
-            .added
-            .clone()
-            .map(EffectPacket::butterfly_add_hand_card)
-            .into_iter()
-            .collect(),
+        BattleChange::Card(changes) if changes.kind == CardChangeKind::PrecastAdded => {
+            let operation = changes
+                .operation
+                .clone()
+                .ok_or(ProjectionError::Card(changes.kind))?;
+            vec![CardPacket::from_change(operation)]
+        }
         BattleChange::Card(changes) if changes.kind == CardChangeKind::Refilled => Vec::new(),
         BattleChange::Card(changes)
             if changes.kind == CardChangeKind::UltimateAvailabilityChanged =>

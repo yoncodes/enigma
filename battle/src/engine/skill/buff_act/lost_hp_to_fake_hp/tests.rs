@@ -328,3 +328,21 @@ fn remembrance_settles_lethal_hits_at_the_damage_boundary() {
         );
     }
 }
+
+#[test]
+fn insufficient_remembrance_keeps_the_shielded_loss_basis() {
+    crate::test_support::init_config();
+    let mut initial = fight(10);
+    let holder = &mut initial.attacker.as_mut().unwrap().entitys[1];
+    holder.current_hp = Some(50);
+    holder.shield_value = Some(20);
+    let mut managers = BattleManagers::seeded(&initial);
+
+    let hit = managers.execute_rule_hp(damage(20, 100)).unwrap();
+    assert_eq!(hit.changes.shield_absorbed.unwrap().absorbed, 20);
+    assert_eq!(hit.changes.fake_hp_consumed.unwrap().consumed, 10);
+    let change = hit.changes.hp.unwrap();
+    let hurt = change.hurt.unwrap();
+    assert_eq!(hurt.display_amount, Some(80));
+    assert_eq!(hurt.reduce_hp, -50);
+}

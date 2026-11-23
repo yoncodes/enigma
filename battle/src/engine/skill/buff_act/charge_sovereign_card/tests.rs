@@ -14,26 +14,11 @@ use crate::engine::{
         target::{TargetContext, TargetPool},
     },
 };
+use crate::test_support::{contains_skill, find_step};
 use sonettobuf::{
     BuffInfo, CardInfo, Fight, FightEntityInfo, FightStep, FightTeam, HeroAttribute,
     effect_type_enum::EffectType,
 };
-
-fn find_step(steps: &[FightStep], act_id: i32) -> Option<&FightStep> {
-    for step in steps {
-        if step.act_id == Some(act_id) {
-            return Some(step);
-        }
-        for effect in &step.act_effect {
-            if let Some(child) = &effect.fight_step
-                && let Some(found) = find_step(std::slice::from_ref(child), act_id)
-            {
-                return Some(found);
-            }
-        }
-    }
-    None
-}
 
 fn fight() -> Fight {
     let actor = |uid, model_id, team_type| FightEntityInfo {
@@ -119,7 +104,10 @@ fn ap_mass_cast_charges_once() {
             .all(|uid| managers.hp.current(uid) < 10000)
     );
     let projected = timeline::project_for_version(&result.frames, 7).unwrap();
-    let charge = find_step(&projected, 31470008).unwrap();
+    let charge = projected
+        .iter()
+        .find_map(|step| find_step(step, 31470008))
+        .unwrap();
     assert_eq!((charge.from_id, charge.to_id), (Some(10), Some(10)));
     assert!(!charge.fake_timeline.unwrap_or_default());
     assert_eq!(charge.act_effect.len(), 1);
@@ -226,11 +214,10 @@ fn charging_respects_the_card_area_and_cap() {
         Some(r#"{"lock":true,"strengthen":{"1":0,"2":0,"3":4,"4":1}}"#)
     );
     assert!(
-        find_step(
-            &timeline::project_for_version(&last.unwrap().frames, 7).unwrap(),
-            31470008
-        )
-        .is_none()
+        !timeline::project_for_version(&last.unwrap().frames, 7)
+            .unwrap()
+            .iter()
+            .any(|step| contains_skill(step, 31470008))
     );
     managers
         .execute_card(CardCommand::UnlockSovereign {

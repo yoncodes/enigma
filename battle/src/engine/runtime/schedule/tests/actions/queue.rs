@@ -1,5 +1,7 @@
 use super::*;
 
+mod rank_by_tag;
+
 fn queue_from_played(
     managers: &BattleManagers,
     team: i32,

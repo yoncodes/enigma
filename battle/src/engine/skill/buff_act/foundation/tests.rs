@@ -185,9 +185,13 @@ fn critical_damage_settles_the_mitigated_remainder_through_shield_and_hp() {
 
     assert_eq!(changes.damage.unwrap().amount, 2_127);
     assert_eq!(changes.shield_absorbed.unwrap().absorbed, 1_000);
-    assert_eq!(changes.hp.unwrap().delta, -1_127);
-    assert_eq!(changes.hp.unwrap().hurt.unwrap().reduce_hp, -1_127);
-    assert!(changes.hp.unwrap().hurt.unwrap().is_crit);
+    let hp = changes.hp.unwrap();
+    let hurt = hp.hurt.unwrap();
+    assert_eq!(hp.delta, -1_127);
+    assert_eq!(hp.display_amount, Some(1_127));
+    assert_eq!(hurt.display_amount, Some(2_127));
+    assert_eq!(hurt.reduce_hp, -1_127);
+    assert!(hurt.is_crit);
 }
 
 #[test]

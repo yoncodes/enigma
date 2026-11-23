@@ -761,6 +761,20 @@ impl BuffDefinition {
         self.has_include_type(BuffIncludeType::Stacked)
     }
 
+    pub(super) fn non_attack_duration(&self) -> Option<crate::engine::skill::action::SkillPhase> {
+        self.features()
+            .iter()
+            .filter(|feature| feature.arguments_supported)
+            .find_map(|feature| {
+                let act = crate::engine::skill::buff_act::registry::find(
+                    *feature.values.first()?,
+                    &feature.act_type,
+                )?;
+                let (take_stage, phase) = act.runtime.non_attack_duration?;
+                (take_stage == self.take_stage).then_some(phase)
+            })
+    }
+
     pub(super) fn emits_existing_layer_on_refresh(&self) -> bool {
         [BuffIncludeType::Layer, BuffIncludeType::Stacked12]
             .into_iter()

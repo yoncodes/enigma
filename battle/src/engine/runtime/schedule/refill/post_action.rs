@@ -1,39 +1,76 @@
 use super::*;
 
-pub fn replacement_count(managers: &BattleManagers) -> usize {
-    managers
-        .card
-        .played()
-        .iter()
-        .filter(|played| {
-            !played.card.temp_card.unwrap_or_default()
-                && played.hand_index.is_some()
-                && played.uses_action_point
-        })
-        .count()
+#[derive(Default)]
+pub(crate) struct RefillSlots {
+    committed: usize,
+    played: Vec<i32>,
 }
 
-pub fn target_hand_len(
-    managers: &BattleManagers,
-    pool: &TargetPool,
-    base_hand_size: usize,
-) -> usize {
-    if managers.card.played().is_empty() {
-        return base_hand_size;
+impl RefillSlots {
+    pub(crate) fn capture(managers: &BattleManagers, pool: &TargetPool) -> Self {
+        let exempt_ultimate = |card: &sonettobuf::CardInfo| {
+            pool.entity(card.uid.unwrap_or_default())
+                .is_some_and(|entity| {
+                    managers.buff.has_buff_act_kind(
+                        entity.uid,
+                        buff_act::registry::BuffActKind::EntityExSkillNotCalSize,
+                    ) && crate::engine::mechanic::card::CardMechanic
+                        .is_ultimate(managers, card, entity)
+                })
+        };
+        Self {
+            committed: managers
+                .card
+                .committed_hand()
+                .iter()
+                .filter(|card| !card.temp_card.unwrap_or_default())
+                .count(),
+            played: managers
+                .card
+                .played()
+                .iter()
+                .filter(|played| {
+                    !played.card.temp_card.unwrap_or_default()
+                        && played.hand_index.is_some()
+                        && !exempt_ultimate(&played.card)
+                })
+                .map(|played| played.card_index)
+                .collect(),
+        }
     }
-    let committed = managers
-        .card
-        .committed_hand()
-        .iter()
-        .filter(|card| !card.temp_card.unwrap_or_default())
-        .count();
-    let opening_deficit = base_hand_size.saturating_sub(committed);
-    crate::engine::mechanic::card::CardMechanic
-        .refill_hand_len(managers, pool)
-        .saturating_add(replacement_count(managers))
-        .saturating_add(opening_deficit)
-        .max(base_hand_size)
+
+    pub(in crate::engine::runtime::schedule) fn replacements(
+        &self,
+        managers: &BattleManagers,
+    ) -> usize {
+        managers
+            .card
+            .played()
+            .iter()
+            .filter(|played| played.uses_action_point && self.played.contains(&played.card_index))
+            .count()
+    }
+
+    pub(crate) fn target(
+        &self,
+        managers: &BattleManagers,
+        pool: &TargetPool,
+        base_hand_size: usize,
+    ) -> usize {
+        if managers.card.played().is_empty() {
+            return base_hand_size;
+        }
+        let opening_deficit = base_hand_size.saturating_sub(self.committed);
+        crate::engine::mechanic::card::CardMechanic
+            .refill_hand_len(managers, pool)
+            .saturating_add(self.replacements(managers))
+            .saturating_add(opening_deficit)
+            .max(base_hand_size)
+    }
 }
+
+#[cfg(test)]
+mod tests;
 
 #[allow(clippy::too_many_arguments)]
 pub fn run_post_action_refill(

@@ -319,18 +319,7 @@ fn run_defender_settlement(
         .collect::<Vec<_>>();
     owners.extend(pool.assist_boss(crate::engine::fight::rules::DEFENDER_SIDE_UID));
     owners.push(crate::engine::fight::rules::DEFENDER_SIDE_UID);
-    let mut result = drain::run_group_event_lanes(
-        managers,
-        pool,
-        catalog,
-        determinism,
-        context,
-        BattleEvent::Kind(EventKind::RoundEnd),
-        &[drain::ReactionLane::BuffActs, drain::ReactionLane::Skills],
-        Some(&owners),
-    )?;
-    append(
-        &mut result,
+    let small_round_end = |managers: &mut BattleManagers, determinism: &mut RoundDeterminism| {
         drain::run_grouped_owner_event_lanes(
             managers,
             pool,
@@ -340,8 +329,29 @@ fn run_defender_settlement(
             BattleEvent::Kind(EventKind::SmallRoundEnd),
             &owners,
             &[drain::ReactionLane::BuffActs, drain::ReactionLane::Skills],
+        )
+    };
+    let small_first = managers.fight_version() == 7;
+    let mut result = DrainResult::default();
+    if small_first {
+        append(&mut result, small_round_end(managers, determinism)?);
+    }
+    append(
+        &mut result,
+        drain::run_group_event_lanes(
+            managers,
+            pool,
+            catalog,
+            determinism,
+            context,
+            BattleEvent::Kind(EventKind::RoundEnd),
+            &[drain::ReactionLane::BuffActs, drain::ReactionLane::Skills],
+            Some(&owners),
         )?,
     );
+    if !small_first {
+        append(&mut result, small_round_end(managers, determinism)?);
+    }
     let settlement = run_entity_settlement(
         managers,
         pool,
@@ -492,28 +502,16 @@ pub fn run_entity_settlement(
                         .duration_targets(take_stage, &active_owner_uids);
                     append(
                         &mut result,
-                        run_owned_duration_advances(
+                        drain::run_settlement_tail(
                             managers,
                             pool,
                             catalog,
                             determinism,
                             context,
-                            take_stage,
-                            targets,
+                            &active_owner_uids,
+                            super::duration::owned_duration_ops(take_stage, targets),
                         )?,
                     );
-                    let owner_settled = BattleEvent::Kind(EventKind::RoundEndAfterOwnerSettlement);
-                    let after_owners = drain::run_grouped_owner_event(
-                        managers,
-                        pool,
-                        catalog,
-                        determinism,
-                        context,
-                        owner_settled,
-                        &active_owner_uids,
-                        drain::ReactionLane::Skills,
-                    )?;
-                    append(&mut result, after_owners);
                     result
                 } else {
                     let mut result = drain::run_grouped_owner_event(
@@ -609,15 +607,15 @@ pub fn run_round_end_final_settlement(
     context: TargetContext,
     settled_buffs: Vec<crate::engine::event::payload::BuffChangeEvent>,
 ) -> Result<DrainResult, DrainError> {
+    let pool = &pool.runtime_view(managers);
     let owner_uids = final_settlement_owner_order(pool, managers);
-    let event = BattleEvent::BuffsSettled(settled_buffs);
     let initial = drain::run_grouped_owner_event_lanes(
         managers,
         pool,
         catalog,
         determinism,
         context,
-        event.clone(),
+        BattleEvent::BuffsSettled(settled_buffs.clone()),
         &owner_uids,
         &[drain::ReactionLane::BuffActs, drain::ReactionLane::Skills],
     )?;
@@ -659,7 +657,7 @@ pub fn run_round_end_final_settlement(
             catalog,
             determinism,
             context,
-            BattleEvent::Kind(EventKind::RoundEndAfterSideFinalExpiry),
+            BattleEvent::AfterSideFinalExpiry(settled_buffs),
             &owner_uids,
             drain::ReactionLane::Skills,
         )?,
@@ -708,7 +706,7 @@ pub fn run_round_end_final_settlement(
         context,
         after.clone(),
         drain::ReactionLane::Skills,
-        None,
+        Some(&owner_uids),
     )?;
     if after_skills.events.first() == Some(&after) {
         after_skills.events.remove(0);

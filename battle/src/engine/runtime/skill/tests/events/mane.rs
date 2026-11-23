@@ -192,7 +192,7 @@ fn committed_conduit_hit_satisfies_attack_conditions() {
 }
 
 #[test]
-fn visible_status_threshold_runs_only_before_attacks() {
+fn prepared_status_threshold_includes_nonattacks_and_excludes_energy_cards() {
     crate::test_support::init_config();
     let mut status_buffs = [31450171, 31450143, 31440116, 31450111]
         .into_iter()
@@ -225,41 +225,17 @@ fn visible_status_threshold_runs_only_before_attacks() {
     };
     let managers = BattleManagers::seeded(&fight);
     let pool = TargetPool::from_fight(&fight);
-    let condition = ParsedCondition {
-        opcode: 42203,
-        type_name: "HasTypeBuffMoreThan".into(),
-        kind: crate::engine::skill::condition::registry::parse(
-            42203,
-            "HasTypeBuffMoreThan",
-            &["5".into(), "1,5".into()],
-        )
-        .unwrap(),
-        raw_args: vec!["5".into(), "1,5".into()],
-    };
-    let mut slot = SkillEffectSlot::new(
-        ParsedBehavior::new(1, "AddBuff", vec![103374322]),
-        TargetRequest::self_only(),
-    );
-    slot.conditions = vec![condition];
-    slot.compiled_route =
-        crate::engine::skill::rule::route::ConditionRoute::compile(&slot.conditions);
-    let mut catalog = SkillEffectCatalog::default();
-    for skill_id in [103374322, 420000411] {
-        catalog.insert(ParsedSkillEffect {
-            skill_id,
-            slots: vec![slot.clone()],
-        });
-    }
+    let catalog = SkillEffectCatalog::from_roots(config::configs::get(), [103374322], []);
 
-    let emit = |observer_skill_id, is_attack, mode| {
+    let emit = |is_attack, mode| {
         let mut invocation: SkillInvocation = SkillRequest {
             source_uid: 10,
-            skill_id: observer_skill_id,
+            skill_id: 103374322,
         }
         .into();
         invocation.condition_key = Some(DefinitionKey::new(42203, "HasTypeBuffMoreThan"));
         invocation.phase = Some(SkillPhase::Immediate);
-        let event = BattleEvent::SkillEffectStarted(
+        let event = BattleEvent::SkillEffectsPrepared(Box::new(
             crate::engine::skill::action::SkillActionEvent {
                 source_uid: 10,
                 card_index: 0,
@@ -287,9 +263,8 @@ fn visible_status_threshold_runs_only_before_attacks() {
                 team_injury_count_round: 0,
                 card_enchants: Vec::new(),
                 buff_additions: Vec::new(),
-            }
-            .into(),
-        );
+            },
+        ));
         emit_all_ops(
             invocation,
             &managers,
@@ -307,16 +282,21 @@ fn visible_status_threshold_runs_only_before_attacks() {
         .unwrap()
     };
 
-    for observer_skill_id in [103374322, 420000411] {
-        assert!(emit(observer_skill_id, false, SkillExecutionMode::Active).is_empty());
-        assert!(emit(observer_skill_id, false, SkillExecutionMode::Device).is_empty());
-    }
-    for mode in [SkillExecutionMode::Active, SkillExecutionMode::Device] {
-        let ops = emit(103374322, true, mode);
-        assert!(ops.iter().any(|op| matches!(
-        op,
-        RuleOp::Command(BattleCommand::Buff(BuffCommand::Grant(grant)))
-            if grant.buff_id == 103374322 && grant.target_uid == 10
-        )));
+    for (is_attack, mode, expected) in [
+        (true, SkillExecutionMode::Active, true),
+        (false, SkillExecutionMode::Active, true),
+        (false, SkillExecutionMode::Device, true),
+        (false, SkillExecutionMode::DeviceCard, false),
+    ] {
+        let ops = emit(is_attack, mode);
+        assert_eq!(
+            ops.iter().any(|op| matches!(
+                op,
+                RuleOp::Command(BattleCommand::Buff(BuffCommand::Grant(grant)))
+                    if grant.buff_id == 103374322 && grant.target_uid == 10
+            )),
+            expected,
+            "{mode:?}"
+        );
     }
 }

@@ -647,3 +647,64 @@ fn zero_cost_skill_publishes_exact_pre_effect_event_before_its_commands() {
         )) if action.phase == crate::engine::skill::action::SkillPhase::Immediate
     ));
 }
+
+#[test]
+fn nested_extra_casts_publish_their_completed_action() {
+    use crate::engine::skill::{action::SkillExecutionMode, condition::extra::ExtraSkillKind};
+
+    crate::test_support::init_config();
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                team_type: Some(1),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let managers = BattleManagers::seeded(&fight);
+    let pool = TargetPool::from_fight(&fight);
+    let mut catalog = SkillEffectCatalog::default();
+    catalog.insert(ParsedSkillEffect {
+        skill_id: 900,
+        slots: Vec::new(),
+    });
+    let mut execution = SkillExecution::new(TargetContext::default());
+    let mut invocation: SkillInvocation = SkillRequest {
+        source_uid: 10,
+        skill_id: 900,
+    }
+    .into();
+    invocation.mode = SkillExecutionMode::NestedExtra;
+    invocation.extra_skill_kind = Some(ExtraSkillKind::ExtraAction);
+    let mut determinism = RoundDeterminism::default();
+    let mut ops = Vec::new();
+    loop {
+        let emission = emit_ops(
+            invocation,
+            &managers,
+            &pool,
+            &catalog,
+            &mut determinism,
+            &mut execution,
+            &SkillOpTrigger::Active,
+        )
+        .unwrap();
+        ops.extend(emission.ops);
+        let Some(continuation) = emission.continuation else {
+            break;
+        };
+        invocation = continuation;
+    }
+
+    assert!(ops.iter().any(|emission| matches!(
+        &emission.op,
+        RuleOp::SkillLifecycle(crate::engine::skill::action::SkillLifecycle::ActionCompleted(
+            action
+        )) if action.skill_id == 900
+            && action.mode == SkillExecutionMode::NestedExtra
+            && action.extra_skill_kind == ExtraSkillKind::ExtraAction.id()
+    )));
+}
