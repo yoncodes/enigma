@@ -34,6 +34,7 @@ fn fully_absorbed_damage_projects_shield_then_zero_damage() {
         fake_hp_consumed: None,
         team_shared_shield_absorbed: None,
         team_shared_shield_removed: None,
+        shield_broken: None,
         shared_hurt: None,
         shield_absorbed: Some(ShieldChange {
             target_uid: 10,
@@ -96,6 +97,7 @@ fn version_seven_embeds_shield_and_zero_fake_hp_consumption_in_hurt_info() {
         }),
         team_shared_shield_absorbed: None,
         team_shared_shield_removed: None,
+        shield_broken: None,
         shared_hurt: None,
         shield_absorbed: Some(ShieldChange {
             target_uid: 10,
@@ -200,6 +202,7 @@ fn version_seven_embeds_team_shared_shield_consumption_in_hurt_info() {
                 },
             ),
             team_shared_shield_removed: None,
+            shield_broken: None,
             shared_hurt: None,
             shield_absorbed: None,
             shield_granted: None,
@@ -244,6 +247,7 @@ fn reduce_hp_wire_value_is_gated_by_fight_protocol_version() {
         fake_hp_consumed: None,
         team_shared_shield_absorbed: None,
         team_shared_shield_removed: None,
+        shield_broken: None,
         shared_hurt: None,
         shield_absorbed: None,
         shield_granted: None,

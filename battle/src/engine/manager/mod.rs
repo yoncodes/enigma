@@ -98,6 +98,7 @@ struct HpPlan {
     fake_hp: Option<crate::engine::skill::buff_act::lost_hp_to_fake_hp::DamagePlan>,
     team_shared: Option<hp::TeamSharedShieldPlan>,
     team_shared_buff: Option<BuffPlan>,
+    shield_break: Option<BuffPlan>,
     share: Option<ShareHurtPlan>,
     foundation_counter: Option<FoundationCounterPlan>,
     hp_loss_state: Vec<HpLossStatePlan>,
@@ -731,6 +732,7 @@ impl BattleManagers {
             fake_hp,
             team_shared,
             team_shared_buff,
+            shield_break: None,
             share,
             foundation_counter,
             hp_loss_state: Vec::new(),
@@ -770,6 +772,7 @@ impl BattleManagers {
                 });
             }
         }
+        plan.shield_break = shield::plan_break(self, &changes)?;
         Ok(())
     }
 
@@ -781,6 +784,9 @@ impl BattleManagers {
             self.hp.commit_validated_command(*share, None, None);
         }
         plan.commit_damage(&mut self.hp);
+        if let Some(shield_break) = &plan.shield_break {
+            self.commit_buff(shield_break.clone());
+        }
     }
 
     fn commit_hp(&mut self, plan: HpPlan) -> HpCommit {
@@ -848,6 +854,10 @@ impl BattleManagers {
                 .buff
                 .shield_carrier_uid(changes.target_uid)
                 .unwrap_or_default();
+        }
+        if let (Some(shield_break), Some(absorption)) = (plan.shield_break, changes.shield_absorbed)
+        {
+            changes.shield_broken = shield::commit_break(self, shield_break, absorption);
         }
         crate::engine::damage::export::settlement(command, &changes, &self.hp, loss_limit);
         HpCommit {

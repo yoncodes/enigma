@@ -521,6 +521,13 @@ fn project_change(
             if let Some(removed) = &changes.team_shared_shield_removed {
                 effects.extend(EffectPacket::recorded_buff_changes(removed));
             }
+            if let Some(removed) = &changes.shield_broken {
+                effects.push(EffectPacket::shield_delete(
+                    removed.absorption.target_uid,
+                    removed.absorption.after,
+                ));
+                effects.extend(EffectPacket::recorded_buff_changes(&removed.carrier));
+            }
             if let Some(max_hp) = changes.max_hp {
                 let wire = (changes.origin.domain
                     == crate::engine::skill::rule::RuleDomain::BuffAct)

@@ -30,6 +30,84 @@ fn shield_terms_are_rounded_after_they_are_combined() {
 }
 
 #[test]
+fn personal_shield_breaks_when_the_hit_reaches_hp() {
+    use crate::engine::manager::hp::{
+        DamageEffectKind, HpDamage, HurtDamageFromType, HurtInfoData,
+    };
+
+    crate::test_support::init_config();
+    let fight = Fight {
+        version: Some(7),
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(1),
+                current_hp: Some(1_000),
+                shield_value: Some(100),
+                attr: Some(HeroAttribute {
+                    hp: Some(1_000),
+                    attack: Some(1_000),
+                    ..Default::default()
+                }),
+                buffs: vec![sonettobuf::BuffInfo {
+                    uid: Some(1_002),
+                    buff_id: Some(31270501),
+                    from_uid: Some(1),
+                    duration: Some(2),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    for (amount, breaks) in [(99, false), (100, false), (101, true)] {
+        let mut managers = BattleManagers::seeded(&fight);
+        let hit = managers
+            .execute_hp(HpCommand::Damage(HpDamage {
+                origin: CommandOrigin {
+                    domain: RuleDomain::BuffAct,
+                    key: DefinitionKey::new(303, "Rebound"),
+                },
+                source_uid: -1,
+                target_uid: 1,
+                amount,
+                config_effect: 0,
+                effect_kind: DamageEffectKind::Genesis,
+                assassinate: false,
+                ignore_riposte: false,
+                hurt: HurtInfoData {
+                    from_uid: -1,
+                    is_crit: false,
+                    career_restraint: false,
+                    reduce_hp: 0,
+                    effect_id: 0,
+                    skill_id: 0,
+                    damage_from: HurtDamageFromType::Buff,
+                    buff_act_id: 303,
+                    buff_uid: 0,
+                    hurt_effect_type: sonettobuf::effect_type_enum::EffectType::Origindamage as i32,
+                    display_amount: None,
+                },
+            }))
+            .unwrap();
+        assert_eq!(hit.shield_absorbed.unwrap().buff_uid, 1_002);
+        assert_eq!(hit.shield_broken.is_some(), breaks);
+        assert_eq!(managers.buff.snapshot(1, 1_002).is_none(), breaks);
+        if let Some(broken) = hit.shield_broken {
+            assert_eq!(broken.carrier.change.removed[0].buff.duration, Some(0));
+            assert_eq!(managers.hp.current(1), 999);
+
+            let mut grant = command();
+            grant.buff_id = 31270005;
+            let replacement = execute(&mut managers, grant).unwrap();
+            let added = replacement.buff.unwrap().change.added.unwrap();
+            assert_ne!(added.buff.uid, Some(1_002));
+        }
+    }
+}
+
+#[test]
 fn origin_attribute_includes_snapshotted_stateful_buff_values() {
     crate::test_support::init_config();
     let fight = Fight {
