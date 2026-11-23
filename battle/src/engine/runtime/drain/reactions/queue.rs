@@ -419,7 +419,16 @@ pub(in crate::engine::runtime::drain) fn reaction_skill_target(
     use crate::engine::skill::condition::registry::ReactionFrameTarget;
 
     match target {
-        ReactionFrameTarget::Counterparty => reaction_counterparty(pool, event, owner_uid),
+        ReactionFrameTarget::OwnerOnSide
+            if event
+                .target_uid()
+                .is_some_and(crate::engine::fight::rules::is_side_uid) =>
+        {
+            Some(owner_uid)
+        }
+        ReactionFrameTarget::Counterparty | ReactionFrameTarget::OwnerOnSide => {
+            reaction_counterparty(pool, event, owner_uid)
+        }
         ReactionFrameTarget::Owner => Some(owner_uid),
         ReactionFrameTarget::EventTarget => event.target_uid(),
         ReactionFrameTarget::EventSource => event.source_uid(),

@@ -254,17 +254,20 @@ fn obscurity_break_enters_the_witness_round_on_the_next_round() {
             ..Default::default()
         }),
         defender: Some(FightTeam {
-            entitys: vec![entity(
-                -1,
-                vec![BuffInfo {
-                    uid: Some(21),
-                    buff_id: Some(109320101),
-                    duration: Some(2),
-                    from_uid: Some(-1),
-                    ..Default::default()
-                }],
-                vec![109320102, 109320105, 109320112],
-            )],
+            entitys: vec![
+                entity(
+                    -1,
+                    vec![BuffInfo {
+                        uid: Some(21),
+                        buff_id: Some(109320101),
+                        duration: Some(2),
+                        from_uid: Some(-1),
+                        ..Default::default()
+                    }],
+                    vec![109320102, 109320105, 109320112],
+                ),
+                entity(-2, Vec::new(), vec![109320112]),
+            ],
             ..Default::default()
         }),
         ..Default::default()
@@ -328,6 +331,11 @@ fn obscurity_break_enters_the_witness_round_on_the_next_round() {
         .find(|buff| buff.buff_id == Some(109320112))
         .unwrap();
     assert_eq!(marker.duration, Some(1));
+    let other_marker = managers
+        .buff
+        .active_for(-2)
+        .find(|buff| buff.buff_id == Some(109320112))
+        .unwrap();
 
     fn collect_duration_owners(
         frame: &crate::engine::runtime::record::SemanticFrame,
@@ -365,6 +373,11 @@ fn obscurity_break_enters_the_witness_round_on_the_next_round() {
                 marker.uid.unwrap(),
                 effect_time::ROUND_END_FINAL_SETTLEMENT
             ),
+            (
+                -2,
+                other_marker.uid.unwrap(),
+                effect_time::ROUND_END_FINAL_SETTLEMENT
+            ),
         ]
     );
 
@@ -380,7 +393,17 @@ fn obscurity_break_enters_the_witness_round_on_the_next_round() {
                     .collect::<Vec<_>>()
             })
             .collect::<Vec<_>>(),
-        vec![vec![6, 162, 162], vec![7, 7, 162]]
+        vec![vec![6, 162, 162, 162], vec![7, 7, 7, 162]]
+    );
+    assert_eq!(
+        steps[0]
+            .act_effect
+            .iter()
+            .filter_map(|effect| effect.fight_step.as_ref())
+            .filter(|step| step.act_id == Some(109320112))
+            .map(|step| (step.from_id, step.to_id))
+            .collect::<Vec<_>>(),
+        vec![(Some(-1), Some(-1)), (Some(-2), Some(-2))]
     );
 }
 
