@@ -42,9 +42,9 @@ pub(super) fn admits_cast(managers: &BattleManagers, source_uid: i64) -> bool {
 
 pub(crate) fn credits(managers: &BattleManagers, hit: &HpChanges) -> Vec<Credit> {
     if !hit.publishes_hit
-        || !hit
+        || hit
             .shield_absorbed
-            .is_some_and(|shield| shield.absorbed > 0)
+            .is_none_or(|shield| shield.absorbed <= 0)
     {
         return Vec::new();
     }

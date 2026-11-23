@@ -54,7 +54,6 @@ fn auto_round_orders_sovereign_charge_between_ultimates() {
             .plan(&AutoRoundRequest {
                 opers: vec![charge],
                 to_id: Some(-2),
-                ..Default::default()
             })
             .unwrap();
         assert_eq!(continued.opers.len(), 3);
