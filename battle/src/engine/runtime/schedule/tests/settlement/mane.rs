@@ -359,6 +359,7 @@ fn obscurity_break_enters_the_witness_round_on_the_next_round() {
             .has_active_buff_id(crate::engine::fight::rules::ATTACKER_SIDE_UID, 109320002)
     );
     assert!(managers.buff.has_active_buff_id(-1, 109320103));
+    assert!(managers.buff.has_active_buff_id(entrant, 109320103));
     assert_eq!(managers.buff.snapshot(-1, 21).unwrap().duration, Some(1));
     assert_eq!(managers.buff.buff_id_amount(10, 30810108), 3);
     let marker = managers
@@ -430,7 +431,7 @@ fn obscurity_break_enters_the_witness_round_on_the_next_round() {
                     .collect::<Vec<_>>()
             })
             .collect::<Vec<_>>(),
-        vec![vec![6, 162, 162, 162, 162], vec![7, 7, 7, 162]]
+        vec![vec![6, 162, 162, 162, 162], vec![7, 7, 7, 162, 162]]
     );
     let heat = steps[0].act_effect[4].fight_step.as_ref().unwrap();
     assert!(contains_skill(heat, 30810311));

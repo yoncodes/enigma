@@ -718,7 +718,7 @@ pub fn run_round_end_final_settlement(
         context,
         after.clone(),
         drain::ReactionLane::Skills,
-        None,
+        Some(&owner_uids),
     )?;
     if after_skills.events.first() == Some(&after) {
         after_skills.events.remove(0);
