@@ -190,6 +190,15 @@ pub struct BuffSetState {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct BuffBankExPointOverflow {
+    pub origin: CommandOrigin,
+    pub target_uid: i64,
+    pub buff_uid: i64,
+    pub overflow: i32,
+    pub capacity: i32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct BuffAccumulateActValue {
     pub origin: CommandOrigin,
     pub target_uid: i64,
@@ -387,6 +396,7 @@ pub enum BuffCommand {
     SetState(BuffSetState),
     SetInternalState(BuffSetState),
     SetStateSnapshot(BuffSetState),
+    BankExPointOverflow(BuffBankExPointOverflow),
     AccumulateActValue(BuffAccumulateActValue),
     AccumulateCappedActState(BuffAccumulateCappedActState),
     ChangeDuration(BuffChangeDuration),
@@ -882,6 +892,7 @@ pub enum BuffCommandError {
 
 mod burn;
 mod commit;
+mod ex_point_overflow;
 mod plan;
 mod result;
 pub(crate) use burn::BurnApplication;

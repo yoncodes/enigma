@@ -2,7 +2,7 @@ use crate::engine::{
     event::{kind::EventKind, payload::BattleEvent},
     manager::{
         BattleManagers,
-        buff::{BuffCommand, BuffSetState},
+        buff::{BuffBankExPointOverflow, BuffCommand, BuffSetState},
         ex_point::{ExPointChange, ExPointCommand},
     },
     skill::{
@@ -86,23 +86,16 @@ fn store_rule_ops(
     let buff = managers
         .buff
         .snapshot(subscriber.owner_uid, subscriber.buff_uid)?;
-    let current = current(&buff);
-    let stored = stored_overflow(change.overflow, capacity, current);
-    if stored <= 0 {
+    if stored_overflow(change.overflow, capacity, current(&buff)) <= 0 {
         return Some(Vec::new());
     }
     Some(vec![BuffActRuleOp::grouped_event(RuleOp::Command(
-        BattleCommand::Buff(BuffCommand::SetStateSnapshot(BuffSetState {
-            ex_info: None,
+        BattleCommand::Buff(BuffCommand::BankExPointOverflow(BuffBankExPointOverflow {
             origin: super::command_origin(subscriber)?,
             target_uid: subscriber.owner_uid,
             buff_uid: subscriber.buff_uid,
-            params: Some(format!(
-                "{}#{}",
-                subscriber.key.definition.opcode,
-                current + stored
-            )),
-            act_info: None,
+            overflow: change.overflow,
+            capacity,
         })),
     ))])
 }
@@ -153,6 +146,17 @@ fn current(buff: &sonettobuf::BuffInfo) -> i32 {
 
 fn stored_overflow(overflow: i32, capacity: i32, current: i32) -> i32 {
     overflow.min((capacity - current).max(0))
+}
+
+pub(crate) fn credit(
+    buff: &sonettobuf::BuffInfo,
+    act: i32,
+    overflow: i32,
+    capacity: i32,
+) -> Option<String> {
+    let current = current(buff);
+    let stored = stored_overflow(overflow, capacity, current);
+    (stored > 0).then(|| format!("{act}#{}", current + stored))
 }
 
 #[cfg(test)]

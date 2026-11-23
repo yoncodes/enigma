@@ -431,6 +431,10 @@ impl BuffManager {
                 update.origin,
                 BuffPlanAction::SetStateSnapshot(self.plan_set_state(update)?),
             ),
+            BuffCommand::BankExPointOverflow(update) => (
+                update.origin,
+                BuffPlanAction::SetStateSnapshot(self.plan_ex_point_overflow(update)?),
+            ),
             BuffCommand::AccumulateActValue(update) => {
                 if update.target_uid == 0
                     || update.buff_uid == 0

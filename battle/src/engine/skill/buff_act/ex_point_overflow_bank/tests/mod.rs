@@ -63,6 +63,7 @@ fn overflow_capacity_is_clamped() {
 
 #[test]
 fn overflow_emits_owned_state_and_value_marker_ops() {
+    crate::test_support::init_config();
     let fight = Fight {
         attacker: Some(FightTeam {
             entitys: vec![FightEntityInfo {
@@ -80,7 +81,7 @@ fn overflow_emits_owned_state_and_value_marker_ops() {
         }),
         ..Default::default()
     };
-    let managers = BattleManagers::seeded(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
     let subscriber = BuffActSubscriber {
         owner_uid: 10,
         source_uid: 10,
@@ -108,10 +109,10 @@ fn overflow_emits_owned_state_and_value_marker_ops() {
         target_uid: 10,
         kind: ExPointKind::Common,
         before: 5,
-        requested_delta: 2,
+        requested_delta: 1,
         applied_delta: 0,
         after: 5,
-        overflow: 2,
+        overflow: 1,
     });
 
     let ops = rule_ops(&managers, &subscriber, &event).unwrap();
@@ -121,16 +122,20 @@ fn overflow_emits_owned_state_and_value_marker_ops() {
             && op.frame_owner == crate::engine::skill::buff_act::BuffActFrameOwner::Event
             && op.group_with_siblings
     }));
-    assert!(matches!(
-        &ops[0].op,
-        RuleOp::Command(BattleCommand::Buff(BuffCommand::SetStateSnapshot(
-            BuffSetState {
-                params: Some(params),
-                ..
-            }
-        ))) if params == "806#3"
-    ));
-    assert_eq!(ops.len(), 1);
+    let [op] = ops.as_slice() else {
+        panic!("expected one overflow credit");
+    };
+    let RuleOp::Command(BattleCommand::Buff(BuffCommand::BankExPointOverflow(credit))) = op.op
+    else {
+        panic!("expected a bank command");
+    };
+    assert_eq!((credit.overflow, credit.capacity), (1, 3));
+    for expected in [2, 3, 3] {
+        managers
+            .execute_buff(BuffCommand::BankExPointOverflow(credit))
+            .unwrap();
+        assert_eq!(current(&managers.buff.snapshot(10, 20).unwrap()), expected);
+    }
 }
 
 #[test]

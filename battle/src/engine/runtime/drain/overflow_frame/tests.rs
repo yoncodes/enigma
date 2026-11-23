@@ -1,7 +1,7 @@
 use super::*;
 use crate::engine::{
     event::payload::ExPointChangeEvent,
-    manager::buff::BuffSetState,
+    manager::buff::BuffBankExPointOverflow,
     runtime::record::{push_child, push_root},
     skill::rule::CommandOrigin,
 };
@@ -20,17 +20,16 @@ fn only_a_self_owned_round_end_bank_releases_the_skill_frame() {
     };
     let phase_skill = push_child(&mut frames, &phase, skill.clone(), round_end);
     let active_skill = push_root(&mut frames, skill, FrameTrigger::Active);
-    let bank = RuleOp::Command(BattleCommand::Buff(BuffCommand::SetStateSnapshot(
-        BuffSetState {
+    let bank = RuleOp::Command(BattleCommand::Buff(BuffCommand::BankExPointOverflow(
+        BuffBankExPointOverflow {
             origin: CommandOrigin {
                 domain: RuleDomain::BuffAct,
                 key: DefinitionKey::new(806, "ExPointOverflowBank"),
             },
             target_uid: owner,
             buff_uid: 20,
-            params: Some("806#1".into()),
-            act_info: None,
-            ex_info: None,
+            overflow: 1,
+            capacity: 2,
         },
     )));
     let overflow = |source, applied_delta| {

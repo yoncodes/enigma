@@ -792,6 +792,12 @@ pub(super) fn drain_command(
                 .then_some(pending_deaths.as_slice()),
         )?
     };
+    super::overflow_frame::defer_hit_storage(
+        &frame_path,
+        action_scope.as_deref(),
+        &trigger,
+        &mut reactions,
+    );
     state.defer_hp_thresholds(
         action_scope.as_deref(),
         std::mem::take(&mut reactions.hp_thresholds),
