@@ -55,9 +55,10 @@ fn post_action_refill_preserves_replacements_and_fills_normal_capacity() {
             .unwrap();
     }
     managers.card.record_action_point_use(1, true);
-    assert_eq!(post_action_replacement_count(&managers), 1);
-    assert_eq!(post_action_target_hand_len(&managers, &pool, 5), 7);
-    let target = post_action_target_hand_len(&managers, &pool, 8);
+    let refill_slots = RefillSlots::capture(&managers, &pool);
+    assert_eq!(refill_slots.replacements(&managers), 1);
+    assert_eq!(refill_slots.target(&managers, &pool, 5), 7);
+    let target = refill_slots.target(&managers, &pool, 8);
     assert_eq!(target, 8);
 
     run_post_action_refill(
@@ -125,7 +126,11 @@ fn post_action_refill_does_not_replace_temporary_action_cards() {
     managers.card.record_action_point_use(1, true);
     managers.card.record_action_point_use(2, true);
 
-    assert_eq!(post_action_replacement_count(&managers), 1);
+    let pool = TargetPool::from_fight(&fight);
+    assert_eq!(
+        RefillSlots::capture(&managers, &pool).replacements(&managers),
+        1
+    );
 }
 
 #[test]
@@ -197,7 +202,10 @@ fn post_action_refill_keeps_the_recorded_ultimate_waiver() {
 
     assert!(managers.buff.snapshot(10, 20).is_none());
     assert!(!managers.card.played()[0].uses_action_point);
-    assert_eq!(post_action_replacement_count(&managers), 0);
+    assert_eq!(
+        RefillSlots::capture(&managers, &pool).replacements(&managers),
+        0
+    );
 }
 
 #[test]

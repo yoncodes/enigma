@@ -29,6 +29,7 @@ fn type_owned_args_are_an_attack_local_consumable_attribute() {
     assert_eq!(attribute_delta(&morale, AttrId::DmgBonus), 500);
     assert_eq!(attribute_delta(&morale, AttrId::CriticalDmg), 0);
     assert!(consumes_after_attack(&morale));
+    assert!(applies_to_skill(&morale, true));
 
     let ultimate = ActiveBuffFeature {
         amount: 3,
@@ -146,7 +147,7 @@ fn consumed_attack_attribute_removes_its_exact_instance_at_zero() {
 }
 
 #[test]
-fn incantation_might_waits_for_a_basic_attack_before_consumption() {
+fn next_incantation_might_uses_cast_settlement() {
     crate::test_support::init_config();
     let fight = Fight {
         attacker: Some(FightTeam {
@@ -165,23 +166,15 @@ fn incantation_might_waits_for_a_basic_attack_before_consumption() {
         }),
         ..Default::default()
     };
-    let mut managers = BattleManagers::seeded(&fight);
-    let morale = feature(vec![113, AttrId::DmgBonus as i32, 200, 1]);
-    assert!(applies_to_skill(&morale, true));
+    let managers = BattleManagers::seeded(&fight);
     let incantation = ActiveBuffFeature {
         buff_id: 430111,
-        values: vec![113, AttrId::IncantationMight as i32, 200, 1],
-        ..morale
+        ..feature(vec![113, AttrId::IncantationMight as i32, 200, 1])
     };
     assert!(!applies_to_skill(&incantation, true));
     assert!(applies_to_skill(&incantation, false));
     assert!(super::super::attack_consumption_rule_ops(&managers, 1, true).is_empty());
-    let ops = super::super::attack_consumption_rule_ops(&managers, 1, false);
-    let [(_, RuleOp::Command(BattleCommand::Buff(command)))] = ops.as_slice() else {
-        panic!("expected one buff consumption command");
-    };
-    managers.execute_buff(command.clone()).unwrap();
-    assert!(managers.buff.snapshot(1, 3).is_none());
+    assert!(super::super::attack_consumption_rule_ops(&managers, 1, false).is_empty());
 }
 
 #[test]

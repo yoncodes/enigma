@@ -5,7 +5,11 @@ use sonettobuf::BuffActInfo;
 use crate::engine::{
     event::payload::BattleEvent,
     manager::hp::HpManager,
-    skill::rule::{CommandOrigin, RuleDomain},
+    skill::{
+        action::SkillPhase,
+        buff_act::effect_time,
+        rule::{CommandOrigin, RuleDomain},
+    },
 };
 
 use super::{
@@ -186,6 +190,15 @@ pub struct BuffSetState {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct BuffBankExPointOverflow {
+    pub origin: CommandOrigin,
+    pub target_uid: i64,
+    pub buff_uid: i64,
+    pub overflow: i32,
+    pub capacity: i32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct BuffAccumulateActValue {
     pub origin: CommandOrigin,
     pub target_uid: i64,
@@ -277,6 +290,7 @@ pub struct BuffDurationAdvance {
     pub take_stage: i32,
     pub owner_uids: Vec<i64>,
     pub buff_uids: Option<Vec<i64>>,
+    non_attack_phase: Option<SkillPhase>,
 }
 
 const ROUND_START_DURATION_SYNC_KEY: crate::engine::skill::rule::DefinitionKey =
@@ -311,17 +325,25 @@ impl BuffDurationAdvance {
             take_stage,
             owner_uids,
             buff_uids,
+            non_attack_phase: None,
         })
     }
 
     pub fn for_event(event: &BattleEvent) -> Vec<Self> {
         if let BattleEvent::SkillAction(action) = event {
-            return crate::engine::skill::buff_act::effect_time::duration_stage_after_skill_phase(
-                action.phase,
-            )
-            .and_then(|take_stage| Self::new(take_stage, vec![action.source_uid], None))
-            .into_iter()
-            .collect();
+            let late = (!action.is_attack && action.phase == SkillPhase::AfterHit)
+                .then_some(effect_time::AFTER_HIT_DURATION);
+            return effect_time::duration_stage_after_skill_phase(action.phase)
+                .or(late)
+                .and_then(|take_stage| {
+                    let mut advance = Self::new(take_stage, vec![action.source_uid], None)?;
+                    if !action.is_attack && take_stage == effect_time::AFTER_HIT_DURATION {
+                        advance.non_attack_phase = Some(action.phase);
+                    }
+                    Some(advance)
+                })
+                .into_iter()
+                .collect();
         }
         let (take_stages, owner_uid) = match event {
             BattleEvent::AllyAction(action) => (
@@ -374,6 +396,7 @@ pub enum BuffCommand {
     SetState(BuffSetState),
     SetInternalState(BuffSetState),
     SetStateSnapshot(BuffSetState),
+    BankExPointOverflow(BuffBankExPointOverflow),
     AccumulateActValue(BuffAccumulateActValue),
     AccumulateCappedActState(BuffAccumulateCappedActState),
     ChangeDuration(BuffChangeDuration),
@@ -869,6 +892,7 @@ pub enum BuffCommandError {
 
 mod burn;
 mod commit;
+mod ex_point_overflow;
 mod plan;
 mod result;
 pub(crate) use burn::BurnApplication;

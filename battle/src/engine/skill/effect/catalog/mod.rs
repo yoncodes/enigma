@@ -4,7 +4,7 @@ use config::GameDB;
 use sonettobuf::Fight;
 
 use crate::engine::{
-    event::subscription::SubscriptionKey,
+    event::{kind::EventKind, subscription::SubscriptionKey},
     skill::{
         behavior::classify::{BehaviorKind, BehaviorSpec},
         condition::{ParsedConditionKind, parse_conditions, query},
@@ -17,6 +17,7 @@ use crate::engine::{
 #[derive(Debug, Clone, Default)]
 pub struct SkillEffectCatalog {
     effects: HashMap<i32, ParsedSkillEffect>,
+    preparation_observers: HashSet<i32>,
     aliases: HashMap<i32, i32>,
     effect_tags: HashMap<i32, i32>,
     logic_targets: HashMap<i32, TargetRequest>,
@@ -72,7 +73,23 @@ impl RuleIssueReason {
 
 impl SkillEffectCatalog {
     pub fn insert(&mut self, effect: ParsedSkillEffect) {
+        let observes_preparation = effect.slots.iter().any(|slot| {
+            crate::engine::skill::behavior::is_slot_supported(slot)
+                && slot.compiled_subscriptions().is_ok_and(|keys| {
+                    keys.iter()
+                        .any(|key| key.event == EventKind::SkillEffectsPrepared)
+                })
+        });
+        if observes_preparation {
+            self.preparation_observers.insert(effect.skill_id);
+        } else {
+            self.preparation_observers.remove(&effect.skill_id);
+        }
         self.effects.insert(effect.skill_id, effect);
+    }
+
+    pub(crate) fn has_preparation_observers(&self) -> bool {
+        !self.preparation_observers.is_empty()
     }
 
     #[cfg(test)]

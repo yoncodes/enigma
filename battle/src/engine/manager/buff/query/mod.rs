@@ -56,7 +56,7 @@ impl BuffManager {
             .filter(|active| active.effective && active.owner_uid == owner_uid)
             .filter(|active| !super::is_layer_halo_slave(&active.buff))
             .filter_map(|active| active.buff.buff_id)
-            .any(|buff_id| crate::engine::buff::halo::has_layer_master(self.catalog(), buff_id))
+            .any(|buff_id| crate::engine::buff::halo::is_force_field(self.catalog(), buff_id))
     }
 
     pub fn buff_act_state(&self, owner_uid: i64, kind: BuffActKind) -> Option<(i32, &str)> {
@@ -825,6 +825,27 @@ impl BuffManager {
             })
             .map(stack_layer)
             .sum()
+    }
+
+    pub(crate) fn instance_layers(&self, owner_uid: i64, buff_uid: i64) -> i32 {
+        self.buffs
+            .iter()
+            .find(|active| {
+                active.effective
+                    && active.owner_uid == owner_uid
+                    && active.buff.uid == Some(buff_uid)
+            })
+            .map_or(0, |active| {
+                if active
+                    .definition
+                    .as_ref()
+                    .is_some_and(super::BuffDefinition::uses_stack_layer)
+                {
+                    stack_layer(active).max(0)
+                } else {
+                    1
+                }
+            })
     }
 
     pub(crate) fn id_or_type_layer(&self, uid: i64, id: i32) -> i32 {

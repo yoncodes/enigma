@@ -660,7 +660,7 @@ pub(crate) fn emit_runtime_ops(
 behavior_definitions! {
     [60295] "UnnamedStrengthen" => super::sovereign_enhancement::Handler, SovereignEnhancement, SourceOpening, destination;
     [60296] "UnnamedMoveCard" => super::sovereign_boost::Handler, InitialSovereignBoost, Immediate, destination;
-    [20002] "AddExPoint" => super::resource::Handler, AddExPoint, AfterDamage, aggregated_destination, arguments::at_least_one;
+    [20002] "AddExPoint" => super::resource::Handler, AddExPoint, AfterDamage, aggregated_destination, @route(ConditionRouteOverride::Trigger { key: DefinitionKey::new(726304, "BloodPoolValue"), event: EventKind::RoundEndAfterOwnerSettlement, phase: None }), arguments::at_least_one;
     [100004] "AddAdrenalineExPoint" => super::resource::Handler, AddAdrenalineExPoint, AfterDamage, destination, super::resource::supports_ex_point_gain;
     [100014] "EzioAddSynchronization" => super::resource::Handler, AddSynchronization, AfterDamage, destination, super::resource::supports_ex_point_gain;
     [10010] "AttrFixExPoint" => super::resource::Handler, AttrFixExPoint, Immediate, destination;
@@ -702,7 +702,7 @@ behavior_definitions! {
     [50034] "ConsumePowerUpgradeSkillCard" => super::card::Handler, ConsumePowerUpgradeSkillCard, Immediate, destination, super::card::supports_power_card_upgrade;
     [60265] "ConsumePowerUpdateActorCard" => super::power_queue_rank::Handler, ConsumePowerUpdateActorCard, Immediate, parent_destination, super::power_queue_rank::supports_arguments;
     [60002] "AddUniversalCard" => super::card::Handler, AddUniversalCard, Immediate, destination;
-    [60012] "RedealCardKeepStar2" => super::card::Handler, RedealCardKeepStar2, Immediate, destination;
+    [60012] "RedealCardKeepStar2" => super::card::Handler, RedealCardKeepStar2, Immediate, destination, super::card::supports_redeal;
     [60070] "AddUseSkillCard" => super::card::Handler, AddQueuedSkillCard, Immediate, destination, super::card::supports_queued_skill_card;
     [50031] "AddSpTempCard" => super::card::Handler, AddSpTempCard, Immediate, destination, @route(ConditionRouteOverride::Trigger { key: DefinitionKey::new(19106, "HasBuffId"), event: EventKind::RoundStartCard, phase: None }), super::card::supports_temporary_skill_card;
     [60300] "AddSpTempCard2" => super::card::Handler, AddSpTempCard2, Immediate, destination, super::card::supports_temporary_skill_card;
@@ -768,7 +768,7 @@ behavior_definitions! {
     [60022] "BuffCountMulti" => super::buff::Handler, BuffCountMulti, AfterDamage, destination, super::buff::supports_count_multiplier;
     [50032] "ReplaceBuff" => super::buff::Handler, ReplaceBuff, Immediate, destination, arguments::exactly_four;
     [60176] "ReplaceBuff2" => super::buff::Handler, ReplaceBuff2, Immediate, destination, super::buff::supports_layer_reward;
-    [50035] "AddBuffBasedOnEnemyBurnUseCount" => super::buff::Handler, AddBuffBasedOnEnemyBurnUseCount, Immediate, destination, arguments::exactly_two;
+    [50035] "AddBuffBasedOnEnemyBurnUseCount" => super::buff::Handler, AddBuffBasedOnEnemyBurnUseCount, Immediate, destination, @route(ConditionRouteOverride::Trigger { key: DefinitionKey::new(307, "None"), event: EventKind::RoundEndAfterSideFinalExpiry, phase: None }), arguments::exactly_two;
     [60059] "AddBurnBySkillAddBurnCount" => super::buff::Handler, AddBuffBySkillBuffAdditions, Immediate, destination, super::buff::supports_burn_return;
     [60068] "AddBuffByBuffLayer" => super::buff::Handler, AddBuffByBuffLayer, Immediate, destination, arguments::exactly_three;
     [60124] "AddBuffByBuffLayerRange" => super::buff::Handler, AddBuffByBuffLayerRange, Immediate, destination, super::buff::supports_layer_range;
@@ -811,7 +811,7 @@ behavior_definitions! {
     [60037] "NotifyUpgradeHero" => super::general::Handler, NotifyUpgradeHero, Immediate, destination, super::general::supports_notify_upgrade;
     [60092] "NotifyHeroContract" => super::contract::Handler, NotifyHeroContract, Immediate, destination;
     [60093] "ContractEndClearBuff" => super::contract::EndHandler, ContractEndClearBuff, Immediate, destination;
-    [60198] "ClientEffect" => super::general::Handler, ClientEffect, Immediate, destination, arguments::at_least_one;
+    [60198] "ClientEffect" => super::client_effect::Handler, ClientEffect, Immediate, destination, arguments::at_least_one;
     [60304] "UnnamedClientEffect" => super::strengthen::Handler, UnnamedClientEffect, Immediate, destination;
     [60249] "AddMaxRound" => super::general::AddMaxRoundHandler, AddMaxRound, Immediate, destination;
     [60016] "AddIndicator" => super::general::AddIndicatorHandler, AddIndicator, Immediate, destination;
@@ -899,7 +899,7 @@ behavior_definitions! {
     [60033] "AttrFixByLoseHp" => super::attr_fix_by_lost_hp::Handler, AttrFixByLoseHp, Immediate, modifier;
     [60246] "HeatScaleUseSkillAddCount" => crate::engine::mechanic::heat_scale::Handler, HeatScaleUseSkillAddCount, Immediate, destination, arguments::at_least_one;
     [60247] "AddCardRankNext" => crate::engine::mechanic::heat_scale::Handler, AddCardRankNext, Immediate, queue_preparation, arguments::exactly_two;
-    [60281] "AddCardRankByEffectTag" => super::card::Handler, AddCardRankByEffectTag, Immediate, queue_preparation, super::card::supports_rank_by_effect_tag;
+    [60281] "AddCardRankByEffectTag" => super::queue_rank_by_tag::Handler, AddCardRankByEffectTag, Immediate, parent_destination, @route(ConditionRouteOverride::Trigger { key: DefinitionKey::new(1061, "None"), event: EventKind::ActionQueueSubmitted, phase: None }), super::queue_rank_by_tag::supports_arguments;
     [60283] "BufferflyRecordSkill" => super::card::Handler, BufferflyRecordSkill, Immediate, destination, arguments::none;
     [60287] "ToughnessRecover" => super::toughness::Handler, ToughnessRecover, Immediate, destination;
     [60254] "AddHeatScaleFromBuff" => crate::engine::mechanic::heat_scale::Handler, AddHeatScaleFromBuff, Immediate, destination, arguments::none;

@@ -5,7 +5,7 @@ use std::{
 };
 
 use crate::engine::{
-    event::payload::BattleEvent,
+    event::{dispatcher::OncePerTargetKey, payload::BattleEvent},
     manager::hp::{HurtDamageFromType, PendingDeath},
     runtime::record::{FrameOwner, FramePath},
     skill::{rule::DefinitionKey, target::TargetContext},
@@ -18,6 +18,13 @@ use super::{
 
 type DeferredCast = (Option<FrameOwner>, QueuedOp);
 pub(super) type ActionReactionKey = (i64, i32, Option<usize>, DefinitionKey);
+
+#[derive(Default)]
+pub(super) struct ActionReactions {
+    pub(super) skills: HashSet<ActionReactionKey>,
+    pub(super) buff_targets: HashSet<OncePerTargetKey>,
+    pub(super) hit_passives_released: bool,
+}
 
 /// Owns bookkeeping shared by the root drain and every nested reaction drain.
 #[derive(Default)]
@@ -37,7 +44,7 @@ pub(super) struct DrainState {
     open_actions: HashSet<FramePath>,
     completed_actions: HashSet<FramePath>,
     pub(super) shield_counter: super::shield_counter::Tally,
-    action_reactions: HashMap<FramePath, HashSet<ActionReactionKey>>,
+    action_reactions: HashMap<FramePath, ActionReactions>,
     action_shared_damage: HashMap<FramePath, HashMap<i64, [i32; 2]>>,
     action_skill_reaction_frames: HashMap<(FramePath, i64, i32), FramePath>,
     event_batch_reactions: HashMap<u64, HashSet<ActionReactionKey>>,
@@ -336,7 +343,7 @@ impl DrainState {
     }
 
     // Only an action that will still complete releases held casts; otherwise they run at once.
-    pub(super) fn action_in_progress(&self, action_path: &FramePath) -> bool {
+    pub(super) fn action_in_progress(&self, action_path: &[usize]) -> bool {
         self.open_actions.contains(action_path)
     }
 
@@ -353,13 +360,17 @@ impl DrainState {
         chain.map(<[usize]>::to_vec)
     }
 
+    pub(super) fn reactions(&mut self, action_path: &[usize]) -> &mut ActionReactions {
+        self.action_reactions
+            .entry(action_path.to_vec())
+            .or_default()
+    }
+
     pub(super) fn action_reactions(
         &mut self,
         action_path: &[usize],
     ) -> &mut HashSet<ActionReactionKey> {
-        self.action_reactions
-            .entry(action_path.to_vec())
-            .or_default()
+        &mut self.reactions(action_path).skills
     }
 
     pub(super) fn record_action_shared_damage(

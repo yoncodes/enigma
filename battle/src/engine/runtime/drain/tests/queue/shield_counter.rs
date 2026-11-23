@@ -4,13 +4,34 @@ const CARRIER: i32 = 30940181;
 const TEMPERING: i32 = 30940171;
 const FIREPOWER: i32 = 530000131;
 const TRENCH_DEFENSE: i32 = 530000111;
+const J_SHIELD: i32 = 30940121;
+const KIPERINA_SHIELD: i32 = 31170002;
 
 fn setup(completion_passive: Vec<i32>) -> (BattleManagers, TargetPool, SkillEffectCatalog) {
+    setup_with_shield(completion_passive, J_SHIELD, 10)
+}
+
+fn setup_with_shield(
+    completion_passive: Vec<i32>,
+    shield_id: i32,
+    shield_from: i64,
+) -> (BattleManagers, TargetPool, SkillEffectCatalog) {
     crate::test_support::init_config();
-    let entity = |uid, position| FightEntityInfo {
+    let entity = |uid: i64, position| FightEntityInfo {
         uid: Some(uid),
         position: Some(position),
         current_hp: Some(100_000),
+        buffs: if uid > 0 {
+            vec![BuffInfo {
+                uid: Some(30 + uid),
+                buff_id: Some(shield_id),
+                duration: Some(2),
+                from_uid: Some(shield_from),
+                ..Default::default()
+            }]
+        } else {
+            Vec::new()
+        },
         attr: Some(HeroAttribute {
             hp: Some(100_000),
             attack: Some(100),
@@ -22,14 +43,15 @@ fn setup(completion_passive: Vec<i32>) -> (BattleManagers, TargetPool, SkillEffe
         version: Some(7),
         attacker: Some(FightTeam {
             entitys: vec![
-                FightEntityInfo {
-                    buffs: vec![BuffInfo {
+                {
+                    let mut j = entity(10, 1);
+                    j.buffs.push(BuffInfo {
                         uid: Some(20),
                         buff_id: Some(CARRIER),
                         from_uid: Some(10),
                         ..Default::default()
-                    }],
-                    ..entity(10, 1)
+                    });
+                    j
                 },
                 entity(11, 2),
                 entity(12, 3),
@@ -394,4 +416,20 @@ fn grouped_shield_counter_cast_skips_a_later_dead_summon() {
     )
     .unwrap();
     assert!(result.events.is_empty());
+}
+
+#[test]
+fn shield_counter_needs_the_carrier_holder_shield() {
+    let (mut managers, pool, catalog) = setup_with_shield(Vec::new(), KIPERINA_SHIELD, 13);
+    let result = execute(
+        &mut managers,
+        &pool,
+        &catalog,
+        [cast(-3, FIREPOWER, SkillExecutionMode::Active)],
+    );
+    assert_eq!(shield_hits(&result), [-3, -3, -3, -5, -5]);
+    assert_eq!(
+        completed_actions(&result),
+        [(-5, TRENCH_DEFENSE), (-3, FIREPOWER)]
+    );
 }

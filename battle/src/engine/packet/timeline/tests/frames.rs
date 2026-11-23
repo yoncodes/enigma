@@ -342,6 +342,8 @@ fn lifecycle_mechanic_projects_as_nested_fake_timeline() {
     let steps = project(&[frame]).unwrap();
     let nested = steps[0].act_effect[0].fight_step.as_ref().unwrap();
 
+    assert_eq!(steps[0].support_hero_id, None);
+    assert_eq!(nested.support_hero_id, None);
     assert_eq!(nested.fake_timeline, Some(true));
     assert_eq!(
         nested.act_effect[0].effect_type,

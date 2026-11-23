@@ -9,18 +9,25 @@ use crate::engine::{
         BattleManagers,
         card::{
             CARD_PLAY_ORIGIN, CardCommand, CardManager, CardOpType, CardPlay, CardUseUniversal,
+            EnchantedType, deck::has_enchant_type,
         },
         eureka::PowerType,
     },
     round::{command::RoundCommand, state::RoundState},
     runtime::{determinism::RoundDeterminism, schedule::card_skill_is_blocked},
     skill::{
+        action::SkillRequest,
+        buff_act::butterfly_record_skill,
         effect::SkillEffectCatalog,
         target::{CardSelectionResolver, TargetContext, TargetPool},
     },
 };
 
 mod conduit;
+mod defense_setup;
+mod queue_setup;
+mod sovereign;
+mod tuning;
 
 #[derive(Debug)]
 pub(crate) enum AutoBattleError {
@@ -43,8 +50,12 @@ struct Candidate {
     chosen_skill_id: Option<i32>,
     free: bool,
     ultimate: bool,
+    fractal_attack: bool,
+    sovereign_charge: bool,
     conduit_priority: conduit::Priority,
+    opening_skill_two: bool,
     first_for_owner: bool,
+    defense_setup: bool,
     support: Support,
     strength: Option<(i32, i32)>,
 }
@@ -70,6 +81,7 @@ pub(crate) fn plan(
     round_state: &RoundState,
     determinism: &RoundDeterminism,
     devices_opers: Vec<FightDeviceOper>,
+    redealt: bool,
 ) -> Result<AutoRoundReply, AutoBattleError> {
     // Every card resolves before any skill runs, so indices, AP and readiness use round-start state.
     let pool = TargetPool::from_fight_with_catalog(managers.catalog(), fight);
@@ -110,6 +122,14 @@ pub(crate) fn plan(
     };
     let mut devices = devices_opers;
     conduit::select_groups(managers, &pool, catalog, determinism, context, &mut devices);
+    if fight.version == Some(7)
+        && request.opers.is_empty()
+        && !redealt
+        && let Some(team) = fight.attacker.as_ref()
+        && let Some(skill) = tuning::recommend(team, round_state.power, &pool, managers, catalog)
+    {
+        return Ok(reply(request, Vec::new(), devices, skill));
+    }
     let card_plan = plan_cards(
         request,
         fight,
@@ -122,7 +142,7 @@ pub(crate) fn plan(
         &devices,
     )?
     .unwrap_or(CardPlan { opers: Vec::new() });
-    Ok(reply(request, card_plan.opers, devices))
+    Ok(reply(request, card_plan.opers, devices, 0))
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -181,6 +201,22 @@ fn plan_cards_inner(
         return prefix.map(|_| None);
     }
     let live_pool = pool.runtime_view(managers);
+    let ordinary_queue = request.opers.is_empty()
+        && planned_devices.is_empty()
+        && fight.attacker.as_ref().is_some_and(|team| {
+            team.device_area
+                .as_ref()
+                .is_none_or(|area| area.devices.is_empty() && area.powers.is_empty())
+        });
+    let basic_opening = fight.cur_round == Some(1)
+        && ordinary_queue
+        && cards.visible_cards().all(|card| {
+            !card.temp_card.unwrap_or_default()
+                && card_choice_options(card, managers).is_empty()
+                && card_identity(card, None).is_some_and(|(uid, skill_id)| {
+                    matches!(live_pool.skill_slot(managers, uid, skill_id), 1 | 2)
+                })
+        });
     let selected_power_types = conduit::selected_power_types(managers, planned_devices);
     let mut opers = assist_boss_operation(
         fight,
@@ -193,6 +229,13 @@ fn plan_cards_inner(
     )
     .into_iter()
     .collect::<Vec<_>>();
+    let queue_setup = fight.version == Some(7) && ordinary_queue;
+    let mut opening_setup = basic_opening
+        && fight.version == Some(7)
+        && opers.is_empty()
+        && cards
+            .visible_cards()
+            .all(|card| card.energy.unwrap_or_default() == 0);
     let mut reported_unsupported = HashSet::new();
     loop {
         let choices = cards
@@ -218,26 +261,44 @@ fn plan_cards_inner(
             determinism,
             &selected_power_types,
             &mut reported_unsupported,
+            basic_opening && opers.is_empty(),
+            opening_setup && !opers.is_empty(),
+            queue_setup,
         )?
         else {
             break;
         };
+        let recorded_skill = butterfly_record_skill::auto_record(
+            managers,
+            catalog,
+            cards.hand(),
+            SkillRequest {
+                source_uid: candidate.source_uid,
+                skill_id: candidate.skill_id,
+            },
+        );
         let play = CardPlay {
             origin: CARD_PLAY_ORIGIN,
             hand_index: candidate.card_index,
             target_uid: Some(candidate.target_uid),
             chosen_skill_id: candidate.chosen_skill_id,
             choice: None,
-            recorded_skill: None,
+            recorded_skill,
         };
         let operation = play_operation(
             candidate.card_index,
             candidate.target_uid,
             candidate.chosen_skill_id,
+            recorded_skill,
         );
         if !play_card(&mut cards, play) {
             break;
         }
+        opening_setup &= candidate.normal_ap > 0
+            && candidate.strength.is_some_and(|(rate, _)| rate == 0)
+            && candidate.support != Support::Unneeded
+            && catalog.effect_tag(candidate.skill_id)
+                == crate::engine::skill::effect::catalog::SkillEffectTag::Buff as i32;
         normal_ap = normal_ap.saturating_sub(candidate.normal_ap);
         if candidate.normal_ap > 0 {
             played_owners.insert(candidate.source_uid);
@@ -282,12 +343,13 @@ fn reply(
     request: &AutoRoundRequest,
     opers: Vec<BeginRoundOper>,
     devices_opers: Vec<FightDeviceOper>,
+    cloth_skill: i32,
 ) -> AutoRoundReply {
     AutoRoundReply {
         opers,
         to_id: request.to_id,
         cloth_skill: Some(sonettobuf::ClothSkillInfo {
-            skill_id: Some(0),
+            skill_id: Some(cloth_skill),
             from_id: Some(0),
             to_id: Some(0),
             r#type: Some(0),
@@ -371,12 +433,15 @@ fn play_operation(
     card_index: usize,
     target_uid: i64,
     chosen_skill_id: Option<i32>,
+    recorded_skill: Option<SkillRequest>,
 ) -> BeginRoundOper {
     BeginRoundOper {
         oper_type: Some(CardOpType::PlayCard.id()),
         param1: Some(card_index as i32 + 1),
         to_id: Some(target_uid),
         param3: chosen_skill_id,
+        card_param1: recorded_skill
+            .map(|recorded| format!("{}#{}", recorded.skill_id, recorded.source_uid)),
         ..Default::default()
     }
 }
@@ -523,6 +588,9 @@ fn best_candidate(
     determinism: &RoundDeterminism,
     selected_power_types: &HashSet<(i32, i32)>,
     reported_unsupported: &mut HashSet<i32>,
+    opening: bool,
+    opening_after_setup: bool,
+    queue_setup: bool,
 ) -> Result<Option<Candidate>, AutoBattleError> {
     let candidates = cards
         .visible_cards()
@@ -612,6 +680,18 @@ fn best_candidate(
                 sim,
                 pool,
             );
+            let damage_rate = catalog.damage_rate(skill_id);
+            let first_for_owner = energy.is_none()
+                && !played_owners.contains(&source_uid)
+                && support != Support::Unneeded;
+            let defense_setup = opening_after_setup
+                && first_for_owner
+                && normal_ap_cost > 0
+                && !ultimate
+                && damage_rate == 0
+                && effect_tag
+                    == crate::engine::skill::effect::catalog::SkillEffectTag::Debuff as i32
+                && defense_setup::available(catalog.logic_target(skill_id), &targets, &buffs, sim);
             let live_preferred_target = catalog
                 .is_attack(skill_id)
                 .then(|| {
@@ -661,6 +741,18 @@ fn best_candidate(
                     })
                 })
                 .flatten()
+                .or_else(|| {
+                    if energy.is_some() || device {
+                        return None;
+                    }
+                    CardSelectionResolver::source_aim(
+                        catalog,
+                        skill_id,
+                        source_uid,
+                        live_pool,
+                        preferred_target,
+                    )
+                })
                 .unwrap_or(resolved_target_uid);
             Some(Ok(Candidate {
                 card_index,
@@ -672,42 +764,92 @@ fn best_candidate(
                 chosen_skill_id,
                 free: normal_ap_cost == 0,
                 ultimate,
+                fractal_attack: temporary
+                    && !ultimate
+                    && !device
+                    && damage_rate > 0
+                    && has_enchant_type(card, EnchantedType::Lorenz),
+                sovereign_charge: sovereign::is_charge(card, skill_id, catalog),
                 conduit_priority: conduit::Priority::new(
                     energy,
                     device,
                     temporary,
                     source.position,
                 ),
-                first_for_owner: energy.is_none()
-                    && !played_owners.contains(&source_uid)
-                    && support != Support::Unneeded,
+                opening_skill_two: opening
+                    && live_pool.skill_slot(managers, source_uid, skill_id) == 2,
+                first_for_owner,
+                defense_setup,
                 support,
-                strength: (!ultimate && !device).then(|| {
-                    (
-                        catalog.damage_rate(skill_id),
-                        managers.catalog().card_skill_rank(card),
-                    )
-                }),
+                strength: (!ultimate && !device)
+                    .then(|| (damage_rate, managers.catalog().card_skill_rank(card))),
             }))
         })
         .collect::<Result<Vec<Candidate>, AutoBattleError>>()?;
-    Ok(candidates.into_iter().max_by_key(|candidate| {
+    let has_paid_ultimate = candidates
+        .iter()
+        .any(|candidate| candidate.ultimate && !candidate.free);
+    let sovereign_order = sovereign::Order::new(&candidates);
+    let rank = |candidate: &Candidate| {
         // Official auto casts ready ultimates left to right.
         (
-            candidate.free,
-            candidate.ultimate,
+            candidate.free
+                && !(has_paid_ultimate && candidate.fractal_attack)
+                && !sovereign_order.holds_charge(candidate),
+            candidate.ultimate && !sovereign_order.holds_ultimate(candidate),
             candidate.support == Support::Urgent,
             candidate.conduit_priority,
             // Give every hero a card before any hero plays a second one when utility is equal.
             candidate.first_for_owner,
             candidate.support,
+            candidate.opening_skill_two,
             candidate.strength,
             Reverse(candidate.lineup_position),
             Reverse(candidate.card_index),
             Reverse(candidate.source_uid),
             Reverse(candidate.skill_id),
         )
-    }))
+    };
+    let best = candidates.iter().max_by_key(|candidate| rank(candidate));
+    if let Some(best) = best.filter(|candidate| {
+        candidate.first_for_owner
+            && !candidate.free
+            && candidate.support == Support::None
+            && candidate.strength.is_some_and(|(rate, _)| rate > 0)
+    }) {
+        return Ok(Some(
+            candidates
+                .iter()
+                .filter(|candidate| candidate.defense_setup)
+                .max_by_key(|candidate| rank(candidate))
+                .or_else(|| {
+                    let equal_rank_paid = best.strength.is_some_and(|(_, rank)| rank == 1)
+                        && cards.visible_card(best.card_index).is_some_and(|card| {
+                            !card.temp_card.unwrap_or_default()
+                                && card.energy.unwrap_or_default() == 0
+                        });
+                    if !queue_setup || !equal_rank_paid {
+                        return None;
+                    }
+                    candidates
+                        .iter()
+                        .filter(|candidate| {
+                            queue_setup::available(
+                                candidate,
+                                cards,
+                                managers,
+                                catalog,
+                                live_pool,
+                                determinism,
+                            )
+                        })
+                        .max_by_key(|candidate| rank(candidate))
+                })
+                .unwrap_or(best)
+                .clone(),
+        ));
+    }
+    Ok(best.cloned())
 }
 
 // Only unconditional `AddBuff` slots aimed at the card's own target count.

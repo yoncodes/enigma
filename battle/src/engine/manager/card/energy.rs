@@ -38,7 +38,18 @@ pub fn allocate(
         .map(|(index, _)| limit - output[*index].energy.unwrap_or_default().clamp(0, limit))
         .sum::<i32>();
     let mut remaining = available.min(capacity);
-    if use_priority_rule {
+    if use_priority_rule
+        && let Some(observed) = determinism.take_card_energy_allocation(|hand| {
+            observed_allocation_fits(&output, &eligible, hand, remaining, limit)
+        })
+    {
+        for (card, observed) in output.iter_mut().zip(observed) {
+            card.energy = Some(observed.energy.unwrap_or_default());
+        }
+        for _ in 0..remaining {
+            determinism.lua_random_index(1);
+        }
+    } else if use_priority_rule {
         let features = buffs.active_features(hp);
         while remaining > 0 {
             let candidates = eligible
@@ -73,6 +84,30 @@ pub fn allocate(
     }
 
     (card_energy(&output) > before).then_some(output)
+}
+
+fn observed_allocation_fits(
+    cards: &[CardInfo],
+    eligible: &[(usize, &CardInfo)],
+    observed: &[CardInfo],
+    allocated: i32,
+    limit: i32,
+) -> bool {
+    let energy = |card: &CardInfo| card.energy.unwrap_or_default();
+    cards.len() == observed.len()
+        && cards
+            .iter()
+            .zip(observed)
+            .enumerate()
+            .all(|(index, (card, seen))| {
+                card.uid == seen.uid
+                    && card.skill_id == seen.skill_id
+                    && (energy(seen) == energy(card)
+                        || energy(seen) > energy(card)
+                            && energy(seen) <= limit
+                            && eligible.iter().any(|(eligible, _)| *eligible == index))
+            })
+        && card_energy(observed) - card_energy(cards) == allocated
 }
 
 fn eligible_cards<'a>(

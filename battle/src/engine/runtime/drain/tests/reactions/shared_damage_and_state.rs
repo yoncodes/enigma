@@ -1,4 +1,5 @@
 use super::*;
+use crate::test_support::find_step;
 
 #[test]
 fn mane_mass_attack_orders_shared_damage_before_hit_passives_and_direct_hit() {
@@ -357,15 +358,6 @@ fn active_ally_reaction_without_parent_keeps_the_action_target() {
     .unwrap();
 
     assert_eq!(managers.buff.buff_id_amount(30, 31430151), 1);
-
-    fn find_step(step: &sonettobuf::FightStep, act_id: i32) -> Option<&sonettobuf::FightStep> {
-        (step.act_id == Some(act_id)).then_some(step).or_else(|| {
-            step.act_effect
-                .iter()
-                .filter_map(|effect| effect.fight_step.as_ref())
-                .find_map(|nested| find_step(nested, act_id))
-        })
-    }
 
     let steps = crate::engine::packet::timeline::project(&result.frames).unwrap();
     let reaction = steps

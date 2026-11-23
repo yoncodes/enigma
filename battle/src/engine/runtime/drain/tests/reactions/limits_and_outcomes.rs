@@ -401,6 +401,7 @@ fn active_skill_publishes_hits_between_after_damage_and_after_hit_rows() {
             entitys: vec![FightEntityInfo {
                 uid: Some(10),
                 current_hp: Some(10_000),
+                skill_group1: vec![31280111],
                 attr: Some(HeroAttribute {
                     attack: Some(1_000),
                     hp: Some(10_000),
@@ -419,6 +420,13 @@ fn active_skill_publishes_hits_between_after_damage_and_after_hit_rows() {
                         buff_id: Some(4150002),
                         count: Some(1),
                         layer: Some(1),
+                        from_uid: Some(10),
+                        ..Default::default()
+                    },
+                    BuffInfo {
+                        uid: Some(34),
+                        buff_id: Some(430111),
+                        count: Some(1),
                         from_uid: Some(10),
                         ..Default::default()
                     },
@@ -511,6 +519,17 @@ fn active_skill_publishes_hits_between_after_damage_and_after_hit_rows() {
         .iter()
         .position(|effect| effect.fight_step.as_ref().and_then(|step| step.act_id) == Some(4150002))
         .unwrap();
+    let incantation_cleanup: Vec<_> = effects
+        .iter()
+        .enumerate()
+        .filter_map(|(index, effect)| {
+            (effect.fight_step.as_ref().and_then(|step| step.act_id) == Some(430111))
+                .then_some(index)
+        })
+        .collect();
+    let [incantation_cleanup] = incantation_cleanup.as_slice() else {
+        panic!("expected one Incantation Might expiry");
+    };
     let shock_wave = effects
         .iter()
         .position(|effect| effect.buff.as_ref().and_then(|buff| buff.buff_id) == Some(31280113))
@@ -518,8 +537,11 @@ fn active_skill_publishes_hits_between_after_damage_and_after_hit_rows() {
 
     assert!(fear_act_info < fear_delete);
     assert!(
-        fear < attacked && attacked < combustion_cleanup && combustion_cleanup < shock_wave,
-        "fear={fear} attacked={attacked} combustion_cleanup={combustion_cleanup} shock_wave={shock_wave}"
+        fear < attacked
+            && attacked < combustion_cleanup
+            && combustion_cleanup < *incantation_cleanup
+            && *incantation_cleanup < shock_wave,
+        "fear={fear} attacked={attacked} combustion_cleanup={combustion_cleanup} incantation_cleanup={incantation_cleanup} shock_wave={shock_wave}"
     );
 }
 

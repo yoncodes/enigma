@@ -49,27 +49,15 @@ fn runtime_capability_lives_on_the_exact_registry_entry() {
 
 #[test]
 fn reflect_frames_are_owned_by_holder_and_mark_attacker() {
-    for definition in [
-        find(303, "Rebound").unwrap(),
-        find(743, "ReboundBasedOnDamage").unwrap(),
-    ] {
-        assert_eq!(definition.runtime.frame_source, RuntimeFrameSource::Owner);
-        let marker = definition.runtime.marker.unwrap();
-        assert_eq!(marker.position, RuntimeMarkerPosition::BeforeChanges);
-        assert_eq!(marker.target, RuntimeMarkerTarget::EventSource);
-    }
-
-    assert_eq!(
-        find(303, "Rebound")
-            .unwrap()
-            .runtime
-            .marker
-            .unwrap()
-            .effect_type,
-        None
-    );
+    let rebound = find(303, "Rebound").unwrap();
+    assert_eq!(rebound.runtime.frame_source, RuntimeFrameSource::Owner);
+    assert!(rebound.runtime.marker.is_none());
 
     let damage_based = find(743, "ReboundBasedOnDamage").unwrap();
+    assert_eq!(damage_based.runtime.frame_source, RuntimeFrameSource::Owner);
+    let marker = damage_based.runtime.marker.unwrap();
+    assert_eq!(marker.position, RuntimeMarkerPosition::BeforeChanges);
+    assert_eq!(marker.target, RuntimeMarkerTarget::EventSource);
     assert_eq!(damage_based.kind, BuffActKind::ReboundBasedOnDamage);
     assert!(damage_based.supports.unwrap()(&[300, 0, 0]));
     assert!(!damage_based.supports.unwrap()(&[300, 101, 2_000]));
@@ -77,7 +65,7 @@ fn reflect_frames_are_owned_by_holder_and_mark_attacker() {
     let wire = damage_based.wire.unwrap();
     assert!(!wire.has_output());
     assert_eq!(
-        damage_based.runtime.marker.unwrap().effect_type,
+        marker.effect_type,
         Some(sonettobuf::effect_type_enum::EffectType::Rebound as i32)
     );
     assert!(

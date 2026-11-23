@@ -5,7 +5,9 @@ use crate::engine::manager::conduit::ConduitCommand;
 pub(in crate::engine::runtime::schedule) struct Selection(Vec<(i64, i32)>);
 
 impl Selection {
-    pub(super) fn from_operations(operations: &[sonettobuf::FightDeviceOper]) -> Self {
+    pub(in crate::engine::runtime::schedule) fn from_operations(
+        operations: &[sonettobuf::FightDeviceOper],
+    ) -> Self {
         Self(
             operations
                 .iter()

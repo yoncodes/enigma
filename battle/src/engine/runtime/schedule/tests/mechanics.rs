@@ -292,7 +292,10 @@ fn lorentz_passive_uses_team_tags_for_moxie_and_snapshots_lingering_glow_bonuses
         .execute_gauge(crate::engine::manager::gauge::GaugeCommand::new(
             gauge_origin,
             crate::engine::mechanic::lingering_glow::key(1),
-            crate::engine::manager::gauge::GaugeOperation::ChangeValue { delta: 250 },
+            crate::engine::manager::gauge::GaugeOperation::AccumulateRawValue {
+                amount: 38_600,
+                stream: 1,
+            },
         ))
         .unwrap();
 
@@ -314,24 +317,51 @@ fn lorentz_passive_uses_team_tags_for_moxie_and_snapshots_lingering_glow_bonuses
         .unwrap();
     }
 
+    let assert_snapshots = |managers: &BattleManagers, damage_bonus, incantation_might| {
+        for uid in [10, 11] {
+            for (buff_id, expected) in [(313901734, damage_bonus), (313901744, incantation_might)] {
+                let buff = managers
+                    .buff
+                    .active_for(uid)
+                    .find(|buff| buff.buff_id == Some(buff_id))
+                    .unwrap();
+                assert_eq!(buff.act_info[0].act_id, Some(1053));
+                assert_eq!(buff.act_info[0].param, vec![expected]);
+            }
+        }
+    };
+    assert_snapshots(&managers, 42, 23);
     for uid in [10, 11] {
         assert!(managers.buff.has_buff_id(uid, 31390190));
         assert!(managers.buff.has_buff_id(uid, 31390152));
-        for (buff_id, expected) in [(313901734, 275), (313901744, 150)] {
-            let buff = managers
-                .buff
-                .active_for(uid)
-                .find(|buff| buff.buff_id == Some(buff_id))
-                .unwrap();
-            assert_eq!(buff.act_info[0].act_id, Some(1053));
-            assert_eq!(buff.act_info[0].param, vec![expected]);
-        }
     }
 
     run_attacker_round_end(&mut managers, &pool, catalog, &mut determinism, context).unwrap();
 
     assert_eq!(managers.ex_point.get(10), 5);
     assert_eq!(managers.ex_point.get(11), 1);
+
+    managers
+        .execute_gauge(crate::engine::manager::gauge::GaugeCommand::new(
+            gauge_origin,
+            crate::engine::mechanic::lingering_glow::key(1),
+            crate::engine::manager::gauge::GaugeOperation::AccumulateRawValue {
+                amount: 650_000,
+                stream: 1,
+            },
+        ))
+        .unwrap();
+    crate::engine::runtime::drain::run_setup_stage(
+        &mut managers,
+        &pool,
+        catalog,
+        &mut determinism,
+        context,
+        SetupStage::RoundStart,
+        1,
+    )
+    .unwrap();
+    assert_snapshots(&managers, 660, 360);
 }
 
 #[test]
@@ -493,20 +523,16 @@ fn action_queue_commit_collects_played_card_energy_as_inspiration() {
                 && queued.kind == crate::engine::manager::card::CardChangeKind::UseCardQueued
     ));
     assert!(matches!(
-        result.events.first(),
-        Some(BattleEvent::ActionQueueCommitted {
-            action_count: 1,
-            ..
-        })
+        result.events.as_slice(),
+        [
+            BattleEvent::ActionQueueSubmitted { .. },
+            BattleEvent::ActionQueueCommitted {
+                action_count: 1,
+                ..
+            },
+            BattleEvent::GaugeChanged(_),
+        ]
     ));
-    assert_eq!(
-        result
-            .events
-            .iter()
-            .map(BattleEvent::kind)
-            .collect::<Vec<_>>(),
-        vec![EventKind::ActionQueueCommitted, EventKind::GaugeChanged]
-    );
     assert_eq!(
         managers.gauge.get(inspiration_key(99998)).unwrap().current,
         3

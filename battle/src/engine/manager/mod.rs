@@ -804,7 +804,11 @@ impl BattleManagers {
             let shares = share
                 .shares
                 .into_iter()
-                .map(|share| self.hp.commit_validated_command(share, None, None))
+                .map(|share| {
+                    let changes = self.hp.commit_validated_command(share, None, None);
+                    crate::engine::damage::export::settlement(share, &changes, &self.hp, None);
+                    changes
+                })
                 .collect();
             Box::new(hp::SharedHurt { consumed, shares })
         });
@@ -822,9 +826,19 @@ impl BattleManagers {
             _ => None,
         };
         let team_shared_shield_removed = plan.team_shared_buff.map(|plan| self.commit_buff(plan));
-        let mut changes =
-            self.hp
-                .commit_validated_command(plan.command, plan.team_shared, loss_limit);
+        let mut command = plan.command;
+        if plan.fake_hp.is_none()
+            && plan.team_shared.is_none()
+            && shared_hurt.is_none()
+            && let hp::HpCommand::Damage(damage) = &mut command
+            && damage.hurt.damage_from == hp::HurtDamageFromType::Skill
+            && (1..damage.amount).contains(&self.hp.shield(damage.target_uid))
+        {
+            damage.hurt.display_amount.get_or_insert(damage.amount);
+        }
+        let mut changes = self
+            .hp
+            .commit_validated_command(command, plan.team_shared, loss_limit);
         changes.fake_hp_consumed = plan.fake_hp.map(|plan| plan.consumption);
         changes.toughness = toughness;
         changes.team_shared_shield_removed = team_shared_shield_removed;
@@ -835,6 +849,7 @@ impl BattleManagers {
                 .shield_carrier_uid(changes.target_uid)
                 .unwrap_or_default();
         }
+        crate::engine::damage::export::settlement(command, &changes, &self.hp, loss_limit);
         HpCommit {
             changes,
             shield_counter_credits: plan.shield_counter_credits,
@@ -1514,6 +1529,13 @@ impl BattleManagers {
         }))
     }
 
+    pub(crate) fn passives_disabled(&self, owner_uid: i64) -> bool {
+        self.buff.has_buff_act_kind(
+            owner_uid,
+            crate::engine::skill::buff_act::registry::BuffActKind::PassiveSkillInvalid,
+        )
+    }
+
     pub(crate) fn can_fire_rule(
         &self,
         owner_uid: i64,
@@ -1574,12 +1596,12 @@ impl BattleManagers {
         self.round_rule_fires.clear();
         self.buff_act_fires.clear();
         self.configured_rule_progress.begin_round_start();
+        self.hp.begin_round();
     }
 
     pub(crate) fn begin_action_round(&mut self) {
         self.configured_rule_progress.begin_action_round();
         self.card.begin_round();
-        self.hp.begin_round();
         self.injury.begin_round();
         self.gauge.begin_combat_round();
         self.field.begin_round();

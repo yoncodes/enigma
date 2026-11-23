@@ -57,6 +57,9 @@ pub(crate) enum RuleOutcome {
     BuffBatch(Vec<BuffChanges>),
     BuffFeatureMarker(crate::engine::manager::buff::BuffMarkerResult),
     EffectMarker(crate::engine::skill::rule::output::EffectMarker),
+    CopyPreview {
+        target_uid: i64,
+    },
     SceneChange {
         scene_id: i32,
     },
@@ -288,6 +291,9 @@ impl RuleOutcome {
                 .collect(),
             Self::BuffFeatureMarker(change) => vec![BattleChange::BuffFeatureMarker(*change)],
             Self::EffectMarker(change) => vec![BattleChange::EffectMarker(change.clone())],
+            Self::CopyPreview { target_uid } => vec![BattleChange::CopyPreview {
+                target_uid: *target_uid,
+            }],
             Self::SceneChange { scene_id } => vec![BattleChange::SceneChange {
                 scene_id: *scene_id,
             }],
@@ -760,6 +766,15 @@ pub(crate) fn execute_rule_op_with(
                 command,
             );
             let execution = managers.execute_rule_hp(command)?;
+            for event in execution.changes.events() {
+                events.push(event);
+            }
+            Ok(RuleOutcome::Hp(Box::new(execution)))
+        }
+        RuleOp::Command(BattleCommand::ReboundDamage(damage)) => {
+            let Some(execution) = damage.settle(managers)? else {
+                return Ok(RuleOutcome::StateChanged);
+            };
             for event in execution.changes.events() {
                 events.push(event);
             }
@@ -1312,6 +1327,7 @@ pub(crate) fn execute_rule_op_with(
                 reserve_str,
             },
         )),
+        RuleOp::CopyPreview { target_uid } => Ok(RuleOutcome::CopyPreview { target_uid }),
         RuleOp::SceneChange { scene_id } => Ok(RuleOutcome::SceneChange { scene_id }),
         RuleOp::BuffActTrigger(trigger) => Ok(RuleOutcome::BuffActTrigger(trigger)),
         RuleOp::BuffActInfoMarker(marker) => Ok(RuleOutcome::BuffActInfoMarker(marker)),

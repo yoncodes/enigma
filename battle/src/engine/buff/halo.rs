@@ -119,6 +119,31 @@ pub fn has_layer_master(catalog: crate::catalog::BattleCatalog, buff_id: i32) ->
         })
 }
 
+pub(crate) fn is_force_field(catalog: crate::catalog::BattleCatalog, buff_id: i32) -> bool {
+    use crate::engine::skill::buff_act::registry::BuffActKind;
+
+    catalog
+        .buff_feature_tokens(buff_id)
+        .into_iter()
+        .any(|token| {
+            let mut args = token.split('#');
+            let kind = args
+                .next()
+                .and_then(|opcode| opcode.parse().ok())
+                .and_then(|opcode| catalog.buff_act_definition(opcode))
+                .map(|definition| definition.kind);
+            match kind {
+                Some(BuffActKind::LayerMasterHalo) => true,
+                Some(BuffActKind::MasterHalo) => matches!(
+                    (args.next(), args.next(), args.next(), args.next(), args.next()),
+                    (Some("1"), Some(linked), Some("1"), Some("0"), None)
+                        if linked.parse::<i32>().is_ok_and(|id| id > 0)
+                ),
+                _ => false,
+            }
+        })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

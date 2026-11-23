@@ -431,6 +431,10 @@ impl BuffManager {
                 update.origin,
                 BuffPlanAction::SetStateSnapshot(self.plan_set_state(update)?),
             ),
+            BuffCommand::BankExPointOverflow(update) => (
+                update.origin,
+                BuffPlanAction::SetStateSnapshot(self.plan_ex_point_overflow(update)?),
+            ),
             BuffCommand::AccumulateActValue(update) => {
                 if update.target_uid == 0
                     || update.buff_uid == 0
@@ -603,15 +607,12 @@ impl BuffManager {
                 {
                     return Err(BuffCommandError::InvalidDurationAdvance);
                 }
-                let plans = if let Some(buff_uids) = &advance.buff_uids {
-                    self.plan_duration_advances_for_snapshot(
-                        advance.take_stage,
-                        &advance.owner_uids,
-                        buff_uids,
-                    )
-                } else {
-                    self.plan_duration_advances(advance.take_stage, &advance.owner_uids)
-                };
+                let plans = self.plan_duration_advances_matching(
+                    advance.take_stage,
+                    &advance.owner_uids,
+                    advance.buff_uids.as_deref(),
+                    advance.non_attack_phase,
+                );
                 (advance.origin, BuffPlanAction::AdvanceDuration(plans))
             }
             BuffCommand::SyncRoundStartDuration(sync) => {

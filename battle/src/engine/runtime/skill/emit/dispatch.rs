@@ -33,7 +33,10 @@ use super::super::{
     plan,
 };
 use super::*;
-use super::{effect_started as effect_started_op, phase_completed as phase_completed_op};
+use super::{
+    effect_started as effect_started_op, effects_prepared as effects_prepared_op,
+    phase_completed as phase_completed_op,
+};
 
 fn uses_action_targets(slot: &SkillEffectSlot, active_skill_target_condition: bool) -> bool {
     slot.target.code == 0
@@ -662,6 +665,7 @@ pub(in crate::engine::runtime) fn emit_ops(
                         .entity
                         .passive_source(invocation.plan.source_uid, invocation.plan.skill_id),
                     execution.context.action_damage_amount,
+                    execution.context.active_skill_id == invocation.plan.skill_id,
                 ) || definition
                     .skill_action_trigger
                     .rejects_extra_skill(execution.context.extra_skill_kind)
@@ -794,6 +798,11 @@ pub(in crate::engine::runtime) fn emit_ops(
             );
         let condition_uses_hit_targets = behavior_target_source
             == crate::engine::skill::condition::registry::BehaviorTargetSource::HitTargets;
+        let event_subject = (slot.target_from_condition
+            && behavior_target_source
+                == crate::engine::skill::condition::registry::BehaviorTargetSource::EventSubject
+            && execution.context.runtime_target_uid != 0)
+            .then_some(execution.context.runtime_target_uid);
         let child_skill_kind = condition_key
             .and_then(|condition_key| {
                 crate::engine::skill::condition::registry::find_key(
@@ -830,6 +839,8 @@ pub(in crate::engine::runtime) fn emit_ops(
         let mut targets =
             if definition.target_emission_mode == behavior::registry::TargetEmissionMode::Owner {
                 vec![invocation.plan.source_uid]
+            } else if let Some(subject_uid) = event_subject {
+                vec![subject_uid]
             } else if let Some(targets) = event_targets {
                 targets.to_vec()
             } else if active_phase.is_some()
@@ -1025,31 +1036,20 @@ pub(in crate::engine::runtime) fn emit_ops(
         }
     }
     if active_phase == Some(SkillPhase::Immediate) {
-        let phase_completed = phase_completed_op(
-            &invocation,
-            managers,
-            catalog,
-            pool,
-            execution,
-            SkillPhase::Immediate,
-        );
-        outputs.extend(super::payment::settle(
-            &invocation,
-            execution,
-            phase_completed,
-        ));
-        if execution
+        let prepares_target_buffs = !execution.modifiers.post_immediate_target_buffs.is_empty();
+        let freeze_rates = execution
             .modifiers
             .rates
             .iter()
-            .any(|modifier| modifier.fixed_value().is_none())
-        {
-            outputs.push(SkillEmissionOp {
-                op: RuleOp::FreezeActiveSkillRates,
-                owner: behavior::registry::OutputOwner::Skill,
-                consequence: ConsequencePolicy::Default,
-                frame_owner: None,
-            });
+            .any(|modifier| modifier.fixed_value().is_none());
+        let freeze = || SkillEmissionOp {
+            op: RuleOp::FreezeActiveSkillRates,
+            owner: behavior::registry::OutputOwner::Skill,
+            consequence: ConsequencePolicy::Default,
+            frame_owner: None,
+        };
+        if prepares_target_buffs && freeze_rates {
+            outputs.push(freeze());
         }
         outputs.extend(
             execution
@@ -1080,6 +1080,26 @@ pub(in crate::engine::runtime) fn emit_ops(
                         })
                 }),
         );
+        let prepared = catalog
+            .has_preparation_observers()
+            .then(|| effects_prepared_op(&invocation, managers, catalog, pool, execution));
+        let phase_completed = phase_completed_op(
+            &invocation,
+            managers,
+            catalog,
+            pool,
+            execution,
+            SkillPhase::Immediate,
+        );
+        outputs.extend(super::payment::settle(
+            &invocation,
+            execution,
+            phase_completed,
+            prepared,
+        ));
+        if !prepares_target_buffs && freeze_rates {
+            outputs.push(freeze());
+        }
     }
     if active_phase == Some(SkillPhase::Immediate) && has_row_damage {
         for activation in plan::LinkedDamagePlan::activations(&invocation, managers, execution) {
@@ -1415,7 +1435,7 @@ pub(in crate::engine::runtime) fn emit_ops(
             });
         }
     }
-    if continuation.is_none() && invocation.mode.completes_action() {
+    if continuation.is_none() && invocation.mode.publishes_completion() {
         outputs.push(SkillEmissionOp {
             op: RuleOp::SkillLifecycle(
                 crate::engine::skill::action::SkillLifecycle::ActionCompleted(

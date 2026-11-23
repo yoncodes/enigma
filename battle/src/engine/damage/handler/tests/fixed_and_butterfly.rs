@@ -110,16 +110,6 @@ fn butterfly_damage_uses_allied_round_skill_damage_and_capped_lingering_glow() {
             GaugeOperation::Enable { max: Some(1_000) },
         ))
         .unwrap();
-    managers
-        .execute_gauge(GaugeCommand::new(
-            origin,
-            lingering_glow::key(1),
-            GaugeOperation::AccumulateRawValue {
-                amount: 800_000,
-                stream: 60282,
-            },
-        ))
-        .unwrap();
     let skill_damage = |source_uid, amount| {
         HpCommand::Damage(HpDamage {
             origin,
@@ -153,14 +143,29 @@ fn butterfly_damage_uses_allied_round_skill_damage_and_capped_lingering_glow() {
         active_skill_id: 31390118,
         ..Default::default()
     };
-    let behavior = ParsedBehavior::from_spec(
-        BehaviorSpec::new(60282, "ButterflyDamage"),
-        vec![30, 100_000, 7, 600_000],
-        Vec::new(),
-    );
-
-    assert!(matches!(
-        crate::engine::skill::behavior::rule_ops(
+    for (glow, args, expected) in [
+        (465_300, [30, 100_000, 7, 600_000], 93),
+        (0, [50, 100, 50, 750], 600),
+        (334_700, [30, 100_000, 7, 600_000], 108),
+    ] {
+        if glow > 0 {
+            managers
+                .execute_gauge(GaugeCommand::new(
+                    origin,
+                    lingering_glow::key(1),
+                    GaugeOperation::AccumulateRawValue {
+                        amount: glow,
+                        stream: 60282,
+                    },
+                ))
+                .unwrap();
+        }
+        let behavior = ParsedBehavior::from_spec(
+            BehaviorSpec::new(60282, "ButterflyDamage"),
+            args.to_vec(),
+            Vec::new(),
+        );
+        let ops = crate::engine::skill::behavior::rule_ops(
             BehaviorOpContext {
                 source_uid: 1,
                 source_team: 1,
@@ -175,18 +180,19 @@ fn butterfly_damage_uses_allied_round_skill_damage_and_capped_lingering_glow() {
                 target: &mut target,
             },
             &behavior,
-        ),
-        Some(ops) if matches!(
+        )
+        .unwrap();
+        assert!(matches!(
             ops.as_slice(),
             [RuleOp::Command(BattleCommand::Hp(HpCommand::Damage(HpDamage {
-                amount: 108,
+                amount,
                 effect_kind: DamageEffectKind::Genesis,
                 hurt: HurtInfoData {
                     damage_from: HurtDamageFromType::SkillEffect,
                     ..
                 },
                 ..
-            })))]
-        )
-    ));
+            })))] if *amount == expected
+        ));
+    }
 }

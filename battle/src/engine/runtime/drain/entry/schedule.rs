@@ -50,6 +50,7 @@ pub fn run_command_group_as(
                 | RuleOp::PaidSkillStarted(_)
                 | RuleOp::BuffFeatureMarker { .. }
                 | RuleOp::EffectMarker { .. }
+                | RuleOp::CopyPreview { .. }
                 | RuleOp::SceneChange { .. }
                 | RuleOp::BuffActTrigger(_)
                 | RuleOp::BuffActInfoMarker(_)
@@ -93,8 +94,30 @@ pub fn run_owned_command_group(
     context: TargetContext,
     operations: impl IntoIterator<Item = (FrameOwner, RuleOp)>,
 ) -> Result<DrainResult, DrainError> {
+    run_owned_command_group_as(
+        managers,
+        pool,
+        catalog,
+        determinism,
+        context,
+        FrameOwner::Command,
+        operations,
+    )
+    .map(|(result, _)| result)
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(super) fn run_owned_command_group_as(
+    managers: &mut BattleManagers,
+    pool: &TargetPool,
+    catalog: &SkillEffectCatalog,
+    determinism: &mut RoundDeterminism,
+    context: TargetContext,
+    owner: FrameOwner,
+    operations: impl IntoIterator<Item = (FrameOwner, RuleOp)>,
+) -> Result<(DrainResult, FramePath), DrainError> {
     let mut frames = Vec::new();
-    let root = push_root(&mut frames, FrameOwner::Command, FrameTrigger::Active);
+    let root = push_root(&mut frames, owner, FrameTrigger::Active);
     let mut queue = operations
         .into_iter()
         .map(|(owner, op)| {
@@ -122,6 +145,7 @@ pub fn run_owned_command_group(
         &mut queue,
         frames,
     )
+    .map(|result| (result, root))
 }
 
 #[allow(clippy::too_many_arguments)]

@@ -227,7 +227,7 @@ fn purple_emanation_applies_configured_halo_before_destined_doom_damage() {
     let mut managers = BattleManagers::seeded(&fight);
     assert!(managers.emanation.select(10, 110));
     let pool = TargetPool::from_fight(&fight);
-    let catalog = SkillEffectCatalog::from_roots(config::configs::get(), [31340151], []);
+    let catalog = SkillEffectCatalog::from_roots(config::configs::get(), [31340151, 103374322], []);
     let mut invocation: SkillInvocation = SkillRequest {
         source_uid: 10,
         skill_id: 31340151,
@@ -284,11 +284,21 @@ fn purple_emanation_applies_configured_halo_before_destined_doom_damage() {
         .position(|emission| matches!(emission.op, RuleOp::FreezeActiveSkillRates))
         .unwrap();
 
-    assert_eq!(freeze, immediate_completed + 1);
+    let prepared = immediate
+        .ops
+        .iter()
+        .position(|emission| {
+            matches!(
+                emission.op,
+                RuleOp::Publish(BattleEvent::SkillEffectsPrepared(_))
+            )
+        })
+        .unwrap();
     assert_eq!(
         halo,
         vec![(freeze + 1, -1, Some(2)), (freeze + 2, -2, Some(2)),]
     );
+    assert!(halo[1].0 < immediate_completed && immediate_completed < prepared);
     assert!(!immediate.ops.iter().any(|emission| matches!(
         emission.op,
         RuleOp::Command(BattleCommand::Hp(_) | BattleCommand::HpBatch(_))
@@ -396,12 +406,21 @@ fn configured_ignore_beat_back_reaches_the_committed_hit() {
         defender: Some(FightTeam {
             entitys: vec![FightEntityInfo {
                 uid: Some(-1),
-                buffs: vec![BuffInfo {
-                    uid: Some(-20),
-                    buff_id: Some(30940182),
-                    from_uid: Some(-1),
-                    ..Default::default()
-                }],
+                buffs: vec![
+                    BuffInfo {
+                        uid: Some(-20),
+                        buff_id: Some(30940182),
+                        from_uid: Some(-1),
+                        ..Default::default()
+                    },
+                    BuffInfo {
+                        uid: Some(-21),
+                        buff_id: Some(30940121),
+                        duration: Some(2),
+                        from_uid: Some(-1),
+                        ..Default::default()
+                    },
+                ],
                 current_hp: Some(10_000),
                 attr: Some(HeroAttribute {
                     hp: Some(10_000),

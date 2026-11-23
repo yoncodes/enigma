@@ -258,7 +258,7 @@ fn enemy_burn_conversion_uses_the_settlement_transaction() {
     };
     let pool = TargetPool::from_fight(&fight);
     let managers = BattleManagers::seeded(&fight);
-    let event = crate::engine::event::payload::BattleEvent::BuffsSettled(vec![
+    let event = crate::engine::event::payload::BattleEvent::AfterSideFinalExpiry(vec![
         crate::engine::event::payload::BuffChangeEvent {
             source_uid: 10,
             target_uid: -1,

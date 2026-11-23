@@ -1,4 +1,5 @@
 use super::*;
+use crate::test_support::contains_skill;
 
 #[test]
 fn ezio_cloth_choice_runs_the_configured_skill_and_advances_qte_state() {
@@ -296,16 +297,6 @@ fn ezio_cloth_choice_runs_the_configured_skill_and_advances_qte_state() {
             .unwrap()
     };
     assert!(buff_position(229100) < buff_position(31090112));
-    fn contains_skill(steps: &[sonettobuf::FightStep], skill_id: i32) -> bool {
-        steps.iter().any(|step| {
-            step.act_id == Some(skill_id)
-                || step.act_effect.iter().any(|effect| {
-                    effect.fight_step.as_ref().is_some_and(|nested| {
-                        contains_skill(std::slice::from_ref(nested), skill_id)
-                    })
-                })
-        })
-    }
     fn count_skill(steps: &[sonettobuf::FightStep], skill_id: i32) -> usize {
         steps
             .iter()
@@ -335,7 +326,11 @@ fn ezio_cloth_choice_runs_the_configured_skill_and_advances_qte_state() {
         }
     }
     let final_steps = &replies.last().unwrap().round.as_ref().unwrap().fight_step;
-    assert!(contains_skill(final_steps, 312301343,));
+    assert!(
+        final_steps
+            .iter()
+            .any(|step| contains_skill(step, 312301343))
+    );
     assert_eq!(count_skill(final_steps, 31050141), 2);
     let mut order = Vec::new();
     skill_order(final_steps, &mut order);
@@ -534,16 +529,18 @@ fn ally_psychube_assassination_waits_for_the_synchronization_finisher() {
         ))
         .unwrap();
 
-    fn count_skill(steps: &[sonettobuf::FightStep], skill_id: i32) -> usize {
+    fn count_skill(steps: &[sonettobuf::FightStep], skill_id: i32, source_uid: i64) -> usize {
         steps
             .iter()
             .map(|step| {
-                usize::from(step.act_id == Some(skill_id))
+                usize::from(step.act_id == Some(skill_id) && step.from_id == Some(source_uid))
                     + step
                         .act_effect
                         .iter()
                         .filter_map(|effect| effect.fight_step.as_ref())
-                        .map(|nested| count_skill(std::slice::from_ref(nested), skill_id))
+                        .map(|nested| {
+                            count_skill(std::slice::from_ref(nested), skill_id, source_uid)
+                        })
                         .sum::<usize>()
             })
             .sum()
@@ -554,12 +551,16 @@ fn ally_psychube_assassination_waits_for_the_synchronization_finisher() {
         to_id: Some(-1),
         r#type: Some(ClothSkillType::EzioBigSkill as i32),
     };
-    let psychube_casts = (0..4)
+    let casts = (0..4)
         .map(|_| {
             let reply = runtime.use_cloth_skill(request).unwrap();
-            count_skill(&reply.round.as_ref().unwrap().fight_step, 435211)
+            let steps = &reply.round.as_ref().unwrap().fight_step;
+            (
+                count_skill(steps, 312301343, 10),
+                count_skill(steps, 435211, 20),
+            )
         })
         .collect::<Vec<_>>();
 
-    assert_eq!(psychube_casts, [0, 0, 0, 1]);
+    assert_eq!(casts, [(0, 0), (0, 0), (0, 0), (1, 1)]);
 }

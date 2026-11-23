@@ -99,6 +99,18 @@ fn scan_skill(
                 "UnsupportedBehaviorRoute path={slot_path} opcode={} type={}",
                 slot.behavior.spec.key.opcode, slot.behavior.spec.key.type_name
             ));
+        } else if behavior::missing_queue_preparation_route(slot) {
+            report.gap(
+                behavior_key.clone(),
+                "missing queue preparation setup route",
+            );
+            report.error(format!(
+                "MissingQueuePreparationRoute path={slot_path} effect={} opcode={} type={} event=ActionQueueCommitted raw={:?}",
+                skill.skill_effect,
+                slot.behavior.spec.key.opcode,
+                slot.behavior.spec.key.type_name,
+                slot.behavior.raw_args,
+            ));
         } else if !behavior::has_destination(&slot.behavior) {
             report.gap(behavior_key.clone(), "missing command owner");
             let owner = behavior::registry::find(&slot.behavior)

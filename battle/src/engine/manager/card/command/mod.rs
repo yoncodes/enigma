@@ -501,10 +501,9 @@ pub enum CardCommand {
         count: i32,
         levels: i32,
     },
-    RankUpQueuedCards {
+    RewriteQueuedRanks {
         origin: CommandOrigin,
         upgrades: Vec<QueuedCardRankUp>,
-        rewritten: bool,
     },
     ChangeQueuedRanks {
         origin: CommandOrigin,
@@ -1044,6 +1043,7 @@ pub(super) fn execute(
                 return Err(CardCommandError::InvalidCommand);
             }
             let card = manager.add_to_hand(add.card);
+            operation = Some(CardChange::PrecastPrinted { card: card.clone() });
             (
                 Some(add.origin),
                 CardChangeKind::PrecastAdded,
@@ -1533,11 +1533,7 @@ pub(super) fn execute(
                 Vec::new(),
             )
         }
-        CardCommand::RankUpQueuedCards {
-            origin,
-            upgrades,
-            rewritten,
-        } => {
+        CardCommand::RewriteQueuedRanks { origin, upgrades } => {
             if upgrades.is_empty()
                 || upgrades
                     .iter()
@@ -1545,12 +1541,17 @@ pub(super) fn execute(
             {
                 return Err(CardCommandError::InvalidCommand);
             }
-            for upgrade in upgrades {
-                manager.rank_up_played(upgrade.card_index, upgrade.levels, rewritten);
-            }
+            rank_results.extend(
+                upgrades
+                    .into_iter()
+                    .filter_map(|upgrade| {
+                        manager.rewrite_played_rank(upgrade.card_index, upgrade.levels)
+                    })
+                    .map(|change| CardRankResult::Changed(Box::new(change))),
+            );
             (
                 Some(origin),
-                CardChangeKind::QueuedRankChanged,
+                CardChangeKind::QueuedRanksChanged,
                 None,
                 None,
                 Vec::new(),

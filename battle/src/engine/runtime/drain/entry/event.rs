@@ -103,42 +103,43 @@ pub(crate) fn run_round_start_card_duration(
     context: TargetContext,
     advances: impl IntoIterator<Item = BuffDurationAdvance>,
 ) -> Result<DrainResult, DrainError> {
-    let mut advances = advances.into_iter().peekable();
-    if advances.peek().is_none() {
-        return Ok(DrainResult::default());
-    }
     let event = BattleEvent::Kind(crate::engine::event::kind::EventKind::RoundStartCard);
-    let mut frames = Vec::new();
-    let scope = push_root(
-        &mut frames,
-        FrameOwner::EventRule,
-        FrameTrigger::Event(event.clone()),
-    );
-    let mut queue = advances
-        .map(|advance| QueuedOp {
+    let mut result = DrainResult::default();
+    for advance in advances {
+        let mut frames = Vec::new();
+        let scope = push_root(
+            &mut frames,
+            FrameOwner::EventRule,
+            FrameTrigger::Event(event.clone()),
+        );
+        let mut queue = VecDeque::from([QueuedOp {
             op: RuleOp::Command(crate::engine::skill::rule::output::BattleCommand::Buff(
                 crate::engine::manager::buff::BuffCommand::AdvanceDuration(advance),
             )),
             trigger: SkillOpTrigger::Event(event.clone()),
             skill_execution: None,
-            frame_path: Some(scope.clone()),
+            frame_path: Some(scope),
             parent_path: None,
             frame_group: None,
             independent_parent_group: None,
             frame_owner: None,
             subscriber: None,
             caster_frame: None,
-        })
-        .collect::<VecDeque<_>>();
-    drain_queue_with_frames(
-        managers,
-        pool,
-        catalog,
-        determinism,
-        context,
-        &mut queue,
-        frames,
-    )
+        }]);
+        let settled = drain_queue_with_frames(
+            managers,
+            pool,
+            catalog,
+            determinism,
+            context,
+            &mut queue,
+            frames,
+        )?;
+        result.outcomes.extend(settled.outcomes);
+        result.events.extend(settled.events);
+        result.frames.extend(settled.frames);
+    }
+    Ok(result)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -294,14 +295,74 @@ pub fn run_grouped_owner_event_lanes(
     owner_uids: &[i64],
     lanes: &[ReactionLane],
 ) -> Result<DrainResult, DrainError> {
+    let mut result = DrainResult::default();
+    let root = push_root(
+        &mut result.frames,
+        FrameOwner::Command,
+        FrameTrigger::Active,
+    );
+    run_grouped_owner_event_at(
+        managers,
+        pool,
+        catalog,
+        determinism,
+        context,
+        event,
+        owner_uids,
+        lanes,
+        result,
+        root,
+    )
+}
+
+pub(in crate::engine::runtime) fn run_settlement_tail(
+    managers: &mut BattleManagers,
+    pool: &TargetPool,
+    catalog: &SkillEffectCatalog,
+    determinism: &mut RoundDeterminism,
+    context: TargetContext,
+    owner_uids: &[i64],
+    operations: impl IntoIterator<Item = (FrameOwner, RuleOp)>,
+) -> Result<DrainResult, DrainError> {
+    let (result, root) = super::schedule::run_owned_command_group_as(
+        managers,
+        pool,
+        catalog,
+        determinism,
+        context,
+        FrameOwner::RoundPhase(RoundPhase::AfterOwnerSettlement),
+        operations,
+    )?;
+    run_grouped_owner_event_at(
+        managers,
+        pool,
+        catalog,
+        determinism,
+        context,
+        BattleEvent::Kind(crate::engine::event::kind::EventKind::RoundEndAfterOwnerSettlement),
+        owner_uids,
+        &[ReactionLane::Skills],
+        result,
+        root,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn run_grouped_owner_event_at(
+    managers: &mut BattleManagers,
+    pool: &TargetPool,
+    catalog: &SkillEffectCatalog,
+    determinism: &mut RoundDeterminism,
+    context: TargetContext,
+    event: BattleEvent,
+    owner_uids: &[i64],
+    lanes: &[ReactionLane],
+    mut result: DrainResult,
+    root: FramePath,
+) -> Result<DrainResult, DrainError> {
+    let event_index = result.events.len();
     managers.buff.begin_transaction();
     let result = (|| {
-        let mut result = DrainResult::default();
-        let root = push_root(
-            &mut result.frames,
-            FrameOwner::Command,
-            FrameTrigger::Active,
-        );
         for &lane in lanes {
             for owner_uid in owner_uids {
                 let scope = match lane {
@@ -344,7 +405,7 @@ pub fn run_grouped_owner_event_lanes(
                 result.frames = next.frames;
             }
         }
-        result.events.insert(0, event);
+        result.events.insert(event_index, event);
         Ok(result)
     })();
     managers.buff.end_transaction();
