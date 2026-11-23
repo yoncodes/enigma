@@ -26,6 +26,7 @@ use crate::engine::{
 mod conduit;
 mod defense_setup;
 mod sovereign;
+mod tuning;
 
 #[derive(Debug)]
 pub(crate) enum AutoBattleError {
@@ -79,6 +80,7 @@ pub(crate) fn plan(
     round_state: &RoundState,
     determinism: &RoundDeterminism,
     devices_opers: Vec<FightDeviceOper>,
+    redealt: bool,
 ) -> Result<AutoRoundReply, AutoBattleError> {
     // Every card resolves before any skill runs, so indices, AP and readiness use round-start state.
     let pool = TargetPool::from_fight_with_catalog(managers.catalog(), fight);
@@ -119,6 +121,14 @@ pub(crate) fn plan(
     };
     let mut devices = devices_opers;
     conduit::select_groups(managers, &pool, catalog, determinism, context, &mut devices);
+    if fight.version == Some(7)
+        && request.opers.is_empty()
+        && !redealt
+        && let Some(team) = fight.attacker.as_ref()
+        && let Some(skill) = tuning::recommend(team, round_state.power, &pool, managers, catalog)
+    {
+        return Ok(reply(request, Vec::new(), devices, skill));
+    }
     let card_plan = plan_cards(
         request,
         fight,
@@ -131,7 +141,7 @@ pub(crate) fn plan(
         &devices,
     )?
     .unwrap_or(CardPlan { opers: Vec::new() });
-    Ok(reply(request, card_plan.opers, devices))
+    Ok(reply(request, card_plan.opers, devices, 0))
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -329,12 +339,13 @@ fn reply(
     request: &AutoRoundRequest,
     opers: Vec<BeginRoundOper>,
     devices_opers: Vec<FightDeviceOper>,
+    cloth_skill: i32,
 ) -> AutoRoundReply {
     AutoRoundReply {
         opers,
         to_id: request.to_id,
         cloth_skill: Some(sonettobuf::ClothSkillInfo {
-            skill_id: Some(0),
+            skill_id: Some(cloth_skill),
             from_id: Some(0),
             to_id: Some(0),
             r#type: Some(0),

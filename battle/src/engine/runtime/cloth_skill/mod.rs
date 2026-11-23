@@ -128,13 +128,16 @@ impl BattleRuntime {
                     let executor::RuleOutcome::Card(changes) = outcome else {
                         return None;
                     };
-                    (changes.kind == CardChangeKind::RedealtKeepRanks).then(|| RedealCardInfoPush {
-                        card_group: changes.after.clone(),
-                        deal_card_group: Vec::new(),
-                    })
+                    (changes.kind == CardChangeKind::RedealtKeepRanks).then_some(changes)
                 });
+                self.cloth_redealt |= redeal.is_some();
                 match redeal_wire_layout(fight_version)? {
-                    RedealWireLayout::Version6 => self.pending_redeal = redeal,
+                    RedealWireLayout::Version6 => {
+                        self.pending_redeal = redeal.map(|changes| RedealCardInfoPush {
+                            card_group: changes.after.clone(),
+                            deal_card_group: Vec::new(),
+                        });
+                    }
                     RedealWireLayout::Version7 => {
                         if redeal.is_some()
                             || result.outcomes.iter().any(|outcome| {
