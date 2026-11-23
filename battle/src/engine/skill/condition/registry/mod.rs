@@ -172,6 +172,7 @@ pub enum SkillActionTriggerPolicy {
     #[default]
     Default,
     AttackOnly,
+    ActionsOnly,
     SkipEnergyCards,
     InitialCriticalFollowUp,
     PsychubeRequiresSynchronizationDamage,
@@ -217,6 +218,7 @@ impl SkillActionTriggerPolicy {
         match self {
             Self::Default
             | Self::AttackOnly
+            | Self::ActionsOnly
             | Self::SkipEnergyCards
             | Self::PsychubeRequiresSynchronizationDamage => None,
             Self::InitialCriticalFollowUp => Some(extra::ExtraSkillKind::FollowUp),
@@ -229,9 +231,11 @@ impl SkillActionTriggerPolicy {
         mode: crate::engine::skill::action::SkillExecutionMode,
         passive_source: PassiveSourceKind,
         damage_amount: i32,
+        reacts_to_own_cast: bool,
     ) -> bool {
         match self {
             Self::AttackOnly => !is_attack,
+            Self::ActionsOnly => !reacts_to_own_cast && !mode.completes_action(),
             Self::SkipEnergyCards => {
                 mode == crate::engine::skill::action::SkillExecutionMode::DeviceCard
             }
@@ -505,6 +509,11 @@ pub const fn attack_only(mut metadata: ConditionMetadata) -> ConditionMetadata {
     metadata
 }
 
+pub const fn actions_only(mut metadata: ConditionMetadata) -> ConditionMetadata {
+    metadata.skill_action_trigger = SkillActionTriggerPolicy::ActionsOnly;
+    metadata
+}
+
 pub const fn skip_energy_cards(mut metadata: ConditionMetadata) -> ConditionMetadata {
     metadata.skill_action_trigger = SkillActionTriggerPolicy::SkipEnergyCards;
     metadata
@@ -719,7 +728,7 @@ condition_definitions! {
     [203] "None" => none::skill_action_start, event_trigger(EventKind::SkillAction, Some(SkillPhase::Immediate));
     [201] "None" => none::skill_action_start, event_trigger(EventKind::SkillAction, Some(SkillPhase::SourceOpening));
     [205] "None" => none::skill_action_start, event_trigger(EventKind::SkillAction, Some(SkillPhase::Immediate));
-    [208] "None" => none::skill_action_after_damage, uses_hit_targets(event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterDamage)));
+    [208] "None" => none::skill_action_after_damage, actions_only(uses_hit_targets(event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterDamage))));
     [210] "None" => none::skill_action_after_hit, event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterHit));
     [202, 204, 206, 207, 2011, 2082, 900, 901, 905, 908, 910, 930, 1041] "None" => none::skill_action, event_trigger(EventKind::SkillAction, None);
     [903] "None" => none::emitter_skill_action, event_trigger(EventKind::SkillAction, Some(SkillPhase::Immediate));
