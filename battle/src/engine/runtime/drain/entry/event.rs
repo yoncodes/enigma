@@ -295,14 +295,74 @@ pub fn run_grouped_owner_event_lanes(
     owner_uids: &[i64],
     lanes: &[ReactionLane],
 ) -> Result<DrainResult, DrainError> {
+    let mut result = DrainResult::default();
+    let root = push_root(
+        &mut result.frames,
+        FrameOwner::Command,
+        FrameTrigger::Active,
+    );
+    run_grouped_owner_event_at(
+        managers,
+        pool,
+        catalog,
+        determinism,
+        context,
+        event,
+        owner_uids,
+        lanes,
+        result,
+        root,
+    )
+}
+
+pub(in crate::engine::runtime) fn run_settlement_tail(
+    managers: &mut BattleManagers,
+    pool: &TargetPool,
+    catalog: &SkillEffectCatalog,
+    determinism: &mut RoundDeterminism,
+    context: TargetContext,
+    owner_uids: &[i64],
+    operations: impl IntoIterator<Item = (FrameOwner, RuleOp)>,
+) -> Result<DrainResult, DrainError> {
+    let (result, root) = super::schedule::run_owned_command_group_as(
+        managers,
+        pool,
+        catalog,
+        determinism,
+        context,
+        FrameOwner::RoundPhase(RoundPhase::AfterOwnerSettlement),
+        operations,
+    )?;
+    run_grouped_owner_event_at(
+        managers,
+        pool,
+        catalog,
+        determinism,
+        context,
+        BattleEvent::Kind(crate::engine::event::kind::EventKind::RoundEndAfterOwnerSettlement),
+        owner_uids,
+        &[ReactionLane::Skills],
+        result,
+        root,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn run_grouped_owner_event_at(
+    managers: &mut BattleManagers,
+    pool: &TargetPool,
+    catalog: &SkillEffectCatalog,
+    determinism: &mut RoundDeterminism,
+    context: TargetContext,
+    event: BattleEvent,
+    owner_uids: &[i64],
+    lanes: &[ReactionLane],
+    mut result: DrainResult,
+    root: FramePath,
+) -> Result<DrainResult, DrainError> {
+    let event_index = result.events.len();
     managers.buff.begin_transaction();
     let result = (|| {
-        let mut result = DrainResult::default();
-        let root = push_root(
-            &mut result.frames,
-            FrameOwner::Command,
-            FrameTrigger::Active,
-        );
         for &lane in lanes {
             for owner_uid in owner_uids {
                 let scope = match lane {
@@ -345,7 +405,7 @@ pub fn run_grouped_owner_event_lanes(
                 result.frames = next.frames;
             }
         }
-        result.events.insert(0, event);
+        result.events.insert(event_index, event);
         Ok(result)
     })();
     managers.buff.end_transaction();

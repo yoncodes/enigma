@@ -502,28 +502,16 @@ pub fn run_entity_settlement(
                         .duration_targets(take_stage, &active_owner_uids);
                     append(
                         &mut result,
-                        run_owned_duration_advances(
+                        drain::run_settlement_tail(
                             managers,
                             pool,
                             catalog,
                             determinism,
                             context,
-                            take_stage,
-                            targets,
+                            &active_owner_uids,
+                            super::duration::owned_duration_ops(take_stage, targets),
                         )?,
                     );
-                    let owner_settled = BattleEvent::Kind(EventKind::RoundEndAfterOwnerSettlement);
-                    let after_owners = drain::run_grouped_owner_event(
-                        managers,
-                        pool,
-                        catalog,
-                        determinism,
-                        context,
-                        owner_settled,
-                        &active_owner_uids,
-                        drain::ReactionLane::Skills,
-                    )?;
-                    append(&mut result, after_owners);
                     result
                 } else {
                     let mut result = drain::run_grouped_owner_event(

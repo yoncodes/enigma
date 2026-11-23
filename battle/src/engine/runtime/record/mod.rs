@@ -89,6 +89,7 @@ pub enum RoundPhase {
     TerminalConduitRosterRefresh,
     PostSettlementConduitRosterRefresh,
     EntitySettlement,
+    AfterOwnerSettlement,
     EntityBuffCleanup,
     EntityCardCleanup,
     EntityEntrySetup,

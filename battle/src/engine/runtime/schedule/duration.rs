@@ -119,7 +119,21 @@ pub(super) fn run_owned_duration_advances(
     take_stage: i32,
     targets: Vec<crate::engine::manager::buff::BuffDurationTarget>,
 ) -> Result<DrainResult, DrainError> {
-    let operations = targets.into_iter().map(|target| {
+    drain::run_owned_command_group(
+        managers,
+        pool,
+        catalog,
+        determinism,
+        context,
+        owned_duration_ops(take_stage, targets),
+    )
+}
+
+pub(super) fn owned_duration_ops(
+    take_stage: i32,
+    targets: Vec<crate::engine::manager::buff::BuffDurationTarget>,
+) -> impl Iterator<Item = (FrameOwner, RuleOp)> {
+    targets.into_iter().map(move |target| {
         let owner = FrameOwner::BuffDuration {
             owner_uid: target.owner_uid,
             buff_uid: target.buff_uid,
@@ -127,6 +141,5 @@ pub(super) fn run_owned_duration_advances(
         };
         let advance = duration_command(take_stage, target.owner_uid, target.buff_uid);
         (owner, RuleOp::Command(BattleCommand::Buff(advance)))
-    });
-    drain::run_owned_command_group(managers, pool, catalog, determinism, context, operations)
+    })
 }

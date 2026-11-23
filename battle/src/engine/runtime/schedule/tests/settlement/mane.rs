@@ -2,6 +2,95 @@ use super::*;
 use crate::engine::manager::buff::BuffGrant;
 
 #[test]
+fn prism_settles_after_its_owners_duration() {
+    use crate::engine::manager::gauge::{GaugeCommand, GaugeOperation};
+    use sonettobuf::effect_type_enum::EffectType;
+
+    init_config();
+    let fight = Fight {
+        version: Some(7),
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                team_type: Some(1),
+                current_hp: Some(1000),
+                ex_point: Some(1),
+                attr: Some(HeroAttribute {
+                    hp: Some(1000),
+                    ..Default::default()
+                }),
+                passive_skill: vec![31340143],
+                buffs: vec![BuffInfo {
+                    uid: Some(20),
+                    buff_id: Some(103374114),
+                    from_uid: Some(-1),
+                    duration: Some(2),
+                    layer: Some(2),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let catalog = SkillEffectCatalog::from_fight(config::configs::get(), &fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    let key = crate::engine::mechanic::lingering_glow::key(1);
+    let origin = CommandOrigin {
+        domain: RuleDomain::Lifecycle,
+        key: DefinitionKey::new(0, "TestLingeringGlow"),
+    };
+    managers
+        .execute_gauge(GaugeCommand::new(
+            origin,
+            key,
+            GaugeOperation::Enable { max: Some(750) },
+        ))
+        .unwrap();
+    managers
+        .execute_gauge(GaugeCommand::new(
+            origin,
+            key,
+            GaugeOperation::ChangeValue { delta: 60 },
+        ))
+        .unwrap();
+
+    let settlement = run_entity_settlement(
+        &mut managers,
+        &pool,
+        &catalog,
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+        &[10],
+        SettlementSide::Attacker,
+    )
+    .unwrap();
+
+    assert_eq!(managers.buff.snapshot(10, 20).unwrap().duration, Some(1));
+    assert_eq!(managers.ex_point.get(10), 2);
+    let steps =
+        crate::engine::packet::timeline::project_for_version(&settlement.output.frames, 7).unwrap();
+    let [group] = steps.as_slice() else {
+        panic!("expected one post-settlement group, got {steps:?}");
+    };
+    let [timer, prism] = group.act_effect.as_slice() else {
+        panic!("expected the timer and Prism in one group");
+    };
+    assert_eq!(timer.effect_type, Some(EffectType::Buffupdate as i32));
+    assert_eq!(timer.target_id, Some(10));
+    assert_eq!(prism.effect_type, Some(EffectType::Fightstep as i32));
+    let event = prism.fight_step.as_ref().unwrap();
+    assert!(event.act_effect.iter().any(|effect| {
+        effect
+            .fight_step
+            .as_ref()
+            .is_some_and(|step| step.act_id == Some(31340143) && step.from_id == Some(10))
+    }));
+}
+
+#[test]
 fn final_settlement_advances_final_stage_durations() {
     init_config();
     let fight = Fight {
