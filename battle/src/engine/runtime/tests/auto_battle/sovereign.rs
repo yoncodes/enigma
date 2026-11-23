@@ -59,3 +59,52 @@ fn auto_round_orders_sovereign_charge_between_ultimates() {
         assert_eq!(continued.opers.len(), 3);
     }
 }
+
+#[test]
+fn auto_round_plays_configured_vision_after_one_opening_ultimate() {
+    let mut beryl = team_hero(10, 3134, 1_000, [31340111, 31340121]);
+    let mut marsha = team_hero(11, 3127, 1_000, [31270111, 31270121]);
+    marsha.ex_point = Some(5);
+    marsha.ex_skill = Some(31270132);
+    let mut lorentz = team_hero(12, 3139, 1_000, [31390114, 31390122]);
+    lorentz.ex_point = Some(5);
+    lorentz.ex_skill = Some(31390132);
+    let mut vision = hand_card(10, 31340165, true);
+    vision.card_type = Some(sonettobuf::card_info::CardType::Skill3 as i32);
+
+    for (configured, has_ultimates, extra_free_card, expected) in [
+        (true, true, false, vec![2, 1, 1]),
+        (true, true, true, vec![4, 2, 1, 1]),
+        (true, false, false, vec![1, 1]),
+        (false, true, false, vec![1, 1, 1]),
+    ] {
+        beryl.passive_skill = if configured { vec![31340141] } else { vec![] };
+        let mut hand = if has_ultimates {
+            vec![
+                vision.clone(),
+                hand_card(11, 31270132, false),
+                hand_card(12, 31390132, false),
+            ]
+        } else {
+            vec![vision.clone(), hand_card(10, 31340111, false)]
+        };
+        if extra_free_card {
+            hand.push(hand_card(12, 31390122, true));
+        }
+        let mut runtime = team_runtime_against(
+            vec![beryl.clone(), marsha.clone(), lorentz.clone()],
+            vec![enemy(-1, 1_000)],
+            hand,
+        );
+        runtime.round_state.act_point = 2;
+        let plan = runtime
+            .auto_round_planner()
+            .plan(&AutoRoundRequest::default())
+            .unwrap();
+        let picks: Vec<_> = plan.opers.iter().map(|op| op.param1.unwrap()).collect();
+        assert_eq!(
+            picks, expected,
+            "configured={configured} ultimates={has_ultimates} extra_free_card={extra_free_card}"
+        );
+    }
+}
