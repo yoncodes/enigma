@@ -49,6 +49,7 @@ pub mod special_count;
 pub mod strengthen;
 pub mod summon;
 pub mod synchronization;
+mod team_moxie;
 pub mod toughness;
 pub mod ultimate_kind;
 pub mod use_skill;

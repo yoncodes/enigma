@@ -101,6 +101,7 @@ fn overflow_emits_owned_state_and_value_marker_ops() {
         raw: "806#3".to_owned(),
     };
     let event = BattleEvent::ExPointOverflow(ExPointChangeEvent {
+        spent: false,
         origin: CommandOrigin {
             domain: RuleDomain::Behavior,
             key: DefinitionKey::new(1, "AddExPoint"),
@@ -172,6 +173,7 @@ fn replenishment_requests_the_stored_amount_through_the_resource_manager() {
 fn replenishment_consumes_only_the_amount_the_manager_applied() {
     let managers = managers_with_bank(2, 4);
     let event = BattleEvent::ExPointChanged(ExPointChangeEvent {
+        spent: false,
         origin: super::super::command_origin(&subscriber(EventKind::ExPointChanged)).unwrap(),
         source_uid: 10,
         target_uid: 10,
@@ -213,6 +215,7 @@ fn blocked_or_self_overflowed_replenishment_keeps_bank_state() {
     let changed_subscriber = subscriber(EventKind::ExPointChanged);
     let origin = super::super::command_origin(&changed_subscriber).unwrap();
     let blocked = BattleEvent::ExPointChanged(ExPointChangeEvent {
+        spent: false,
         origin,
         source_uid: 10,
         target_uid: 10,
@@ -230,6 +233,7 @@ fn blocked_or_self_overflowed_replenishment_keeps_bank_state() {
     );
 
     let own_overflow = BattleEvent::ExPointOverflow(ExPointChangeEvent {
+        spent: false,
         origin,
         source_uid: 10,
         target_uid: 10,

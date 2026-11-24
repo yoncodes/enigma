@@ -158,6 +158,7 @@ impl SynchronizationDefinition {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ExPointApplyResult {
+    pub spent: bool,
     pub source_uid: i64,
     pub target_uid: i64,
     pub kind: ExPointKind,
@@ -175,6 +176,7 @@ impl ExPointApplyResult {
     fn event(self, origin: CommandOrigin) -> ExPointChangeEvent {
         ExPointChangeEvent {
             origin,
+            spent: self.spent,
             source_uid: self.source_uid,
             target_uid: self.target_uid,
             kind: self.kind,
@@ -597,6 +599,7 @@ impl ExPointManager {
                 )
             } else {
                 ExPointApplyResult {
+                    spent: false,
                     source_uid: transfer.source_uid,
                     target_uid: transfer.from_uid,
                     kind: ExPointKind::from_wire(before.kind),
@@ -622,6 +625,7 @@ impl ExPointManager {
                 )
             } else {
                 ExPointApplyResult {
+                    spent: false,
                     source_uid: transfer.source_uid,
                     target_uid: transfer.to_uid,
                     kind: ExPointKind::from_wire(before.kind),
@@ -708,6 +712,7 @@ impl ExPointManager {
             return Ok(ExPointChanges::Value {
                 origin,
                 change: ExPointApplyResult {
+                    spent: false,
                     source_uid,
                     target_uid,
                     kind: ExPointKind::from_wire(state.kind),
@@ -722,9 +727,13 @@ impl ExPointManager {
                 },
             });
         }
+        let change = self.apply(source_uid, target_uid, delta, config_effect, effect_type);
         Ok(ExPointChanges::Value {
             origin,
-            change: self.apply(source_uid, target_uid, delta, config_effect, effect_type),
+            change: ExPointApplyResult {
+                spent: spend,
+                ..change
+            },
         })
     }
 
@@ -1000,6 +1009,7 @@ impl ExPointManager {
         state.recent_decrement = if applied_delta < 0 { -applied_delta } else { 0 };
 
         ExPointApplyResult {
+            spent: false,
             source_uid,
             target_uid,
             kind,

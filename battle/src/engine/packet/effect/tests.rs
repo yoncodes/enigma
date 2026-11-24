@@ -400,6 +400,7 @@ fn direct_power_change_uses_delta_without_a_power_snapshot() {
 #[test]
 fn ordinary_ex_point_spend_is_a_change_not_a_buff_act_delete() {
     let change = ExPointApplyResult {
+        spent: false,
         source_uid: 1,
         target_uid: 1,
         kind: ExPointKind::Common,

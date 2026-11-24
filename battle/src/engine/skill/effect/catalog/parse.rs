@@ -1,4 +1,5 @@
 use super::*;
+use crate::engine::skill::behavior::registry::BehaviorConfigError;
 
 pub(super) fn numeric_ids(raw: &str) -> impl Iterator<Item = i32> + '_ {
     raw.split(|character: char| !character.is_ascii_digit() && character != '-')
@@ -113,6 +114,7 @@ pub(super) struct RawSlot<'a> {
 #[derive(Debug, PartialEq, Eq)]
 pub(super) enum SlotParseError {
     Behavior,
+    BehaviorConfig(BehaviorConfigError),
     Target {
         raw: String,
         opcode: i32,
@@ -169,13 +171,16 @@ pub(super) fn parse_slot(db: &GameDB, raw: RawSlot<'_>) -> Result<SkillEffectSlo
         opcode: behavior.spec.key.opcode,
         type_name: behavior.spec.key.type_name.to_owned(),
     };
-    let supports = crate::engine::skill::behavior::registry::find(&behavior)
-        .and_then(|definition| definition.supports);
-    if supports.is_some_and(|supports| !supports(&behavior))
-        || (has_registered_syntax && supports.is_none())
+    let definition = crate::engine::skill::behavior::registry::find(&behavior)
+        .ok_or(SlotParseError::Behavior)?;
+    if definition
+        .supports
+        .is_some_and(|supports| !supports(&behavior))
+        || (has_registered_syntax && definition.supports.is_none())
     {
         return Err(SlotParseError::Behavior);
     }
+    (definition.validate_config)(db, &behavior).map_err(SlotParseError::BehaviorConfig)?;
 
     let conditions = parse_conditions(db, condition);
     let round_limit = crate::engine::skill::condition::lifecycle::team_entity_exit_limit(

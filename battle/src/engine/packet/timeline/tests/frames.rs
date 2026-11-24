@@ -243,6 +243,7 @@ fn projects_a_semantic_skill_frame_without_reading_runtime_state() {
             ExPointChanges::Value {
                 origin,
                 change: ExPointApplyResult {
+                    spent: false,
                     source_uid: 10,
                     target_uid: 10,
                     kind: ExPointKind::Common,
@@ -275,6 +276,7 @@ fn moxie_transfer_projects_loss_before_gain() {
         key: DefinitionKey::new(30011, "AbsorbExPoint"),
     };
     let change = |target_uid, before, applied_delta| ExPointApplyResult {
+        spent: false,
         source_uid: 10,
         target_uid,
         kind: ExPointKind::Common,

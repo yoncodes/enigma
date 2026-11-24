@@ -120,6 +120,7 @@ pub struct EntityDiedEvent {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ExPointChangeEvent {
     pub origin: CommandOrigin,
+    pub spent: bool,
     pub source_uid: i64,
     pub target_uid: i64,
     pub kind: ExPointKind,

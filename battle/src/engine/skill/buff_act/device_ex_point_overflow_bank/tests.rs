@@ -58,6 +58,7 @@ fn device_overflow_accumulates_only_up_to_the_configured_reserve() {
     let managers = managers(48, 90);
     let subscriber = subscriber(&managers, EventKind::ExPointOverflow);
     let event = BattleEvent::ExPointOverflow(ExPointChangeEvent {
+        spent: false,
         origin: CommandOrigin {
             domain: RuleDomain::Behavior,
             key: DefinitionKey::new(60292, "AddDeviceExPoint"),
@@ -104,6 +105,7 @@ fn replenishment_uses_device_energy_and_reduces_only_the_applied_amount() {
         )))
     ));
     let event = BattleEvent::ExPointChanged(ExPointChangeEvent {
+        spent: false,
         origin: super::super::command_origin(&subscriber).unwrap(),
         source_uid: 10,
         target_uid: 10,

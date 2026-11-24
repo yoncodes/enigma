@@ -478,6 +478,10 @@ fn typed_count_repeat(
     }
 }
 
+pub(crate) fn configured_timed_stacks(game: &config::GameDB, buff_id: i32) -> Option<bool> {
+    BuffDefinition::configured(game, buff_id).map(|definition| definition.trims_timed_stack_cap())
+}
+
 pub(crate) fn grants_stacks_as_copies(buff_id: i32) -> bool {
     BuffDefinition::get(buff_id).is_some_and(|definition| definition.stacks_as_copies())
 }

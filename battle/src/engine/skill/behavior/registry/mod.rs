@@ -97,6 +97,12 @@ pub enum ConditionRouteOverride {
 
 pub type QueuePreparationCollector = fn(i32, &ParsedBehavior) -> Option<Vec<RuleOp>>;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BehaviorConfigError {
+    MissingBuff,
+    Unsupported,
+}
+
 pub struct BehaviorFireCountContext<'a> {
     pub managers: &'a crate::engine::manager::BattleManagers,
     pub source_team: i32,
@@ -131,6 +137,7 @@ pub struct BehaviorDefinition {
     pub condition_route_override: Option<ConditionRouteOverride>,
     pub required_event: Option<EventKind>,
     pub supports: Option<fn(&ParsedBehavior) -> bool>,
+    pub validate_config: fn(&config::GameDB, &ParsedBehavior) -> Result<(), BehaviorConfigError>,
     pub supports_slot: fn(&crate::engine::skill::effect::SkillEffectSlot) -> bool,
 }
 
@@ -139,6 +146,10 @@ pub trait BehaviorHandler {
 
     fn supports(_: &ParsedBehavior) -> bool {
         false
+    }
+
+    fn validate_config(_: &config::GameDB, _: &ParsedBehavior) -> Result<(), BehaviorConfigError> {
+        Ok(())
     }
 
     fn supports_slot(_: &crate::engine::skill::effect::SkillEffectSlot) -> bool {
@@ -245,6 +256,7 @@ pub const fn definition<H: BehaviorHandler>(
         } else {
             None
         },
+        validate_config: H::validate_config,
         supports_slot: H::supports_slot,
     }
 }
@@ -773,6 +785,7 @@ behavior_definitions! {
     [60068] "AddBuffByBuffLayer" => super::buff::Handler, AddBuffByBuffLayer, Immediate, destination, arguments::exactly_three;
     [60124] "AddBuffByBuffLayerRange" => super::buff::Handler, AddBuffByBuffLayerRange, Immediate, destination, super::buff::supports_layer_range;
     [60261] "PerBuffTypeIdAddRateBuffId" => super::buff::Handler, PerBuffTypeIdAddRateBuffId, Immediate, destination, super::buff::supports_team_layer;
+    [60203] "AddBuffWhenTeamLostPower" => super::team_moxie::Handler, AddBuffWhenTeamLostPower, Immediate, owner_destination;
     [60205] "AddBuffAndAddSpecialCount" => super::special_count::Handler, AddBuffAndAddSpecialCount, Immediate, transfer, super::special_count::supports_add_buff_and_count;
     [60204] "AddBuffSpecialCount" => super::special_count::Handler, AddBuffSpecialCount, Immediate, transfer, super::special_count::supports_add_count;
     [60202] "AddSkillRateBySpecialCount" => super::special_count::Handler, AddSkillRateBySpecialCount, Immediate, modifier, super::special_count::supports_rate;

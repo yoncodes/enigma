@@ -3,6 +3,7 @@ use super::parse::{
     row_slots, rule_issue, target_issue,
 };
 use super::*;
+use crate::engine::skill::behavior::registry::BehaviorConfigError;
 
 impl SkillEffectCatalog {
     pub fn from_game_db(db: &GameDB) -> Self {
@@ -335,13 +336,17 @@ impl SkillEffectCatalog {
                     }
                     slots.push(slot);
                 }
-                Err(SlotParseError::Behavior) => {
-                    self.issues.entry(row.id).or_default().push(rule_issue(
-                        db,
-                        row.id,
-                        index as u8 + 1,
-                        behavior,
-                    ));
+                Err(error @ (SlotParseError::Behavior | SlotParseError::BehaviorConfig(_))) => {
+                    let mut issue = rule_issue(db, row.id, index as u8 + 1, behavior);
+                    if let SlotParseError::BehaviorConfig(error) = error {
+                        issue.reason = match error {
+                            BehaviorConfigError::MissingBuff => RuleIssueReason::MissingBuff,
+                            BehaviorConfigError::Unsupported => {
+                                RuleIssueReason::UnsupportedBehavior
+                            }
+                        };
+                    }
+                    self.issues.entry(row.id).or_default().push(issue);
                 }
                 Err(SlotParseError::Target {
                     raw,
@@ -656,6 +661,24 @@ fn warn_unsupported_conditions(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn missing_team_moxie_buff_is_a_blocking_catalog_issue() {
+        crate::test_support::init_config();
+        let db = crate::test_support::game_data();
+        let mut effect = db.skill_effect.get(312101412).unwrap().clone();
+        assert!(db.skill_buff.get(i32::MAX).is_none());
+        effect.behavior4 = format!("60203#{}", i32::MAX);
+        let mut catalog = SkillEffectCatalog::default();
+        catalog.insert_configured_effect(db, &effect);
+
+        let [issue] = catalog.issues(effect.id) else {
+            panic!("expected one missing-buff issue");
+        };
+        assert_eq!(issue.opcode, Some(60203));
+        assert_eq!(issue.reason, RuleIssueReason::MissingBuff);
+        assert!(issue.reason.is_blocking());
+    }
 
     #[test]
     fn missing_summoned_reference_is_a_blocking_catalog_issue() {

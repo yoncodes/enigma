@@ -34,6 +34,7 @@ fn only_a_self_owned_round_end_bank_releases_the_skill_frame() {
     )));
     let overflow = |source, applied_delta| {
         SkillOpTrigger::Event(BattleEvent::ExPointOverflow(ExPointChangeEvent {
+            spent: false,
             origin: CommandOrigin {
                 domain: RuleDomain::Behavior,
                 key: DefinitionKey::new(20002, "AddExPoint"),

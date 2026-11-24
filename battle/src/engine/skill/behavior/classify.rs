@@ -19,6 +19,7 @@ pub enum BehaviorKind {
     SovereignEnhancement,
     AddBuff,
     AddBuffPowerUse,
+    AddBuffWhenTeamLostPower,
     AddBuffRanId,
     AddBuffRanTypeId,
     AddBuffByHeroId,

@@ -67,6 +67,7 @@ fn same_team_moxie_overflow_grants_the_configured_buff_amount() {
     };
     let event = |target_uid| {
         BattleEvent::ExPointOverflow(ExPointChangeEvent {
+            spent: false,
             origin: crate::engine::skill::rule::CommandOrigin {
                 domain: RuleDomain::Lifecycle,
                 key: DefinitionKey::new(0, "RoundRefill"),

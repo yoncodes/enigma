@@ -70,6 +70,7 @@ pub enum RuleIssueReason {
     MalformedBehavior,
     MalformedTarget,
     MissingBehavior,
+    MissingBuff,
     MissingSummoned,
     UnsupportedBehavior,
 }
