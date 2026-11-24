@@ -9,7 +9,7 @@ use battle_preview::{
     array_len_diff_lines, battle_inputs, build_metadata_source, canonical_comparison,
     comparable_json, first_diff_path, loadout_diffs, normalize_live_json, opening_card_push_path,
     opening_determinism, preview_attributes, preview_output_text,
-    render_json_with_capture_conventions, tower_plan_id,
+    render_json_with_capture_conventions, rouge2_side_skills, tower_plan_id,
 };
 use sonettobuf::{CardInfoPush, Fight, FightRound, StartDungeonReply};
 
@@ -159,6 +159,7 @@ fn generate_reply(
     let tower_rule_skills = tower_plan_id(path)
         .map(|plan_id| battle::tooling::system_plan_rule_skills(db, &fight, plan_id))
         .unwrap_or_default();
+    let rouge2_rule_skills = rouge2_side_skills(db, &fight, path)?;
     let (ex_attributes, sp_attributes) = preview_attributes(&fight, path)?;
     let loadout = loadout_diffs(&fight, path)?;
     let determinism = opening_determinism(db, &fight, &captured_round).map_err(io::Error::other)?;
@@ -169,7 +170,7 @@ fn generate_reply(
         sp_attributes,
     )
     .map_err(io::Error::other)?;
-    runtime.extend_battle_rule_skills(tower_rule_skills);
+    runtime.extend_battle_rule_skills(tower_rule_skills.into_iter().chain(rouge2_rule_skills));
     runtime
         .start_round_with_determinism(determinism)
         .map_err(io::Error::other)?;

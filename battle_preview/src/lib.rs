@@ -12,7 +12,7 @@ mod replay_rng;
 
 pub use attributes::{
     build_metadata_source, loadout_diffs, opening_card_push_path, preview_attributes,
-    preview_attributes_with_request,
+    preview_attributes_with_request, rouge2_side_skills,
 };
 pub use compression::expand_compressed_fight_steps;
 pub use normalize::normalize_live_json;

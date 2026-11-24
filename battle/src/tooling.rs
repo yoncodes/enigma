@@ -13,6 +13,7 @@ pub mod entity {
 }
 
 pub mod replay {
+    pub use crate::catalog::rouge2::side_buff_skills as rouge2_side_buff_skills;
     pub use crate::engine::{
         fight::rules::OwnedBattleSkill,
         manager::card::{CardOpType, CardSetup},

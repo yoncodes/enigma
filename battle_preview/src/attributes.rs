@@ -15,6 +15,7 @@ use std::fs;
 
 mod metadata;
 mod request;
+mod rouge2;
 
 pub use metadata::opening_card_push_path;
 #[cfg(test)]
@@ -24,6 +25,7 @@ use request::{
     battle_request_metadata, configured_trial, request_battle_balance, request_metadata,
     start_request_path, validated_equipment_loadout,
 };
+pub use rouge2::rouge2_side_skills;
 
 type PreviewAttributes = (Vec<(i64, HeroExAttribute)>, Vec<(i64, HeroSpAttribute)>);
 

@@ -3,6 +3,8 @@ use crate::engine::mechanic::impromptu::ImpromptuDefinition;
 use crate::engine::round::power::ClothPower;
 use crate::engine::skill::rule::{CommandOrigin, RuleDomain};
 
+pub(crate) mod rouge2;
+
 const BURN_BUFF_FIGHT_CONST: i32 = 29;
 const CONTRACT_OWNER_BUFF_MAP: i32 = 30;
 const CONTRACT_BOUND_BUFF_MAP: i32 = 31;

@@ -98,4 +98,5 @@ fn write_request(directory: &Path, equips: Vec<sonettobuf::FightEquip>, is_balan
 
 mod build;
 mod request;
+mod rouge2;
 mod timeline;

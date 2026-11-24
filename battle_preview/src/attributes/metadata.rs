@@ -169,7 +169,7 @@ pub(super) fn captured_equipment_metadata(path: &Path) -> anyhow::Result<HashMap
     Ok(equips)
 }
 
-fn read_capture_value(path: &Path) -> anyhow::Result<serde_json::Value> {
+pub(super) fn read_capture_value(path: &Path) -> anyhow::Result<serde_json::Value> {
     let mut value: serde_json::Value = serde_json::from_str(&fs::read_to_string(path)?)?;
     normalize_live_json(&mut value);
     Ok(value)
@@ -298,7 +298,7 @@ fn session_files(path: &Path) -> anyhow::Result<Option<Vec<PathBuf>>> {
     Ok(Some(files))
 }
 
-fn capture_timeline_through(path: &Path) -> anyhow::Result<Option<Vec<PathBuf>>> {
+pub(super) fn capture_timeline_through(path: &Path) -> anyhow::Result<Option<Vec<PathBuf>>> {
     let Some(mut files) = session_files(path)? else {
         return Ok(None);
     };

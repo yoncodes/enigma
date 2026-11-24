@@ -12,8 +12,8 @@ use battle_preview::{
     array_len_diff_lines, begin_round_inputs, build_metadata_source, canonical_comparison,
     comparable_json, expand_compressed_fight_steps, first_diff_path, normalize_live_json,
     opening_determinism, preview_attributes_with_request, preview_output_text,
-    render_json_with_capture_conventions, seed_action_determinism, seed_round_determinism,
-    tower_plan_id_from_request, value_at_diff_path,
+    render_json_with_capture_conventions, rouge2_side_skills, seed_action_determinism,
+    seed_round_determinism, tower_plan_id_from_request, value_at_diff_path,
 };
 use sonettobuf::{
     AutoRoundReply, AutoRoundRequest, BeginRoundReply, BeginRoundRequest, Fight, FightRound,
@@ -458,6 +458,7 @@ fn replay_rounds(
         .and_then(tower_plan_id_from_request)
         .map(|plan_id| battle::tooling::system_plan_rule_skills(db, &fight, plan_id))
         .unwrap_or_default();
+    let rouge2_rule_skills = rouge2_side_skills(db, &fight, &battle.start)?;
     let opening_determinism =
         opening_determinism(db, &fight, &captured_start_round).map_err(anyhow::Error::msg)?;
     let mut runtime = ReplayBattle::new_with_attributes(
@@ -470,7 +471,7 @@ fn replay_rounds(
     runtime
         .inherit_absorb_hurt_map_layout(&captured_start_round)
         .map_err(anyhow::Error::msg)?;
-    runtime.extend_battle_rule_skills(tower_rule_skills);
+    runtime.extend_battle_rule_skills(tower_rule_skills.into_iter().chain(rouge2_rule_skills));
     let start_round = DamageExport::phase(
         &mut export,
         "opening",
