@@ -143,15 +143,31 @@ fn configured_hp_loss_floor_uses_only_supported_thresholds() {
     );
 
     assert_eq!(managers.buff.lost_life_floor_permille(1), 150);
-    assert_eq!(loss::amount(1, &managers, &behavior), Some(500));
+    assert_eq!(loss::amount(1, &managers, &behavior, None), Some(500));
     assert_eq!(managers.buff.lost_life_floor_permille(2), 160);
-    assert_eq!(loss::amount(2, &managers, &behavior), Some(400));
+    assert_eq!(loss::amount(2, &managers, &behavior, None), Some(400));
     assert_eq!(managers.buff.lost_life_floor_permille(3), 0);
-    assert_eq!(loss::amount(3, &managers, &behavior), Some(2_000));
+    assert_eq!(loss::amount(3, &managers, &behavior, None), Some(2_000));
+
+    let break_loss = ParsedBehavior::from_spec(
+        BehaviorSpec::new(30005, "LostLife"),
+        vec![0, AttrId::Hp.id(), 1_000],
+        Vec::new(),
+    );
+    let broken = BattleEvent::ToughnessBroken {
+        source_uid: -1,
+        target_uid: 1,
+        skill_id: 10,
+        target_defeated: false,
+    };
+    assert_eq!(
+        loss::amount(1, &managers, &break_loss, Some(&broken)),
+        Some(500)
+    );
 }
 
 #[test]
-fn guard_break_loss_credits_the_breaking_skill_through_settlement() {
+fn guard_break_loss_preserves_amount_and_credit_through_settlement() {
     init_config();
     let fight = Fight {
         attacker: Some(FightTeam {
@@ -159,7 +175,10 @@ fn guard_break_loss_credits_the_breaking_skill_through_settlement() {
             ..Default::default()
         }),
         defender: Some(FightTeam {
-            entitys: vec![entity(-1, 2, 1, 100, 0)],
+            entitys: vec![FightEntityInfo {
+                current_hp: Some(50),
+                ..entity(-1, 2, 1, 100, 0)
+            }],
             ..Default::default()
         }),
         ..Default::default()
@@ -171,10 +190,10 @@ fn guard_break_loss_credits_the_breaking_skill_through_settlement() {
         skill_id: 10,
         target_defeated: false,
     };
-    for (opcode, rate, event, skill_id) in [
-        (30005, 100, Some(&broken), 10),
-        (60310, 1, Some(&broken), 10),
-        (30005, 100, None, 20),
+    for (opcode, rate, event, skill_id, requested, applied) in [
+        (30005, 100, Some(&broken), 10, 100, 50),
+        (60310, 100, Some(&broken), 10, 50, 50),
+        (30005, 100, None, 20, 50, 50),
     ] {
         let mut managers = BattleManagers::seeded(&fight);
         let behavior = ParsedBehavior::from_spec(
@@ -202,12 +221,23 @@ fn guard_break_loss_credits_the_breaking_skill_through_settlement() {
             &behavior,
         )
         .unwrap();
-        let [RuleOp::Command(BattleCommand::Hp(command))] = commands.as_slice() else {
+        let [RuleOp::Command(BattleCommand::Hp(HpCommand::Lose(command)))] = commands.as_slice()
+        else {
             panic!("expected one lost-life command");
         };
-        let hp = managers.execute_hp(*command).unwrap().hp.unwrap();
+        assert_eq!(command.amount, requested);
+        let hp = managers
+            .execute_hp(HpCommand::Lose(*command))
+            .unwrap()
+            .hp
+            .unwrap();
         let hurt = hp.hurt.unwrap();
-        assert_eq!((hp.delta, managers.hp.current(-1)), (-rate, 1_000 - rate));
+        assert_eq!(managers.hp.current(-1), 50 - applied);
+        assert_eq!((hp.delta, hurt.reduce_hp), (-applied, -applied));
+        assert_eq!(
+            (hp.display_amount, hurt.display_amount),
+            (Some(requested), Some(requested))
+        );
         assert_eq!(
             (hurt.from_uid, hurt.effect_id, hurt.skill_id),
             (-1, 20, skill_id)

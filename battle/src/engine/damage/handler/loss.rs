@@ -1,12 +1,13 @@
 use crate::engine::{
-    damage::scale_permille, entity::attr::AttrId, manager::BattleManagers,
-    skill::effect::ParsedBehavior,
+    damage::scale_permille, entity::attr::AttrId, event::payload::BattleEvent,
+    manager::BattleManagers, skill::effect::ParsedBehavior,
 };
 
 pub(super) fn amount(
     target_uid: i64,
     managers: &BattleManagers,
     behavior: &ParsedBehavior,
+    event: Option<&BattleEvent>,
 ) -> Option<i32> {
     let [mode, raw_attr, permille] = behavior.args.as_slice() else {
         return None;
@@ -25,5 +26,12 @@ pub(super) fn amount(
     };
     let requested = scale_permille(basis, *permille);
     let floor = scale_permille(hp.max, managers.buff.lost_life_floor_permille(target_uid));
+    if (behavior.spec.key.opcode, *mode, attr) == (30005, 0, AttrId::Hp)
+        && floor == 0
+        && hp.current > 0
+        && matches!(event, Some(BattleEvent::ToughnessBroken { target_uid: owner, .. }) if *owner == target_uid)
+    {
+        return Some(requested);
+    }
     Some(requested.min((hp.current - floor).max(0)))
 }
