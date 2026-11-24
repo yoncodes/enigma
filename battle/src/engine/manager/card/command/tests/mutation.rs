@@ -533,10 +533,16 @@ fn card_setup_rules_commit_enchants_and_temporary_lifecycle_through_the_manager(
             limit: 5,
         }))
         .unwrap();
+    let mut copy = crate::engine::manager::card::selected_precast_card(10, 3139, 31390122);
+    copy.enchants.push(sonettobuf::CardEnchant {
+        enchant_id: Some(EnchantedType::Lorenz.id()),
+        duration: Some(-1),
+        ..Default::default()
+    });
     let printed = manager
         .execute_command(CardCommand::AddPrecast(CardAddPrecast {
             origin: ORIGIN,
-            card: crate::engine::manager::card::precast_card(10, 900),
+            card: copy,
         }))
         .unwrap();
     assert!(matches!(
@@ -544,13 +550,14 @@ fn card_setup_rules_commit_enchants_and_temporary_lifecycle_through_the_manager(
         Some(CardChange::PrecastPrinted { card }) if card == manager.hand()[3]
     ));
 
+    manager.begin_round();
     let expired = manager
         .execute_command(CardCommand::ExpireTemporary { origin: ORIGIN })
         .unwrap();
     assert_eq!(expired.kind, CardChangeKind::TemporaryExpired);
-    assert_eq!(expired.expired_indices, [0, 1, 2]);
-    assert_eq!(manager.hand().len(), 1);
-    assert_eq!(manager.hand()[0].skill_id, Some(900));
+    assert_eq!(expired.expired_indices, [0, 1, 2, 3]);
+    assert!(manager.hand().is_empty());
+    assert!(manager.draw_pile().is_empty());
 }
 
 #[test]
