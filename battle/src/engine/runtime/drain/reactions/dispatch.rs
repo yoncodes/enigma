@@ -260,7 +260,10 @@ pub(in crate::engine::runtime::drain) fn dispatch_reactions(
     if lane.is_none()
         && let BattleEvent::SkillAction(action) = event
     {
-        for settlement in managers.buff.plan_action_settlements(action) {
+        for settlement in managers
+            .buff
+            .plan_action_settlements(action, &managers.conduit)
+        {
             let in_action = settlement.in_action;
             let queue = if settlement.after_hit_reactions {
                 &mut after_hit_settlements

@@ -474,6 +474,19 @@ impl ConduitManager {
         self.configured_skill(source_uid, skill_id).is_some()
     }
 
+    pub(crate) fn is_basic_skill(&self, source_uid: i64, skill_id: i32) -> bool {
+        self.devices()
+            .find(|device| device.uid == source_uid)
+            .is_some_and(|device| {
+                device
+                    .skill_groups
+                    .iter()
+                    .take(ConduitSkillGroup::Unique as usize)
+                    .flatten()
+                    .any(|skill| skill.skill_id == skill_id)
+            })
+    }
+
     pub(crate) fn is_unique_skill(&self, source_uid: i64, skill_id: i32) -> bool {
         self.devices()
             .find(|device| device.uid == source_uid)

@@ -1,5 +1,10 @@
 use super::*;
-use crate::engine::skill::action::SkillPhase;
+use crate::engine::{
+    manager::conduit::ConduitManager,
+    skill::action::{SkillExecutionMode, SkillPhase},
+};
+
+const CONDUIT_INCANTATION_SLOT: i32 = 5;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(i32)]
@@ -143,11 +148,19 @@ impl BuffManager {
     pub(crate) fn plan_action_settlements(
         &self,
         action: &crate::engine::skill::action::SkillActionEvent,
+        conduit: &ConduitManager,
     ) -> Vec<BuffActionSettlement> {
-        if action.phase != crate::engine::skill::action::SkillPhase::HitPassives {
+        if action.phase != SkillPhase::HitPassives {
             return Vec::new();
         }
 
+        let owner_cast_slot = if action.mode == SkillExecutionMode::Device
+            && conduit.is_basic_skill(action.source_uid, action.skill_id)
+        {
+            CONDUIT_INCANTATION_SLOT
+        } else {
+            action.skill_slot
+        };
         let mut settled_copies = Vec::new();
         let mut settlements = self
             .buffs
@@ -177,7 +190,7 @@ impl BuffManager {
                             }
                     }
                     BuffTakeActionTrigger::OwnerCastSkill => {
-                        take_action.skill_slots.contains(&action.skill_slot)
+                        take_action.skill_slots.contains(&owner_cast_slot)
                             && active.owner_uid == action.source_uid
                     }
                     BuffTakeActionTrigger::OwnerAttackedBySkill => {
