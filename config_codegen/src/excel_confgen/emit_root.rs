@@ -4,6 +4,9 @@ pub fn emit_root_module(table_names: &[(String, String)]) -> String {
     let exploration = table_names
         .iter()
         .any(|(source, _)| source == "explore_scene");
+    let blood_chalice = table_names
+        .iter()
+        .any(|(source, _)| source == "fight_xcjl_const");
     let mut lines = vec![
         "// Auto-generated module declarations".to_string(),
         "".to_string(),
@@ -29,6 +32,9 @@ pub fn emit_root_module(table_names: &[(String, String)]) -> String {
 
     if exploration {
         lines.push("    pub explore_map: crate::exploration::MapTable,".to_string());
+    }
+    if blood_chalice {
+        lines.push("    pub blood_chalice: crate::blood_chalice::Rules,".to_string());
     }
     lines.push("}".to_string());
     lines.push("".to_string());
@@ -56,12 +62,18 @@ pub fn emit_root_module(table_names: &[(String, String)]) -> String {
     if exploration {
         lines.push("        let explore_map = crate::exploration::MapTable::load(data_dir, &explore_scene)?;".to_string());
     }
+    if blood_chalice {
+        lines.push("        let blood_chalice = crate::blood_chalice::Rules::from_table(&fight_xcjl_const)?;".to_string());
+    }
     lines.push("        Ok(Self {".to_string());
     for (_, table_name) in table_names {
         lines.push(format!("            {},", camel_to_snake(table_name)));
     }
     if exploration {
         lines.push("            explore_map,".to_string());
+    }
+    if blood_chalice {
+        lines.push("            blood_chalice,".to_string());
     }
     lines.push("        })".to_string());
     lines.push("    }".to_string());

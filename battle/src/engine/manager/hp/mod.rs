@@ -412,6 +412,9 @@ impl HpChanges {
                 skill_id: change.hurt.map(|hurt| hurt.skill_id).unwrap_or_default(),
                 target_uid: self.target_uid,
                 amount: change.delta.saturating_abs(),
+                damage_from: change
+                    .hurt
+                    .map_or(HurtDamageFromType::None, |hurt| hurt.damage_from),
                 buff_uid: change
                     .hurt
                     .map(|hurt| hurt.buff_uid)

@@ -30,6 +30,7 @@ pub(crate) fn init_test_config() {
 mod activity_query;
 pub use activity_query::{Activity128BondGroup, Activity128BondHero};
 mod battle_pass;
+pub mod blood_chalice;
 mod dungeon;
 mod equipment;
 pub mod exploration;

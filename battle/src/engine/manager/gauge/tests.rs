@@ -138,30 +138,6 @@ fn accumulated_input_remainder_survives_the_round_boundary() {
 }
 
 #[test]
-fn opening_setup_uses_the_enabled_limit_for_accumulation_thresholds() {
-    let mut manager = GaugeManager::default();
-    manager.begin_opening_setup();
-    manager
-        .execute_command(GaugeCommand::new(
-            ORIGIN,
-            KEY,
-            GaugeOperation::Enable { max: Some(56) },
-        ))
-        .unwrap();
-    manager
-        .execute_command(GaugeCommand::new(
-            ORIGIN,
-            KEY,
-            GaugeOperation::ChangeMax { delta: 28 },
-        ))
-        .unwrap();
-
-    assert_eq!(manager.accumulation_max(KEY), Some(56));
-    manager.finish_opening_setup();
-    assert_eq!(manager.accumulation_max(KEY), Some(84));
-}
-
-#[test]
 fn accumulated_progress_is_independent_from_spendable_gauge_value() {
     let mut manager = GaugeManager::default();
     manager

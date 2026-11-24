@@ -268,6 +268,7 @@ pub mod fight_eziozhuangbei_icon;
 pub mod fight_jgz_const;
 pub mod fight_prompt;
 pub mod fight_task;
+pub mod fight_xcjl_const;
 pub mod formula;
 pub mod friendless;
 pub mod guide;
@@ -734,6 +735,7 @@ pub struct GameDB {
     pub fight_jgz_const: fight_jgz_const::FightJgzConstTable,
     pub fight_prompt: fight_prompt::FightPromptTable,
     pub fight_task: fight_task::FightTaskTable,
+    pub fight_xcjl_const: fight_xcjl_const::FightXcjlConstTable,
     pub formula: formula::FormulaTable,
     pub friendless: friendless::FriendlessTable,
     pub guide: guide::GuideTable,
@@ -929,6 +931,7 @@ pub struct GameDB {
     pub weekwalk_ver2_skill: weekwalk_ver2_skill::WeekwalkVer2SkillTable,
     pub weekwalk_ver2_time: weekwalk_ver2_time::WeekwalkVer2TimeTable,
     pub explore_map: crate::exploration::MapTable,
+    pub blood_chalice: crate::blood_chalice::Rules,
 }
 
 impl GameDB {
@@ -1737,6 +1740,9 @@ impl GameDB {
         let fight_task = fight_task::FightTaskTable::load(
             &format!("{}/fight_task.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load fight_task.json: {}", e))?;
+        let fight_xcjl_const = fight_xcjl_const::FightXcjlConstTable::load(
+            &format!("{}/fight_xcjl_const.json", data_dir)
+        ).map_err(|e| anyhow::anyhow!("Failed to load fight_xcjl_const.json: {}", e))?;
         let formula = formula::FormulaTable::load(
             &format!("{}/formula.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load formula.json: {}", e))?;
@@ -2321,6 +2327,7 @@ impl GameDB {
         ).map_err(|e| anyhow::anyhow!("Failed to load weekwalk_ver2_time.json: {}", e))?;
 
         let explore_map = crate::exploration::MapTable::load(data_dir, &explore_scene)?;
+        let blood_chalice = crate::blood_chalice::Rules::from_table(&fight_xcjl_const)?;
         Ok(Self {
             achievement,
             achievement_task,
@@ -2590,6 +2597,7 @@ impl GameDB {
             fight_jgz_const,
             fight_prompt,
             fight_task,
+            fight_xcjl_const,
             formula,
             friendless,
             guide,
@@ -2785,6 +2793,7 @@ impl GameDB {
             weekwalk_ver2_skill,
             weekwalk_ver2_time,
             explore_map,
+            blood_chalice,
         })
     }
 

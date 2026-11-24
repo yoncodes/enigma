@@ -5,6 +5,7 @@ use crate::engine::{
         buff::ActiveBuffFeature,
         ex_point::{ExPointChange, ExPointCommand},
         gauge::{GaugeChangeKind, GaugeCommand, GaugeKey, GaugeKind, GaugeOperation, GaugeOwner},
+        hp::HurtDamageFromType,
     },
     skill::{
         buff_act,
@@ -98,25 +99,23 @@ pub fn hp_loss_event_rule_op(
     team: i32,
     target_uid: i64,
     hp_loss: i32,
+    damage_from: HurtDamageFromType,
     skill_id: i32,
 ) -> Vec<RuleOp> {
     let key = key(team);
     let Some(state) = managers.gauge.get(key) else {
         return Vec::new();
     };
-    let Some(max) = managers.gauge.accumulation_max(key) else {
-        return Vec::new();
-    };
-    if hp_loss <= 0 || state.current >= max {
+    if hp_loss <= 0 || state.max.is_some_and(|max| state.current >= max) {
         return Vec::new();
     }
-    let threshold = super::hp_loss_threshold(max);
+    let rules = &managers.catalog().game_data().blood_chalice;
     let command = GaugeCommand::new(
         origin,
         key,
         GaugeOperation::AccumulateValue {
-            amount: hp_loss,
-            threshold,
+            amount: super::hp_loss::contribution(rules, hp_loss, damage_from),
+            threshold: rules.hp_per_point,
         },
     )
     .attributed_to(target_uid, 0)

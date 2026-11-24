@@ -54,6 +54,7 @@ fn each_committed_ally_hp_loss_records_one_team_injury() {
         skill_id: 1,
         target_uid: 10,
         amount: 100,
+        damage_from: crate::engine::manager::hp::HurtDamageFromType::None,
         buff_uid: None,
     };
 

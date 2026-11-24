@@ -66,6 +66,7 @@ pub fn rule_ops(
             skill_id,
             target_uid,
             amount,
+            damage_from,
             buff_uid,
             ..
         } if managers.buff.team_type(*target_uid) == Some(subscriber.team_type) => {
@@ -92,6 +93,7 @@ pub fn rule_ops(
                 subscriber.team_type,
                 *target_uid,
                 observed,
+                *damage_from,
                 *skill_id,
             )
         }

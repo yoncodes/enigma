@@ -7,7 +7,63 @@ const ORIGIN: CommandOrigin = CommandOrigin {
 };
 
 #[test]
-fn hp_loss_uses_the_current_bloodtithe_limit_for_conversion() {
+fn hp_loss_carries_progress_at_the_configured_threshold_when_the_limit_grows() {
+    let mut managers = BattleManagers::default();
+    managers
+        .gauge
+        .execute_command(GaugeCommand::new(
+            ORIGIN,
+            key(1),
+            GaugeOperation::Enable { max: Some(58) },
+        ))
+        .unwrap();
+    assert_eq!(
+        apply_loss(&mut managers, 9_714, HurtDamageFromType::SkillEffect),
+        3
+    );
+    managers
+        .gauge
+        .execute_command(GaugeCommand::new(
+            ORIGIN,
+            key(1),
+            GaugeOperation::ChangeValue { delta: 55 },
+        ))
+        .unwrap();
+
+    managers
+        .gauge
+        .execute_command(GaugeCommand::new(
+            ORIGIN,
+            key(1),
+            GaugeOperation::ChangeMax { delta: 16 },
+        ))
+        .unwrap();
+    assert_eq!(
+        apply_loss(&mut managers, 2_194, HurtDamageFromType::SkillEffect),
+        0
+    );
+    assert_eq!(
+        apply_loss(&mut managers, 1_233, HurtDamageFromType::SkillEffect),
+        1
+    );
+    assert_eq!(
+        apply_loss(&mut managers, 1_426, HurtDamageFromType::SkillEffect),
+        0
+    );
+    assert_eq!(
+        apply_loss(&mut managers, 1_668, HurtDamageFromType::SkillEffect),
+        1
+    );
+    assert_eq!(
+        apply_loss(&mut managers, 1_501, HurtDamageFromType::SkillEffect),
+        0
+    );
+}
+
+#[test]
+fn direct_hits_contribute_the_attack_credit_and_carry_into_the_next_round() {
+    use HurtDamageFromType::{Buff, Skill, SkillEffect};
+
     let mut managers = BattleManagers::default();
     managers
         .gauge
@@ -17,25 +73,49 @@ fn hp_loss_uses_the_current_bloodtithe_limit_for_conversion() {
             GaugeOperation::Enable { max: Some(56) },
         ))
         .unwrap();
+
+    for (loss, damage_from, gain) in [
+        (9_070, SkillEffect, 3),
+        (2_194, SkillEffect, 0),
+        (3_486, SkillEffect, 1),
+        (4_503, SkillEffect, 2),
+        (4_278, SkillEffect, 1),
+        (5_005, SkillEffect, 2),
+        (813, Buff, 0),
+        (1_050, Buff, 1),
+        (998, Buff, 0),
+        (1_167, Buff, 0),
+        (813, SkillEffect, 1),
+        (1_703, Skill, 0),
+        (1_275, Skill, 1),
+        (968, Skill, 0),
+        (2_273, Buff, 1),
+        (1_650, Buff, 1),
+        (1_795, Buff, 0),
+        (1_817, Buff, 1),
+        (1_575, Buff, 0),
+    ] {
+        assert_eq!(
+            apply_loss(&mut managers, loss, damage_from),
+            gain,
+            "{damage_from:?} loss {loss}"
+        );
+    }
+
+    managers.begin_round();
+    assert_eq!(apply_loss(&mut managers, 4_293, SkillEffect), 2);
+}
+
+fn apply_loss(managers: &mut BattleManagers, loss: i32, damage_from: HurtDamageFromType) -> i32 {
+    let ops = hp_loss_event_rule_op(managers, ORIGIN, 1, 10, loss, damage_from, 0);
+    let [RuleOp::Command(BattleCommand::Gauge(command))] = ops.as_slice() else {
+        panic!("expected a Bloodtithe accumulation command");
+    };
     managers
         .gauge
-        .execute_command(GaugeCommand::new(
-            ORIGIN,
-            key(1),
-            GaugeOperation::ChangeMax { delta: 28 },
-        ))
-        .unwrap();
-
-    assert!(matches!(
-        hp_loss_event_rule_op(&managers, ORIGIN, 1, 10, 2_940, 20).as_slice(),
-        [RuleOp::Command(BattleCommand::Gauge(GaugeCommand {
-            operation: GaugeOperation::AccumulateValue {
-                amount: 2_940,
-                threshold: 2_940,
-            },
-            ..
-        }))]
-    ));
+        .execute_command(*command)
+        .unwrap()
+        .applied_delta
 }
 
 fn tag_feature(owner_uid: i64, buff_uid: i64, buff_id: i32) -> ActiveBuffFeature {

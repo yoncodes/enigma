@@ -198,6 +198,7 @@ pub const FILTER_TABLES: &[&str] = &[
     "fight_asfd_const",
     "fight_jgz_const",
     "fight_const",
+    "fight_xcjl_const",
     "fight_effect",
     "fight_effect_group",
     "fight_prompt",

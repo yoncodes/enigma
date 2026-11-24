@@ -30,8 +30,7 @@ fn run_start_schedule(
         current_round: 1,
         ..Default::default()
     };
-    managers.gauge.begin_opening_setup();
-    let result = schedule::run_start(
+    let (result, visible_cards) = schedule::run_start(
         battle_catalog,
         managers,
         &pool,
@@ -40,9 +39,8 @@ fn run_start_schedule(
         context,
         cards,
         hand_size,
-    );
-    managers.gauge.finish_opening_setup();
-    let (result, visible_cards) = result.map_err(|error| format!("{error:?}"))?;
+    )
+    .map_err(|error| format!("{error:?}"))?;
     let steps = crate::engine::packet::timeline::project_for_version_with_absorb_map_layout(
         &result.frames,
         fight.version.unwrap_or_default(),

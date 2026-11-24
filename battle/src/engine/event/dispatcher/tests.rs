@@ -121,6 +121,7 @@ fn life_threshold_reactions_observe_only_their_own_hp_loss() {
         skill_id: 30810341,
         target_uid: -1,
         amount: 30,
+        damage_from: crate::engine::manager::hp::HurtDamageFromType::Skill,
         buff_uid: None,
     };
 

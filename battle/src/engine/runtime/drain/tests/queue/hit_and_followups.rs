@@ -12,6 +12,7 @@ fn active_hit_deferral_carries_its_primary_skill_hp_transaction() {
         skill_id,
         target_uid,
         amount: 100,
+        damage_from: crate::engine::manager::hp::HurtDamageFromType::None,
         buff_uid: None,
     };
     let hit = |skill_id, target_uid, damage_from| {

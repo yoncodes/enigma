@@ -242,8 +242,6 @@ pub struct GaugeManager {
     states: HashMap<GaugeKey, GaugeState>,
     raw_values: HashMap<GaugeKey, i32>,
     base_max: HashMap<GaugeKey, i32>,
-    opening_max: HashMap<GaugeKey, i32>,
-    opening_setup: bool,
     accumulators: HashMap<GaugeKey, i32>,
     positive_gains: HashMap<GaugeKey, i32>,
     positive_raw_gains: HashMap<GaugeKey, i32>,
@@ -260,15 +258,6 @@ impl GaugeManager {
 
     pub fn base_max(&self, key: GaugeKey) -> Option<i32> {
         self.base_max.get(&key).copied()
-    }
-
-    pub fn accumulation_max(&self, key: GaugeKey) -> Option<i32> {
-        if self.opening_setup
-            && let Some(max) = self.opening_max.get(&key)
-        {
-            return Some(*max);
-        }
-        self.states.get(&key)?.max
     }
 
     pub fn raw_value(&self, key: GaugeKey) -> Option<i32> {
@@ -395,16 +384,6 @@ impl GaugeManager {
         Some((accumulated / threshold).min(capacity))
     }
 
-    pub fn begin_opening_setup(&mut self) {
-        self.opening_setup = true;
-        self.opening_max.clear();
-    }
-
-    pub fn finish_opening_setup(&mut self) {
-        self.opening_setup = false;
-        self.opening_max.clear();
-    }
-
     pub fn begin_combat_round(&mut self) {
         self.positive_gain_round_start = self.positive_gains.clone();
         self.positive_threshold_crossings_paid_this_round.clear();
@@ -492,9 +471,6 @@ impl GaugeManager {
                     && let Some(max) = max
                 {
                     self.base_max.insert(command.key, max);
-                    if self.opening_setup {
-                        self.opening_max.insert(command.key, max);
-                    }
                 }
                 let before = existing.unwrap_or_default();
                 let after = *self
@@ -706,7 +682,6 @@ impl GaugeManager {
             }
             GaugeOperation::Disable => {
                 self.base_max.remove(&command.key);
-                self.opening_max.remove(&command.key);
                 self.accumulators.remove(&command.key);
                 self.raw_values.remove(&command.key);
                 self.positive_gains.remove(&command.key);

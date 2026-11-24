@@ -73,6 +73,7 @@ fn grants_one_layer_per_configured_hp_loss_count() {
         skill_id: 30006,
         target_uid: 10,
         amount: 10,
+        damage_from: crate::engine::manager::hp::HurtDamageFromType::SkillEffect,
         buff_uid: None,
     };
     for _ in 0..2 {

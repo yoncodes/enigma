@@ -110,6 +110,7 @@ fn damage_command_commits_shield_hp_crit_and_death_once() {
                 skill_id: 0,
                 target_uid: 10,
                 amount: 50,
+                damage_from: HurtDamageFromType::Skill,
                 buff_uid: None,
             },
             BattleEvent::Hit(HitEvent {

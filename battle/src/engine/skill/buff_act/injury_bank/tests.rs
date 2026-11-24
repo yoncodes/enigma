@@ -132,6 +132,7 @@ fn stored_injury_crossing_a_threshold_heals_each_living_ally() {
         skill_id: 1,
         target_uid: 10,
         amount: 100,
+        damage_from: crate::engine::manager::hp::HurtDamageFromType::Skill,
         buff_uid: None,
     };
 

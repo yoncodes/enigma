@@ -286,6 +286,7 @@ pub enum BattleEvent {
         skill_id: i32,
         target_uid: i64,
         amount: i32,
+        damage_from: crate::engine::manager::hp::HurtDamageFromType,
         buff_uid: Option<i64>,
     },
     // A ShareHurt split: `source_uid` attacked `target_uid`, which shared damage with `participant_uids`.
