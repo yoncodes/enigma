@@ -169,6 +169,7 @@ fn guard_break_loss_credits_the_breaking_skill_through_settlement() {
         source_uid: 1,
         target_uid: -1,
         skill_id: 10,
+        target_defeated: false,
     };
     for (opcode, rate, event, skill_id) in [
         (30005, 100, Some(&broken), 10),

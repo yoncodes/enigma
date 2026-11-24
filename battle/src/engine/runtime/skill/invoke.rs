@@ -176,9 +176,13 @@ pub(super) fn apply_event_context(
         BattleEvent::HpLost { target_uid, .. } | BattleEvent::HpHealed { target_uid, .. } => {
             context.runtime_target_uid = *target_uid
         }
-        BattleEvent::ToughnessBroken { target_uid, .. } => {
+        BattleEvent::ToughnessBroken {
+            target_uid,
+            target_defeated,
+            ..
+        } => {
             context.runtime_target_uid = *target_uid;
-            context.toughness_broken_uid = *target_uid;
+            context.toughness_broken_uid = if *target_defeated { 0 } else { *target_uid };
         }
         BattleEvent::Hit(hit) => {
             context.runtime_target_uid = hit.target_uid;

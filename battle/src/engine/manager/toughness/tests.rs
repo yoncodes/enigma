@@ -221,6 +221,7 @@ fn skill_damage_commits_guard_break_with_the_hp_transaction() {
             source_uid: 1,
             target_uid: -1,
             skill_id: 1,
+            target_defeated: false,
         }
     )));
     assert!(managers.toughness.get(-1).unwrap().broken);

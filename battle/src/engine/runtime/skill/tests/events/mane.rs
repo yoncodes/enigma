@@ -192,6 +192,107 @@ fn committed_conduit_hit_satisfies_attack_conditions() {
 }
 
 #[test]
+fn broken_guard_reaction_requires_surviving_the_triggering_hit() {
+    use crate::engine::manager::hp::{HpDamage, HurtDamageFromType, HurtInfoData};
+
+    crate::test_support::init_config();
+    let skill_id = 109350304;
+    let fight = Fight {
+        defender: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(-1),
+                current_hp: Some(1_000),
+                attr: Some(HeroAttribute {
+                    hp: Some(1_000),
+                    ..Default::default()
+                }),
+                toughness_value: Some(100),
+                toughness_point: Some(1),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let catalog = SkillEffectCatalog::from_game_db(config::configs::get());
+    for (amount, expected_hp) in [(950, 50), (1_000, 0)] {
+        let mut managers = BattleManagers::seeded(&fight);
+        let outcome = managers
+            .execute_hp(HpCommand::Damage(HpDamage {
+                origin: CommandOrigin {
+                    domain: RuleDomain::Skill,
+                    key: DefinitionKey::new(1, "SkillDamage"),
+                },
+                source_uid: 10,
+                target_uid: -1,
+                amount,
+                config_effect: -1,
+                effect_kind: DamageEffectKind::Normal,
+                assassinate: false,
+                ignore_riposte: false,
+                hurt: HurtInfoData {
+                    from_uid: 10,
+                    is_crit: false,
+                    career_restraint: true,
+                    reduce_hp: -amount,
+                    effect_id: 1,
+                    skill_id: 1,
+                    damage_from: HurtDamageFromType::Skill,
+                    buff_act_id: 0,
+                    buff_uid: 0,
+                    hurt_effect_type: 0,
+                    display_amount: None,
+                },
+            }))
+            .unwrap();
+        assert_eq!(managers.hp.current(-1), expected_hp);
+        let event = outcome
+            .events()
+            .into_iter()
+            .find(|event| matches!(event, BattleEvent::ToughnessBroken { .. }))
+            .expect("a lethal hit can still break guard");
+        assert!(managers.toughness.is_broken(-1));
+
+        let pool = TargetPool::from_fight(&fight).runtime_view(&managers);
+        let mut invocation: SkillInvocation = SkillRequest {
+            source_uid: -1,
+            skill_id,
+        }
+        .into();
+        invocation.condition_key = Some(DefinitionKey::new(2092, "None"));
+        invocation.target = SkillTarget::Explicit(-1);
+        let ops = emit_all_ops(
+            invocation,
+            &managers,
+            &pool,
+            &catalog,
+            &mut RoundDeterminism::default(),
+            TargetContext::default(),
+            &SkillOpTrigger::Event(event),
+        )
+        .unwrap();
+        if expected_hp == 0 {
+            assert!(ops.is_empty());
+        } else {
+            let [
+                RuleOp::Command(BattleCommand::Hp(HpCommand::Lose(loss))),
+                RuleOp::Command(BattleCommand::ToughnessRecover(recover)),
+            ] = ops.as_slice()
+            else {
+                panic!("expected guard-break HP loss followed by recovery");
+            };
+            assert!(
+                managers
+                    .execute_hp(HpCommand::Lose(*loss))
+                    .unwrap()
+                    .caused_death()
+            );
+            assert!(managers.toughness.recover(*recover).is_some());
+        }
+    }
+}
+
+#[test]
 fn prepared_status_threshold_includes_nonattacks_and_excludes_energy_cards() {
     crate::test_support::init_config();
     let mut status_buffs = [31450171, 31450143, 31440116, 31450111]

@@ -469,6 +469,7 @@ impl HpChanges {
                     .damage
                     .map(|damage| damage.hurt.skill_id)
                     .unwrap_or_default(),
+                target_defeated: self.caused_death(),
             });
         }
         if let Some(removed) = &self.team_shared_shield_removed {

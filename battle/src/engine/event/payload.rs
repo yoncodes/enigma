@@ -310,6 +310,7 @@ pub enum BattleEvent {
         source_uid: i64,
         target_uid: i64,
         skill_id: i32,
+        target_defeated: bool,
     },
     Hit(HitEvent),
     EntityDied(EntityDiedEvent),
