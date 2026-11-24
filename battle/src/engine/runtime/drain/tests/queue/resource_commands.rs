@@ -137,6 +137,60 @@ fn a_moxie_grant_publishes_cost_after_its_committed_cap() {
 }
 
 #[test]
+fn carnival_changes_moxie_capacity_and_preserves_faith() {
+    use crate::engine::{
+        fight::rules::{ATTACKER_SIDE_UID, OwnedBattleSkill},
+        manager::ex_point::ExPointKind,
+        skill::buff_act::registry::BuffActKind,
+    };
+
+    crate::test_support::init_config();
+    let fight = Fight {
+        version: Some(7),
+        attacker: Some(FightTeam {
+            entitys: vec![
+                entity(10, 5, 5, Vec::new()),
+                FightEntityInfo {
+                    ex_point_type: Some(ExPointKind::Faith.as_wire()),
+                    ..entity(11, 5, 6, Vec::new())
+                },
+            ],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let mut managers = BattleManagers::seeded(&fight);
+    managers.battle_rule.extend_owned_skills([OwnedBattleSkill {
+        owner_uid: ATTACKER_SIDE_UID,
+        skill_id: 8290407,
+    }]);
+    let catalog = SkillEffectCatalog::from_roots(config::configs::get(), [8290407], []);
+    run_setup_stage(
+        &mut managers,
+        &TargetPool::from_fight(&fight),
+        &catalog,
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+        SetupStage::EnterFight,
+        0,
+    )
+    .unwrap();
+
+    assert_eq!(managers.ex_point.maximum(10), Some(3));
+    assert_eq!(managers.ex_point.get(10), 3);
+    assert_eq!(managers.ex_point.maximum(11), Some(6));
+    assert_eq!(managers.ex_point.get(11), 5);
+    for uid in [10, 11] {
+        assert_eq!(
+            managers
+                .buff
+                .buff_act_scalar(uid, BuffActKind::ExSkillPointChange),
+            -2
+        );
+    }
+}
+
+#[test]
 fn steady_composure_grants_cost_in_the_entry_skill_frame() {
     use crate::engine::runtime::record::FrameItem;
     use sonettobuf::effect_type_enum::EffectType;

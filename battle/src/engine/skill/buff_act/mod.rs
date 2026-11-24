@@ -447,11 +447,16 @@ fn ex_point_max_transaction_rule_ops(
     managers: &BattleManagers,
     event: &BattleEvent,
 ) -> Vec<(ActiveBuffFeature, RuleOp)> {
+    use crate::engine::manager::ex_point::{ExPointKind, ExPointMaxWire};
+
     ex_point_max_rule_ops(
         managers,
         event,
         registry::BuffActKind::ExPointMaxAdd,
-        |_| Some(crate::engine::manager::ex_point::ExPointMaxWire::Delta),
+        |feature| {
+            (managers.ex_point.kind(feature.owner_uid) == ExPointKind::Common.as_wire())
+                .then_some(ExPointMaxWire::Delta)
+        },
     )
 }
 
