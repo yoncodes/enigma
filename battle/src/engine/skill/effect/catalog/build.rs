@@ -435,7 +435,7 @@ impl SkillEffectCatalog {
             }
         }
 
-        for effect in self.effects.values() {
+        for effect in self.effects.values().map(|entry| &entry.parsed) {
             if !include(effect.skill_id) {
                 continue;
             }

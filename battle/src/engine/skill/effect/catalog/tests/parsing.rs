@@ -545,3 +545,35 @@ fn active_skill_filters_share_the_exact_skill_action_driver() {
             && subscription.definition.opcode == 16210
     }));
 }
+
+#[test]
+fn replacing_an_effect_updates_its_aliased_subscription_lanes() {
+    init_config();
+    let skill_id = 30864156;
+    let alias = i32::MAX;
+    let mut catalog = SkillEffectCatalog::from_roots(config::configs::get(), [skill_id], []);
+    let mut effect = catalog.get(skill_id).unwrap().clone();
+    catalog.insert_alias(alias, effect.skill_id);
+    let lanes = catalog.compiled_subscription_lanes(alias).unwrap();
+    assert!(!lanes.is_empty());
+    assert_eq!(
+        lanes,
+        catalog.compiled_subscription_lanes(skill_id).unwrap()
+    );
+
+    effect.slots.clear();
+    catalog.insert(effect);
+
+    assert!(
+        catalog
+            .compiled_subscription_lanes(alias)
+            .unwrap()
+            .is_empty()
+    );
+    assert!(
+        catalog
+            .compiled_subscription_lanes(skill_id)
+            .unwrap()
+            .is_empty()
+    );
+}

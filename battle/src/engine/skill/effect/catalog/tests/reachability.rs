@@ -6,8 +6,8 @@ fn configured_behaviors_keep_their_effect_and_slot_identity() {
     let catalog = SkillEffectCatalog::from_game_db(config::configs::get());
     let mut shell_rules = 0;
 
-    for (&effect_id, effect) in &catalog.effects {
-        for (index, slot) in effect.slots.iter().enumerate() {
+    for (&effect_id, entry) in &catalog.effects {
+        for (index, slot) in entry.parsed.slots.iter().enumerate() {
             if slot.behavior.spec.kind
                 != crate::engine::skill::behavior::classify::BehaviorKind::ShellUseSkill
             {

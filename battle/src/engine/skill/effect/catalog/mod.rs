@@ -14,9 +14,18 @@ use crate::engine::{
     },
 };
 
+type SubscriptionLanes =
+    Result<Vec<(usize, SubscriptionKey)>, crate::engine::skill::rule::route::RouteError>;
+
+#[derive(Debug, Clone)]
+struct CatalogEffect {
+    parsed: ParsedSkillEffect,
+    subscriptions: Option<SubscriptionLanes>,
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct SkillEffectCatalog {
-    effects: HashMap<i32, ParsedSkillEffect>,
+    effects: HashMap<i32, CatalogEffect>,
     preparation_observers: HashSet<i32>,
     aliases: HashMap<i32, i32>,
     effect_tags: HashMap<i32, i32>,
@@ -85,7 +94,15 @@ impl SkillEffectCatalog {
         } else {
             self.preparation_observers.remove(&effect.skill_id);
         }
-        self.effects.insert(effect.skill_id, effect);
+        let subscriptions =
+            config::configs::try_get().map(|_| Self::compile_subscription_lanes(&effect));
+        self.effects.insert(
+            effect.skill_id,
+            CatalogEffect {
+                parsed: effect,
+                subscriptions,
+            },
+        );
     }
 
     pub(crate) fn has_preparation_observers(&self) -> bool {
@@ -128,6 +145,10 @@ impl SkillEffectCatalog {
     }
 
     pub fn get(&self, skill_id: i32) -> Option<&ParsedSkillEffect> {
+        self.entry(skill_id).map(|entry| &entry.parsed)
+    }
+
+    fn entry(&self, skill_id: i32) -> Option<&CatalogEffect> {
         self.aliases
             .get(&skill_id)
             .and_then(|effect_id| self.effects.get(effect_id))
@@ -169,6 +190,7 @@ impl SkillEffectCatalog {
         let mut skills = self
             .effects
             .values()
+            .map(|entry| &entry.parsed)
             .filter_map(|effect| {
                 effect.slots.iter().find_map(|slot| {
                     let definition =
@@ -475,13 +497,17 @@ impl SkillEffectCatalog {
         Ok(subscriptions)
     }
 
-    pub fn compiled_subscription_lanes(
-        &self,
-        skill_id: i32,
-    ) -> Result<Vec<(usize, SubscriptionKey)>, crate::engine::skill::rule::route::RouteError> {
-        let Some(effect) = self.get(skill_id) else {
+    pub fn compiled_subscription_lanes(&self, skill_id: i32) -> SubscriptionLanes {
+        let Some(entry) = self.entry(skill_id) else {
             return Ok(Vec::new());
         };
+        entry
+            .subscriptions
+            .clone()
+            .unwrap_or_else(|| Self::compile_subscription_lanes(&entry.parsed))
+    }
+
+    fn compile_subscription_lanes(effect: &ParsedSkillEffect) -> SubscriptionLanes {
         let mut lanes = Vec::new();
         for (slot_index, slot) in effect.slots.iter().enumerate() {
             if !crate::engine::skill::behavior::is_slot_supported(slot) {

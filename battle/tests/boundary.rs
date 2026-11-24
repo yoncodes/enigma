@@ -215,3 +215,39 @@ fn rust_files_filtered(root: &Path, production_only: bool) -> Vec<PathBuf> {
     files.sort();
     files
 }
+
+#[test]
+fn an_effect_inserted_before_config_resolves_its_routes_after_load() {
+    use battle::tooling::scan::behavior::classify::BehaviorSpec;
+    use battle::tooling::scan::{
+        ConditionRoute, ParsedBehavior, ParsedSkillEffect, SkillEffectCatalog, SkillEffectSlot,
+        TargetRequest, parse_conditions,
+    };
+
+    assert!(config::configs::try_get().is_none());
+    let data_dir = std::env::var_os("ENIGMA_BATTLE_DATA_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| workspace_root().join("data/excel2json"));
+    let data_dir = data_dir.to_str().unwrap();
+    let tables = config::configs::GameDB::load(data_dir).unwrap();
+    let mut slot = SkillEffectSlot::new(
+        ParsedBehavior::from_spec(
+            BehaviorSpec::new(50021, "RemoveMagicCircleById"),
+            vec![30001],
+            vec!["30001".into()],
+        ),
+        TargetRequest::self_only(),
+    );
+    slot.conditions = parse_conditions(&tables, "302");
+    slot.compiled_route = ConditionRoute::compile(&slot.conditions);
+    let mut catalog = SkillEffectCatalog::default();
+    catalog.insert(ParsedSkillEffect {
+        skill_id: 1,
+        slots: vec![slot],
+    });
+    assert!(catalog.compiled_subscription_lanes(1).unwrap().is_empty());
+
+    config::configs::init(data_dir).unwrap();
+
+    assert_eq!(catalog.compiled_subscription_lanes(1).unwrap().len(), 1);
+}
