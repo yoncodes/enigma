@@ -60,6 +60,10 @@ pub enum GaugeOperation {
         amount: i32,
         stream: i32,
     },
+    AccumulateRawValueAndProgress {
+        amount: i32,
+        stream: i32,
+    },
     AccumulateValue {
         amount: i32,
         threshold: i32,
@@ -511,7 +515,8 @@ impl GaugeManager {
                 ))
             }
             GaugeOperation::ChangeValue { delta } => self.change_value(command, delta, false),
-            GaugeOperation::AccumulateRawValue { amount, stream } => {
+            GaugeOperation::AccumulateRawValue { amount, stream }
+            | GaugeOperation::AccumulateRawValueAndProgress { amount, stream } => {
                 if amount <= 0 || stream <= 0 {
                     return Err(GaugeCommandError::InvalidCommand);
                 }
@@ -522,6 +527,13 @@ impl GaugeManager {
                     .ok_or(GaugeCommandError::MissingGauge(command.key))?;
                 let capacity = state.max.map_or(i32::MAX, |max| max - state.current).max(0);
                 if capacity == 0 {
+                    if matches!(
+                        command.operation,
+                        GaugeOperation::AccumulateRawValueAndProgress { .. }
+                    ) {
+                        return Ok(self
+                            .accumulate_progress(command.with_progress_raw_delta(amount), amount));
+                    }
                     return self.change_value(command, 0, true);
                 }
                 let raw_before = self
@@ -674,25 +686,7 @@ impl GaugeManager {
                 self.states
                     .get(&command.key)
                     .ok_or(GaugeCommandError::MissingGauge(command.key))?;
-                let raw = self.positive_raw_gains.entry(command.key).or_default();
-                let before = *raw / 1000;
-                *raw = raw.saturating_add(raw_amount);
-                let after = *raw / 1000;
-                Ok(change(
-                    command,
-                    GaugeChangeKind::Accumulated,
-                    GaugeState {
-                        current: before,
-                        max: None,
-                    },
-                    GaugeState {
-                        current: after,
-                        max: None,
-                    },
-                    raw_amount / 1000,
-                    0,
-                    (true, true),
-                ))
+                Ok(self.accumulate_progress(command, raw_amount))
             }
             GaugeOperation::Snapshot => {
                 let state = self
@@ -860,6 +854,28 @@ impl GaugeManager {
             ..first
         };
         Ok(GaugeBatchChanges { combined })
+    }
+
+    fn accumulate_progress(&mut self, command: GaugeCommand, raw_amount: i32) -> GaugeChange {
+        let raw = self.positive_raw_gains.entry(command.key).or_default();
+        let before = *raw / 1000;
+        *raw = raw.saturating_add(raw_amount);
+        let after = *raw / 1000;
+        change(
+            command,
+            GaugeChangeKind::Accumulated,
+            GaugeState {
+                current: before,
+                max: None,
+            },
+            GaugeState {
+                current: after,
+                max: None,
+            },
+            raw_amount / 1000,
+            0,
+            (true, true),
+        )
     }
 
     fn change_value(

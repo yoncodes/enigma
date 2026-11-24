@@ -290,7 +290,7 @@ pub fn burn_or_halo_rule_op(
             GaugeCommand::new(
                 buff_act::feature_command_origin(trigger)?,
                 key,
-                GaugeOperation::AccumulateRawValue {
+                GaugeOperation::AccumulateRawValueAndProgress {
                     amount: gain.raw_amount,
                     stream: trigger.act_id()?,
                 },

@@ -275,6 +275,63 @@ fn activation_counter_floors_raw_progress_and_crystals_keep_separate_owners() {
 }
 
 #[test]
+fn halo_gains_advance_destined_doom_at_the_shared_pool_cap() {
+    let mut managers = BattleManagers::default();
+    let pool = key(1);
+    let tag = feature(10, 1, 20, 31340003, "HeatScaleTag", vec![1052]);
+    let origin = buff_act::feature_command_origin(&tag).unwrap();
+    let features = [
+        tag,
+        feature(-1, 2, 30, 31340001, "Radiance", vec![1048, 250, 102, 40]),
+        feature(10, 1, 21, 31340005, "HeatScaleUseSkill", vec![1050]),
+    ];
+    managers
+        .execute_gauge(GaugeCommand::new(
+            origin,
+            pool,
+            GaugeOperation::Enable { max: Some(20) },
+        ))
+        .unwrap();
+
+    let gain = burn_or_halo_rule_op(
+        &managers.gauge,
+        &features,
+        heat_scale::BurnOrHaloAdded {
+            source_team: 1,
+            target_uid: -1,
+            buff_uid: 30,
+            added_layers: 2,
+            alive_enemy_count: 1,
+        },
+    )
+    .unwrap();
+    let RuleOp::Command(BattleCommand::Gauge(command)) = gain.output else {
+        panic!("expected a gauge command");
+    };
+    for operation in [
+        GaugeOperation::ChangeValue { delta: 20 },
+        GaugeOperation::ConsumeAccumulated {
+            listener_uid: 21,
+            listener_opcode: 1050,
+            amount: 15,
+        },
+    ] {
+        managers
+            .execute_gauge(GaugeCommand::new(origin, pool, operation))
+            .unwrap();
+    }
+    let change = managers.execute_gauge(command).unwrap();
+    assert_eq!(change.progress_raw_delta, 10_000);
+    assert_eq!(managers.gauge.get(pool).unwrap().current, 20);
+    assert_eq!(
+        visible_counter_info(&managers.gauge, &features, 1)
+            .unwrap()
+            .current,
+        15
+    );
+}
+
+#[test]
 fn ready_cast_is_derived_from_the_subscriber_and_current_state() {
     crate::test_support::init_config();
     let fight = Fight {
