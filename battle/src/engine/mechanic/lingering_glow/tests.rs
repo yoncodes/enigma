@@ -37,7 +37,7 @@ fn round_start_bonus_snapshots_remaining_pool_then_depletes_half() {
                 FightEntityInfo {
                     uid: Some(11),
                     current_hp: Some(100),
-                    buffs: [30810301, 30810302, 30810303]
+                    buffs: [30810301, 30810302, 30810303, 31340003]
                         .into_iter()
                         .enumerate()
                         .map(|(index, buff_id)| BuffInfo {
@@ -138,6 +138,44 @@ fn round_start_bonus_snapshots_remaining_pool_then_depletes_half() {
         vec![&[2_250][..], &[2_250][..], &[2_250][..]]
     );
     assert_eq!(managers.gauge.get(key(1)).unwrap().current, 45);
+
+    managers.hp.register(&FightEntityInfo {
+        uid: Some(10),
+        current_hp: Some(0),
+        ..Default::default()
+    });
+    let catalog = crate::engine::skill::effect::catalog::global();
+    assert!(round_start_attribute_rule_ops_for_team(&managers, catalog, 1).is_empty());
+    let transition = round_transition_attribute_rule_ops_for_team(&managers, 1);
+    assert!(matches!(
+        transition.as_slice(),
+        [
+            RuleOp::Command(BattleCommand::Buff(BuffCommand::GrantChild(grant))),
+            RuleOp::Command(BattleCommand::Gauge(_)),
+            ..
+        ] if grant.target_uid == 11
+    ));
+    for op in transition {
+        match op {
+            RuleOp::Command(BattleCommand::Buff(command)) => {
+                managers.execute_buff(command).unwrap();
+            }
+            RuleOp::Command(BattleCommand::Gauge(command)) => {
+                managers.execute_gauge(command).unwrap();
+            }
+            _ => {}
+        }
+    }
+    assert!(managers.buff.has_buff_id(11, 31340007));
+    assert!(!managers.buff.has_buff_id(10, 31340007));
+    assert_eq!(managers.gauge.get(key(1)).unwrap().current, 22);
+    assert_eq!(managers.gauge.raw_value(key(1)), Some(22_500));
+    for uid in [22, 23, 24] {
+        assert_eq!(
+            managers.buff.snapshot(11, uid).unwrap().act_info[0].param,
+            [2_250]
+        );
+    }
 }
 
 #[test]

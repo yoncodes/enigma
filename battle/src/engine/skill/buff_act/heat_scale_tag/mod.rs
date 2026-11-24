@@ -49,7 +49,6 @@ pub fn setup_rule_ops(
         SetupStage::RoundTransitionStart => Some(
             lingering_glow::round_transition_attribute_rule_ops_for_team(
                 managers,
-                catalog,
                 feature.team_type,
             ),
         ),

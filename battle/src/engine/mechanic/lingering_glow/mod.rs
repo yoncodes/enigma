@@ -113,9 +113,16 @@ pub fn round_start_attribute_rule_ops_for_team(
     catalog: &SkillEffectCatalog,
     team: i32,
 ) -> Vec<RuleOp> {
+    let features = managers.buff.active_features(&managers.hp);
+    if !heat_scale::creation_specs(&features, catalog)
+        .into_iter()
+        .any(|create| create.team == team)
+    {
+        return Vec::new();
+    }
     attribute_snapshot_rule_ops_for_team(
         managers,
-        catalog,
+        &features,
         team,
         AttributeSnapshotRule::GrantMissing,
     )
@@ -123,146 +130,145 @@ pub fn round_start_attribute_rule_ops_for_team(
 
 pub fn round_transition_attribute_rule_ops_for_team(
     managers: &crate::engine::manager::BattleManagers,
-    catalog: &SkillEffectCatalog,
     team: i32,
 ) -> Vec<RuleOp> {
-    attribute_snapshot_rule_ops_for_team(managers, catalog, team, AttributeSnapshotRule::RenewTeam)
+    let features = managers.buff.active_features(&managers.hp);
+    attribute_snapshot_rule_ops_for_team(
+        managers,
+        &features,
+        team,
+        AttributeSnapshotRule::RenewTeam,
+    )
 }
 
 fn attribute_snapshot_rule_ops_for_team(
     managers: &crate::engine::manager::BattleManagers,
-    catalog: &SkillEffectCatalog,
+    features: &[ActiveBuffFeature],
     team: i32,
     rule: AttributeSnapshotRule,
 ) -> Vec<RuleOp> {
-    let features = managers.buff.active_features(&managers.hp);
     let Some(tag) = features.iter().find(|feature| {
-        feature.team_type == team && buff_act::is_kind(feature, BuffActKind::HeatScaleTag)
+        feature.team_type == team
+            && feature.owner_alive
+            && buff_act::is_kind(feature, BuffActKind::HeatScaleTag)
     }) else {
         return Vec::new();
     };
     let Some(origin) = buff_act::feature_command_origin(tag) else {
         return Vec::new();
     };
-    let mut outputs = Vec::new();
-    for create in heat_scale::creation_specs(&features, catalog)
+    let gauge_key = key(team);
+    let Some(state) = managers.gauge.get(gauge_key) else {
+        return Vec::new();
+    };
+    let Some(attribute_buff) = managers.catalog().lingering_glow_attribute_buff() else {
+        return Vec::new();
+    };
+    let buff_id = attribute_buff.buff_id;
+    let act_id = attribute_buff.origin.key.opcode;
+    if state.current <= 0 {
+        return Vec::new();
+    }
+    let buff_origin = attribute_buff.origin;
+    let remaining = state.current / 2;
+    let depleted = state.current - remaining;
+    let team_uids = managers.buff.alive_team_uids(team, &managers.hp);
+    let renew_team_snapshot = rule == AttributeSnapshotRule::RenewTeam;
+    let targets = team_uids
         .into_iter()
-        .filter(|create| create.team == team)
-    {
-        let Some(state) = managers.gauge.get(key(create.team)) else {
-            continue;
+        .filter(|target_uid| {
+            renew_team_snapshot || !managers.buff.has_buff_id(*target_uid, buff_id)
+        })
+        .collect::<Vec<_>>();
+    if targets.is_empty() {
+        return Vec::new();
+    }
+    let mut outputs = Vec::new();
+    outputs.extend(targets.into_iter().map(|target_uid| {
+        let grant = BuffGrantChild {
+            origin: buff_origin,
+            source_uid: 0,
+            target_uid,
+            buff_id,
+            amount: Some(0),
+            params: None,
+            act_info: Some(vec![BuffActInfo {
+                act_id: Some(act_id),
+                param: vec![remaining],
+                str_param: Some(String::new()),
+            }]),
         };
-        let Some(attribute_buff) = managers.catalog().lingering_glow_attribute_buff() else {
-            continue;
-        };
-        let buff_id = attribute_buff.buff_id;
-        let act_id = attribute_buff.origin.key.opcode;
-        if state.current <= 0 {
-            continue;
-        }
-        let buff_origin = attribute_buff.origin;
-        let remaining = state.current / 2;
-        let depleted = state.current - remaining;
-        let team_uids = managers.buff.alive_team_uids(create.team, &managers.hp);
-        let renew_team_snapshot = rule == AttributeSnapshotRule::RenewTeam;
-        let targets = team_uids
-            .into_iter()
-            .filter(|target_uid| {
-                renew_team_snapshot || !managers.buff.has_buff_id(*target_uid, buff_id)
-            })
-            .collect::<Vec<_>>();
-        if targets.is_empty() {
-            continue;
-        }
-        outputs.extend(targets.into_iter().map(|target_uid| {
-            let grant = BuffGrantChild {
-                origin: buff_origin,
-                source_uid: 0,
-                target_uid,
-                buff_id,
-                amount: Some(0),
-                params: None,
-                act_info: Some(vec![BuffActInfo {
-                    act_id: Some(act_id),
-                    param: vec![remaining],
-                    str_param: Some(String::new()),
-                }]),
-            };
-            RuleOp::Command(BattleCommand::Buff(
-                if managers.buff.has_buff_id(target_uid, buff_id) {
-                    BuffCommand::RenewTimedChild(grant)
-                } else {
-                    BuffCommand::GrantChild(grant)
-                },
-            ))
-        }));
-        if depleted == 0 {
-            continue;
-        }
-        let raw_current = managers
-            .gauge
-            .raw_value(key(team))
-            .unwrap_or_else(|| state.current.saturating_mul(1000));
-        let depleted_raw = raw_current - raw_current / 2;
-        outputs.push(RuleOp::Command(BattleCommand::Gauge(
-            GaugeCommand::new(
-                origin,
-                key(team),
-                GaugeOperation::ChangeValue { delta: -depleted },
-            )
-            .attributed_to(0, GaugeKind::LingeringGlow.shared_pool_config_effect())
-            .with_raw_delta(-depleted_raw),
-        )));
-        for counter in heat_scale::decr_counter_infos(depleted_raw, &features, team) {
-            let Some(counter_origin) = managers
-                .catalog()
-                .buff_act_origin(counter.act_id, BuffActKind::HeatScaleDecrCounter)
-            else {
-                continue;
-            };
-            let mut act_info = managers
-                .buff
-                .snapshot(counter.owner_uid, counter.buff_uid)
-                .map(|buff| buff.act_info)
-                .unwrap_or_default();
-            let previous = act_info
-                .iter()
-                .find(|info| info.act_id == Some(counter.act_id))
-                .and_then(|info| info.param.first())
-                .copied()
-                .unwrap_or_default();
-            let counter_value = previous.saturating_add(counter.value);
-            if let Some(info) = act_info
-                .iter_mut()
-                .find(|info| info.act_id == Some(counter.act_id))
-            {
-                info.param = vec![counter_value];
+        RuleOp::Command(BattleCommand::Buff(
+            if managers.buff.has_buff_id(target_uid, buff_id) {
+                BuffCommand::RenewTimedChild(grant)
             } else {
-                act_info.push(BuffActInfo {
-                    act_id: Some(counter.act_id),
-                    param: vec![counter_value],
-                    str_param: Some(String::new()),
-                });
-            }
-            outputs.push(RuleOp::Command(BattleCommand::Buff(
-                BuffCommand::SetInternalState(BuffSetState {
-                    origin: counter_origin,
-                    target_uid: counter.owner_uid,
-                    buff_uid: counter.buff_uid,
-                    ex_info: None,
-                    params: None,
-                    act_info: Some(act_info),
-                }),
-            )));
-            outputs.push(RuleOp::BuffActInfoMarker(BuffActInfoMarkerResult {
+                BuffCommand::GrantChild(grant)
+            },
+        ))
+    }));
+    let raw_current = managers
+        .gauge
+        .raw_value(gauge_key)
+        .unwrap_or_else(|| state.current.saturating_mul(1000));
+    let depleted_raw = raw_current - raw_current / 2;
+    outputs.push(RuleOp::Command(BattleCommand::Gauge(
+        GaugeCommand::new(
+            origin,
+            gauge_key,
+            GaugeOperation::ChangeValue { delta: -depleted },
+        )
+        .attributed_to(0, GaugeKind::LingeringGlow.shared_pool_config_effect())
+        .with_raw_delta(-depleted_raw),
+    )));
+    for counter in heat_scale::decr_counter_infos(depleted_raw, features, team) {
+        let Some(counter_origin) = managers
+            .catalog()
+            .buff_act_origin(counter.act_id, BuffActKind::HeatScaleDecrCounter)
+        else {
+            continue;
+        };
+        let mut act_info = managers
+            .buff
+            .snapshot(counter.owner_uid, counter.buff_uid)
+            .map(|buff| buff.act_info)
+            .unwrap_or_default();
+        let previous = act_info
+            .iter()
+            .find(|info| info.act_id == Some(counter.act_id))
+            .and_then(|info| info.param.first())
+            .copied()
+            .unwrap_or_default();
+        let counter_value = previous.saturating_add(counter.value);
+        if let Some(info) = act_info
+            .iter_mut()
+            .find(|info| info.act_id == Some(counter.act_id))
+        {
+            info.param = vec![counter_value];
+        } else {
+            act_info.push(BuffActInfo {
+                act_id: Some(counter.act_id),
+                param: vec![counter_value],
+                str_param: Some(String::new()),
+            });
+        }
+        outputs.push(RuleOp::Command(BattleCommand::Buff(
+            BuffCommand::SetInternalState(BuffSetState {
+                origin: counter_origin,
                 target_uid: counter.owner_uid,
                 buff_uid: counter.buff_uid,
-                act_id: counter.act_id,
-                params: vec![counter_value],
-                str_param: Some(String::new()),
-                team_type: 0,
-            }));
-        }
+                ex_info: None,
+                params: None,
+                act_info: Some(act_info),
+            }),
+        )));
+        outputs.push(RuleOp::BuffActInfoMarker(BuffActInfoMarkerResult {
+            target_uid: counter.owner_uid,
+            buff_uid: counter.buff_uid,
+            act_id: counter.act_id,
+            params: vec![counter_value],
+            str_param: Some(String::new()),
+            team_type: 0,
+        }));
     }
     outputs
 }
