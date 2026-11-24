@@ -47,7 +47,7 @@ pub enum ReactionLane {
 }
 
 pub(crate) struct DispatchSelection<'a> {
-    pub owner_uids: Option<&'a [i64]>,
+    pub subscribers: &'a subscriber::EventSubscribers,
     pub publication: Option<crate::engine::event::subscription::PublicationPhase>,
     pub completing_skill: Option<(i64, i32)>,
     pub lane: Option<ReactionLane>,
@@ -269,6 +269,37 @@ pub fn dispatch_event(
     )
 }
 
+pub(crate) fn discover_selected_event(
+    pool: &TargetPool,
+    managers: &BattleManagers,
+    catalog: &SkillEffectCatalog,
+    event: &BattleEvent,
+    owner_uids: Option<&[i64]>,
+) -> Result<subscriber::EventSubscribers, SubscriberError> {
+    if let BattleEvent::SkillEffectsPrepared(action) = event {
+        if owner_uids.is_some_and(|owners| !owners.contains(&action.source_uid)) {
+            return Ok(subscriber::EventSubscribers::default());
+        }
+        subscriber::for_compiled_owner_skill_event(
+            pool,
+            managers,
+            catalog,
+            EventKind::SkillEffectsPrepared,
+            action.source_uid,
+        )
+    } else if let Some(owner_uids) = owner_uids {
+        subscriber::for_compiled_owner_events(
+            pool,
+            managers,
+            catalog,
+            event.subscription_kinds(),
+            owner_uids,
+        )
+    } else {
+        subscriber::for_compiled_events(pool, managers, catalog, event.subscription_kinds())
+    }
+}
+
 pub(crate) fn dispatch_selected_event(
     pool: &TargetPool,
     managers: &BattleManagers,
@@ -278,31 +309,7 @@ pub(crate) fn dispatch_selected_event(
     selection: DispatchSelection<'_>,
     multiplicity: Option<&mut DispatchMultiplicity<'_>>,
 ) -> Result<DispatchBatch, SubscriberError> {
-    let mut subscribers = if let BattleEvent::SkillEffectsPrepared(action) = event {
-        if selection
-            .owner_uids
-            .is_some_and(|owners| !owners.contains(&action.source_uid))
-        {
-            return Ok(DispatchBatch::default());
-        }
-        subscriber::for_compiled_owner_skill_event(
-            pool,
-            managers,
-            catalog,
-            EventKind::SkillEffectsPrepared,
-            action.source_uid,
-        )?
-    } else if let Some(owner_uids) = selection.owner_uids {
-        subscriber::for_compiled_owner_events(
-            pool,
-            managers,
-            catalog,
-            event.subscription_kinds(),
-            owner_uids,
-        )?
-    } else {
-        subscriber::for_compiled_events(pool, managers, catalog, event.subscription_kinds())?
-    };
+    let mut subscribers = selection.subscribers.clone();
     if let Some(publication) = selection.publication {
         retain_publication(&mut subscribers, publication);
     }

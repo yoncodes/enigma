@@ -44,6 +44,32 @@ impl<'a> ReactionDispatch<'a> {
     }
 }
 
+struct ReactionPlan<'a> {
+    dispatch: ReactionDispatch<'a>,
+    subscribers: crate::engine::skill::subscriber::EventSubscribers,
+}
+
+impl<'a> ReactionPlan<'a> {
+    fn new(
+        pool: &TargetPool,
+        managers: &BattleManagers,
+        catalog: &SkillEffectCatalog,
+        dispatch: ReactionDispatch<'a>,
+    ) -> Result<Self, DrainError> {
+        let subscribers = dispatcher::discover_selected_event(
+            pool,
+            managers,
+            catalog,
+            dispatch.event,
+            dispatch.owner_uids,
+        )?;
+        Ok(Self {
+            dispatch,
+            subscribers,
+        })
+    }
+}
+
 pub(in crate::engine::runtime::drain) fn dispatch_reactions(
     pool: &TargetPool,
     managers: &BattleManagers,
@@ -87,16 +113,23 @@ pub(in crate::engine::runtime::drain) fn dispatch_reactions(
             && matches!(lane, None | Some(ReactionLane::Skills))
             && owner_uids.is_none_or(|owners| owners.contains(&action.source_uid))
         {
+            let owner = [action.source_uid];
+            let plan = ReactionPlan::new(
+                pool,
+                managers,
+                catalog,
+                ReactionDispatch {
+                    lane: Some(ReactionLane::Skills),
+                    owner_uids: Some(&owner),
+                    ..dispatch
+                },
+            )?;
             reactions.after_publish = queued_selected_timing(
                 pool,
                 managers,
                 catalog,
                 determinism,
-                ReactionDispatch {
-                    lane: Some(ReactionLane::Skills),
-                    owner_uids: Some(&[action.source_uid]),
-                    ..dispatch
-                },
+                &plan,
                 (PublicationPhase::AfterPublish, ReactionTiming::Immediate),
                 multiplicity,
             )?;
@@ -200,6 +233,15 @@ pub(in crate::engine::runtime::drain) fn dispatch_reactions(
         };
         destination.push(queued);
     }
+    let plan = ReactionPlan::new(
+        pool,
+        managers,
+        catalog,
+        ReactionDispatch {
+            owner_uids,
+            ..dispatch
+        },
+    )?;
     let runs_before =
         publication_phase.is_none_or(|phase| phase == PublicationPhase::BeforePublish);
     let runs_after = publication_phase.is_none_or(|phase| phase == PublicationPhase::AfterPublish);
@@ -209,10 +251,7 @@ pub(in crate::engine::runtime::drain) fn dispatch_reactions(
             managers,
             catalog,
             determinism,
-            ReactionDispatch {
-                owner_uids,
-                ..dispatch
-            },
+            &plan,
             (PublicationPhase::BeforePublish, ReactionTiming::Immediate),
             multiplicity.as_deref_mut(),
         )?);
@@ -258,10 +297,7 @@ pub(in crate::engine::runtime::drain) fn dispatch_reactions(
             managers,
             catalog,
             determinism,
-            ReactionDispatch {
-                owner_uids,
-                ..dispatch
-            },
+            &plan,
             (PublicationPhase::AfterPublish, ReactionTiming::Immediate),
             multiplicity.as_deref_mut(),
         )?;
@@ -324,10 +360,7 @@ pub(in crate::engine::runtime::drain) fn dispatch_reactions(
                 managers,
                 catalog,
                 determinism,
-                ReactionDispatch {
-                    owner_uids,
-                    ..dispatch
-                },
+                &plan,
                 (publication, timing),
                 multiplicity.as_deref_mut(),
             )?);
@@ -411,7 +444,7 @@ fn queued_selected_timing(
     managers: &BattleManagers,
     catalog: &SkillEffectCatalog,
     determinism: &mut RoundDeterminism,
-    dispatch: ReactionDispatch<'_>,
+    plan: &ReactionPlan<'_>,
     (publication, timing): (PublicationPhase, ReactionTiming),
     multiplicity: Option<&mut crate::engine::event::dispatcher::DispatchMultiplicity<'_>>,
 ) -> Result<Vec<QueuedOp>, DrainError> {
@@ -423,9 +456,8 @@ fn queued_selected_timing(
         reentry_skill,
         current_skill_target,
         lane,
-        owner_uids,
         ..
-    } = dispatch;
+    } = plan.dispatch;
     let reaction_scope = multiplicity.as_ref().map(|multiplicity| {
         (
             multiplicity.event_batch_id,
@@ -448,12 +480,12 @@ fn queued_selected_timing(
         determinism,
         event,
         dispatcher::DispatchSelection {
-            owner_uids,
+            subscribers: &plan.subscribers,
             publication: Some(publication),
             completing_skill: selected_completion,
             lane,
             timing,
-            hit_passives_pending: dispatch.hit_passives_pending,
+            hit_passives_pending: plan.dispatch.hit_passives_pending,
         },
         multiplicity,
     )?;
