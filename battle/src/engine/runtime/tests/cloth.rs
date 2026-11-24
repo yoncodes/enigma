@@ -1,4 +1,5 @@
 use super::*;
+use crate::engine::skill::rule::{CommandOrigin, DefinitionKey, RuleDomain};
 
 #[test]
 fn rejects_unknown_cloth_skill_type_at_runtime_boundary() {
@@ -145,6 +146,27 @@ fn configured_cloth_skills_drive_universal_and_redeal_card_rules() {
 
     runtime.fight.version = Some(7);
     runtime.round_state.hero_sp_attributes = defender_snapshot.clone();
+    let ultimate = card(30280131);
+    runtime
+        .managers
+        .execute_card(crate::engine::manager::card::CardCommand::SetTeamCards(
+            crate::engine::manager::card::CardSetTeamCards {
+                origin: CommandOrigin {
+                    domain: RuleDomain::Lifecycle,
+                    key: DefinitionKey::new(0, "TestTeamCards"),
+                },
+                cards: vec![ultimate.clone()],
+            },
+        ))
+        .unwrap();
+    let mut observed = runtime.card_hand().to_vec();
+    observed[0] = card(101);
+    observed.push(card(301));
+    assert!(runtime.seed_observed_redeal(&observed).is_err());
+    observed.pop();
+    observed.push(ultimate.clone());
+    assert!(runtime.seed_observed_redeal(&observed[..2]).is_err());
+    runtime.seed_observed_redeal(&observed).unwrap();
     let redeal = runtime
         .use_cloth_skill(UseClothSkillRequest {
             skill_id: Some(30010202),
@@ -172,7 +194,7 @@ fn configured_cloth_skills_drive_universal_and_redeal_card_rules() {
             .card_info_list
             .iter()
             .map(|card| (card.uid, card.skill_id, card.temp_card.unwrap_or_default()))
-            .eq(runtime.card_hand().iter().map(|card| (
+            .eq(runtime.managers.card.visible_cards().map(|card| (
                 card.uid,
                 card.skill_id,
                 card.temp_card.unwrap_or_default()
@@ -195,12 +217,13 @@ fn configured_cloth_skills_drive_universal_and_redeal_card_rules() {
             .card_info_list
             .iter()
             .map(|card| (card.uid, card.skill_id, card.temp_card.unwrap_or_default()))
-            .eq(runtime.card_hand().iter().map(|card| (
+            .eq(runtime.managers.card.visible_cards().map(|card| (
                 card.uid,
                 card.skill_id,
                 card.temp_card.unwrap_or_default()
             )))
     );
+    assert_eq!(runtime.managers.card.team_cards(), &[ultimate]);
     assert!(runtime.take_redeal_card_push().is_none());
 }
 

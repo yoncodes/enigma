@@ -34,10 +34,10 @@ pub(super) fn apply_redeal_keep_ranks(
         return Err(CardCommandError::InvalidCommand);
     }
     manager.redeal_keep_ranks(redeal.replacements);
-    Ok(CardChanges::new(
-        Some(redeal.origin),
-        CardChangeKind::RedealtKeepRanks,
-    ))
+    Ok(CardChanges {
+        team_cards: Some(manager.team_cards().to_vec()),
+        ..CardChanges::new(Some(redeal.origin), CardChangeKind::RedealtKeepRanks)
+    })
 }
 
 pub(super) fn draw(

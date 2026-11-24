@@ -920,7 +920,16 @@ impl CardManager {
     }
 
     pub(crate) fn observed_redeal_draws(&self, observed: &[CardInfo]) -> Option<Vec<CardInfo>> {
-        if observed.len() != self.hand().len() {
+        let (observed, team_cards) = observed.split_at_checked(self.hand().len())?;
+        if team_cards.len() != self.team_cards().len()
+            || !self
+                .team_cards()
+                .iter()
+                .zip(team_cards)
+                .all(|(current, observed)| {
+                    current.uid == observed.uid && current.skill_id == observed.skill_id
+                })
+        {
             return None;
         }
         let catalog = self.deck.catalog();

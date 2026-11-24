@@ -242,7 +242,12 @@ pub(super) fn project_card(
             .collect(),
         CardChangeKind::RedealtKeepRanks => {
             vec![CardPacket::redeal_keep_ranks(
-                changes.after.clone(),
+                changes
+                    .after
+                    .iter()
+                    .chain(changes.team_cards.as_deref().unwrap_or_default())
+                    .cloned()
+                    .collect(),
                 changes
                     .origin
                     .map(|origin| origin.key.opcode)
