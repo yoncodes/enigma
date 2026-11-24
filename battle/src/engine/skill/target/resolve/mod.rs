@@ -6,6 +6,7 @@ use crate::engine::{
     },
 };
 
+mod battle_tag;
 mod burn_priority;
 mod highest_moxie;
 mod self_anchor;
@@ -350,15 +351,7 @@ impl TargetResolver {
             TargetRule::AlliesWithBattleTag => request
                 .raw
                 .first()
-                .copied()
-                .map(|tag| {
-                    pool.allies(source_uid)
-                        .iter()
-                        .filter(|entity| entity.battle_tags.contains(&tag))
-                        .map(|entity| entity.uid)
-                        .collect()
-                })
-                .unwrap_or_default(),
+                .map_or_else(Vec::new, |&tag| battle_tag::allies(pool, source_uid, tag)),
             TargetRule::AlliesWithMonsterLabel(label) => {
                 entities_with_monster_label(pool.allies(source_uid), label)
             }

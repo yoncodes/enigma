@@ -434,7 +434,7 @@ fn status_targets_partition_allies_from_configured_buff_status() {
 }
 
 #[test]
-fn target_132_selects_allies_with_the_configured_battle_tag() {
+fn target_132_selects_direct_and_mapped_battle_tags() {
     init_config();
     let entity = |uid, model_id| FightEntityInfo {
         uid: Some(uid),
@@ -454,6 +454,8 @@ fn target_132_selects_allies_with_the_configured_battle_tag() {
                     ..entity(12, 3081)
                 },
                 entity(13, 3081),
+                entity(14, 3146),
+                entity(15, 3145),
             ],
             ..Default::default()
         }),
@@ -461,19 +463,22 @@ fn target_132_selects_allies_with_the_configured_battle_tag() {
     };
     let pool = TargetPool::from_fight(&fight);
 
-    assert_eq!(
+    let resolve = |tag| {
         TargetResolver::resolve(
             &TargetRequest {
                 code: 132,
-                raw: vec![114],
+                raw: vec![tag],
             },
             1,
             10,
             &pool,
             &mut RoundDeterminism::default(),
-        ),
-        vec![10, 11, 12]
-    );
+        )
+    };
+    assert_eq!(resolve(114), vec![10, 11, 12, 14]);
+    assert_eq!(resolve(131), vec![14, 15]);
+    assert_eq!(resolve(102), vec![12, 14]);
+    assert_eq!(resolve(117), vec![10, 13, 15]);
 }
 
 #[test]
