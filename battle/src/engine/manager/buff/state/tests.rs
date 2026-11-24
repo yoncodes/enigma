@@ -218,3 +218,60 @@ fn source_max_hp_dot_keeps_one_snapshot_when_layers_refresh() {
         Some(570)
     );
 }
+
+#[test]
+fn entity_scale_grant_starts_with_neutral_offset() {
+    crate::test_support::init_config();
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                team_type: Some(1),
+                current_hp: Some(100),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let mut managers = BattleManagers::seeded(&fight);
+    let added = managers
+        .execute_buff(BuffCommand::Grant(BuffGrant {
+            origin: CommandOrigin {
+                domain: RuleDomain::Behavior,
+                key: DefinitionKey::new(1, "AddBuff"),
+            },
+            source_uid: 10,
+            target_uid: 10,
+            buff_id: 1033760020,
+            amount: None,
+            occurrences: 1,
+            child_uid_reservations: 0,
+        }))
+        .unwrap()
+        .change
+        .added
+        .unwrap();
+
+    let buff_uid = added.buff.uid.unwrap();
+    let stored = managers.buff.snapshot(10, buff_uid).unwrap();
+    assert_eq!(
+        stored.act_info,
+        [sonettobuf::BuffActInfo {
+            act_id: Some(1144),
+            param: vec![0],
+            str_param: Some(String::new()),
+        }]
+    );
+    assert_eq!(
+        added.pre_markers,
+        [crate::engine::manager::buff::BuffActInfoMarkerResult {
+            target_uid: 10,
+            buff_uid,
+            act_id: 1144,
+            params: vec![0],
+            str_param: Some(String::new()),
+            team_type: 0,
+        }]
+    );
+}

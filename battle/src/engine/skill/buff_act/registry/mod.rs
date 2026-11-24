@@ -303,6 +303,7 @@ pub enum BuffActKind {
     LifeAttackFixRate,
     MonitorContinueChannel,
     BuffOwnedCharge,
+    EntityScale,
     MoxieReductionImmunity,
     ModifyAttrByBuffLayer,
     ModifyMaxBuffLayers,
@@ -1834,6 +1835,11 @@ buff_act_definitions! {
         raw_supports: |_, raw| matches!(raw, "1136#31470001#1" | "1136#31470001#2"),
         references: references_for_feature,
         wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(1136, "PerBrokenAddBuff"), &[EffectType::None as i32]));
+    (1144, "EntityScale") => EntityScale,
+        effect_time_subscription: false,
+        supports: |args| args.is_empty(),
+        state_consumer: true, initial_state: ZeroInteger,
+        wire: (super::wire::BuffActWireDefinition::add(DefinitionKey::new(1144, "EntityScale"), &[EffectType::None as i32]));
     (1139, "MeiLeiErCharge") => BuffOwnedCharge,
         effect_time_subscription: false,
         supports: |args| matches!(args, [trigger, limit, linked_skill]
