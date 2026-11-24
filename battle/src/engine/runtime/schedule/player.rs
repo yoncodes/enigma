@@ -7,6 +7,7 @@ pub struct PlayerPhaseResult {
     pub drain: DrainResult,
     pub card_energy_finalized: bool,
     pub(crate) refill_slots: RefillSlots,
+    pub(crate) next_action_index: i32,
 }
 
 /// Allocates configured card energy before the owning action phase begins.
@@ -352,7 +353,7 @@ pub fn run_player_action_queue(
         None,
         &[],
     )
-    .map(|(drain, _)| drain)
+    .map(|(drain, ..)| drain)
 }
 
 fn player_ops_from_commands(
@@ -426,7 +427,7 @@ pub fn run_player_commands(
         None,
         &[],
     )
-    .map(|(drain, _)| drain)
+    .map(|(drain, ..)| drain)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -447,7 +448,7 @@ pub fn run_player_phase(
         ..context
     };
     let ops = player_ops_from_commands(commands, determinism);
-    let (mut result, refill_slots) = run_player_card_ops(
+    let (mut result, refill_slots, next_action_index) = run_player_card_ops(
         managers,
         pool,
         catalog,
@@ -474,6 +475,7 @@ pub fn run_player_phase(
         drain: result,
         card_energy_finalized,
         refill_slots,
+        next_action_index,
     })
 }
 
@@ -570,7 +572,7 @@ fn run_player_card_ops(
     emitter_uid: i64,
     fight: Option<&sonettobuf::Fight>,
     device_operations: &[sonettobuf::FightDeviceOper],
-) -> Result<(DrainResult, RefillSlots), DrainError> {
+) -> Result<(DrainResult, RefillSlots, i32), DrainError> {
     let mut result = DrainResult::default();
     let selections = selection::Selection::from_operations(device_operations);
     let mut skills = Vec::new();
@@ -823,11 +825,12 @@ fn run_player_card_ops(
             )?,
         );
         if selections.is_empty() {
-            return Ok((result, RefillSlots::default()));
+            return Ok((result, RefillSlots::default(), 1));
         }
     }
     let refill_slots = RefillSlots::capture(managers, pool);
     let submitted_actions = skills.len();
+    let next_action_index = (submitted_actions + usize::from(!selections.is_empty()) + 1) as i32;
     let actions = managers
         .card
         .played()
@@ -918,7 +921,7 @@ fn run_player_card_ops(
         if fight
             .is_some_and(|fight| crate::engine::round::outcome::battle_ended(fight, pool, managers))
         {
-            return Ok((result, refill_slots));
+            return Ok((result, refill_slots, next_action_index));
         }
         let current_pool = pool
             .roster_changed(managers)
@@ -1108,7 +1111,7 @@ fn run_player_card_ops(
             )?,
         );
     }
-    Ok((result, refill_slots))
+    Ok((result, refill_slots, next_action_index))
 }
 
 fn queue_preparation_ops(

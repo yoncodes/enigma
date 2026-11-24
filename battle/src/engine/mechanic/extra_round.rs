@@ -3,11 +3,15 @@ use crate::engine::{
         BattleManagers,
         buff::{BuffActInfoMarkerResult, BuffChanges, BuffCommand, BuffSetState},
     },
-    skill::buff_act::{self, registry::BuffActKind},
+    skill::{
+        action::SkillRequest,
+        buff_act::{self, registry::BuffActKind},
+    },
 };
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ExtraRoundGranted {
+    pub skill: SkillRequest,
     pub buff: BuffChanges,
     pub marker: BuffActInfoMarkerResult,
     pub cards: Vec<sonettobuf::CardInfo>,
@@ -23,7 +27,7 @@ pub fn grant(managers: &mut BattleManagers, owner_uid: i64) -> Option<ExtraRound
             feature.owner_uid == owner_uid
                 && buff_act::is_kind(feature, BuffActKind::BuffOwnedCharge)
         })?;
-    let [trigger, limit, _linked_skill] = feature.values.get(1..)? else {
+    let [trigger, limit, linked_skill] = feature.values.get(1..)? else {
         return None;
     };
     let act_id = feature.act_id()?;
@@ -51,6 +55,10 @@ pub fn grant(managers: &mut BattleManagers, owner_uid: i64) -> Option<ExtraRound
         }))
         .ok()?;
     Some(ExtraRoundGranted {
+        skill: SkillRequest {
+            source_uid: owner_uid,
+            skill_id: *linked_skill,
+        },
         buff,
         marker: BuffActInfoMarkerResult {
             target_uid: owner_uid,

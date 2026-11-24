@@ -97,6 +97,7 @@ const ROUND_START_VERSION6_SYNC_SETUP: &[(SetupStage, i32)] =
 mod ai;
 mod card_rewards;
 mod duration;
+mod extra_round;
 mod player;
 mod refill;
 mod resolution;
@@ -106,6 +107,7 @@ mod start;
 
 use ai::run_ai_preparation;
 use duration::*;
+pub(super) use extra_round::run_extra_round_skill;
 pub(crate) use player::card_skill_is_blocked;
 pub use player::*;
 use player::{
@@ -301,7 +303,7 @@ impl AiTurnPlan {
         cards: &[sonettobuf::CardInfo],
     ) -> Result<Self, String> {
         // Enemies do not act in an allied extra round, so a captured enemy action there has no owner.
-        if round == ActionRound::AlliedExtra
+        if matches!(round, ActionRound::AlliedExtra(_))
             && let Some(captured) = captured.as_ref().filter(|choices| !choices.is_empty())
         {
             return Err(format!(

@@ -32,9 +32,13 @@ fn captured_enemy_actions_in_an_allied_extra_round_fail_loudly() {
         skill_id: 251401,
         target_uid: 10,
     };
-    assert!(AiTurnPlan::new(ActionRound::AlliedExtra, Some(vec![choice]), &[]).is_err());
+    let round = ActionRound::AlliedExtra(crate::engine::skill::action::SkillRequest {
+        source_uid: 10,
+        skill_id: 31460181,
+    });
+    assert!(AiTurnPlan::new(round, Some(vec![choice]), &[]).is_err());
     assert!(
-        AiTurnPlan::new(ActionRound::AlliedExtra, Some(Vec::new()), &[])
+        AiTurnPlan::new(round, Some(Vec::new()), &[])
             .unwrap()
             .into_choices()
             .is_none()

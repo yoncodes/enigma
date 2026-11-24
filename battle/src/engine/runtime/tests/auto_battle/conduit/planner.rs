@@ -219,14 +219,19 @@ fn auto_round_uses_the_upcoming_conduit_state() {
             .is_stopped
     );
 
-    runtime.round_state.grant_extra_round();
+    runtime
+        .round_state
+        .grant_extra_round(crate::engine::skill::action::SkillRequest {
+            source_uid: 10,
+            skill_id: 31460181,
+        });
     let extra = runtime.auto_round_planner();
     assert_eq!(extra.round_state.cur_round, current);
     assert_eq!(
         extra.plan(&request).unwrap().devices_opers[0].index,
         Some(2)
     );
-    assert_eq!(runtime.round_state.extra_rounds, 1);
+    assert_eq!(runtime.round_state.extra_rounds.len(), 1);
 }
 
 #[test]

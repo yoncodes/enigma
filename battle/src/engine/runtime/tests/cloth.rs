@@ -500,6 +500,11 @@ fn owned_charge_starts_the_captured_extra_round_flow() {
                 uid: Some(10),
                 model_id: Some(3146),
                 current_hp: Some(100),
+                attr: Some(sonettobuf::HeroAttribute {
+                    attack: Some(10),
+                    hp: Some(100),
+                    ..Default::default()
+                }),
                 buffs: vec![sonettobuf::BuffInfo {
                     uid: Some(1008),
                     buff_id: Some(31460143),
@@ -513,6 +518,25 @@ fn owned_charge_starts_the_captured_extra_round_flow() {
                 }],
                 ..Default::default()
             }],
+            assist_boss: Some(FightEntityInfo {
+                uid: Some(-100),
+                team_type: Some(1),
+                current_hp: Some(100),
+                power_infos: vec![sonettobuf::PowerInfo {
+                    power_id: Some(crate::engine::manager::eureka::PowerType::AssistBoss.id()),
+                    num: Some(5),
+                    max: Some(5),
+                }],
+                ..Default::default()
+            }),
+            assist_boss_info: Some(sonettobuf::AssistBossInfo {
+                skills: vec![sonettobuf::AssistBossSkillInfo {
+                    skill_id: Some(104335001),
+                    need_power: Some(5),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }),
             ..Default::default()
         }),
         defender: Some(FightTeam {
@@ -540,7 +564,7 @@ fn owned_charge_starts_the_captured_extra_round_flow() {
             crate::engine::manager::card::CardSetup {
                 hand: vec![CardInfo {
                     uid: Some(10),
-                    skill_id: Some(31460131),
+                    skill_id: Some(31460121),
                     ..Default::default()
                 }],
                 draw_pile: Vec::new(),
@@ -639,15 +663,54 @@ fn owned_charge_starts_the_captured_extra_round_flow() {
     let active_round = runtime.current_round();
     assert_eq!(round.ai_use_cards, vec![enemy_card.clone()]);
     runtime.seed_next_ai_cards(vec![enemy_card]);
-    assert_eq!(
-        runtime
-            .advance_round(sonettobuf::BeginRoundRequest::default())
-            .unwrap()
-            .cur_round,
-        Some(active_round)
-    );
+    let before = runtime.managers.hp.current(-1);
+    use crate::engine::manager::card::CardOpType;
+    let extra = runtime
+        .advance_round(BeginRoundRequest {
+            opers: vec![
+                BeginRoundOper {
+                    oper_type: Some(CardOpType::AssistBoss.id()),
+                    param1: Some(104335001),
+                    to_id: Some(-100),
+                    ..Default::default()
+                },
+                BeginRoundOper {
+                    oper_type: Some(CardOpType::PlayCard.id()),
+                    param1: Some(1),
+                    to_id: Some(10),
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        })
+        .unwrap();
+    assert_eq!(extra.cur_round, Some(active_round));
+    let feast = extra
+        .fight_step
+        .iter()
+        .filter(|step| step.act_id == Some(31460183))
+        .collect::<Vec<_>>();
+    let [cast] = feast.as_slice() else {
+        panic!("the paid extra round casts its configured skill once");
+    };
+    assert_eq!(cast.from_id, Some(10));
+    assert_eq!(cast.to_id, Some(-1));
+    assert_eq!(cast.card_index, Some(3));
+    let action_order = extra
+        .fight_step
+        .iter()
+        .filter_map(|step| step.act_id)
+        .filter(|skill| [104335001, 31460121, 31460183].contains(skill))
+        .collect::<Vec<_>>();
+    assert_eq!(action_order, [104335001, 31460121, 31460183]);
+    assert!(runtime.managers.hp.current(-1) < before);
     assert_eq!(runtime.managers.hp.current(10), 100);
     let next = runtime.advance_round(BeginRoundRequest::default()).unwrap();
+    assert!(
+        next.fight_step
+            .iter()
+            .all(|step| step.act_id != Some(31460183))
+    );
     assert!(
         next.fight_step
             .iter()

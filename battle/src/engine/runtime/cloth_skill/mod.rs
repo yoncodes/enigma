@@ -406,7 +406,7 @@ impl BattleRuntime {
                 let owner_uid = request.from_id?;
                 let granted =
                     crate::engine::mechanic::extra_round::grant(&mut self.managers, owner_uid)?;
-                self.round_state.grant_extra_round();
+                self.round_state.grant_extra_round(granted.skill);
                 let team_type = granted.marker.team_type;
                 let frames = [
                     record::SemanticFrame {

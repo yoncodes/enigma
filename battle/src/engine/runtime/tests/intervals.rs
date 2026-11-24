@@ -33,7 +33,12 @@ fn defender_round_start_interval_counts_starts_with_or_without_extra_rounds() {
         let mut display = 1;
         for start in 1..=12_i32 {
             if extra && matches!(start, 4 | 10) {
-                runtime.round_state.grant_extra_round();
+                runtime
+                    .round_state
+                    .grant_extra_round(crate::engine::skill::action::SkillRequest {
+                        source_uid: 10,
+                        skill_id: 31460181,
+                    });
             } else {
                 display += 1;
             }

@@ -1,9 +1,12 @@
+use std::collections::VecDeque;
+
 use sonettobuf::{CardInfo, Fight, FightHeroSpAttributeInfo, FightRound};
 
 use crate::engine::{
     manager::BattleManagers,
     runtime::determinism::RoundDeterminism,
     skill::{
+        action::SkillRequest,
         effect::SkillEffectCatalog,
         target::{TargetContext, TargetPool},
     },
@@ -22,7 +25,7 @@ pub enum RoundCardSnapshotPolicy {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ActionRound {
     Standard,
-    AlliedExtra,
+    AlliedExtra(SkillRequest),
 }
 
 #[derive(Debug, Clone, Default)]
@@ -34,7 +37,7 @@ pub struct RoundState {
     pub power: i32,
     pub hero_sp_attributes: Vec<FightHeroSpAttributeInfo>,
     pub last_change_hero_uid: Option<i64>,
-    pub(crate) extra_rounds: usize,
+    pub(crate) extra_rounds: VecDeque<SkillRequest>,
     pub(crate) defender_starts: i32,
 }
 
@@ -59,12 +62,12 @@ impl RoundState {
         }
     }
 
-    pub fn grant_extra_round(&mut self) {
-        self.extra_rounds += 1;
+    pub(crate) fn grant_extra_round(&mut self, skill: SkillRequest) {
+        self.extra_rounds.push_back(skill);
     }
 
     pub(crate) fn next_round_number(&self) -> i32 {
-        if self.extra_rounds == 0 {
+        if self.extra_rounds.is_empty() {
             self.cur_round.saturating_add(1)
         } else {
             self.cur_round
@@ -73,12 +76,9 @@ impl RoundState {
 
     pub(crate) fn begin_round(&mut self) -> ActionRound {
         self.cur_round = self.next_round_number();
-        if self.extra_rounds > 0 {
-            self.extra_rounds -= 1;
-            ActionRound::AlliedExtra
-        } else {
-            ActionRound::Standard
-        }
+        self.extra_rounds
+            .pop_front()
+            .map_or(ActionRound::Standard, ActionRound::AlliedExtra)
     }
 
     pub(crate) fn start_defender_round(&mut self) -> i32 {

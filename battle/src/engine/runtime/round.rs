@@ -126,6 +126,12 @@ impl BattleRuntime {
             .filter_map(|card| card.skill_id)
             .filter(|skill_id| *skill_id > 0)
             .chain(self.determinism.card_play_skill_ids())
+            .chain(match action_round {
+                crate::engine::round::state::ActionRound::AlliedExtra(skill) => {
+                    Some(skill.skill_id)
+                }
+                crate::engine::round::state::ActionRound::Standard => None,
+            })
             .collect::<Vec<_>>();
         battle_catalog.extend_skill_roots(
             &mut self.catalog,
@@ -189,6 +195,7 @@ impl BattleRuntime {
         .map_err(|error| format!("{error:?}"))?;
         let card_energy_finalized = player.card_energy_finalized;
         let refill_slots = player.refill_slots;
+        let next_action_index = player.next_action_index;
         let player = player.drain;
         let ended_by_player = battle_ended(&self.fight, &pool, &self.managers);
         self.objectives
@@ -217,6 +224,17 @@ impl BattleRuntime {
             )
             .map_err(|error| format!("{error:?}"))?
         };
+        let extra_round_skill = schedule::run_extra_round_skill(
+            &self.fight,
+            &mut self.managers,
+            &pool,
+            catalog,
+            &mut self.determinism,
+            conduit_context,
+            action_round,
+            next_action_index,
+        )
+        .map_err(|error| format!("{error:?}"))?;
         let action_phase_end = schedule::run_action_phase_end(
             &mut self.managers,
             &pool,
@@ -258,6 +276,11 @@ impl BattleRuntime {
         ai_turn.observe(&conduit);
         fight_steps.extend(project_result(
             conduit,
+            fight_version,
+            absorb_hurt_map_layout,
+        )?);
+        fight_steps.extend(project_result(
+            extra_round_skill,
             fight_version,
             absorb_hurt_map_layout,
         )?);

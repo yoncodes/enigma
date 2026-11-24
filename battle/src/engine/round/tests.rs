@@ -13,7 +13,10 @@ fn extra_round_reuses_the_current_round_number() {
     };
 
     assert_eq!(state.next_round_number(), 5);
-    state.grant_extra_round();
+    state.grant_extra_round(crate::engine::skill::action::SkillRequest {
+        source_uid: 10,
+        skill_id: 31460181,
+    });
     assert_eq!(state.next_round_number(), 4);
     state.begin_round();
     assert_eq!(state.cur_round, 4);
