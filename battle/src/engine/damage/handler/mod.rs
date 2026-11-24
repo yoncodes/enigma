@@ -1,6 +1,7 @@
 use crate::engine::{
     damage::{butterfly_damage, formula::scaled_butterfly_damage},
     entity::attr::AttrId,
+    event::payload::BattleEvent,
     manager::hp::{
         DamageEffectKind, HpCommand, HpDamage, HpHeal, HpHealKind, HpLoss, HurtDamageFromType,
         HurtInfoData,
@@ -449,6 +450,12 @@ impl BehaviorHandler for Handler {
                 if amount <= 0 {
                     return Some(Vec::new());
                 }
+                let skill_id = match (behavior.spec.key.opcode, context.event) {
+                    (30005 | 60310, Some(BattleEvent::ToughnessBroken { skill_id, .. })) => {
+                        *skill_id
+                    }
+                    _ => context.target.active_skill_id,
+                };
                 return Some(vec![RuleOp::Command(BattleCommand::Hp(HpCommand::Lose(
                     HpLoss {
                         origin,
@@ -462,7 +469,7 @@ impl BehaviorHandler for Handler {
                             career_restraint: false,
                             reduce_hp: 0,
                             effect_id: context.active_skill_id,
-                            skill_id: context.target.active_skill_id,
+                            skill_id,
                             damage_from: HurtDamageFromType::SkillEffect,
                             buff_act_id: 0,
                             buff_uid: 0,

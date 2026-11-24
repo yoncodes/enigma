@@ -149,3 +149,67 @@ fn configured_hp_loss_floor_uses_only_supported_thresholds() {
     assert_eq!(managers.buff.lost_life_floor_permille(3), 0);
     assert_eq!(loss::amount(3, &managers, &behavior), Some(2_000));
 }
+
+#[test]
+fn guard_break_loss_credits_the_breaking_skill_through_settlement() {
+    init_config();
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![entity(1, 1, 1, 100, 0)],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![entity(-1, 2, 1, 100, 0)],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let broken = BattleEvent::ToughnessBroken {
+        source_uid: 1,
+        target_uid: -1,
+        skill_id: 10,
+    };
+    for (opcode, rate, event, skill_id) in [
+        (30005, 100, Some(&broken), 10),
+        (60310, 1, Some(&broken), 10),
+        (30005, 100, None, 20),
+    ] {
+        let mut managers = BattleManagers::seeded(&fight);
+        let behavior = ParsedBehavior::from_spec(
+            BehaviorSpec::new(opcode, "LostLife"),
+            vec![0, AttrId::Hp.id(), rate],
+            Vec::new(),
+        );
+        let commands = crate::engine::skill::behavior::rule_ops(
+            BehaviorOpContext {
+                source_uid: -1,
+                source_team: 2,
+                target_uid: -1,
+                active_skill_id: 20,
+                transfer_count: 1,
+                event,
+                managers: &managers,
+                pool: &pool,
+                determinism: &mut Default::default(),
+                modifiers: &mut Default::default(),
+                target: &mut TargetContext {
+                    active_skill_id: 20,
+                    ..Default::default()
+                },
+            },
+            &behavior,
+        )
+        .unwrap();
+        let [RuleOp::Command(BattleCommand::Hp(command))] = commands.as_slice() else {
+            panic!("expected one lost-life command");
+        };
+        let hp = managers.execute_hp(*command).unwrap().hp.unwrap();
+        let hurt = hp.hurt.unwrap();
+        assert_eq!((hp.delta, managers.hp.current(-1)), (-rate, 1_000 - rate));
+        assert_eq!(
+            (hurt.from_uid, hurt.effect_id, hurt.skill_id),
+            (-1, 20, skill_id)
+        );
+    }
+}
