@@ -46,17 +46,32 @@ pub struct MonsterTemplate {
     pub technic_grow: i32,
     pub template: i32,
 }
+use std::collections::HashMap;
+
 pub struct MonsterTemplateTable {
     records: Vec<MonsterTemplate>,
+    by_id: HashMap<i32, usize>,
 }
 
 impl MonsterTemplateTable {
     pub fn load(path: &str) -> anyhow::Result<Self> {
         let records: Vec<MonsterTemplate> = crate::load_rows(path)?;
 
+        let mut by_id = HashMap::with_capacity(records.len());
+
+        for (idx, record) in records.iter().enumerate() {
+            by_id.entry(record.template).or_insert(idx);
+        }
+
         Ok(Self {
             records,
+            by_id,
         })
+    }
+
+    #[inline]
+    pub fn get(&self, id: i32) -> Option<&MonsterTemplate> {
+        self.by_id.get(&id).map(|&i| &self.records[i])
     }
 
     #[inline]

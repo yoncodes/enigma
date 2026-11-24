@@ -39,3 +39,15 @@ fn multiple_group_fields_use_a_stable_index() {
     assert!(output.contains("by_group.entry(record.trade_group_id)"));
     assert!(!output.contains("by_group.entry(record.upgrade_group_id)"));
 }
+
+#[test]
+fn monster_template_indexes_the_first_row_for_each_template() {
+    let records = vec![
+        json!({"template": 7, "attack": 100}),
+        json!({"template": 7, "attack": 200}),
+    ];
+    let output = emit_table_store("monster_template", &analyze_field_types(&records), &records);
+
+    assert!(output.contains("by_id.entry(record.template).or_insert(idx);"));
+    assert!(output.contains("pub fn get(&self, id: i32) -> Option<&MonsterTemplate>"));
+}

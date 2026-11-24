@@ -1034,8 +1034,7 @@ impl BattleCatalog {
         };
         self.game_data
             .monster_template
-            .iter()
-            .find(|row| row.template == template_id)
+            .get(template_id)
             .map(|row| EntityExAttributes {
                 crit_rate: row.cri + row.cri_grow * level,
                 crit_resist: row.recri + row.recri_grow * level,

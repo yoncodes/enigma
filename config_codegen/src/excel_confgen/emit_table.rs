@@ -15,7 +15,12 @@ pub fn emit_table_store(
 ) -> String {
     let struct_name = snake_to_pascal(table_name);
 
-    let id_field = detect_id_field(field_types);
+    let first_template = table_name == "monster_template" && field_types.contains_key("template");
+    let id_field = if first_template {
+        Some("template".to_owned())
+    } else {
+        detect_id_field(field_types)
+    };
     let repeated_id = table_name == "weekwalk_dialog";
     let group_field =
         detect_group_field(field_types).or_else(|| repeated_id.then(|| id_field.clone()).flatten());
@@ -87,7 +92,12 @@ pub fn emit_table_store(
             let id_snake = camel_to_snake(id_field);
             let optional = check_if_optional(records, id_field);
 
-            if optional {
+            if first_template {
+                out.push(format!(
+                    "            by_id.entry(record.{}).or_insert(idx);",
+                    id_snake
+                ));
+            } else if optional {
                 out.push(format!(
                     "            if let Some(id) = &record.{} {{",
                     id_snake

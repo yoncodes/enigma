@@ -435,10 +435,7 @@ pub(crate) fn configured_monster_stats(
     } else {
         model_id
     };
-    let template = game
-        .monster_template
-        .iter()
-        .find(|template| template.template == template_id)?;
+    let template = game.monster_template.get(template_id)?;
     Some(Stats {
         hp: template.life + template.life_grow * level,
         atk: template.attack + template.attack_grow * level,
