@@ -1,4 +1,5 @@
 use super::*;
+use crate::engine::event::payload::BattleEvent;
 
 #[test]
 fn lost_life_attack_uses_all_characters_and_the_configured_hp_basis() {
@@ -136,18 +137,28 @@ fn configured_hp_loss_floor_uses_only_supported_thresholds() {
         ..Default::default()
     };
     let managers = BattleManagers::seeded(&fight);
+    let pool = TargetPool::from_fight(&fight);
     let behavior = ParsedBehavior::from_spec(
-        BehaviorSpec::new(30006, "LostLifeByAttr"),
+        BehaviorSpec::new(30006, "LostLife"),
         vec![1, AttrId::CurrentHp as i32, 1_000],
         Vec::new(),
     );
 
     assert_eq!(managers.buff.lost_life_floor_permille(1), 150);
-    assert_eq!(loss::amount(1, &managers, &behavior, None), Some(500));
+    assert_eq!(
+        loss_command(&managers, &pool, 1, &behavior, None).amount,
+        500
+    );
     assert_eq!(managers.buff.lost_life_floor_permille(2), 160);
-    assert_eq!(loss::amount(2, &managers, &behavior, None), Some(400));
+    assert_eq!(
+        loss_command(&managers, &pool, 2, &behavior, None).amount,
+        400
+    );
     assert_eq!(managers.buff.lost_life_floor_permille(3), 0);
-    assert_eq!(loss::amount(3, &managers, &behavior, None), Some(2_000));
+    assert_eq!(
+        loss_command(&managers, &pool, 3, &behavior, None).amount,
+        2_000
+    );
 
     let break_loss = ParsedBehavior::from_spec(
         BehaviorSpec::new(30005, "LostLife"),
@@ -161,9 +172,46 @@ fn configured_hp_loss_floor_uses_only_supported_thresholds() {
         target_defeated: false,
     };
     assert_eq!(
-        loss::amount(1, &managers, &break_loss, Some(&broken)),
-        Some(500)
+        loss_command(&managers, &pool, 1, &break_loss, Some(&broken)).amount,
+        500
     );
+}
+
+fn loss_command(
+    managers: &BattleManagers,
+    pool: &TargetPool,
+    target_uid: i64,
+    behavior: &ParsedBehavior,
+    event: Option<&BattleEvent>,
+) -> HpLoss {
+    let commands = crate::engine::skill::behavior::rule_ops(
+        BehaviorOpContext {
+            source_uid: target_uid,
+            source_team: if pool.source_is_attacker(target_uid) {
+                1
+            } else {
+                2
+            },
+            target_uid,
+            active_skill_id: 20,
+            transfer_count: 1,
+            event,
+            managers,
+            pool,
+            determinism: &mut Default::default(),
+            modifiers: &mut Default::default(),
+            target: &mut TargetContext {
+                active_skill_id: 20,
+                ..Default::default()
+            },
+        },
+        behavior,
+    )
+    .unwrap();
+    let [RuleOp::Command(BattleCommand::Hp(HpCommand::Lose(command)))] = commands.as_slice() else {
+        panic!("expected one lost-life command");
+    };
+    *command
 }
 
 #[test]
@@ -193,6 +241,7 @@ fn guard_break_loss_preserves_amount_and_credit_through_settlement() {
     for (opcode, rate, event, skill_id, requested, applied) in [
         (30005, 100, Some(&broken), 10, 100, 50),
         (60310, 100, Some(&broken), 10, 50, 50),
+        (30006, 100, Some(&broken), 20, 50, 50),
         (30005, 100, None, 20, 50, 50),
     ] {
         let mut managers = BattleManagers::seeded(&fight);
@@ -201,33 +250,10 @@ fn guard_break_loss_preserves_amount_and_credit_through_settlement() {
             vec![0, AttrId::Hp.id(), rate],
             Vec::new(),
         );
-        let commands = crate::engine::skill::behavior::rule_ops(
-            BehaviorOpContext {
-                source_uid: -1,
-                source_team: 2,
-                target_uid: -1,
-                active_skill_id: 20,
-                transfer_count: 1,
-                event,
-                managers: &managers,
-                pool: &pool,
-                determinism: &mut Default::default(),
-                modifiers: &mut Default::default(),
-                target: &mut TargetContext {
-                    active_skill_id: 20,
-                    ..Default::default()
-                },
-            },
-            &behavior,
-        )
-        .unwrap();
-        let [RuleOp::Command(BattleCommand::Hp(HpCommand::Lose(command)))] = commands.as_slice()
-        else {
-            panic!("expected one lost-life command");
-        };
+        let command = loss_command(&managers, &pool, -1, &behavior, event);
         assert_eq!(command.amount, requested);
         let hp = managers
-            .execute_hp(HpCommand::Lose(*command))
+            .execute_hp(HpCommand::Lose(command))
             .unwrap()
             .hp
             .unwrap();

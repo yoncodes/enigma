@@ -1,7 +1,6 @@
 use crate::engine::{
     damage::{butterfly_damage, formula::scaled_butterfly_damage},
     entity::attr::AttrId,
-    event::payload::BattleEvent,
     manager::hp::{
         DamageEffectKind, HpCommand, HpDamage, HpHeal, HpHealKind, HpLoss, HurtDamageFromType,
         HurtInfoData,
@@ -21,7 +20,7 @@ use crate::engine::manager::buff::BuffManager;
 mod affinity;
 mod critical;
 mod heal;
-mod loss;
+pub(crate) mod loss;
 mod origin;
 mod resolve;
 
@@ -444,41 +443,6 @@ impl BehaviorHandler for Handler {
                     },
                 )))]);
             }
-            (30005 | 30006 | 30018 | 60288, BehaviorKind::LostLife)
-            | (60310, BehaviorKind::ToughnessOverflowDamage) => {
-                let amount = loss::amount(target_uid, context.managers, behavior, context.event)?;
-                if amount <= 0 {
-                    return Some(Vec::new());
-                }
-                let skill_id = match (behavior.spec.key.opcode, context.event) {
-                    (30005 | 60310, Some(BattleEvent::ToughnessBroken { skill_id, .. })) => {
-                        *skill_id
-                    }
-                    _ => context.target.active_skill_id,
-                };
-                return Some(vec![RuleOp::Command(BattleCommand::Hp(HpCommand::Lose(
-                    HpLoss {
-                        origin,
-                        source_uid,
-                        target_uid,
-                        amount,
-                        config_effect: behavior.config_effect,
-                        hurt: (context.active_skill_id != 0).then_some(HurtInfoData {
-                            from_uid: source_uid,
-                            is_crit: false,
-                            career_restraint: false,
-                            reduce_hp: 0,
-                            effect_id: context.active_skill_id,
-                            skill_id,
-                            damage_from: HurtDamageFromType::SkillEffect,
-                            buff_act_id: 0,
-                            buff_uid: 0,
-                            hurt_effect_type: 0,
-                            display_amount: None,
-                        }),
-                    },
-                )))]);
-            }
             (60212, BehaviorKind::LostAllLifeByAttr) => {
                 let [raw_current_hp, current_rate, raw_max_hp, max_rate] = behavior.args.as_slice()
                 else {
@@ -796,14 +760,6 @@ pub(crate) fn supports_team_attr_damage(behavior: &ParsedBehavior) -> bool {
     matches!(
         behavior.args.as_slice(),
         [1, raw_attr, rate] if AttrId::from_raw(*raw_attr).is_some() && *rate >= 0
-    )
-}
-
-pub(crate) fn supports_lost_life(behavior: &ParsedBehavior) -> bool {
-    matches!(
-        behavior.args.as_slice(),
-        [mode @ (0 | 1), raw_attr, permille]
-            if AttrId::from_raw(*raw_attr).is_some() && *permille >= 0 && *mode <= 1
     )
 }
 
