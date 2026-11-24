@@ -627,8 +627,12 @@ impl EntityManager {
         self.identities.get(&uid)?.model_id
     }
 
+    pub(crate) fn identity(&self, uid: i64) -> Option<&FightEntityInfo> {
+        self.identities.get(&uid)
+    }
+
     pub(crate) fn snapshot(&self, uid: i64) -> Option<FightEntityInfo> {
-        self.identities.get(&uid).cloned()
+        self.identity(uid).cloned()
     }
 
     pub(crate) fn skill_kind(&self, uid: i64, skill_id: i32) -> Option<ExtraSkillKind> {

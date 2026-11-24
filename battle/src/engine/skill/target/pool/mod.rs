@@ -2,7 +2,10 @@ use std::collections::{HashMap, HashSet};
 
 use sonettobuf::{BuffInfo, Fight, FightEntityInfo, FightTeam};
 
-use crate::engine::{manager::BattleManagers, skill::action::SkillExecutionMode};
+use crate::engine::{
+    manager::{BattleManagers, entity::RosterLane},
+    skill::action::SkillExecutionMode,
+};
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 #[repr(i32)]
@@ -276,14 +279,11 @@ impl TargetPool {
         self.attacker_main
             .iter()
             .chain(&self.defender_main)
-            .any(|entity| {
-                managers.entity.roster_lane(entity.uid)
-                    != Some(crate::engine::manager::entity::RosterLane::Main)
-            })
-            || self.reserve_uids.iter().any(|uid| {
-                managers.entity.roster_lane(*uid)
-                    != Some(crate::engine::manager::entity::RosterLane::Reserve)
-            })
+            .any(|entity| managers.entity.roster_lane(entity.uid) != Some(RosterLane::Main))
+            || self
+                .reserve_uids
+                .iter()
+                .any(|uid| managers.entity.roster_lane(*uid) != Some(RosterLane::Reserve))
     }
 
     pub(crate) fn runtime_view_including(
@@ -291,42 +291,41 @@ impl TargetPool {
         managers: &BattleManagers,
         included_uid: Option<i64>,
     ) -> Self {
-        let mut pool = self.clone();
-        let catalog = pool.catalog();
-        for entities in [
-            &mut pool.attacker_main,
-            &mut pool.attacker_all,
-            &mut pool.defender_main,
-            &mut pool.defender_all,
-        ] {
-            entities.retain_mut(|entity| {
-                if let Some(identity) =
-                    managers
-                        .entity
-                        .snapshot(entity.uid)
-                        .as_ref()
-                        .and_then(|entity| {
-                            TargetEntity::from_fight_entity_with_catalog(catalog, entity)
-                        })
-                {
-                    *entity = identity;
-                }
-                entity.current_hp = managers.hp.current(entity.uid);
-                entity.max_hp = managers.hp.max(entity.uid);
-                entity.ex_point = managers.ex_point.get(entity.uid);
-                entity.buffs = managers
-                    .buff
-                    .active_for(entity.uid)
-                    .map(|buff| TargetBuff::from_buff_info(catalog, buff))
-                    .collect();
-                entity.current_hp > 0 || included_uid == Some(entity.uid)
-            });
-        }
+        let catalog = self.catalog();
+        let refresh = |base: &TargetEntity| {
+            let mut entity = managers
+                .entity
+                .identity(base.uid)
+                .and_then(|identity| TargetEntity::from_identity(catalog, identity))
+                .unwrap_or_else(|| base.clone());
+            entity.current_hp = managers.hp.current(entity.uid);
+            entity.max_hp = managers.hp.max(entity.uid);
+            entity.ex_point = managers.ex_point.get(entity.uid);
+            entity.buffs = managers
+                .buff
+                .active_for(entity.uid)
+                .map(|buff| TargetBuff::from_buff_info(catalog, buff))
+                .collect();
+            (entity.current_hp > 0 || included_uid == Some(entity.uid)).then_some(entity)
+        };
+        let mut pool = Self {
+            catalog_data: self.catalog_data,
+            attacker_main: Vec::new(),
+            attacker_all: self.attacker_all.iter().filter_map(refresh).collect(),
+            defender_main: Vec::new(),
+            defender_all: self.defender_all.iter().filter_map(refresh).collect(),
+            boss_model_ids: self.boss_model_ids.clone(),
+            assist_bosses: self.assist_bosses.clone(),
+            assist_boss_skills: self.assist_boss_skills.clone(),
+            reserve_uids: HashSet::new(),
+            virtual_entities: self.virtual_entities.clone(),
+            teams: self.teams.clone(),
+        };
+
         for entity in &mut pool.virtual_entities {
             if let Some(identity) = managers
                 .entity
-                .snapshot(entity.uid)
-                .as_ref()
+                .identity(entity.uid)
                 .and_then(|entity| TargetEntity::from_fight_entity_with_catalog(catalog, entity))
             {
                 *entity = identity;
@@ -350,9 +349,10 @@ impl TargetPool {
             .filter_map(|uid| {
                 let lane = managers.entity.roster_lane(uid)?;
                 let team = managers.entity.team_type(uid)?;
-                let mut entity = managers.entity.snapshot(uid).as_ref().and_then(|entity| {
-                    TargetEntity::from_fight_entity_with_catalog(catalog, entity)
-                })?;
+                let mut entity = managers
+                    .entity
+                    .identity(uid)
+                    .and_then(|entity| TargetEntity::from_identity(catalog, entity))?;
                 entity.current_hp = managers.hp.current(uid);
                 if entity.current_hp <= 0 && included_uid != Some(uid) {
                     return None;
@@ -370,20 +370,10 @@ impl TargetPool {
         for (team, lane, entity) in added {
             pool.set_team(entity.uid, team);
             match (team, lane) {
-                (1, crate::engine::manager::entity::RosterLane::Main) => {
-                    pool.attacker_main.push(entity.clone());
+                (1, RosterLane::Main | RosterLane::Reserve | RosterLane::Special) => {
                     pool.attacker_all.push(entity);
                 }
-                (2, crate::engine::manager::entity::RosterLane::Main) => {
-                    pool.defender_main.push(entity.clone());
-                    pool.defender_all.push(entity);
-                }
-                (1, crate::engine::manager::entity::RosterLane::Reserve)
-                | (1, crate::engine::manager::entity::RosterLane::Special) => {
-                    pool.attacker_all.push(entity);
-                }
-                (2, crate::engine::manager::entity::RosterLane::Reserve)
-                | (2, crate::engine::manager::entity::RosterLane::Special) => {
+                (2, RosterLane::Main | RosterLane::Reserve | RosterLane::Special) => {
                     pool.defender_all.push(entity);
                 }
                 _ => {}
@@ -392,28 +382,19 @@ impl TargetPool {
         pool.attacker_main = pool
             .attacker_all
             .iter()
-            .filter(|entity| {
-                managers.entity.roster_lane(entity.uid)
-                    == Some(crate::engine::manager::entity::RosterLane::Main)
-            })
+            .filter(|entity| managers.entity.roster_lane(entity.uid) == Some(RosterLane::Main))
             .cloned()
             .collect();
         pool.defender_main = pool
             .defender_all
             .iter()
-            .filter(|entity| {
-                managers.entity.roster_lane(entity.uid)
-                    == Some(crate::engine::manager::entity::RosterLane::Main)
-            })
+            .filter(|entity| managers.entity.roster_lane(entity.uid) == Some(RosterLane::Main))
             .cloned()
             .collect();
         pool.reserve_uids = managers
             .entity
             .ordered_uids()
-            .filter(|uid| {
-                managers.entity.roster_lane(*uid)
-                    == Some(crate::engine::manager::entity::RosterLane::Reserve)
-            })
+            .filter(|uid| managers.entity.roster_lane(*uid) == Some(RosterLane::Reserve))
             .collect();
         let roster_order = managers
             .entity
@@ -640,6 +621,19 @@ impl TargetEntity {
         catalog: crate::catalog::BattleCatalog,
         entity: &FightEntityInfo,
     ) -> Option<Self> {
+        let mut target = Self::from_identity(catalog, entity)?;
+        target.buffs = entity
+            .buffs
+            .iter()
+            .map(|buff| TargetBuff::from_buff_info(catalog, buff))
+            .collect();
+        Some(target)
+    }
+
+    fn from_identity(
+        catalog: crate::catalog::BattleCatalog,
+        entity: &FightEntityInfo,
+    ) -> Option<Self> {
         let current_hp = entity.current_hp.unwrap_or(1);
         if current_hp <= 0 {
             return None;
@@ -713,11 +707,7 @@ impl TargetEntity {
                 entity.destiny_stone.unwrap_or_default(),
                 entity.destiny_rank.unwrap_or_default(),
             ),
-            buffs: entity
-                .buffs
-                .iter()
-                .map(|buff| TargetBuff::from_buff_info(catalog, buff))
-                .collect(),
+            buffs: Vec::new(),
         })
     }
 
