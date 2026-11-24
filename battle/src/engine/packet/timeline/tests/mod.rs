@@ -13,7 +13,7 @@ use crate::engine::{
         entity::{EntityChanges, EntityOperation},
         ex_point::{ExPointApplyResult, ExPointChanges, ExPointKind},
         field::{FieldCommand, FieldDefinition, FieldManager, FieldOperation, FieldThreshold},
-        gauge::{GaugeChange, GaugeChangeKind, GaugeKey},
+        gauge::{GaugeChange, GaugeChangeKind, GaugeKey, GaugeOwner},
         hp::{
             DamageEffectKind, DamageRecord, HpChange, HpChanges, HurtDamageFromType, HurtInfoData,
             MaxHpChange, ShieldChange,
