@@ -115,20 +115,15 @@ pub fn for_skills(
 pub fn for_active_buffs(managers: &BattleManagers, event: EventKind) -> Vec<BuffActSubscriber> {
     let mut subscribers = managers
         .buff
-        .active_features(&managers.hp)
+        .active_features_where(&managers.hp, |act_id, act_type, effect_time| {
+            act_id.is_some_and(|act_id| {
+                buff_act::registry::subscribes_to_event(act_id, act_type, effect_time, event)
+            })
+        })
         .into_iter()
         .filter_map(|feature| {
             let (&act_id, args) = feature.values.split_first()?;
             let definition = buff_act::registry::find(act_id, &feature.act_type)?;
-            if !buff_act::registry::subscribes_to_event(
-                act_id,
-                &feature.act_type,
-                feature.effect_time,
-                event,
-            ) {
-                return None;
-            }
-
             let phase = buff_act::registry::runtime_phase(
                 act_id,
                 &feature.act_type,
@@ -310,6 +305,7 @@ pub fn for_event(
     EventSubscribers { skills, buff_acts }
 }
 
+#[cfg(test)]
 pub fn for_compiled_event(
     pool: &TargetPool,
     managers: &BattleManagers,
@@ -351,8 +347,10 @@ pub fn for_compiled_events(
         buff_acts: Vec::new(),
     };
     for event in events {
-        let subscribers = for_compiled_event(pool, managers, catalog, event)?;
-        for buff_act in subscribers.buff_acts {
+        let buff_acts = for_active_buffs(managers, event)
+            .into_iter()
+            .chain(for_configured_buff_acts(pool, managers, catalog, event));
+        for buff_act in buff_acts {
             if !merged.buff_acts.contains(&buff_act) {
                 merged.buff_acts.push(buff_act);
             }

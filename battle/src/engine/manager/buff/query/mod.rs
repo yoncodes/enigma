@@ -1,5 +1,6 @@
 mod replacement;
 
+use super::feature::{ResolvedBuffFeature, active_feature_where};
 use super::update::special_count_value;
 use super::*;
 use crate::engine::skill::buff_act::registry::BuffActKind;
@@ -1074,18 +1075,22 @@ impl BuffManager {
     }
 
     pub fn active_features(&self, hp: &HpManager) -> Vec<ActiveBuffFeature> {
-        let materialized = self
-            .buffs
-            .iter()
-            .filter(|active| active.effective)
-            .filter_map(|active| {
-                Some((
-                    active.owner_uid,
-                    active.buff.from_uid.unwrap_or_default(),
-                    active.buff.buff_id?,
-                ))
-            })
-            .collect::<std::collections::HashSet<_>>();
+        self.active_features_where(hp, |_, _, _| true)
+    }
+
+    pub(crate) fn active_features_where(
+        &self,
+        hp: &HpManager,
+        accepts: impl Fn(Option<i32>, &str, i32) -> bool,
+    ) -> Vec<ActiveBuffFeature> {
+        let accepts = |feature: &ResolvedBuffFeature| {
+            accepts(
+                feature.values.first().copied(),
+                &feature.act_type,
+                feature.effect_time,
+            )
+        };
+        let materialized = std::cell::OnceCell::new();
         self.buffs
             .iter()
             .filter(|active| active.effective)
@@ -1095,18 +1100,33 @@ impl BuffManager {
                 let source_uid = active.buff.from_uid.unwrap_or_default();
                 let root_buff_id = active.buff.buff_id.unwrap_or_default();
                 let materialized = &materialized;
-                active_feature(
+                active_feature_where(
                     Some(self.catalog().game_data()),
                     owner_uid,
                     active.team_type,
                     owner_alive,
                     &active.buff,
                     active.definition.as_ref(),
+                    &accepts,
                 )
                 .into_iter()
                 .filter(move |feature| {
                     feature.buff_id == root_buff_id
-                        || !materialized.contains(&(owner_uid, source_uid, feature.buff_id))
+                        || !materialized
+                            .get_or_init(|| {
+                                self.buffs
+                                    .iter()
+                                    .filter(|active| active.effective)
+                                    .filter_map(|active| {
+                                        Some((
+                                            active.owner_uid,
+                                            active.buff.from_uid.unwrap_or_default(),
+                                            active.buff.buff_id?,
+                                        ))
+                                    })
+                                    .collect::<std::collections::HashSet<_>>()
+                            })
+                            .contains(&(owner_uid, source_uid, feature.buff_id))
                 })
             })
             .collect()

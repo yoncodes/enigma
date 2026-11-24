@@ -69,11 +69,31 @@ pub(super) fn active_feature(
     buff: &BuffInfo,
     definition: Option<&BuffDefinition>,
 ) -> Vec<ActiveBuffFeature> {
+    active_feature_where(
+        game,
+        owner_uid,
+        team_type,
+        owner_alive,
+        buff,
+        definition,
+        &|_| true,
+    )
+}
+
+pub(super) fn active_feature_where(
+    game: Option<&config::GameDB>,
+    owner_uid: i64,
+    team_type: i32,
+    owner_alive: bool,
+    buff: &BuffInfo,
+    definition: Option<&BuffDefinition>,
+    accepts: &impl Fn(&ResolvedBuffFeature) -> bool,
+) -> Vec<ActiveBuffFeature> {
     let Some(definition) = definition else {
         return Vec::new();
     };
     let buff_id = buff.buff_id.unwrap_or_default();
-    let mut visited = vec![buff_id];
+    let mut visited = Vec::new();
     active_features_for_definition(
         (owner_uid, team_type, owner_alive),
         buff,
@@ -81,6 +101,7 @@ pub(super) fn active_feature(
         definition,
         game,
         &mut visited,
+        accepts,
     )
 }
 
@@ -91,6 +112,7 @@ fn active_features_for_definition(
     definition: &BuffDefinition,
     game: Option<&config::GameDB>,
     visited: &mut Vec<i32>,
+    accepts: &impl Fn(&ResolvedBuffFeature) -> bool,
 ) -> Vec<ActiveBuffFeature> {
     let (owner_uid, team_type, owner_alive) = owner;
     if definition.has_effect_count() && buff.count.unwrap_or_default() <= 0 {
@@ -101,26 +123,31 @@ fn active_features_for_definition(
         if !feature.arguments_supported {
             continue;
         }
-        output.push(ActiveBuffFeature {
-            owner_uid,
-            source_uid: buff.from_uid.unwrap_or_default(),
-            buff_uid: buff.uid.unwrap_or_default(),
-            buff_id: feature_buff_id,
-            amount: super::count_or_layer_from(buff, Some(definition)),
-            team_type,
-            owner_alive,
-            act_type: feature.act_type.clone(),
-            effect_time: feature.effect_time,
-            effect_condition: feature.effect_condition,
-            values: feature.values.clone(),
-            raw: feature.raw.clone(),
-        });
+        if accepts(feature) {
+            output.push(ActiveBuffFeature {
+                owner_uid,
+                source_uid: buff.from_uid.unwrap_or_default(),
+                buff_uid: buff.uid.unwrap_or_default(),
+                buff_id: feature_buff_id,
+                amount: super::count_or_layer_from(buff, Some(definition)),
+                team_type,
+                owner_alive,
+                act_type: feature.act_type.clone(),
+                effect_time: feature.effect_time,
+                effect_condition: feature.effect_condition,
+                values: feature.values.clone(),
+                raw: feature.raw.clone(),
+            });
+        }
         if feature.kind != Some(crate::engine::skill::buff_act::registry::BuffActKind::SubBuff) {
             continue;
         }
         let Some(&child_buff_id) = feature.values.get(1) else {
             continue;
         };
+        if visited.is_empty() {
+            visited.push(feature_buff_id);
+        }
         if visited.contains(&child_buff_id) {
             continue;
         }
@@ -136,6 +163,7 @@ fn active_features_for_definition(
             &child,
             game,
             visited,
+            accepts,
         ));
         visited.pop();
     }

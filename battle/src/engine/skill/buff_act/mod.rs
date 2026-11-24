@@ -189,15 +189,8 @@ pub(crate) fn is_primary_team_feature(
     feature: &ActiveBuffFeature,
     kind: registry::BuffActKind,
 ) -> bool {
-    managers
-        .buff
-        .active_features(&managers.hp)
-        .into_iter()
-        .filter(|candidate| candidate.team_type == feature.team_type && is_kind(candidate, kind))
-        .min_by_key(|candidate| (candidate.owner_uid, candidate.buff_uid))
-        .is_some_and(|primary| {
-            (primary.owner_uid, primary.buff_uid) == (feature.owner_uid, feature.buff_uid)
-        })
+    primary_team_buff(managers, feature.team_type, kind)
+        == Some((feature.owner_uid, feature.buff_uid))
 }
 
 pub(crate) fn is_primary_team_subscriber(
@@ -205,15 +198,24 @@ pub(crate) fn is_primary_team_subscriber(
     subscriber: &BuffActSubscriber,
     kind: registry::BuffActKind,
 ) -> bool {
+    primary_team_buff(managers, subscriber.team_type, kind)
+        == Some((subscriber.owner_uid, subscriber.buff_uid))
+}
+
+fn primary_team_buff(
+    managers: &BattleManagers,
+    team: i32,
+    kind: registry::BuffActKind,
+) -> Option<(i64, i64)> {
     managers
         .buff
-        .active_features(&managers.hp)
-        .into_iter()
-        .filter(|candidate| candidate.team_type == subscriber.team_type && is_kind(candidate, kind))
-        .min_by_key(|candidate| (candidate.owner_uid, candidate.buff_uid))
-        .is_some_and(|primary| {
-            (primary.owner_uid, primary.buff_uid) == (subscriber.owner_uid, subscriber.buff_uid)
+        .active_features_where(&managers.hp, |act_id, act_type, _| {
+            act_id.and_then(|act_id| registry::kind(act_id, act_type)) == Some(kind)
         })
+        .into_iter()
+        .filter(|candidate| candidate.team_type == team)
+        .map(|candidate| (candidate.owner_uid, candidate.buff_uid))
+        .min()
 }
 
 fn origin(opcode: i32, type_name: &str) -> Option<CommandOrigin> {

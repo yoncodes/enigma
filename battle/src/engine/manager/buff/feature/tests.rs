@@ -55,6 +55,23 @@ fn sub_buff_exposes_child_features_and_passive_links() {
     };
 
     let features = active_feature(config::try_get(), 10, 1, true, &buff, Some(&definition));
+    let filtered = active_feature_where(
+        config::try_get(),
+        10,
+        1,
+        true,
+        &buff,
+        Some(&definition),
+        &|feature| feature.values.first() == Some(&932),
+    );
+    assert_eq!(
+        filtered,
+        features
+            .iter()
+            .filter(|feature| feature.act_id() == Some(932))
+            .cloned()
+            .collect::<Vec<_>>()
+    );
 
     assert!(
         features
