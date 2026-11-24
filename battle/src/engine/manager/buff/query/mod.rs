@@ -1,6 +1,6 @@
 mod replacement;
 
-use super::feature::{ResolvedBuffFeature, active_feature_where};
+use super::feature::extend_active_features;
 use super::update::special_count_value;
 use super::*;
 use crate::engine::skill::buff_act::registry::BuffActKind;
@@ -1083,35 +1083,23 @@ impl BuffManager {
         hp: &HpManager,
         accepts: impl Fn(Option<i32>, &str, i32) -> bool,
     ) -> Vec<ActiveBuffFeature> {
-        let accepts = |feature: &ResolvedBuffFeature| {
-            accepts(
-                feature.values.first().copied(),
-                &feature.act_type,
-                feature.effect_time,
-            )
-        };
+        let mut features = Vec::new();
         let materialized = std::cell::OnceCell::new();
-        self.buffs
-            .iter()
-            .filter(|active| active.effective)
-            .flat_map(|active| {
-                let owner_alive = hp.current(active.owner_uid) > 0;
-                let owner_uid = active.owner_uid;
-                let source_uid = active.buff.from_uid.unwrap_or_default();
-                let root_buff_id = active.buff.buff_id.unwrap_or_default();
-                let materialized = &materialized;
-                active_feature_where(
-                    Some(self.catalog().game_data()),
-                    owner_uid,
-                    active.team_type,
-                    owner_alive,
-                    &active.buff,
-                    active.definition.as_ref(),
-                    &accepts,
-                )
-                .into_iter()
-                .filter(move |feature| {
-                    feature.buff_id == root_buff_id
+        for active in self.buffs.iter().filter(|active| active.effective) {
+            let owner_uid = active.owner_uid;
+            let source_uid = active.buff.from_uid.unwrap_or_default();
+            let root_buff_id = active.buff.buff_id.unwrap_or_default();
+            extend_active_features(
+                Some(self.catalog().game_data()),
+                (owner_uid, active.team_type, hp.current(owner_uid) > 0),
+                &active.buff,
+                active.definition.as_ref(),
+                &|buff_id, feature| {
+                    accepts(
+                        feature.values.first().copied(),
+                        &feature.act_type,
+                        feature.effect_time,
+                    ) && (buff_id == root_buff_id
                         || !materialized
                             .get_or_init(|| {
                                 self.buffs
@@ -1126,10 +1114,12 @@ impl BuffManager {
                                     })
                                     .collect::<std::collections::HashSet<_>>()
                             })
-                            .contains(&(owner_uid, source_uid, feature.buff_id))
-                })
-            })
-            .collect()
+                            .contains(&(owner_uid, source_uid, buff_id)))
+                },
+                &mut features,
+            );
+        }
+        features
     }
 
     pub fn detonation_features(

@@ -69,42 +69,44 @@ pub(super) fn active_feature(
     buff: &BuffInfo,
     definition: Option<&BuffDefinition>,
 ) -> Vec<ActiveBuffFeature> {
-    active_feature_where(
+    let mut features = Vec::new();
+    extend_active_features(
         game,
-        owner_uid,
-        team_type,
-        owner_alive,
+        (owner_uid, team_type, owner_alive),
         buff,
         definition,
-        &|_| true,
-    )
+        &|_, _| true,
+        &mut features,
+    );
+    features
 }
 
-pub(super) fn active_feature_where(
+pub(super) fn extend_active_features(
     game: Option<&config::GameDB>,
-    owner_uid: i64,
-    team_type: i32,
-    owner_alive: bool,
+    owner: (i64, i32, bool),
     buff: &BuffInfo,
     definition: Option<&BuffDefinition>,
-    accepts: &impl Fn(&ResolvedBuffFeature) -> bool,
-) -> Vec<ActiveBuffFeature> {
+    accepts: &impl Fn(i32, &ResolvedBuffFeature) -> bool,
+    output: &mut Vec<ActiveBuffFeature>,
+) {
     let Some(definition) = definition else {
-        return Vec::new();
+        return;
     };
     let buff_id = buff.buff_id.unwrap_or_default();
     let mut visited = Vec::new();
     active_features_for_definition(
-        (owner_uid, team_type, owner_alive),
+        owner,
         buff,
         buff_id,
         definition,
         game,
         &mut visited,
         accepts,
-    )
+        output,
+    );
 }
 
+#[allow(clippy::too_many_arguments)]
 fn active_features_for_definition(
     owner: (i64, i32, bool),
     buff: &BuffInfo,
@@ -112,18 +114,18 @@ fn active_features_for_definition(
     definition: &BuffDefinition,
     game: Option<&config::GameDB>,
     visited: &mut Vec<i32>,
-    accepts: &impl Fn(&ResolvedBuffFeature) -> bool,
-) -> Vec<ActiveBuffFeature> {
+    accepts: &impl Fn(i32, &ResolvedBuffFeature) -> bool,
+    output: &mut Vec<ActiveBuffFeature>,
+) {
     let (owner_uid, team_type, owner_alive) = owner;
     if definition.has_effect_count() && buff.count.unwrap_or_default() <= 0 {
-        return Vec::new();
+        return;
     }
-    let mut output = Vec::new();
     for feature in definition.features() {
         if !feature.arguments_supported {
             continue;
         }
-        if accepts(feature) {
+        if accepts(feature_buff_id, feature) {
             output.push(ActiveBuffFeature {
                 owner_uid,
                 source_uid: buff.from_uid.unwrap_or_default(),
@@ -156,7 +158,7 @@ fn active_features_for_definition(
             continue;
         };
         visited.push(child_buff_id);
-        output.extend(active_features_for_definition(
+        active_features_for_definition(
             owner,
             buff,
             child_buff_id,
@@ -164,10 +166,10 @@ fn active_features_for_definition(
             game,
             visited,
             accepts,
-        ));
+            output,
+        );
         visited.pop();
     }
-    output
 }
 
 pub(super) fn power_max_add(

@@ -245,8 +245,9 @@ fn materialized_sub_buff_owns_its_features_once() {
         features
             .iter()
             .filter(|feature| feature.buff_id == 31260201 && feature.act_id() == Some(932))
-            .count(),
-        1
+            .map(|feature| feature.buff_uid)
+            .collect::<Vec<_>>(),
+        [11]
     );
 }
 

@@ -55,14 +55,14 @@ fn sub_buff_exposes_child_features_and_passive_links() {
     };
 
     let features = active_feature(config::try_get(), 10, 1, true, &buff, Some(&definition));
-    let filtered = active_feature_where(
+    let mut filtered = Vec::new();
+    extend_active_features(
         config::try_get(),
-        10,
-        1,
-        true,
+        (10, 1, true),
         &buff,
         Some(&definition),
-        &|feature| feature.values.first() == Some(&932),
+        &|_, feature| feature.values.first() == Some(&932),
+        &mut filtered,
     );
     assert_eq!(
         filtered,
