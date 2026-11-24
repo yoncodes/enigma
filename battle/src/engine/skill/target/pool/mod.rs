@@ -1,11 +1,15 @@
 use std::collections::{HashMap, HashSet};
 
-use sonettobuf::{BuffInfo, Fight, FightEntityInfo, FightTeam};
+use sonettobuf::{Fight, FightEntityInfo, FightTeam};
 
 use crate::engine::{
     manager::{BattleManagers, entity::RosterLane},
     skill::action::SkillExecutionMode,
 };
+
+mod buff;
+
+use buff::TargetBuff;
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 #[repr(i32)]
@@ -64,17 +68,6 @@ pub struct TargetEntity {
     pub destiny_rank: i32,
     pub battle_tags: Vec<i32>,
     buffs: Vec<TargetBuff>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct TargetBuff {
-    id: i32,
-    type_id: i32,
-    status: Option<crate::engine::manager::buff::BuffStatus>,
-    source_uid: i64,
-    features: Vec<String>,
-    act_kinds: Vec<crate::engine::skill::buff_act::registry::BuffActKind>,
-    monster_labels: Vec<i32>,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -716,19 +709,7 @@ impl TargetEntity {
     }
 
     pub(super) fn can_receive_enemy_aim(&self, catalog: crate::catalog::BattleCatalog) -> bool {
-        self.current_hp > 0
-            && !self
-                .buffs
-                .iter()
-                .flat_map(|buff| &buff.features)
-                .any(|feature| {
-                    feature
-                        .split('#')
-                        .next()
-                        .and_then(|opcode| opcode.parse().ok())
-                        .and_then(|opcode| catalog.buff_act_name(opcode))
-                        .is_some_and(|name| matches!(name, "CantSelect" | "CantSelectEx"))
-                })
+        self.current_hp > 0 && !self.buffs.iter().any(|buff| buff.blocks_enemy_aim(catalog))
     }
 
     pub(super) fn has_buff_type(&self, type_id: i32) -> bool {
@@ -738,7 +719,7 @@ impl TargetEntity {
     }
 
     pub(super) fn has_buff_status(&self, status: crate::engine::manager::buff::BuffStatus) -> bool {
-        self.buffs.iter().any(|buff| buff.status == Some(status))
+        self.buffs.iter().any(|buff| buff.status() == Some(status))
     }
 
     pub(super) fn has_buff_act_kind(
@@ -771,50 +752,6 @@ impl TargetEntity {
         self.careers
             .iter()
             .any(|career| other.careers.contains(career))
-    }
-}
-
-impl TargetBuff {
-    fn from_buff_info(catalog: crate::catalog::BattleCatalog, buff: &BuffInfo) -> Self {
-        let id = buff.buff_id.unwrap_or_default();
-        let features = catalog.buff_feature_tokens(id);
-        Self {
-            id,
-            type_id: buff.r#type.unwrap_or_else(|| catalog.buff_type_id(id)),
-            status: catalog.buff_status(id),
-            source_uid: buff.from_uid.unwrap_or_default(),
-            features: features.clone(),
-            act_kinds: features
-                .iter()
-                .filter_map(|feature| {
-                    let opcode = feature.split('#').next()?.parse().ok()?;
-                    Some(catalog.buff_act_definition(opcode)?.kind)
-                })
-                .collect(),
-            monster_labels: features
-                .iter()
-                .filter_map(|feature| {
-                    let mut values = feature
-                        .split('#')
-                        .filter_map(|value| value.parse::<i32>().ok());
-                    let opcode = values.next()?;
-                    (catalog.buff_act_definition(opcode)?.kind
-                        == crate::engine::skill::buff_act::registry::BuffActKind::MonsterLabel)
-                        .then(|| values.next())?
-                })
-                .collect(),
-        }
-    }
-
-    fn has_buff_act_kind(
-        &self,
-        kind: crate::engine::skill::buff_act::registry::BuffActKind,
-    ) -> bool {
-        self.act_kinds.contains(&kind)
-    }
-
-    fn has_monster_label(&self, label: i32) -> bool {
-        self.monster_labels.contains(&label)
     }
 }
 
