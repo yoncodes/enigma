@@ -111,9 +111,7 @@ fn add_count_uses_the_registered_raspberry_capacity_transaction() {
         domain: RuleDomain::Behavior,
         key: DefinitionKey::new(60231, "RaspberryAddCount"),
     };
-    let Some(ops) = add_count_rule_ops(&managers, origin, 11, 11, AttrId::CurrentHp, 40) else {
-        panic!("expected a Raspberry capacity command");
-    };
+    let ops = add_count_rule_ops(&managers, origin, 11, 11, AttrId::CurrentHp, 40);
     let [RuleOp::Command(BattleCommand::RaspberryAddCount(command))] = ops.as_slice() else {
         panic!("expected one Raspberry add-count intent");
     };

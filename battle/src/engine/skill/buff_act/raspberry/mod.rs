@@ -354,14 +354,18 @@ pub fn add_count_rule_ops(
     target_uid: i64,
     attr_id: AttrId,
     rate: i32,
-) -> Option<Vec<RuleOp>> {
-    managers
+) -> Vec<RuleOp> {
+    let has_capacity = managers
         .buff
         .active_features(&managers.hp)
         .into_iter()
-        .filter(|feature| feature.owner_uid == target_uid)
-        .find_map(|feature| RaspberryBuffAct::from_feature(&feature))?;
-    Some(vec![RuleOp::Command(BattleCommand::RaspberryAddCount(
+        .any(|feature| {
+            feature.owner_uid == target_uid && RaspberryBuffAct::from_feature(&feature).is_some()
+        });
+    if !has_capacity {
+        return Vec::new();
+    }
+    vec![RuleOp::Command(BattleCommand::RaspberryAddCount(
         AddCountCommand {
             origin,
             source_uid,
@@ -369,7 +373,7 @@ pub fn add_count_rule_ops(
             attr_id,
             rate,
         },
-    ))])
+    ))]
 }
 
 pub(crate) fn execute_add_count(

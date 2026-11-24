@@ -11,5 +11,6 @@ mod nested_casts;
 mod paid_ultimate;
 mod precognition;
 mod resource_commands;
+mod shadow_cloak;
 mod shield_counter;
 mod team_moxie;

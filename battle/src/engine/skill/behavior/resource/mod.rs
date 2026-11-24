@@ -704,7 +704,7 @@ pub fn rule_ops(context: BehaviorOpContext<'_>, behavior: &ParsedBehavior) -> Op
                 context.target_uid,
                 attr_id,
                 *rate,
-            )?)
+            ))
         }
         BehaviorKind::RaspberryBigSkill => {
             let [transfer_rate, buff_id] = behavior.args.as_slice() else {
@@ -807,10 +807,13 @@ pub(super) fn supports_ex_point_absorption(behavior: &ParsedBehavior) -> bool {
 }
 
 pub(super) fn supports_raspberry_add_count(behavior: &ParsedBehavior) -> bool {
-    matches!(
-        behavior.args.as_slice(),
-        [raw_attr, rate, 1] if AttrId::from_raw(*raw_attr).is_some() && *rate > 0
-    )
+    behavior.raw_arity == 3
+        && matches!(
+            behavior.args.as_slice(),
+            [raw_attr, rate, 1]
+                if matches!(AttrId::from_raw(*raw_attr), Some(AttrId::CurrentHp | AttrId::Hp))
+                    && *rate > 0
+        )
 }
 
 pub(super) fn supports_raspberry_big_skill(behavior: &ParsedBehavior) -> bool {
