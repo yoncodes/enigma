@@ -1,19 +1,10 @@
 use super::*;
 
 #[test]
-fn queued_death_updates_kill_task_before_dead() {
+fn queued_death_updates_kill_task_for_an_entrant_before_dead() {
     crate::test_support::init_config();
     let catalog = crate::catalog::BattleCatalog::new(crate::test_support::game_data());
     let fight = Fight {
-        defender: Some(FightTeam {
-            entitys: vec![FightEntityInfo {
-                uid: Some(-1),
-                model_id: Some(116_370_081),
-                current_hp: Some(1),
-                ..Default::default()
-            }],
-            ..Default::default()
-        }),
         episode_id: Some(493_708),
         fight_task_box: Some(
             crate::engine::manager::fight_task::configured_box(catalog, 493_708).unwrap(),
@@ -22,6 +13,14 @@ fn queued_death_updates_kill_task_before_dead() {
     };
     let pool = TargetPool::from_fight_with_catalog(catalog, &fight);
     let mut managers = BattleManagers::seeded_with_catalog(catalog, &fight).unwrap();
+    managers.register_entity(&FightEntityInfo {
+        uid: Some(-1),
+        model_id: Some(116_370_081),
+        current_hp: Some(1),
+        team_type: Some(2),
+        position: Some(1),
+        ..Default::default()
+    });
     let effects = SkillEffectCatalog::from_fight(config::configs::get(), &fight);
     let mut determinism = RoundDeterminism::default();
     use crate::engine::manager::hp::{HpCommand, HpKill};

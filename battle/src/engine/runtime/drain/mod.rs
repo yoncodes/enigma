@@ -75,7 +75,9 @@ fn push_death(
     }
     managers.conduit.record_death(death);
     let death = death.transition();
-    if let Some(change) = managers.fight_task.record_kill(death.target_uid, 1) {
+    if let Some(model_id) = managers.entity.model_id(death.target_uid)
+        && let Some(change) = managers.fight_task.record_kill(model_id, 1)
+    {
         push_change(
             frames,
             path,

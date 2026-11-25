@@ -112,15 +112,15 @@ fn configured_kills_emit_each_matching_death() {
     let catalog = crate::catalog::BattleCatalog::new(crate::test_support::game_data());
     let mut manager = FightTaskManager::seed(catalog, &configured_kill_fight(catalog)).unwrap();
 
-    let first = manager.record_kill(-1, 1).unwrap();
-    let second = manager.record_kill(-2, 1).unwrap();
-    let third = manager.record_kill(-3, 1).unwrap();
+    let first = manager.record_kill(116_370_081, 1).unwrap();
+    let second = manager.record_kill(116_370_082, 1).unwrap();
+    let third = manager.record_kill(116_370_083, 1).unwrap();
 
     assert_eq!(first.tasks[0].values[0].progress, Some(1));
     assert_eq!(second.tasks[0].values[0].progress, Some(2));
     assert_eq!(third.tasks[0].values[0].progress, Some(3));
     assert_eq!(third.tasks[0].status, TaskStatus::Finished.wire());
-    assert!(manager.record_kill(-3, 1).is_none());
+    assert!(manager.record_kill(116_370_083, 1).is_none());
 }
 
 #[test]
@@ -138,18 +138,6 @@ fn deadlines_wait_for_all_prerequisites_and_include_the_last_round() {
     let mut deadline = task(381_207, 1);
     deadline.status = TaskStatus::Waiting.wire();
     let fight = Fight {
-        defender: Some(sonettobuf::FightTeam {
-            entitys: [120_384_221, 120_384_212]
-                .into_iter()
-                .enumerate()
-                .map(|(index, model_id)| sonettobuf::FightEntityInfo {
-                    uid: Some(-(index as i64) - 1),
-                    model_id: Some(model_id),
-                    ..Default::default()
-                })
-                .collect(),
-            ..Default::default()
-        }),
         fight_task_box: Some(FightTaskBox {
             tasks: vec![deadline, task(381_203, 1), task(381_206, 6)],
         }),
@@ -157,11 +145,11 @@ fn deadlines_wait_for_all_prerequisites_and_include_the_last_round() {
     };
     let mut manager = FightTaskManager::seed(catalog, &fight).unwrap();
     assert!(manager.record_victory(8, 1).is_none());
-    assert_eq!(manager.record_kill(-1, 1).unwrap().tasks.len(), 1);
+    assert_eq!(manager.record_kill(120_384_221, 1).unwrap().tasks.len(), 1);
     for _ in 0..5 {
-        assert_eq!(manager.record_kill(-2, 1).unwrap().tasks.len(), 1);
+        assert_eq!(manager.record_kill(120_384_212, 1).unwrap().tasks.len(), 1);
     }
-    let change = manager.record_kill(-2, 1).unwrap();
+    let change = manager.record_kill(120_384_212, 1).unwrap();
     assert_eq!(change.tasks[0].task_id, Some(381_207));
     assert_eq!(change.tasks[0].status, TaskStatus::Running.wire());
     assert_eq!(change.tasks[0].values[0].progress, Some(0));

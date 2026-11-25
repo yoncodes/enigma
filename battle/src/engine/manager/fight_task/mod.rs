@@ -53,7 +53,6 @@ pub struct FightTaskManager {
     tasks: Vec<FightTask>,
     rules: HashMap<i32, Vec<TaskRule>>,
     prerequisites: prerequisites::TaskPrerequisites,
-    models: HashMap<i64, i32>,
     pending: HashSet<i32>,
 }
 
@@ -115,9 +114,6 @@ impl FightTaskManager {
             tasks,
             rules,
             prerequisites,
-            models: super::entities(fight)
-                .filter_map(|entity| Some((entity.uid?, entity.model_id?)))
-                .collect(),
             pending: HashSet::new(),
         })
     }
@@ -175,8 +171,7 @@ impl FightTaskManager {
             .extend(self.prerequisites.activate(&mut self.tasks));
     }
 
-    pub fn record_kill(&mut self, target_uid: i64, team_type: i32) -> Option<FightTaskChange> {
-        let model_id = *self.models.get(&target_uid)?;
+    pub(crate) fn record_kill(&mut self, model_id: i32, team_type: i32) -> Option<FightTaskChange> {
         let mut changed_ids = HashSet::new();
         for task in &mut self.tasks {
             let Some(task_id) = task.task_id else {
