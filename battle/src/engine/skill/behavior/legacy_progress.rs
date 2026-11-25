@@ -6,7 +6,7 @@ use crate::engine::{
             BehaviorOpContext,
             registry::{BehaviorConfigError, BehaviorHandler},
         },
-        condition::{ParsedCondition, ParsedConditionKind},
+        condition::{ParsedCondition, ParsedConditionKind, lifecycle::LifecycleMode},
         effect::{ParsedBehavior, SkillEffectCatalog, SkillEffectSlot},
         rule::output::{BattleCommand, RuleOp},
         target::request::SOURCE_TARGET_CODE,
@@ -108,6 +108,7 @@ pub(super) struct InitializeHandler;
 
 impl BehaviorHandler for InitializeHandler {
     const VALIDATES_ARGUMENTS: bool = true;
+    const SETUP_ONLY: bool = true;
 
     fn supports(behavior: &ParsedBehavior) -> bool {
         behavior.raw_arity == 3
@@ -125,6 +126,27 @@ impl BehaviorHandler for InitializeHandler {
                 behavior.args.as_slice(),
                 [initial, max] if *max > 0 && (0..=*max).contains(initial)
             )
+    }
+
+    fn validate_slot(slot: &SkillEffectSlot, raw: &str) -> Result<(), BehaviorConfigError> {
+        let opening = matches!(
+            (raw.trim(), slot.conditions.as_slice()),
+            ("5", [condition])
+                if condition.kind == ParsedConditionKind::Lifecycle(LifecycleMode::EnterFight)
+        ) || matches!(
+            (raw.trim(), slot.conditions.as_slice()),
+            ("5021", [condition])
+                if condition.kind == ParsedConditionKind::Lifecycle(LifecycleMode::BattleStart)
+        );
+        let source_only = !slot.target_from_condition
+            && [&slot.condition_target, &slot.target]
+                .into_iter()
+                .all(|target| target.code == SOURCE_TARGET_CODE && target.raw.is_empty());
+        if opening && source_only {
+            Ok(())
+        } else {
+            Err(BehaviorConfigError::Unsupported)
+        }
     }
 
     fn emit_ops(context: BehaviorOpContext<'_>, behavior: &ParsedBehavior) -> Option<Vec<RuleOp>> {

@@ -60,9 +60,10 @@ impl SkillEffectSlot {
     pub fn subscriptions(&self) -> Vec<SubscriptionKey> {
         if crate::engine::skill::behavior::registry::find(&self.behavior).is_some_and(
             |definition| {
-                definition
-                    .attack_context
-                    .is_some_and(|matches| matches(&self.conditions))
+                definition.setup_only
+                    || definition
+                        .attack_context
+                        .is_some_and(|matches| matches(&self.conditions))
             },
         ) {
             return Vec::new();
@@ -80,9 +81,10 @@ impl SkillEffectSlot {
         };
         if crate::engine::skill::behavior::registry::find(&self.behavior).is_some_and(
             |definition| {
-                definition
-                    .attack_context
-                    .is_some_and(|matches| matches(&self.conditions))
+                definition.setup_only
+                    || definition
+                        .attack_context
+                        .is_some_and(|matches| matches(&self.conditions))
                     || definition.round_modifier_only
                     || definition.card_play_role
                         == crate::engine::skill::behavior::registry::CardPlayRole::QueuePreparation

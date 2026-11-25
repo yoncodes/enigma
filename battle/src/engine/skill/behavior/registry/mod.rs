@@ -137,6 +137,7 @@ pub struct BehaviorDefinition {
     pub card_play_role: CardPlayRole,
     pub condition_route_override: Option<ConditionRouteOverride>,
     pub required_event: Option<EventKind>,
+    pub setup_only: bool,
     pub completed_action_actor_only: bool,
     pub supports: Option<fn(&ParsedBehavior) -> bool>,
     pub unsupported_args: fn(&ParsedBehavior) -> bool,
@@ -148,6 +149,7 @@ pub struct BehaviorDefinition {
 pub trait BehaviorHandler {
     const VALIDATES_ARGUMENTS: bool = false;
     const COMPLETED_ACTION_ACTOR_ONLY: bool = false;
+    const SETUP_ONLY: bool = false;
 
     fn supports(_: &ParsedBehavior) -> bool {
         false
@@ -264,6 +266,7 @@ pub const fn definition<H: BehaviorHandler>(
         card_play_role: CardPlayRole::Action,
         condition_route_override: None,
         required_event: None,
+        setup_only: H::SETUP_ONLY,
         completed_action_actor_only: H::COMPLETED_ACTION_ACTOR_ONLY,
         supports: if H::VALIDATES_ARGUMENTS {
             Some(H::supports)

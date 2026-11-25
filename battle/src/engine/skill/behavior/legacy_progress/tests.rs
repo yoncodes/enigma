@@ -1,8 +1,8 @@
 use sonettobuf::{Fight, FightEntityInfo, FightTeam};
 
 use crate::engine::{
-    event::payload::BattleEvent,
-    manager::BattleManagers,
+    event::payload::{BattleEvent, EntityEntry},
+    manager::{BattleManagers, fight_progress::LegacyProgressAdd},
     runtime::{
         determinism::RoundDeterminism,
         drain,
@@ -12,6 +12,7 @@ use crate::engine::{
     skill::{
         action::{ActionEvent, SkillExecutionMode},
         effect::SkillEffectCatalog,
+        rule::{CommandOrigin, DefinitionKey, RuleDomain, SetupStage},
         target::{TargetContext, TargetPool},
     },
 };
@@ -118,4 +119,68 @@ fn legacy_progress_rejects_surplus_action_trigger_arguments() {
         AddHandler::validate_slot(&slot, "502212#0#7"),
         Err(BehaviorConfigError::Unsupported)
     ));
+}
+
+#[test]
+fn legacy_progress_initializes_only_at_opening() {
+    let skill_id = 104318544;
+    let mut fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                passive_skill: vec![skill_id],
+                current_hp: Some(100),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let db = crate::test_support::game_data();
+    let catalog = SkillEffectCatalog::from_fight(db, &fight);
+    let initializer = &catalog.get(skill_id).unwrap().slots[0];
+    assert!(initializer.compiled_subscriptions().unwrap().is_empty());
+    let cold = SkillEffectCatalog::from_roots(db, [110500101], []);
+    let initializer = &cold.get(110500101).unwrap().slots[0];
+    assert_eq!(initializer.setup_keys(SetupStage::BattleStart, 0).len(), 1);
+    assert!(initializer.compiled_subscriptions().unwrap().is_empty());
+    let mut managers = BattleManagers::seeded(&fight);
+    let pool = TargetPool::from_fight(&fight);
+    let mut determinism = RoundDeterminism::default();
+    let context = TargetContext::default();
+    drain::run_setup_stage(
+        &mut managers,
+        &pool,
+        &catalog,
+        &mut determinism,
+        context,
+        SetupStage::EnterFight,
+        0,
+    )
+    .unwrap();
+    managers
+        .fight_progress
+        .add_legacy(LegacyProgressAdd {
+            origin: CommandOrigin {
+                domain: RuleDomain::Behavior,
+                key: DefinitionKey::new(60107, "ProgressChange"),
+            },
+            amount: 3,
+        })
+        .unwrap();
+    drain::run_event(
+        &mut managers,
+        &pool,
+        &catalog,
+        &mut determinism,
+        context,
+        BattleEvent::EntityEntered {
+            target_uid: 10,
+            entry: EntityEntry::Summoned,
+        },
+    )
+    .unwrap();
+    managers.fight_progress.sync_fight(&mut fight);
+    assert_eq!(fight.progress, Some(3));
+    assert_eq!(fight.progress_max, Some(4));
 }
