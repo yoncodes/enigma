@@ -39,6 +39,7 @@ pub enum ConditionReadTiming {
     #[default]
     Current,
     ActionStart,
+    PsychubeTargetAtActionStart,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -441,6 +442,13 @@ pub const fn reads_action_start(mut metadata: ConditionMetadata) -> ConditionMet
     metadata
 }
 
+const fn reads_psychube_target_at_action_start(
+    mut metadata: ConditionMetadata,
+) -> ConditionMetadata {
+    metadata.read_timing = ConditionReadTiming::PsychubeTargetAtActionStart;
+    metadata
+}
+
 pub const fn after_skill(mut metadata: ConditionMetadata) -> ConditionMetadata {
     metadata.reaction_timing = ReactionTimingPolicy::Fixed(ReactionTiming::AfterSkill);
     metadata
@@ -771,7 +779,8 @@ condition_definitions! {
     [19105] "HasBuffId" => buff::buff_present, filters_behavior_targets(setup_route(SetupStage::AfterRoundStart, 0, &[]));
     [19106] "HasBuffId" => buff::buff_present, filters_behavior_targets(predicate(&[]));
     [19107] "HasBuffId" => buff::buff_present, filters_behavior_targets(event_trigger(EventKind::ActionQueueCommitted, None));
-    [19021, 19201] "HasBuffId" => buff::buff_present, filters_behavior_targets(predicate(&[EventKind::BuffChanged]));
+    [19021] "HasBuffId" => buff::buff_present, filters_behavior_targets(predicate(&[EventKind::BuffChanged]));
+    [19201] "HasBuffId" => buff::buff_present, reads_psychube_target_at_action_start(filters_behavior_targets(predicate(&[EventKind::BuffChanged])));
     [19204] "HasBuffId" => buff::buff_present, incoming_attack_modifier(filters_behavior_targets(predicate(&[EventKind::BuffChanged])));
     [19205] "HasBuffId" => buff::exact_buff_present, filters_behavior_targets(predicate(&[]));
     [19203, 19901] "HasBuffId" => buff::buff_present, filters_behavior_targets(event_trigger(EventKind::SkillAction, Some(SkillPhase::Immediate)));

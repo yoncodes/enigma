@@ -29,6 +29,7 @@ pub(in crate::engine::runtime) struct SkillExecution {
     pub(super) additional_damage_targets: Option<Vec<i64>>,
     pub(super) planned_crits: Option<Vec<(i64, bool)>>,
     pub(super) action_start_managers: Option<Arc<BattleManagers>>,
+    pub(super) opening_target_buffs: Option<rate::OpeningTargetBuffs>,
     pub(super) assassination_marks_at_action_start:
         Option<Vec<crate::engine::skill::buff_act::assassination::TargetMark>>,
     pub(super) assassination_rate_marks_at_action_start: Option<Vec<(i64, i32)>>,
@@ -122,6 +123,7 @@ impl SkillExecution {
             additional_damage_targets: None,
             planned_crits: None,
             action_start_managers: None,
+            opening_target_buffs: None,
             assassination_marks_at_action_start: None,
             assassination_rate_marks_at_action_start: None,
             injured_allies: Vec::new(),
@@ -161,6 +163,7 @@ impl SkillExecution {
             additional_damage_targets: None,
             planned_crits: None,
             action_start_managers: None,
+            opening_target_buffs: None,
             assassination_marks_at_action_start: None,
             assassination_rate_marks_at_action_start: None,
             injured_allies: Vec::new(),
@@ -809,7 +812,7 @@ pub(super) fn damage_ops(
             },
             determinism,
         );
-        rate::emit_passive_attack_attributes(
+        rate::emit_passive_hit_attributes(
             &mut target_modifiers,
             source_uid,
             skill_id,
@@ -821,6 +824,7 @@ pub(super) fn damage_ops(
                 context: target_context,
             },
             determinism,
+            execution.opening_target_buffs.as_ref(),
         );
         // Linked hits are owned by their credited source. Keep the triggering action's shared
         // source lane, but do not leak modifiers that the target applies to that action's actor.

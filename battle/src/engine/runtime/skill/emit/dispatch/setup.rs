@@ -80,6 +80,16 @@ pub(super) fn prepare<'a>(
 
     execution.context.active_skill_id = invocation.plan.skill_id;
     execution.context.active_skill_source_uid = invocation.plan.source_uid;
+    if matches!(trigger, SkillOpTrigger::Active) && catalog.is_attack(effect_skill_id) {
+        execution.opening_target_buffs.get_or_insert_with(|| {
+            behavior::rate::OpeningTargetBuffs::capture(
+                invocation.plan.source_uid,
+                catalog,
+                managers,
+                pool,
+            )
+        });
+    }
     execution
         .context
         .action_start_ex_point

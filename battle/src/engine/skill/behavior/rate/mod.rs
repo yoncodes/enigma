@@ -573,7 +573,10 @@ fn conduit_power_up_args(behavior: &ParsedBehavior) -> Option<ConduitPowerUpArgs
         .then_some(args)
 }
 
-use crate::engine::skill::behavior::magic_circle;
+use crate::engine::{entity::passive::PassiveSourceKind, skill::behavior::magic_circle};
+
+mod target_buff;
+pub(crate) use target_buff::OpeningTargetBuffs;
 
 #[derive(Clone, Copy)]
 pub struct RateRuntime<'a> {
@@ -590,14 +593,15 @@ enum ModifierSide {
 }
 
 #[derive(Clone, Copy)]
-struct ModifierOwner {
+struct ModifierOwner<'a> {
     uid: i64,
     skill_id: i32,
+    opening_target_buffs: Option<&'a OpeningTargetBuffs>,
 }
 
 fn collect_attack_modifier_slot(
     modifiers: &mut crate::engine::skill::action::SkillModifiers,
-    owner: ModifierOwner,
+    owner: ModifierOwner<'_>,
     active_skill_id: i32,
     slot: &SkillEffectSlot,
     runtime: RateRuntime<'_>,
@@ -607,6 +611,7 @@ fn collect_attack_modifier_slot(
     let ModifierOwner {
         uid: owner_uid,
         skill_id: owner_skill_id,
+        opening_target_buffs,
     } = owner;
     let RateRuntime {
         managers,
@@ -724,14 +729,21 @@ fn collect_attack_modifier_slot(
                     context,
                 )
             };
-        let fire_count = conditions_fire_count(
-            &conditions,
-            owner_uid,
-            &condition_targets,
-            Some(managers),
-            pool,
-            context,
-        );
+        let fire_count = opening_target_buffs
+            .and_then(|snapshot| snapshot.matches(slot, &condition_targets))
+            .map_or_else(
+                || {
+                    conditions_fire_count(
+                        &conditions,
+                        owner_uid,
+                        &condition_targets,
+                        Some(managers),
+                        pool,
+                        context,
+                    )
+                },
+                i32::from,
+            );
         let collect_count =
             if let Some(has_committed) = definition.collect_attack_modifier_from_committed_state {
                 i32::from(has_committed(
@@ -825,6 +837,26 @@ pub fn emit_passive_attack_attributes(
     runtime: RateRuntime<'_>,
     determinism: &mut RoundDeterminism,
 ) {
+    emit_passive_hit_attributes(
+        modifiers,
+        source_uid,
+        active_skill_id,
+        passive_skills,
+        runtime,
+        determinism,
+        None,
+    );
+}
+
+pub(crate) fn emit_passive_hit_attributes(
+    modifiers: &mut SkillModifiers,
+    source_uid: i64,
+    active_skill_id: i32,
+    passive_skills: &[i32],
+    runtime: RateRuntime<'_>,
+    determinism: &mut RoundDeterminism,
+    opening_target_buffs: Option<&OpeningTargetBuffs>,
+) {
     let RateRuntime {
         effects,
         managers,
@@ -862,6 +894,10 @@ pub fn emit_passive_attack_attributes(
                 ModifierOwner {
                     uid: source_uid,
                     skill_id: *passive_skill,
+                    opening_target_buffs: opening_target_buffs.filter(|_| {
+                        managers.entity.passive_source(source_uid, *passive_skill)
+                            == PassiveSourceKind::Psychube
+                    }),
                 },
                 active_skill_id,
                 slot,
@@ -918,6 +954,7 @@ pub fn emit_active_target_attack_attributes(
             ModifierOwner {
                 uid: source_uid,
                 skill_id: effect_skill_id,
+                opening_target_buffs: None,
             },
             active_skill_id,
             slot,
@@ -950,6 +987,7 @@ pub(crate) fn active_modifiers(
             ModifierOwner {
                 uid: source_uid,
                 skill_id,
+                opening_target_buffs: None,
             },
             skill_id,
             slot,
@@ -1038,6 +1076,7 @@ pub(crate) fn incoming_target_attack_modifiers(
                 ModifierOwner {
                     uid: target_uid,
                     skill_id: passive_skill,
+                    opening_target_buffs: None,
                 },
                 active_skill_id,
                 slot,

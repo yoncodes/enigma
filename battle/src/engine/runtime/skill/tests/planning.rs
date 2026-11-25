@@ -521,3 +521,100 @@ fn reinforced_cast_uses_the_configured_upgrade_effect_without_changing_skill_ide
         Some((DefinitionKey::new(30860143, "SkillDamage"), 3_000))
     );
 }
+
+#[test]
+fn nested_attack_reads_its_own_opening_target_buffs_once() {
+    crate::test_support::init_config();
+    let mut fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                model_id: Some(3081),
+                current_hp: Some(1_000),
+                attr: Some(HeroAttribute {
+                    hp: Some(1_000),
+                    attack: Some(1_000),
+                    ..Default::default()
+                }),
+                passive_skill: vec![432315],
+                equips: vec![sonettobuf::EquipRecord {
+                    equip_id: Some(1523),
+                    refine_lv: Some(5),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(-1),
+                current_hp: Some(10_000),
+                attr: Some(HeroAttribute {
+                    hp: Some(10_000),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let clear = BattleManagers::seeded(&fight);
+    fight.defender.as_mut().unwrap().entitys[0]
+        .buffs
+        .push(BuffInfo {
+            uid: Some(1000),
+            buff_id: Some(4150001),
+            from_uid: Some(10),
+            layer: Some(1),
+            duration: Some(1),
+            ..Default::default()
+        });
+    let burning = BattleManagers::seeded(&fight);
+    let pool = TargetPool::from_fight(&fight);
+    let catalog = SkillEffectCatalog::from_roots(config::configs::get(), [30810341, 432315], []);
+    let phase = |execution: &mut SkillExecution, managers, phase| {
+        let mut invocation = SkillInvocation::from(SkillRequest {
+            source_uid: 10,
+            skill_id: 30810341,
+        });
+        invocation.phase = Some(phase);
+        invocation.target = SkillTarget::Explicit(-1);
+        emit_ops(
+            invocation,
+            managers,
+            &pool,
+            &catalog,
+            &mut RoundDeterminism::default(),
+            execution,
+            &SkillOpTrigger::Active,
+        )
+        .unwrap()
+    };
+    let damage = |execution: &mut SkillExecution| {
+        phase(execution, &clear, SkillPhase::Immediate);
+        phase(execution, &clear, SkillPhase::Damage)
+            .ops
+            .into_iter()
+            .find_map(|emission| match emission.op {
+                RuleOp::Command(BattleCommand::Hp(HpCommand::Damage(hit))) => Some(hit.amount),
+                RuleOp::Command(BattleCommand::HpBatch(commands)) => {
+                    commands.into_iter().find_map(|command| match command {
+                        HpCommand::Damage(hit) => Some(hit.amount),
+                        _ => None,
+                    })
+                }
+                _ => None,
+            })
+            .expect("Intermezzo must emit damage")
+    };
+
+    let mut parent = SkillExecution::new(TargetContext::default());
+    phase(&mut parent, &clear, SkillPhase::SourceOpening);
+    let mut child = SkillExecution::new(parent.context);
+    child.context.action_start_ex_point = parent.context.action_start_ex_point;
+    assert!(child.context.action_start_ex_point.is_some());
+    phase(&mut child, &burning, SkillPhase::SourceOpening);
+    assert!(damage(&mut child) > damage(&mut parent));
+}
