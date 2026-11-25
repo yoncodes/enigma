@@ -203,6 +203,11 @@ impl Defender {
             crate::engine::entity::stats::configured_monster_stats(game_data, monster_id, level)
                 .ok_or_else(|| anyhow::anyhow!("Monster stats {} not found", monster_id))?;
         let attr = stats.base();
+        let career = if monster.career == 0 {
+            skill_template.career
+        } else {
+            monster.career
+        };
         let (toughness_value, toughness_point) = catalog
             .monster_toughness(monster_id, attr.hp.unwrap_or_default())
             .map(|(value, point)| (Some(value), Some(point)))
@@ -252,7 +257,7 @@ impl Defender {
                 upgraded_options: vec![],
             }),
             trial_id: Some(0),
-            career: Some(skill_template.career),
+            career: Some(career),
             status: Some(0),
             guard: Some(-1),
             sub_cd: Some(0),

@@ -27,6 +27,34 @@ fn unseeded_boss_uses_instance_job_scaling() {
 }
 
 #[test]
+fn monster_instance_afflatus_applies_to_opening_and_replacement_waves() {
+    crate::test_support::init_config();
+
+    for (battle_id, group, career) in [(120384100, 120384120, 1), (120384200, 120384220, 4)] {
+        let setup = Defender::get(battle_id, 0).unwrap();
+        assert!(
+            setup
+                .team
+                .entitys
+                .iter()
+                .chain(&setup.team.sub_entitys)
+                .all(|monster| monster.career == Some(career))
+        );
+        let (active, reserve) = Defender::build_wave_entities(group, 4, 2, 6).unwrap();
+        assert_eq!((active.len(), reserve.len()), (4, 2));
+        assert!(
+            active
+                .iter()
+                .chain(&reserve)
+                .all(|monster| monster.career == Some(career))
+        );
+    }
+
+    let inherited = Defender::build_monster_with_uid(101, -1, 1, 2).unwrap();
+    assert_eq!(inherited.career, Some(2));
+}
+
+#[test]
 fn monster_toughness_skill_contributes_its_configured_passive() {
     crate::test_support::init_config();
 
