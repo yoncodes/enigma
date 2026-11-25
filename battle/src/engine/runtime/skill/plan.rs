@@ -1052,7 +1052,7 @@ pub(super) fn damage_ops(
         {
             if let HpCommand::Damage(damage) = &mut resolved.command {
                 damage.ignore_riposte = target_modifiers.ignore_riposte;
-                resolved_main_damage = Some((*damage, resolved.fraction));
+                resolved_main_damage = Some((*damage, resolved.fraction, resolved.base_rate));
                 if let Some(command) = riposte_damage.as_ref().and_then(|producer| {
                     producer.hit(
                         *damage,
@@ -1134,17 +1134,19 @@ pub(super) fn damage_ops(
                         main_origin,
                     )
                     .and_then(|resolved| match resolved.command {
-                        HpCommand::Damage(damage) => Some((damage, resolved.fraction)),
+                        HpCommand::Damage(damage) => {
+                            Some((damage, resolved.fraction, resolved.base_rate))
+                        }
                         _ => None,
                     })
                 };
-                proportional_main.and_then(|(main, main_fraction)| {
+                proportional_main.and_then(|(main, main_fraction, main_rate)| {
                     damage::resolve_proportional_additional_damage_command(
                         damage::ProportionalAdditionalDamageRequest {
                             main,
                             main_fraction: Some(main_fraction),
                             rate,
-                            main_rate: catalog.damage_rate(effect_skill_id),
+                            main_rate,
                             credited_source_uid: additional.credited_source_uid,
                             force_career_restraint: target_modifiers.force_career_restraint,
                             assassinate: assassination.assassinate,

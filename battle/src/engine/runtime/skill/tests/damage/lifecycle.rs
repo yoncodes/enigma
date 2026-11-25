@@ -567,7 +567,7 @@ fn an_action_not_played_from_a_card_is_forced_critical_by_the_gust_force_field()
 #[test]
 fn an_assassination_adds_the_holders_force_field_damage_only_on_marked_targets() {
     crate::test_support::init_config();
-    let additional_damage = |marked: bool| {
+    let additional_damage = |marked: bool, rate_bonus, additional_crit| {
         let fight = Fight {
             attacker: Some(FightTeam {
                 entitys: vec![FightEntityInfo {
@@ -624,16 +624,27 @@ fn an_assassination_adds_the_holders_force_field_damage_only_on_marked_targets()
         .into();
         let mut execution = SkillExecution::new(TargetContext::default());
         execution.configured_targets = Some(vec![-1]);
+        if rate_bonus > 0 {
+            execution
+                .modifiers
+                .rates
+                .push(crate::engine::skill::action::SkillRateModifier::fixed(
+                    -1, 10001, rate_bonus, true,
+                ));
+        }
         for activation in plan::LinkedDamagePlan::activations(&invocation, &managers, &execution) {
             execution.activate_additional_damage(activation.additional);
         }
+        let mut determinism = RoundDeterminism::default();
+        determinism.enqueue_hidden_crits(100, 10, [false]);
+        determinism.enqueue_additional_crits(100, 10, -1, [additional_crit]);
         let ops = plan::damage_ops(
             &invocation,
             &managers,
             &pool,
             &catalog,
             100,
-            &mut RoundDeterminism::default(),
+            &mut determinism,
             &mut execution,
         )
         .unwrap();
@@ -648,19 +659,25 @@ fn an_assassination_adds_the_holders_force_field_damage_only_on_marked_targets()
 
     // Way of Ares: "When an allied [Assassination] is triggered, deal an additional 125% DMG of
     // the attacker's type."
-    let (main, marked) = additional_damage(true);
-    assert!(matches!(
-        marked.as_slice(),
-        [HpCommand::Damage(damage)] if damage.source_uid == 10
-    ));
-    let main_amount = match main.as_slice() {
-        [HpCommand::Damage(damage)] => damage.amount,
-        _ => panic!("expected one main damage command"),
+    let hits = |rate_bonus, additional_crit| {
+        let (main, linked) = additional_damage(true, rate_bonus, additional_crit);
+        let [HpCommand::Damage(main)] = main.as_slice() else {
+            panic!("expected one main damage command");
+        };
+        let [HpCommand::Damage(linked)] = linked.as_slice() else {
+            panic!("expected one linked damage command");
+        };
+        assert_eq!(linked.source_uid, 10);
+        assert_eq!(linked.hurt.is_crit, additional_crit);
+        (main.amount, linked.amount)
     };
-    let linked_amount = match marked.as_slice() {
-        [HpCommand::Damage(damage)] => damage.amount,
-        _ => panic!("expected one linked damage command"),
-    };
-    assert_eq!(linked_amount, main_amount * 1_250 / 6_000);
-    assert!(additional_damage(false).1.is_empty());
+
+    let (main, linked) = hits(0, false);
+    assert_eq!(linked, main * 1_250 / 6_000);
+    assert_eq!(hits(1_000, false), (main * 7 / 6, linked));
+
+    let (main, critical_linked) = hits(0, true);
+    assert!(critical_linked > linked);
+    assert_eq!(hits(1_000, true), (main * 7 / 6, critical_linked));
+    assert!(additional_damage(false, 1_000, false).1.is_empty());
 }

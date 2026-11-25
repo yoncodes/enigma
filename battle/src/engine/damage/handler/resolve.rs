@@ -83,6 +83,7 @@ fn attack_career(
 pub struct ResolvedAttack {
     pub command: HpCommand,
     pub fraction: DamageFraction,
+    pub base_rate: i32,
 }
 
 pub fn resolve_attack_command(
@@ -138,6 +139,7 @@ pub fn resolve_attack_command_with_precision(
     Some(ResolvedAttack {
         command,
         fraction: resolved.fraction,
+        base_rate: resolved.base_rate,
     })
 }
 
@@ -245,6 +247,7 @@ struct ResolvedRowDamage {
     target_uid: i64,
     amount: i32,
     fraction: DamageFraction,
+    base_rate: i32,
     hurt: HurtInfoData,
 }
 
@@ -317,6 +320,7 @@ fn resolve_row_damage_result(
             numerator: damage.critical.numerator,
             denominator: damage.critical.denominator,
         },
+        base_rate,
         hurt: HurtInfoData {
             from_uid: source_uid,
             is_crit,
