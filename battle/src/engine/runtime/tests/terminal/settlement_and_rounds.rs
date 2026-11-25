@@ -5,6 +5,16 @@ pub(super) fn install_round_start_enemy_kill(
     owner_uid: i64,
     skill_id: i32,
 ) {
+    install_setup_enemy_kill(runtime, owner_uid, skill_id, 103, NoneMode::RoundStart);
+}
+
+pub(super) fn install_setup_enemy_kill(
+    runtime: &mut BattleRuntime,
+    owner_uid: i64,
+    skill_id: i32,
+    opcode: i32,
+    timing: NoneMode,
+) {
     let mut slot = SkillEffectSlot::new(
         ParsedBehavior::from_spec(BehaviorSpec::new(60015, "Kill"), Vec::new(), Vec::new()),
         TargetRequest {
@@ -13,9 +23,9 @@ pub(super) fn install_round_start_enemy_kill(
         },
     );
     slot.conditions = vec![ParsedCondition {
-        opcode: 103,
+        opcode,
         type_name: "None".to_owned(),
-        kind: ParsedConditionKind::None(NoneMode::RoundStart),
+        kind: ParsedConditionKind::None(timing),
         raw_args: Vec::new(),
     }];
     slot.compiled_route = ConditionRoute::compile(&slot.conditions);

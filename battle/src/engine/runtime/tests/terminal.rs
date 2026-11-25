@@ -7,5 +7,6 @@ use crate::engine::skill::{
     target::TargetRequest,
 };
 
+mod fight_tasks;
 mod settlement_and_rounds;
 mod waves;

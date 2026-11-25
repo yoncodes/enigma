@@ -4,14 +4,36 @@ use anyhow::{Context, Result, bail, ensure};
 
 use sonettobuf::{Fight, FightTask, FightTaskBox, FightTaskValue};
 
-const RUNNING: i32 = 2;
-const FINISHED: i32 = 3;
+mod prerequisites;
+
+#[derive(Clone, Copy)]
+#[repr(i32)]
+enum TaskStatus {
+    Waiting = 1,
+    Running = 2,
+    Finished = 3,
+}
+
+impl TaskStatus {
+    fn wire(self) -> Option<i32> {
+        Some(self as i32)
+    }
+
+    fn from_progress(values: &[FightTaskValue]) -> Self {
+        if values.iter().all(|value| value.finished == Some(true)) {
+            Self::Finished
+        } else {
+            Self::Running
+        }
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum TaskProgress {
     IndicatorValue(i32),
     IndicatorThreshold { indicator_id: i32, threshold: i32 },
     KillMonster(Vec<i32>),
+    VictoryByRound(i32),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -30,6 +52,7 @@ pub struct FightTaskChange {
 pub struct FightTaskManager {
     tasks: Vec<FightTask>,
     rules: HashMap<i32, Vec<TaskRule>>,
+    prerequisites: prerequisites::TaskPrerequisites,
     models: HashMap<i64, i32>,
     pending: HashSet<i32>,
 }
@@ -66,7 +89,8 @@ impl FightTaskManager {
             );
         }
         let mut rules = HashMap::new();
-        for (task, task_id) in tasks.iter().zip(actual_ids) {
+        let mut prerequisites = prerequisites::TaskPrerequisites::default();
+        for (&task_id, task) in actual_ids.iter().zip(&tasks) {
             let row = catalog
                 .game_data()
                 .fight_task
@@ -76,16 +100,21 @@ impl FightTaskManager {
                 })?;
             let definitions =
                 task_rules(row).with_context(|| format!("unsupported fight task {task_id}"))?;
-            validate_snapshot(task, &definitions)
+            prerequisites
+                .insert(task_id, &row.condition)
+                .with_context(|| format!("invalid fight task condition {task_id}"))?;
+            validate_progress(task, &definitions)
                 .with_context(|| format!("invalid fight task snapshot {task_id}"))?;
             rules.insert(
                 task_id,
                 definitions.into_iter().map(|(rule, _)| rule).collect(),
             );
         }
+        prerequisites.validate(&actual_ids, &tasks)?;
         Ok(Self {
             tasks,
             rules,
+            prerequisites,
             models: super::entities(fight)
                 .filter_map(|entity| Some((entity.uid?, entity.model_id?)))
                 .collect(),
@@ -98,7 +127,7 @@ impl FightTaskManager {
             let Some(task_id) = task.task_id else {
                 continue;
             };
-            if task.status == Some(FINISHED) {
+            if task.status != TaskStatus::Running.wire() {
                 continue;
             }
             let Some(definitions) = self.rules.get(&task_id) else {
@@ -139,25 +168,21 @@ impl FightTaskManager {
             if !changed {
                 continue;
             }
-            task.status = Some(
-                if task.values.iter().all(|value| value.finished == Some(true)) {
-                    FINISHED
-                } else {
-                    RUNNING
-                },
-            );
+            task.status = TaskStatus::from_progress(&task.values).wire();
             self.pending.insert(task_id);
         }
+        self.pending
+            .extend(self.prerequisites.activate(&mut self.tasks));
     }
 
     pub fn record_kill(&mut self, target_uid: i64, team_type: i32) -> Option<FightTaskChange> {
         let model_id = *self.models.get(&target_uid)?;
-        let mut changed_tasks = Vec::new();
+        let mut changed_ids = HashSet::new();
         for task in &mut self.tasks {
             let Some(task_id) = task.task_id else {
                 continue;
             };
-            if task.status == Some(FINISHED) {
+            if task.status != TaskStatus::Running.wire() {
                 continue;
             }
             let Some(definitions) = self.rules.get(&task_id) else {
@@ -195,35 +220,79 @@ impl FightTaskManager {
             if !changed {
                 continue;
             }
-            task.status = Some(
-                if task.values.iter().all(|value| value.finished == Some(true)) {
-                    FINISHED
-                } else {
-                    RUNNING
-                },
-            );
-            changed_tasks.push(task.clone());
+            task.status = TaskStatus::from_progress(&task.values).wire();
+            changed_ids.insert(task_id);
         }
-        (!changed_tasks.is_empty()).then_some(FightTaskChange {
-            team_type,
-            tasks: changed_tasks,
-        })
+        if changed_ids.is_empty() {
+            return None;
+        }
+        changed_ids.extend(self.prerequisites.activate(&mut self.tasks));
+        self.change(team_type, &changed_ids)
+    }
+
+    pub(crate) fn record_victory(&mut self, round: i32, team_type: i32) -> Option<FightTaskChange> {
+        let mut changed_ids = HashSet::new();
+        loop {
+            self.complete_deadlines(round, &mut changed_ids);
+            let activated = self.prerequisites.activate(&mut self.tasks);
+            if activated.is_empty() {
+                break;
+            }
+            changed_ids.extend(activated);
+        }
+        self.change(team_type, &changed_ids)
+    }
+
+    fn complete_deadlines(&mut self, round: i32, changed_ids: &mut HashSet<i32>) {
+        for task in &mut self.tasks {
+            let Some(task_id) = task.task_id else {
+                continue;
+            };
+            if task.status != TaskStatus::Running.wire() {
+                continue;
+            }
+            let Some(definitions) = self.rules.get(&task_id) else {
+                continue;
+            };
+            let mut changed = false;
+            for definition in definitions {
+                let TaskProgress::VictoryByRound(limit) = definition.progress else {
+                    continue;
+                };
+                if !(1..=limit).contains(&round) {
+                    continue;
+                }
+                if let Some(value) = task.values.iter_mut().find(|value| {
+                    value.index == Some(definition.value_index) && value.finished != Some(true)
+                }) {
+                    value.progress = value.max_progress;
+                    value.finished = Some(true);
+                    changed = true;
+                }
+            }
+            if changed {
+                task.status = TaskStatus::from_progress(&task.values).wire();
+                changed_ids.insert(task_id);
+            }
+        }
     }
 
     pub fn take_pending(&mut self, team_type: i32) -> Option<FightTaskChange> {
-        if self.pending.is_empty() {
+        let change = self.change(team_type, &self.pending);
+        self.pending.clear();
+        change
+    }
+
+    fn change(&self, team_type: i32, changed_ids: &HashSet<i32>) -> Option<FightTaskChange> {
+        if changed_ids.is_empty() {
             return None;
         }
         let tasks = self
             .tasks
             .iter()
-            .filter(|task| {
-                task.task_id
-                    .is_some_and(|task_id| self.pending.contains(&task_id))
-            })
+            .filter(|task| task.task_id.is_some_and(|id| changed_ids.contains(&id)))
             .cloned()
             .collect();
-        self.pending.clear();
         Some(FightTaskChange { team_type, tasks })
     }
 
@@ -254,10 +323,12 @@ pub(crate) fn configured_box(
             format!("teaching episode {episode_id} references missing fight task {task_id}")
         })?;
         let rules = task_rules(row).with_context(|| format!("invalid fight task {task_id}"))?;
-        rows.push((index, task_id, rules));
+        let prerequisites = prerequisites::parse(&row.condition)
+            .with_context(|| format!("invalid fight task condition {task_id}"))?;
+        rows.push((index, task_id, rules, prerequisites));
     }
     // Captured tutorials keep the primary objective first, then defeat, then auxiliaries.
-    rows.sort_by_key(|(index, _, rules)| {
+    rows.sort_by_key(|(index, _, rules, _)| {
         if *index == 0 {
             0
         } else if rules
@@ -271,7 +342,7 @@ pub(crate) fn configured_box(
     });
     let tasks = rows
         .into_iter()
-        .map(|(_, task_id, rules)| {
+        .map(|(_, task_id, rules, prerequisites)| {
             let values = rules
                 .into_iter()
                 .map(|(rule, max_progress)| FightTaskValue {
@@ -283,7 +354,12 @@ pub(crate) fn configured_box(
                 .collect();
             FightTask {
                 task_id: Some(task_id),
-                status: Some(RUNNING),
+                status: if prerequisites.is_empty() {
+                    TaskStatus::Running
+                } else {
+                    TaskStatus::Waiting
+                }
+                .wire(),
                 values,
             }
         })
@@ -309,18 +385,23 @@ fn task_rules(row: &config::fight_task::FightTask) -> Result<Vec<(TaskRule, i32)
         let slot = index as i32 + 1;
         let rule = parse_task_rule(slot, parameter)
             .with_context(|| format!("taskParam{slot}={parameter:?}"))?;
+        if matches!(rule.progress, TaskProgress::VictoryByRound(_)) {
+            ensure!(
+                max_progress == 1,
+                "round deadline progress maximum must be 1"
+            );
+        }
         rules.push((rule, max_progress));
     }
     ensure!(!rules.is_empty(), "task has no progress rules");
     Ok(rules)
 }
 
-fn validate_snapshot(task: &FightTask, rules: &[(TaskRule, i32)]) -> Result<()> {
+fn validate_progress(task: &FightTask, rules: &[(TaskRule, i32)]) -> Result<()> {
     ensure!(
         task.values.len() == rules.len(),
         "progress value count differs"
     );
-    let mut all_finished = true;
     for (rule, expected_max) in rules {
         let matches = task
             .values
@@ -352,12 +433,7 @@ fn validate_snapshot(task: &FightTask, rules: &[(TaskRule, i32)]) -> Result<()> 
             "finished state differs at index {}",
             rule.value_index
         );
-        all_finished &= finished;
     }
-    ensure!(
-        task.status == Some(if all_finished { FINISHED } else { RUNNING }),
-        "task status differs from progress"
-    );
     Ok(())
 }
 
@@ -404,6 +480,11 @@ fn parse_task_rule(value_index: i32, parameter: &str) -> Result<TaskRule> {
                 .collect::<Result<Vec<_>>>()?;
             ensure!(!model_ids.is_empty(), "KillMonster has no model ids");
             TaskProgress::KillMonster(model_ids)
+        }
+        "Round" => {
+            let limit = parse_i32(parts.next(), "round limit")?;
+            ensure!(limit > 0 && parts.next().is_none(), "invalid round limit");
+            TaskProgress::VictoryByRound(limit)
         }
         _ => bail!("unsupported fight task kind '{kind}'"),
     };

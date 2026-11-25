@@ -3,7 +3,7 @@ use super::*;
 fn task(task_id: i32, max_progress: i32) -> FightTask {
     FightTask {
         task_id: Some(task_id),
-        status: Some(RUNNING),
+        status: TaskStatus::Running.wire(),
         values: vec![FightTaskValue {
             index: Some(1),
             progress: Some(0),
@@ -73,9 +73,9 @@ fn indicator_updates_emit_changed_tasks_in_box_order() {
         vec![370_701, 370_702]
     );
     assert_eq!(change.tasks[0].values[0].progress, Some(1));
-    assert_eq!(change.tasks[0].status, Some(RUNNING));
+    assert_eq!(change.tasks[0].status, TaskStatus::Running.wire());
     assert_eq!(change.tasks[1].values[0].progress, Some(1));
-    assert_eq!(change.tasks[1].status, Some(FINISHED));
+    assert_eq!(change.tasks[1].status, TaskStatus::Finished.wire());
     assert!(manager.take_pending(1).is_none());
 }
 
@@ -119,15 +119,91 @@ fn configured_kills_emit_each_matching_death() {
     assert_eq!(first.tasks[0].values[0].progress, Some(1));
     assert_eq!(second.tasks[0].values[0].progress, Some(2));
     assert_eq!(third.tasks[0].values[0].progress, Some(3));
-    assert_eq!(third.tasks[0].status, Some(FINISHED));
+    assert_eq!(third.tasks[0].status, TaskStatus::Finished.wire());
     assert!(manager.record_kill(-3, 1).is_none());
 }
 
 #[test]
 fn unsupported_and_malformed_rules_fail_loud() {
-    assert!(parse_task_rule(1, "Round#3").is_err());
+    assert!(parse_task_rule(1, "Round#0").is_err());
+    assert!(parse_task_rule(1, "Round#3#4").is_err());
     assert!(parse_task_rule(1, "Indicator#3713#10#3").is_err());
     assert!(parse_task_rule(1, "KillMonster#bad").is_err());
+}
+
+#[test]
+fn deadlines_wait_for_all_prerequisites_and_include_the_last_round() {
+    crate::test_support::init_config();
+    let catalog = crate::catalog::BattleCatalog::new(crate::test_support::game_data());
+    let mut deadline = task(381_207, 1);
+    deadline.status = TaskStatus::Waiting.wire();
+    let fight = Fight {
+        defender: Some(sonettobuf::FightTeam {
+            entitys: [120_384_221, 120_384_212]
+                .into_iter()
+                .enumerate()
+                .map(|(index, model_id)| sonettobuf::FightEntityInfo {
+                    uid: Some(-(index as i64) - 1),
+                    model_id: Some(model_id),
+                    ..Default::default()
+                })
+                .collect(),
+            ..Default::default()
+        }),
+        fight_task_box: Some(FightTaskBox {
+            tasks: vec![deadline, task(381_203, 1), task(381_206, 6)],
+        }),
+        ..Default::default()
+    };
+    let mut manager = FightTaskManager::seed(catalog, &fight).unwrap();
+    assert!(manager.record_victory(8, 1).is_none());
+    assert_eq!(manager.record_kill(-1, 1).unwrap().tasks.len(), 1);
+    for _ in 0..5 {
+        assert_eq!(manager.record_kill(-2, 1).unwrap().tasks.len(), 1);
+    }
+    let change = manager.record_kill(-2, 1).unwrap();
+    assert_eq!(change.tasks[0].task_id, Some(381_207));
+    assert_eq!(change.tasks[0].status, TaskStatus::Running.wire());
+    assert_eq!(change.tasks[0].values[0].progress, Some(0));
+    assert_eq!(change.tasks[1].status, TaskStatus::Finished.wire());
+
+    let mut late = manager.clone();
+    assert!(late.record_victory(9, 1).is_none());
+
+    let change = manager.record_victory(8, 1).unwrap();
+    assert_eq!(change.tasks[0].task_id, Some(381_207));
+    assert_eq!(change.tasks[0].status, TaskStatus::Finished.wire());
+    assert_eq!(change.tasks[0].values[0].progress, Some(1));
+    assert!(manager.record_victory(8, 1).is_none());
+    assert!(manager.take_pending(1).is_none());
+}
+
+#[test]
+fn one_victory_can_complete_a_chain_of_deadlines() {
+    let mut dependent = task(2, 1);
+    dependent.status = TaskStatus::Waiting.wire();
+    let mut manager = FightTaskManager {
+        tasks: vec![dependent, task(1, 1), task(3, 1)],
+        pending: HashSet::from([3]),
+        ..Default::default()
+    };
+    manager.prerequisites.insert(2, "FinishedTask#1").unwrap();
+    for id in [1, 2] {
+        manager
+            .rules
+            .insert(id, vec![parse_task_rule(1, "Round#3").unwrap()]);
+    }
+
+    let change = manager.record_victory(3, 1).unwrap();
+    assert_eq!(change.tasks.len(), 2);
+    assert!(
+        change
+            .tasks
+            .iter()
+            .all(|task| task.status == TaskStatus::Finished.wire())
+    );
+    let pending = manager.take_pending(1).unwrap();
+    assert_eq!(pending.tasks[0].task_id, Some(3));
 }
 
 #[test]
@@ -212,7 +288,7 @@ fn malformed_snapshot_is_rejected() {
     invalid.push(missing_finished);
 
     let mut wrong_status = configured_kill_fight(catalog);
-    configured_task_mut(&mut wrong_status, 370_803).status = Some(FINISHED);
+    configured_task_mut(&mut wrong_status, 370_803).status = TaskStatus::Finished.wire();
     invalid.push(wrong_status);
 
     for fight in invalid {

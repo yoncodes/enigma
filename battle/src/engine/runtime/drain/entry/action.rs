@@ -90,9 +90,15 @@ pub fn run_action(
 }
 
 fn append_fight_task_update(result: &mut DrainResult, managers: &mut BattleManagers) {
-    let Some(change) = managers.fight_task.take_pending(1) else {
-        return;
-    };
+    if let Some(change) = managers.fight_task.take_pending(1) {
+        push_fight_task_update(result, change);
+    }
+}
+
+fn push_fight_task_update(
+    result: &mut DrainResult,
+    change: crate::engine::manager::fight_task::FightTaskChange,
+) {
     let path = push_root(
         &mut result.frames,
         FrameOwner::Command,
@@ -103,6 +109,16 @@ fn append_fight_task_update(result: &mut DrainResult, managers: &mut BattleManag
         &path,
         crate::engine::runtime::change::BattleChange::FightTask(change),
     );
+}
+
+pub(crate) fn settle_fight_tasks(
+    result: &mut DrainResult,
+    managers: &mut BattleManagers,
+    round: i32,
+) {
+    if let Some(change) = managers.fight_task.record_victory(round, 1) {
+        push_fight_task_update(result, change);
+    }
 }
 
 #[allow(clippy::too_many_arguments)]

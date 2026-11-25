@@ -496,36 +496,39 @@ pub fn run_round_start_after_ai_split(
     );
     let mut next_round_begin_steps = DrainResult::default();
     push_cue(&mut next_round_begin_steps.frames, RoundCue::DealCard1);
-    append(&mut next_round_begin_steps, after_round_start);
-    append(&mut next_round_begin_steps, round_start_refill);
     let mut dealt_cards = managers.card.refilled()[refill_start..].to_vec();
-    append(
-        &mut next_round_begin_steps,
-        drain::run_round_start_card_event(
-            managers,
-            pool,
-            catalog,
-            determinism,
-            context,
-            &owner_uids,
-        )?,
-    );
-    append(
-        &mut next_round_begin_steps,
-        run_card_energy_allocation(managers, pool, catalog, determinism, context, 1)?,
-    );
-    append(
-        &mut next_round_begin_steps,
-        drain::run_setup_stage(
-            managers,
-            pool,
-            catalog,
-            determinism,
-            context,
-            SetupStage::CardSetup,
-            0,
-        )?,
-    );
+    let round_start_cards = drain::run_round_start_card_event(
+        managers,
+        pool,
+        catalog,
+        determinism,
+        context,
+        &owner_uids,
+    )?;
+    let card_energy = run_card_energy_allocation(managers, pool, catalog, determinism, context, 1)?;
+    let card_setup = drain::run_setup_stage(
+        managers,
+        pool,
+        catalog,
+        determinism,
+        context,
+        SetupStage::CardSetup,
+        0,
+    )?;
+    if crate::engine::round::outcome::battle_ended_for_battle_id(context.battle_id, pool, managers)
+    {
+        append(&mut fight_steps, after_round_start);
+        append(&mut fight_steps, round_start_cards);
+        append(&mut fight_steps, card_setup);
+        append(&mut next_round_begin_steps, round_start_refill);
+        append(&mut next_round_begin_steps, card_energy);
+    } else {
+        append(&mut next_round_begin_steps, after_round_start);
+        append(&mut next_round_begin_steps, round_start_refill);
+        append(&mut next_round_begin_steps, round_start_cards);
+        append(&mut next_round_begin_steps, card_energy);
+        append(&mut next_round_begin_steps, card_setup);
+    }
     push_cue(
         &mut next_round_begin_steps.frames,
         RoundCue::LayerHaloSync {

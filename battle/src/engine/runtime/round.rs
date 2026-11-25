@@ -4,7 +4,10 @@ use crate::engine::{
     manager::card::CardCommand,
     round::{
         command::{RoundCommand, commands_from_opers},
-        outcome::{battle_ended, finish_if_battle_ended, round_limit_reached, should_advance_wave},
+        outcome::{
+            BattleOutcome, battle_ended, battle_outcome, finish_if_battle_ended,
+            round_limit_reached, should_advance_wave,
+        },
         power::ClothPower,
         state::{RoundCardSnapshotPolicy, RoundState, next_action_points, next_round_shell},
     },
@@ -622,9 +625,6 @@ impl BattleRuntime {
             }
             (round_start, next_round, hand_snapshot, dealt_cards, true)
         };
-        finish_if_battle_ended(&mut self.round_state, &self.fight, &pool, &self.managers);
-        let terminal_during_next_round_preparation =
-            next_round_prepared && self.round_state.is_finish;
         fight_steps.extend(project_result(
             round_start,
             fight_version,
@@ -658,6 +658,9 @@ impl BattleRuntime {
             )?);
             self.wave_entry_condition_uids = entering_uids;
         }
+        finish_if_battle_ended(&mut self.round_state, &self.fight, &pool, &self.managers);
+        let terminal_during_next_round_preparation =
+            next_round_prepared && self.round_state.is_finish;
         if !self.round_state.is_finish {
             let extra_ai_actions = crate::engine::round::modifier::ai_action_bonus(
                 &pool,
@@ -699,6 +702,22 @@ impl BattleRuntime {
                 absorb_hurt_map_layout,
             )?);
         }
+        let mut terminal = drain::DrainResult::default();
+        if self.round_state.is_finish
+            && battle_outcome(&self.fight, &pool, &self.managers) == BattleOutcome::Victory
+        {
+            let round = if terminal_during_next_round_preparation {
+                self.round_state.cur_round
+            } else {
+                active_round
+            };
+            drain::settle_fight_tasks(&mut terminal, &mut self.managers, round);
+        }
+        fight_steps.extend(project_result(
+            terminal,
+            fight_version,
+            absorb_hurt_map_layout,
+        )?);
         let next_round_begin_step =
             project_result(next_round, fight_version, absorb_hurt_map_layout)?;
 
