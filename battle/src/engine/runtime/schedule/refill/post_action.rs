@@ -8,6 +8,8 @@ pub(crate) struct RefillSlots {
 
 impl RefillSlots {
     pub(crate) fn capture(managers: &BattleManagers, pool: &TargetPool) -> Self {
+        let ignores_draw_limit =
+            crate::engine::mechanic::card::CardMechanic.round_draw_waiver(managers);
         let exempt_ultimate = |card: &sonettobuf::CardInfo| {
             pool.entity(card.uid.unwrap_or_default())
                 .is_some_and(|entity| {
@@ -23,7 +25,7 @@ impl RefillSlots {
                 .card
                 .committed_hand()
                 .iter()
-                .filter(|card| !card.temp_card.unwrap_or_default())
+                .filter(|card| !card.temp_card.unwrap_or_default() && !ignores_draw_limit(card))
                 .count(),
             played: managers
                 .card
@@ -32,6 +34,7 @@ impl RefillSlots {
                 .filter(|played| {
                     !played.card.temp_card.unwrap_or_default()
                         && played.hand_index.is_some()
+                        && !ignores_draw_limit(&played.card)
                         && !exempt_ultimate(&played.card)
                 })
                 .map(|played| played.card_index)

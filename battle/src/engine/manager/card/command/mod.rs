@@ -519,6 +519,7 @@ pub enum CardCommand {
     RankUpDeckRange(CardDeckRankUpRange),
     CompleteActionPhase {
         origin: CommandOrigin,
+        carried_cards: Vec<(i64, i32)>,
     },
     BeginPostActionRefill {
         origin: CommandOrigin,

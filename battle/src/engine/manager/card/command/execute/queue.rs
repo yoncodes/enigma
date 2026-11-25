@@ -91,8 +91,9 @@ pub(super) fn change_queued_ranks(
 pub(super) fn complete_action_phase(
     manager: &mut CardManager,
     origin: CommandOrigin,
+    carried_cards: &[(i64, i32)],
 ) -> CardChanges {
-    manager.complete_action_phase();
+    manager.complete_action_phase(carried_cards);
     CardChanges::new(Some(origin), CardChangeKind::ActionPhaseCompleted)
 }
 

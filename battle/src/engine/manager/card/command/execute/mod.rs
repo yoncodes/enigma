@@ -105,9 +105,10 @@ pub(in crate::engine::manager::card) fn execute(
         }
         CardCommand::RankUpHand(change) => hand::rank_up_hand(manager, change)?,
         CardCommand::RankUpDeckRange(change) => draw::rank_up_deck_range(manager, change)?,
-        CardCommand::CompleteActionPhase { origin } => {
-            queue::complete_action_phase(manager, origin)
-        }
+        CardCommand::CompleteActionPhase {
+            origin,
+            carried_cards,
+        } => queue::complete_action_phase(manager, origin, &carried_cards),
         CardCommand::BeginPostActionRefill { origin } => {
             draw::begin_post_action_refill(manager, origin)
         }

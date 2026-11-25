@@ -3,6 +3,7 @@ use sonettobuf::{CardInfo, Fight};
 use crate::engine::{
     manager::{
         BattleManagers,
+        buff::ActiveBuffFeature,
         eureka::{EurekaState, PowerType},
         ex_point::ExPointKind,
     },
@@ -317,6 +318,49 @@ impl CardMechanic {
         self.skill_ignores_limit(managers, owner_uid, skill_id, true)
     }
 
+    pub(crate) fn carried_team_cards(&self, managers: &BattleManagers) -> Vec<(i64, i32)> {
+        let team_cards = managers.card.team_cards();
+        if team_cards.is_empty() {
+            return Vec::new();
+        }
+        let ignores_draw_limit = self.round_draw_waiver(managers);
+        team_cards
+            .iter()
+            .filter(|card| ignores_draw_limit(card))
+            .filter_map(|card| card.uid.zip(card.skill_id))
+            .collect()
+    }
+
+    pub(crate) fn round_draw_waiver(
+        &self,
+        managers: &BattleManagers,
+    ) -> impl Fn(&CardInfo) -> bool {
+        use crate::engine::fight::versions::{RoundStartSetupLayout, round_start_setup_layout};
+        use crate::engine::skill::buff_act::registry;
+
+        let features = if round_start_setup_layout(managers.fight_version())
+            == Some(RoundStartSetupLayout::Version7)
+        {
+            managers
+                .buff
+                .active_features_where(&managers.hp, |opcode, name, _| {
+                    opcode.and_then(|opcode| registry::kind(opcode, name))
+                        == Some(BuffActKind::CardNotCalSize)
+                })
+        } else {
+            Vec::new()
+        };
+        move |card| {
+            card.uid
+                .zip(card.skill_id)
+                .is_some_and(|(owner_uid, skill_id)| {
+                    features.iter().any(|feature| {
+                        feature.owner_uid == owner_uid && card_ignores_limit(feature, skill_id)
+                    })
+                })
+        }
+    }
+
     fn skill_ignores_limit(
         &self,
         managers: &BattleManagers,
@@ -330,8 +374,7 @@ impl CardMechanic {
             .iter()
             .any(|feature| {
                 feature.owner_uid == owner_uid
-                    && ((is_kind(feature, BuffActKind::CardNotCalSize)
-                        && feature.values.contains(&skill_id))
+                    && (card_ignores_limit(feature, skill_id)
                         || (is_ultimate && is_kind(feature, BuffActKind::EntityExSkillNotCalSize)))
             })
     }
@@ -358,6 +401,10 @@ impl CardMechanic {
             })
             .collect()
     }
+}
+
+fn card_ignores_limit(feature: &ActiveBuffFeature, skill_id: i32) -> bool {
+    is_kind(feature, BuffActKind::CardNotCalSize) && feature.values.contains(&skill_id)
 }
 
 #[cfg(test)]

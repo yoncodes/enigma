@@ -127,6 +127,7 @@ pub fn run_action_phase_end(
         key: DefinitionKey::new(0, "ActionPhaseEnd"),
     };
     let mut phase = begin_round_phase(RoundPhase::ActionPhaseEnd { team });
+    let carried_cards = crate::engine::mechanic::card::CardMechanic.carried_team_cards(managers);
     append_round_phase(
         &mut phase,
         drain::run(
@@ -136,7 +137,10 @@ pub fn run_action_phase_end(
             determinism,
             context,
             [RuleOp::Command(BattleCommand::Card(
-                CardCommand::CompleteActionPhase { origin },
+                CardCommand::CompleteActionPhase {
+                    origin,
+                    carried_cards,
+                },
             ))],
         )?,
     );

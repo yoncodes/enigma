@@ -39,7 +39,14 @@ impl ActionPhaseCards {
 }
 
 impl CardManager {
-    pub(super) fn complete_action_phase(&mut self) {
+    pub(super) fn complete_action_phase(&mut self, carried_cards: &[(i64, i32)]) {
+        for card in self.team_cards.extract_if(.., |card| {
+            card.uid
+                .zip(card.skill_id)
+                .is_some_and(|identity| carried_cards.contains(&identity))
+        }) {
+            self.deck.add_to_hand(card);
+        }
         let hand = self.hand().to_vec();
         self.action_phase.complete(&hand);
     }
