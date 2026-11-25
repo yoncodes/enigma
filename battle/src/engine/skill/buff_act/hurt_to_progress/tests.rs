@@ -27,9 +27,8 @@ fn subscriber() -> BuffActSubscriber {
     }
 }
 
-#[test]
-fn converts_damage_using_configured_permille() {
-    let event = BattleEvent::Hit(crate::engine::event::payload::HitEvent {
+fn hit(resolved_damage: i32, damage_from: HurtDamageFromType) -> BattleEvent {
+    BattleEvent::Hit(crate::engine::event::payload::HitEvent {
         origin: CommandOrigin {
             domain: RuleDomain::Skill,
             key: DefinitionKey::new(1, "SkillDamage"),
@@ -38,14 +37,19 @@ fn converts_damage_using_configured_permille() {
         target_uid: -1,
         skill_id: 1,
         amount: 1_000,
-        resolved_damage: 3_874,
+        resolved_damage,
         shield_absorbed: 0,
         career_restraint: false,
-        damage_from: HurtDamageFromType::Skill,
+        damage_from,
         share_count: 0,
         assassinate: false,
         ignore_riposte: false,
-    });
+    })
+}
+
+#[test]
+fn converts_damage_using_configured_permille() {
+    let event = hit(3_874, HurtDamageFromType::Skill);
     assert!(matches!(
         rule_ops(&subscriber(), &event).as_deref(),
         Some([RuleOp::Command(BattleCommand::FightProgressValue(
@@ -55,5 +59,14 @@ fn converts_damage_using_configured_permille() {
                 ..
             }
         ))])
+    ));
+}
+
+#[test]
+fn linked_additional_damage_does_not_fill_echo_volume() {
+    let event = hit(4_955, HurtDamageFromType::Additional);
+    assert!(matches!(
+        rule_ops(&subscriber(), &event).as_deref(),
+        Some([])
     ));
 }

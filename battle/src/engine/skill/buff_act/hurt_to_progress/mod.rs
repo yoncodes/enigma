@@ -1,6 +1,6 @@
 use crate::engine::{
     event::payload::BattleEvent,
-    manager::fight_progress::FightProgressValueCommand,
+    manager::{fight_progress::FightProgressValueCommand, hp::HurtDamageFromType},
     skill::{
         rule::output::{BattleCommand, RuleOp},
         subscriber::BuffActSubscriber,
@@ -20,6 +20,7 @@ pub fn rule_ops(subscriber: &BuffActSubscriber, event: &BattleEvent) -> Option<V
     };
     if !super::subscriber_is_kind(subscriber, super::registry::BuffActKind::HurtToProgress)
         || hit.target_uid != subscriber.owner_uid
+        || hit.damage_from == HurtDamageFromType::Additional
     {
         return Some(Vec::new());
     }
