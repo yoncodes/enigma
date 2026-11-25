@@ -718,9 +718,10 @@ pub fn run_start(
     let mut opening_settlement = None;
     let mut opening_late_ran = false;
     let mut opening_fields = drain::OpeningFields::default();
+    let opening_layout =
+        crate::engine::fight::versions::round_start_setup_layout(managers.fight_version());
     let version7_opening =
-        crate::engine::fight::versions::round_start_setup_layout(managers.fight_version())
-            == Some(crate::engine::fight::versions::RoundStartSetupLayout::Version7);
+        opening_layout == Some(crate::engine::fight::versions::RoundStartSetupLayout::Version7);
     for (stage, priority) in START.iter().copied() {
         if version7_opening && (stage, priority) == (SetupStage::RoundStart, -1) {
             append(
@@ -1035,7 +1036,7 @@ pub fn run_start(
                     )?,
                 );
             }
-            managers.card.begin_opening_deal();
+            managers.card.begin_opening_deal(opening_layout);
             dealt_cards = Some(managers.card.hand().to_vec());
             push_cue(&mut result.frames, RoundCue::EnterFightDeal);
             let mut deck_counts = Vec::new();

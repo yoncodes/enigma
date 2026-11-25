@@ -1,19 +1,22 @@
 use sonettobuf::CardInfo;
 
 use super::{CardChangeKind, CardManager, TemporaryCardKind};
+use crate::engine::fight::versions::RoundStartSetupLayout;
 
 #[derive(Debug, Clone, Default, PartialEq)]
 pub(super) struct OpeningDeal {
     cards: Option<Vec<CardInfo>>,
+    layout: Option<RoundStartSetupLayout>,
 }
 
 impl OpeningDeal {
-    fn begin(&mut self, cards: Vec<CardInfo>) {
+    fn begin(&mut self, cards: Vec<CardInfo>, layout: Option<RoundStartSetupLayout>) {
         self.cards = Some(cards);
+        self.layout = layout;
     }
 
     fn clear(&mut self) {
-        self.cards = None;
+        *self = Self::default();
     }
 
     fn record(&mut self, card: &CardInfo) {
@@ -64,8 +67,8 @@ impl OpeningDeal {
 }
 
 impl CardManager {
-    pub(crate) fn begin_opening_deal(&mut self) {
-        self.opening_deal.begin(self.hand().to_vec());
+    pub(crate) fn begin_opening_deal(&mut self, layout: Option<RoundStartSetupLayout>) {
+        self.opening_deal.begin(self.hand().to_vec(), layout);
     }
 
     pub fn opening_deal(&self) -> Option<&[CardInfo]> {
@@ -74,8 +77,11 @@ impl CardManager {
 
     pub(super) fn record_opening_temporary(&mut self, kind: TemporaryCardKind, card: &CardInfo) {
         match kind {
-            TemporaryCardKind::ConfiguredSkill | TemporaryCardKind::RoundStartSkill3 => {}
-            TemporaryCardKind::GenericSkill
+            TemporaryCardKind::ConfiguredSkill => {}
+            TemporaryCardKind::RoundStartSkill3
+                if self.opening_deal.layout == Some(RoundStartSetupLayout::Version7) => {}
+            TemporaryCardKind::RoundStartSkill3
+            | TemporaryCardKind::GenericSkill
             | TemporaryCardKind::PrecastSkill
             | TemporaryCardKind::ConfiguredSkill3
             | TemporaryCardKind::HeroSkill => self.opening_deal.record(card),

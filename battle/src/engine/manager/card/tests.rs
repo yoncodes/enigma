@@ -3,16 +3,17 @@ use rand::{SeedableRng, rngs::StdRng};
 use sonettobuf::{Fight, FightEntityInfo, FightTeam};
 
 #[test]
-fn round_start_temporary_grants_stay_in_hand_without_being_dealt() {
-    use crate::engine::skill::rule::{CommandOrigin, DefinitionKey, RuleDomain};
+fn opening_deal_uses_the_layout_for_round_start_temporary_grants() {
+    use crate::engine::{
+        fight::versions::RoundStartSetupLayout,
+        skill::rule::{CommandOrigin, DefinitionKey, RuleDomain},
+    };
 
     let initial = CardInfo {
         uid: Some(10),
         skill_id: Some(100),
         ..Default::default()
     };
-    let mut manager = CardManager::new(vec![initial.clone()]);
-    manager.begin_opening_deal();
     let grant = CardAddTemporary {
         origin: CommandOrigin {
             domain: RuleDomain::BuffAct,
@@ -25,25 +26,37 @@ fn round_start_temporary_grants_stay_in_hand_without_being_dealt() {
         team_type: 1,
         kind: TemporaryCardKind::RoundStartSkill3,
     };
-    let generated = manager
-        .execute_command(CardCommand::AddTemporary(grant))
-        .unwrap();
-    let configured = manager
-        .execute_command(CardCommand::AddTemporary(CardAddTemporary {
-            skill_id: 102,
-            kind: TemporaryCardKind::ConfiguredSkill3,
-            ..grant
-        }))
-        .unwrap();
+    for (layout, separately_granted) in [
+        (RoundStartSetupLayout::Version6, false),
+        (RoundStartSetupLayout::Version7, true),
+    ] {
+        let mut manager = CardManager::new(vec![initial.clone()]);
+        manager.begin_opening_deal(Some(layout));
+        let generated = manager
+            .execute_command(CardCommand::AddTemporary(grant))
+            .unwrap();
+        let configured = manager
+            .execute_command(CardCommand::AddTemporary(CardAddTemporary {
+                skill_id: 102,
+                kind: TemporaryCardKind::ConfiguredSkill3,
+                ..grant
+            }))
+            .unwrap();
 
-    assert_eq!(generated.kind, CardChangeKind::ConfiguredSkill3Added);
-    let generated = generated.added.unwrap();
-    let configured = configured.added.unwrap();
-    assert_eq!(
-        manager.hand(),
-        &[initial.clone(), generated, configured.clone()]
-    );
-    assert_eq!(manager.opening_deal().unwrap(), &[initial, configured]);
+        assert_eq!(generated.kind, CardChangeKind::ConfiguredSkill3Added);
+        let generated = generated.added.unwrap();
+        let configured = configured.added.unwrap();
+        let hand = [initial.clone(), generated, configured.clone()];
+        assert_eq!(manager.hand(), &hand);
+        if separately_granted {
+            assert_eq!(
+                manager.opening_deal().unwrap(),
+                &[initial.clone(), configured]
+            );
+        } else {
+            assert_eq!(manager.opening_deal().unwrap(), &hand);
+        }
+    }
 }
 
 #[test]
