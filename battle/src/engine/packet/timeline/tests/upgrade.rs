@@ -41,7 +41,8 @@ fn applied_upgrade_projects_from_one_semantic_change() {
                 uid: Some(10),
                 ..Default::default()
             },
-            buff_changes: Vec::new(),
+            removed_buffs: Vec::new(),
+            granted_buffs: Vec::new(),
             card_changes,
         })))
         .unwrap();

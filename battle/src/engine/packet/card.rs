@@ -6,6 +6,12 @@ pub(super) mod sovereign;
 
 pub struct CardPacket;
 
+#[derive(Clone, Copy)]
+pub(crate) enum SkillConversion {
+    Upgrade,
+    ScopedReplacement,
+}
+
 impl CardPacket {
     pub fn enter_fight_deal() -> ActEffect {
         ActEffect {
@@ -239,11 +245,12 @@ impl CardPacket {
         effect
     }
 
-    pub fn convert_owner_skill_card(
+    pub(crate) fn convert_owner_skill_card(
         owner_uid: i64,
         hand_index: usize,
         card: CardInfo,
         team_type: i32,
+        conversion: SkillConversion,
     ) -> ActEffect {
         let card = wire_card(card);
         ActEffect {
@@ -254,7 +261,10 @@ impl CardPacket {
                 .and_then(|index| index.checked_add(1)),
             config_effect: card.skill_id,
             buff_act_id: Some(0),
-            reserve_id: Some(1),
+            reserve_id: Some(match conversion {
+                SkillConversion::Upgrade => 0,
+                SkillConversion::ScopedReplacement => 1,
+            }),
             card_info: Some(card),
             team_type: Some(team_type),
             effect_num1: Some(0),

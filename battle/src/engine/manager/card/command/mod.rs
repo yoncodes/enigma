@@ -486,6 +486,7 @@ pub enum CardCommand {
     RemoveOwner(CardRemoveOwner),
     InvalidateAiOwner(CardInvalidateAiOwner),
     ReplaceOwnerSkills(CardReplaceOwnerSkills),
+    ReplaceUpgradeSkills(CardReplaceOwnerSkills),
     InvalidatePlayed(CardInvalidatePlayed),
     ComposeAdjacent {
         origin: CommandOrigin,
@@ -583,6 +584,7 @@ pub enum CardChangeKind {
     AiOwnerRemoved,
     AiCardsInvalidated,
     OwnerSkillsReplaced,
+    UpgradeSkillsReplaced,
     PlayedInvalidated,
     Composed,
     EnergyAllocated,

@@ -4,7 +4,7 @@ use crate::engine::{
     fight::versions::RedealWireLayout,
     manager::card::{CARD_PLAY_ORIGIN, CardChangeKind, CardChanges, CardStateSnapshot},
     packet::{
-        card::{CardPacket, sovereign},
+        card::{CardPacket, SkillConversion, sovereign},
         effect::EffectPacket,
     },
 };
@@ -23,12 +23,17 @@ pub(super) fn project_card(
         CardChangeKind::AiQueueRefreshed => Vec::new(),
         CardChangeKind::AiQueueSet | CardChangeKind::AiCastRecorded => Vec::new(),
         CardChangeKind::TeamCardsSet => Vec::new(),
-        CardChangeKind::OwnerSkillsReplaced => {
+        CardChangeKind::OwnerSkillsReplaced | CardChangeKind::UpgradeSkillsReplaced => {
             let Some(entity) = changes.entity.as_ref() else {
                 return Ok(Vec::new());
             };
             let owner_uid = entity.uid.unwrap_or_default();
             let team_type = entity.team_type.unwrap_or_default();
+            let conversion = if changes.kind == CardChangeKind::UpgradeSkillsReplaced {
+                SkillConversion::Upgrade
+            } else {
+                SkillConversion::ScopedReplacement
+            };
             let mut effects = changes
                 .before
                 .iter()
@@ -40,7 +45,13 @@ pub(super) fn project_card(
                         && before.skill_id != after.skill_id
                 })
                 .map(|(index, (_, after))| {
-                    CardPacket::convert_owner_skill_card(owner_uid, index, after.clone(), team_type)
+                    CardPacket::convert_owner_skill_card(
+                        owner_uid,
+                        index,
+                        after.clone(),
+                        team_type,
+                        conversion,
+                    )
                 })
                 .collect::<Vec<_>>();
             effects.push(EffectPacket::hero_upgrade(owner_uid, 0, entity.clone()));

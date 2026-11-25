@@ -655,8 +655,9 @@ fn project_change(
             )];
             effects.extend(
                 applied
-                    .buff_changes
+                    .removed_buffs
                     .iter()
+                    .chain(&applied.granted_buffs)
                     .flat_map(EffectPacket::recorded_buff_changes),
             );
             effects.push(CardPacket::cards_push(

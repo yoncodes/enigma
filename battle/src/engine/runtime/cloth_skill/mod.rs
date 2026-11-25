@@ -9,6 +9,7 @@ use crate::engine::{
 use super::{BattleRuntime, change, drain, executor, project_result, record};
 
 mod crystal;
+mod upgrade;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(i32)]
@@ -165,24 +166,7 @@ impl BattleRuntime {
                     .inspect_err(|error| tracing::warn!(%error, "cloth skill projection failed"))
                     .ok()?
             }
-            ClothSkillType::HeroUpgrade => {
-                let owner_uid = request.from_id?;
-                let upgrade_id = request.skill_id?;
-                let option_id = i32::try_from(request.to_id?).ok()?;
-                let applied = self.managers.select_upgrade(
-                    &mut self.fight,
-                    owner_uid,
-                    upgrade_id,
-                    option_id,
-                )?;
-                project_changes(
-                    [change::BattleChange::UpgradeApplied(Box::new(applied))],
-                    fight_version,
-                    absorb_hurt_map_layout,
-                )
-                .inspect_err(|error| tracing::warn!(%error, "hero upgrade projection failed"))
-                .ok()?
-            }
+            ClothSkillType::HeroUpgrade => upgrade::apply(self, &request)?,
             ClothSkillType::Contract => {
                 if request.skill_id.unwrap_or_default() != 0 {
                     return None;

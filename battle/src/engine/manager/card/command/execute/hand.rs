@@ -249,6 +249,7 @@ pub(super) fn remove_owner(
 pub(super) fn replace_owner_skills(
     manager: &mut CardManager,
     replace: CardReplaceOwnerSkills,
+    kind: CardChangeKind,
 ) -> Result<CardChanges, CardCommandError> {
     if replace.owner_uid == 0 {
         return Err(CardCommandError::InvalidCommand);
@@ -260,10 +261,7 @@ pub(super) fn replace_owner_skills(
         &replace.replacement_group1,
         &replace.replacement_group2,
     );
-    Ok(CardChanges::new(
-        Some(replace.origin),
-        CardChangeKind::OwnerSkillsReplaced,
-    ))
+    Ok(CardChanges::new(Some(replace.origin), kind))
 }
 
 pub(super) fn compose_adjacent(manager: &mut CardManager, origin: CommandOrigin) -> CardChanges {

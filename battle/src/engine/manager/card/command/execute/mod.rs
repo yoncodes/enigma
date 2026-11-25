@@ -78,7 +78,12 @@ pub(in crate::engine::manager::card) fn execute(
         CardCommand::SetTeamCards(set) => ai::set_team_cards(manager, set),
         CardCommand::RemoveOwner(remove) => hand::remove_owner(manager, remove)?,
         CardCommand::InvalidateAiOwner(invalidate) => ai::invalidate_ai_owner(manager, invalidate)?,
-        CardCommand::ReplaceOwnerSkills(replace) => hand::replace_owner_skills(manager, replace)?,
+        CardCommand::ReplaceOwnerSkills(replace) => {
+            hand::replace_owner_skills(manager, replace, CardChangeKind::OwnerSkillsReplaced)?
+        }
+        CardCommand::ReplaceUpgradeSkills(replace) => {
+            hand::replace_owner_skills(manager, replace, CardChangeKind::UpgradeSkillsReplaced)?
+        }
         CardCommand::InvalidatePlayed(invalid) => queue::invalidate_played(manager, invalid)?,
         CardCommand::ComposeAdjacent { origin } => hand::compose_adjacent(manager, origin),
         CardCommand::AllocateEnergy(allocation) => energy::allocate_energy(manager, allocation)?,

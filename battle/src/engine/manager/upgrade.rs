@@ -5,6 +5,8 @@ use sonettobuf::FightEntityInfo;
 
 use super::{buff::BuffChanges, card::CardChanges};
 
+mod application;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UpgradeSelection {
     pub upgrade_id: i32,
@@ -22,7 +24,8 @@ pub struct UpgradeSelection {
 pub struct UpgradeApplied {
     pub change: UpgradeChange,
     pub entity: FightEntityInfo,
-    pub buff_changes: Vec<BuffChanges>,
+    pub removed_buffs: Vec<BuffChanges>,
+    pub granted_buffs: Vec<BuffChanges>,
     pub card_changes: CardChanges,
 }
 

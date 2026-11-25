@@ -1359,69 +1359,6 @@ impl BattleManagers {
         Some(applied)
     }
 
-    fn apply_upgrade(
-        &mut self,
-        owner_uid: i64,
-        upgrade_id: i32,
-        option_id: i32,
-    ) -> Option<upgrade::UpgradeApplied> {
-        let selection_change = self
-            .execute_upgrade(upgrade::UpgradeCommand {
-                owner_uid,
-                operation: upgrade::UpgradeOperation::Select {
-                    upgrade_id,
-                    option_id,
-                },
-            })
-            .ok()?;
-        let origin = selection_change.offer_origin?;
-        let selection = selection_change.selection.clone()?;
-        let (entity, buff_changes, card_changes) =
-            self.apply_upgrade_selection(owner_uid, origin, selection)?;
-        Some(upgrade::UpgradeApplied {
-            change: selection_change,
-            entity,
-            buff_changes,
-            card_changes,
-        })
-    }
-
-    fn apply_upgrade_selection(
-        &mut self,
-        owner_uid: i64,
-        origin: crate::engine::skill::rule::CommandOrigin,
-        selection: upgrade::UpgradeSelection,
-    ) -> Option<(FightEntityInfo, Vec<BuffChanges>, card::CardChanges)> {
-        let card_changes = self.apply_upgrade_identity(owner_uid, origin, &selection)?;
-        let mut buff_changes =
-            Vec::with_capacity(selection.del_buff_ids.len() + selection.add_buff_ids.len());
-        for buff_id in selection.del_buff_ids {
-            buff_changes.push(
-                self.execute_buff(BuffCommand::Remove(BuffRemove {
-                    origin,
-                    target_uid: owner_uid,
-                    selector: BuffRemoveSelector::ExactId(buff_id),
-                }))
-                .ok()?,
-            );
-        }
-        for buff_id in selection.add_buff_ids {
-            buff_changes.push(
-                self.execute_buff(BuffCommand::GrantUsingChildUid(BuffGrant {
-                    origin,
-                    source_uid: owner_uid,
-                    target_uid: owner_uid,
-                    buff_id,
-                    amount: None,
-                    occurrences: 1,
-                    child_uid_reservations: 0,
-                }))
-                .ok()?,
-            );
-        }
-        Some((self.entity_snapshot(owner_uid)?, buff_changes, card_changes))
-    }
-
     fn apply_upgrade_identity(
         &mut self,
         owner_uid: i64,
@@ -1466,7 +1403,7 @@ impl BattleManagers {
         }
         self.entity.update(entity);
 
-        self.execute_card(card::CardCommand::ReplaceOwnerSkills(
+        self.execute_card(card::CardCommand::ReplaceUpgradeSkills(
             card::CardReplaceOwnerSkills {
                 origin,
                 owner_uid,

@@ -216,11 +216,19 @@ fn hero_upgrade_applies_configured_buffs_as_one_child_uid_sequence() {
                     hp: Some(100),
                     ..Default::default()
                 }),
-                buffs: vec![BuffInfo {
-                    uid: Some(1094),
-                    buff_id: Some(201),
-                    ..Default::default()
-                }],
+                buffs: vec![
+                    BuffInfo {
+                        uid: Some(1094),
+                        buff_id: Some(201),
+                        ..Default::default()
+                    },
+                    BuffInfo {
+                        uid: Some(1093),
+                        buff_id: Some(30860131),
+                        duration: Some(1),
+                        ..Default::default()
+                    },
+                ],
                 ..Default::default()
             }],
             ..Default::default()
@@ -247,7 +255,7 @@ fn hero_upgrade_applies_configured_buffs_as_one_child_uid_sequence() {
         .select_upgrade(&mut fight, 10, 308665, 3086515)
         .unwrap();
     let added = applied
-        .buff_changes
+        .granted_buffs
         .iter()
         .filter_map(|changes| changes.change.added.as_ref())
         .map(|change| {
@@ -269,9 +277,41 @@ fn hero_upgrade_applies_configured_buffs_as_one_child_uid_sequence() {
     );
     assert!(
         applied
-            .buff_changes
+            .granted_buffs
             .iter()
+            .chain(&applied.removed_buffs)
             .all(|changes| changes.origin == origin)
+    );
+    let identity = applied.card_changes.entity.as_ref().unwrap();
+    assert_eq!(
+        applied.card_changes.kind,
+        crate::engine::manager::card::CardChangeKind::UpgradeSkillsReplaced
+    );
+    assert!(applied.removed_buffs.iter().any(|changes| {
+        changes
+            .change
+            .removed
+            .iter()
+            .any(|removed| removed.buff.buff_id == Some(30860131))
+    }));
+    assert!(
+        identity
+            .buffs
+            .iter()
+            .all(|buff| buff.buff_id != Some(30860131))
+    );
+    assert!(
+        identity
+            .buffs
+            .iter()
+            .all(|buff| buff.buff_id != Some(30860113))
+    );
+    assert!(
+        applied
+            .entity
+            .buffs
+            .iter()
+            .any(|buff| buff.buff_id == Some(30860113))
     );
     let entity = fight.attacker.as_ref().unwrap().entitys.first().unwrap();
     assert_eq!(
