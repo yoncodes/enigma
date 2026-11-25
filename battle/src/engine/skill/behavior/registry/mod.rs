@@ -696,7 +696,7 @@ behavior_definitions! {
     [60298] "AddMeiLeiErCharge" => super::resource::Handler, AddBuffOwnedCharge, Immediate, destination, super::resource::supports_buff_owned_charge;
     [60305] "ConsumeBuffMeiLeiEr" => super::resource::Handler, ConsumeBuffIntoChargeAndRewards, Immediate, destination, super::resource::supports_consume_buff_into_charge_and_rewards;
     [60291] "AddDevicePower" => super::resource::Handler, AddConduitPower, Immediate, destination, super::resource::supports_conduit_power;
-    [60292] "AddDeviceExPoint" => super::resource::Handler, AddConduitExPoint, Immediate, trigger_owned_destination, super::resource::supports_ex_point_gain;
+    [60292] "AddDeviceExPoint" => super::resource::harmonization::Handler, AddConduitExPoint, Immediate, trigger_owned_destination, super::resource::supports_ex_point_gain;
     [60293] "SetDeviceSkillIndex" => super::resource::Handler, SetConduitSkillGroup, Immediate, destination, @route(ConditionRouteOverride::Trigger { key: DefinitionKey::new(19210, "HasBuffId"), event: EventKind::SkillAction, phase: Some(SkillPhase::AfterHit) }), super::resource::supports_conduit_skill_group;
     [60294] "StopDeviceSkill" => super::resource::Handler, StopConduitSkill, Immediate, destination, arguments::none;
     [60308] "ConsumeBuffResetDevice" => super::resource::Handler, ConsumeBuffResetDevice, Immediate, ally_action_owner_destination, super::resource::supports_consume_buff_reset_device;

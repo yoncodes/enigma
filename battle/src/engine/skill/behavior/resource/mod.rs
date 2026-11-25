@@ -30,6 +30,7 @@ use crate::engine::manager::BattleManagers;
 use sonettobuf::effect_type_enum::EffectType;
 
 mod conduit_power;
+pub(super) mod harmonization;
 
 use conduit_power::conduit_power_args;
 pub(crate) use conduit_power::fixed_conduit_gain;
@@ -266,7 +267,7 @@ impl BehaviorHandler for Handler {
 pub fn rule_ops(context: BehaviorOpContext<'_>, behavior: &ParsedBehavior) -> Option<Vec<RuleOp>> {
     let origin = super::command_origin(behavior)?;
     let ex_point_config_effect = match behavior.spec.kind {
-        BehaviorKind::AddConduitExPoint | BehaviorKind::AddSynchronization => 0,
+        BehaviorKind::AddSynchronization => 0,
         _ => behavior.config_effect,
     };
     let ex_point_change = |target_uid, delta| ExPointChange {
@@ -325,8 +326,7 @@ pub fn rule_ops(context: BehaviorOpContext<'_>, behavior: &ParsedBehavior) -> Op
         BehaviorKind::AddExPoint
         | BehaviorKind::AddAdrenalineExPoint
         | BehaviorKind::AddSynchronization
-        | BehaviorKind::AttrFixExPoint
-        | BehaviorKind::AddConduitExPoint => behavior.arg(0).map(|delta| {
+        | BehaviorKind::AttrFixExPoint => behavior.arg(0).map(|delta| {
             vec![ex_point(
                 context.target_uid,
                 delta.saturating_mul(context.transfer_count),

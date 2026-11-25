@@ -163,45 +163,60 @@ fn exact_conduit_power_behavior_commits_typed_energy() {
 
 #[test]
 fn exact_conduit_ex_point_behavior_uses_the_entity_resource_owner() {
+    crate::test_support::init_config();
     let fight = Fight {
         attacker: Some(FightTeam {
-            entitys: vec![FightEntityInfo {
-                uid: Some(10),
-                team_type: Some(1),
-                current_hp: Some(1),
-                ex_point_type: Some(4),
-                ex_point_max: Some(100),
-                ..Default::default()
-            }],
+            entitys: vec![
+                FightEntityInfo {
+                    uid: Some(10),
+                    model_id: Some(3149),
+                    team_type: Some(1),
+                    current_hp: Some(1),
+                    ..Default::default()
+                },
+                FightEntityInfo {
+                    uid: Some(11),
+                    model_id: Some(3146),
+                    team_type: Some(1),
+                    current_hp: Some(1),
+                    ex_point_type: Some(0),
+                    ex_point: Some(1),
+                    ..Default::default()
+                },
+            ],
             ..Default::default()
         }),
         ..Default::default()
     };
-    let managers = BattleManagers::seeded(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
     let pool = crate::engine::skill::target::TargetPool::from_fight(&fight);
     let mut determinism = crate::engine::runtime::determinism::RoundDeterminism::default();
     let mut modifiers = crate::engine::skill::action::SkillModifiers::default();
     let mut target = crate::engine::skill::target::TargetContext::default();
     let behavior = ParsedBehavior::new(60292, "AddDeviceExPoint", vec![8]);
 
-    let ops = rule_ops(
-        BehaviorOpContext {
-            source_uid: 10,
-            source_team: 1,
-            target_uid: 10,
-            active_skill_id: 31490111,
-            transfer_count: 1,
-            event: None,
-            managers: &managers,
-            pool: &pool,
-            determinism: &mut determinism,
-            modifiers: &mut modifiers,
-            target: &mut target,
-        },
-        &behavior,
-    )
-    .unwrap();
+    let definition = crate::engine::skill::behavior::registry::find(&behavior).unwrap();
+    let mut emit = |managers: &BattleManagers, target_uid| {
+        (definition.emit_ops)(
+            BehaviorOpContext {
+                source_uid: 10,
+                source_team: 1,
+                target_uid,
+                active_skill_id: 31490111,
+                transfer_count: 1,
+                event: None,
+                managers,
+                pool: &pool,
+                determinism: &mut determinism,
+                modifiers: &mut modifiers,
+                target: &mut target,
+            },
+            &behavior,
+        )
+        .unwrap()
+    };
 
+    let ops = emit(&managers, 10);
     assert!(matches!(
         ops.as_slice(),
         [RuleOp::Command(BattleCommand::ExPoint(
@@ -220,6 +235,23 @@ fn exact_conduit_ex_point_behavior_uses_the_entity_resource_owner() {
                 "AddDeviceExPoint",
             )
     ));
+    let [RuleOp::Command(BattleCommand::ExPoint(command))] = ops.as_slice() else {
+        unreachable!();
+    };
+    let changes = managers.execute_ex_point(*command).unwrap();
+    assert!(matches!(
+        changes.events().as_slice(),
+        [crate::engine::event::payload::BattleEvent::ExPointChanged(change)]
+            if change.kind == ExPointKind::DevicePower && change.applied_delta == 8
+    ));
+    assert_eq!(
+        managers.ex_point.kind(10),
+        ExPointKind::DevicePower.as_wire()
+    );
+    assert_eq!(managers.ex_point.get(10), 8);
+    assert_eq!(managers.ex_point.maximum(10), Some(100));
+    assert!(emit(&managers, 11).is_empty());
+    assert_eq!(managers.ex_point.get(11), 1);
 }
 
 #[test]

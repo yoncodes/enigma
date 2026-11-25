@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use sonettobuf::{EnhanceInfoBox, EquipRecord, FightEntityInfo, HeroAttribute, PowerInfo};
 
-use crate::engine::manager::ex_point::{ExPointKind, parse_unique_skill_point};
+use crate::engine::manager::ex_point::ExPointKind;
 
 use super::{
     attr::Attr,
@@ -420,15 +420,14 @@ impl EntityBuilder {
         destiny_stone: i32,
         destiny_rank: i32,
     ) -> Result<(i32, i32)> {
-        let spec = Destiny::unique_skill_point(game, destiny_stone, destiny_rank)
-            .or_else(|| crate::catalog::configured_unique_skill_point(game, hero_id, rank))
-            .filter(|spec| !spec.trim().is_empty());
-        match spec {
-            Some(spec) => {
-                parse_unique_skill_point(spec).map(|(kind, maximum)| (kind.as_wire(), maximum))
-            }
-            None => Ok((0, 0)),
-        }
+        Ok(crate::catalog::configured_hero_ex_point(
+            game,
+            hero_id,
+            rank,
+            destiny_stone,
+            destiny_rank,
+        )?
+        .map_or((0, 0), |(kind, maximum)| (kind.as_wire(), maximum)))
     }
 
     fn career(game: &config::GameDB, hero_id: i32) -> i32 {

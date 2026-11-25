@@ -69,6 +69,24 @@ impl ExPointKind {
     }
 }
 
+fn configured_device_max(game_data: &config::GameDB, entity: &FightEntityInfo) -> Option<i32> {
+    let hero_id = entity.model_id?;
+    let rank = crate::engine::entity::stats::configured_rank(
+        game_data,
+        hero_id,
+        entity.level.unwrap_or(1),
+    );
+    let configured = crate::catalog::configured_hero_ex_point(
+        game_data,
+        hero_id,
+        rank,
+        entity.destiny_stone.unwrap_or_default(),
+        entity.destiny_rank.unwrap_or_default(),
+    )
+    .expect("configured unique skill point must be type#positive_maximum");
+    configured.and_then(|(kind, maximum)| (kind == ExPointKind::DevicePower).then_some(maximum))
+}
+
 pub(crate) fn parse_unique_skill_point(spec: &str) -> anyhow::Result<(ExPointKind, i32)> {
     use anyhow::{Context, ensure};
 
@@ -738,7 +756,7 @@ impl ExPointManager {
     }
 
     pub fn seed_with_game_data(&mut self, game_data: &config::GameDB, fight: &Fight) {
-        self.seed_from(fight, |entity| {
+        self.seed_from(game_data, fight, |entity| {
             crate::catalog::configured_ex_point_max(
                 game_data,
                 entity.ex_point_max,
@@ -753,7 +771,7 @@ impl ExPointManager {
         catalog: crate::catalog::BattleCatalog,
         fight: &Fight,
     ) {
-        self.seed_from(fight, |entity| {
+        self.seed_from(catalog.game_data(), fight, |entity| {
             catalog.entity_ex_point_max(
                 entity.ex_point_max,
                 entity.model_id,
@@ -764,6 +782,7 @@ impl ExPointManager {
 
     fn seed_from(
         &mut self,
+        game_data: &config::GameDB,
         fight: &Fight,
         mut configured: impl FnMut(&FightEntityInfo) -> Option<i32>,
     ) {
@@ -778,7 +797,7 @@ impl ExPointManager {
                 .filter_map(|team| team.assist_boss.as_ref()),
         ) {
             let base_max = configured(entity);
-            self.register_from(entity, base_max);
+            self.register_from(game_data, entity, base_max);
         }
     }
 
@@ -798,7 +817,7 @@ impl ExPointManager {
             entity.model_id,
             entity.level.unwrap_or(1),
         );
-        self.register_from(entity, base_max);
+        self.register_from(game_data, entity, base_max);
     }
 
     pub(crate) fn register_configured(
@@ -811,12 +830,28 @@ impl ExPointManager {
             entity.model_id,
             entity.level.unwrap_or(1),
         );
-        self.register_from(entity, base_max);
+        self.register_from(catalog.game_data(), entity, base_max);
     }
 
-    fn register_from(&mut self, entity: &FightEntityInfo, base_max: Option<i32>) {
+    fn register_from(
+        &mut self,
+        game_data: &config::GameDB,
+        entity: &FightEntityInfo,
+        base_max: Option<i32>,
+    ) {
         let Some(uid) = entity.uid else { return };
-        let kind = ExPointKind::from_wire(entity.ex_point_type.unwrap_or_default());
+        let explicit_kind = entity.ex_point_type.map(ExPointKind::from_wire);
+        let explicit_max = entity.ex_point_max.filter(|max| *max > 0);
+        let device_max = (explicit_kind.is_none()
+            || explicit_kind == Some(ExPointKind::DevicePower) && explicit_max.is_none())
+        .then(|| configured_device_max(game_data, entity))
+        .flatten();
+        let kind = explicit_kind.unwrap_or(if device_max.is_some() {
+            ExPointKind::DevicePower
+        } else {
+            ExPointKind::Common
+        });
+        let base_max = explicit_max.or(device_max).or(base_max);
         let gains_card_play =
             kind == ExPointKind::Common && base_max.unwrap_or_else(|| kind.default_max()) > 0;
         let gains_card_move =
@@ -970,9 +1005,15 @@ impl ExPointManager {
         let Some(uid) = entity.uid else { return };
         let state = self.states.get(&uid).copied().unwrap_or_default();
         entity.ex_point = Some(state.current);
-        let base_max = base_max
-            .filter(|max| *max > 0)
-            .unwrap_or_else(|| ExPointKind::from_wire(state.kind).default_max());
+        let kind = ExPointKind::from_wire(state.kind);
+        let base_max = if kind == ExPointKind::DevicePower && state.base_max > 0 {
+            entity.ex_point_max = Some(state.base_max);
+            state.base_max
+        } else {
+            base_max
+                .filter(|max| *max > 0)
+                .unwrap_or_else(|| kind.default_max())
+        };
         entity.expoint_max_add = Some((self.cap_for(state) - base_max).max(0));
         entity.ex_point_type = Some(state.kind);
     }

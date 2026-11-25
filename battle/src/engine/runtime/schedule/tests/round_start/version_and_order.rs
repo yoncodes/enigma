@@ -285,13 +285,9 @@ fn version_seven_runs_late_setup_before_priority_three_setup() {
     };
     let pool = TargetPool::from_fight(&fight);
     let mut catalog = crate::engine::skill::effect::catalog::global().clone();
-    let slot = |opcode, amount| {
+    let slot = |opcode, amount, resource| {
         let mut slot = SkillEffectSlot::new(
-            ParsedBehavior::from_spec(
-                BehaviorSpec::new(20002, "AddExPoint"),
-                vec![amount],
-                Vec::new(),
-            ),
+            ParsedBehavior::from_spec(resource, vec![amount], Vec::new()),
             TargetRequest::self_only(),
         );
         slot.conditions = vec![ParsedCondition {
@@ -303,15 +299,16 @@ fn version_seven_runs_late_setup_before_priority_three_setup() {
         slot.compiled_route = ConditionRoute::compile(&slot.conditions);
         slot
     };
+    let harmonization = BehaviorSpec::new(60292, "AddDeviceExPoint");
     catalog.insert(ParsedSkillEffect {
         skill_id: 40,
-        slots: vec![slot(104, 1)],
+        slots: vec![slot(104, 1, harmonization.clone())],
     });
     catalog.insert(ParsedSkillEffect {
         skill_id: 50,
-        slots: vec![slot(10411, 2)],
+        slots: vec![slot(10411, 2, harmonization.clone())],
     });
-    let mut priority_one = slot(103, 1);
+    let mut priority_one = slot(103, 1, harmonization.clone());
     priority_one.conditions.push(ParsedCondition {
         opcode: 57100,
         type_name: "NoBuffId".to_owned(),
@@ -326,7 +323,7 @@ fn version_seven_runs_late_setup_before_priority_three_setup() {
         skill_id: 60,
         slots: vec![priority_one],
     });
-    let mut sync = slot(19104, 1);
+    let mut sync = slot(19104, 1, harmonization);
     sync.conditions[0] = ParsedCondition {
         opcode: 19104,
         type_name: "HasBuffId".to_owned(),
@@ -343,7 +340,7 @@ fn version_seven_runs_late_setup_before_priority_three_setup() {
     });
     catalog.insert(ParsedSkillEffect {
         skill_id: 80,
-        slots: vec![slot(103, 3)],
+        slots: vec![slot(103, 3, BehaviorSpec::new(20002, "AddExPoint"))],
     });
     let mut managers = BattleManagers::seeded(&fight);
     let gauge_origin = CommandOrigin {

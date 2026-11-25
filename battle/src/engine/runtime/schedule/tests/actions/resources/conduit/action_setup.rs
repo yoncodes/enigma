@@ -247,6 +247,7 @@ fn regulus_device_ultimate_selects_the_group_for_the_living_enemy_count() {
         regulus.ex_skill_level = Some(3);
         regulus.destiny_stone = Some(302502);
         regulus.destiny_rank = Some(4);
+        regulus.ex_point = Some(100);
         let fight = Fight {
             attacker: Some(FightTeam {
                 entitys: vec![regulus],

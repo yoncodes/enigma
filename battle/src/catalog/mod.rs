@@ -1567,6 +1567,24 @@ pub(crate) fn configured_unique_skill_point(
         })
 }
 
+pub(crate) fn configured_hero_ex_point(
+    game_data: &config::GameDB,
+    hero_id: i32,
+    rank: i32,
+    destiny_stone: i32,
+    destiny_rank: i32,
+) -> anyhow::Result<Option<(crate::engine::manager::ex_point::ExPointKind, i32)>> {
+    crate::engine::entity::destiny::Destiny::unique_skill_point(
+        game_data,
+        destiny_stone,
+        destiny_rank,
+    )
+    .or_else(|| configured_unique_skill_point(game_data, hero_id, rank))
+    .filter(|spec| !spec.trim().is_empty())
+    .map(crate::engine::manager::ex_point::parse_unique_skill_point)
+    .transpose()
+}
+
 pub(crate) fn configured_ex_point_max(
     game_data: &config::GameDB,
     explicit_max: Option<i32>,

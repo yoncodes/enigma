@@ -28,6 +28,33 @@ fn unique_skill_point_requires_a_known_type_and_positive_maximum() {
 }
 
 #[test]
+fn omitted_device_fields_use_the_destiny_meter_in_the_snapshot() {
+    crate::test_support::init_config();
+    let game_data = crate::test_support::game_data();
+    let mut manager = ExPointManager::default();
+    for (uid, kind) in [(1, None), (2, Some(ExPointKind::DevicePower.as_wire()))] {
+        let mut entity = FightEntityInfo {
+            uid: Some(uid),
+            model_id: Some(3025),
+            destiny_stone: Some(302502),
+            destiny_rank: Some(1),
+            ex_point_type: kind,
+            ..Default::default()
+        };
+        manager.register_with_game_data(game_data, &entity);
+        assert_eq!(manager.kind(uid), ExPointKind::DevicePower.as_wire());
+        assert_eq!(manager.maximum(uid), Some(100));
+        manager.sync_entity_with_game_data(game_data, &mut entity);
+        assert_eq!(
+            entity.ex_point_type,
+            Some(ExPointKind::DevicePower.as_wire())
+        );
+        assert_eq!(entity.ex_point_max, Some(100));
+        assert_eq!(entity.expoint_max_add, Some(0));
+    }
+}
+
+#[test]
 fn nautika_uses_rank_replaced_faith_cap() {
     crate::test_support::init_config();
     let mut fight = Fight {
