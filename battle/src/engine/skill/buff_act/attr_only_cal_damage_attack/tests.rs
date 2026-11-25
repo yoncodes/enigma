@@ -188,7 +188,7 @@ fn be_attacked_attribute_is_applied_then_consumed_from_the_target() {
                     uid: Some(3),
                     buff_id: Some(302),
                     from_uid: Some(-1),
-                    count: Some(1),
+                    count: Some(3),
                     ..Default::default()
                 }],
                 ..Default::default()
@@ -223,7 +223,7 @@ fn be_attacked_attribute_is_applied_then_consumed_from_the_target() {
     };
     managers.execute_buff(command.clone()).unwrap();
 
-    assert!(managers.buff.snapshot(-1, 3).is_none());
+    assert_eq!(managers.buff.snapshot(-1, 3).unwrap().count, Some(2));
 }
 
 #[test]

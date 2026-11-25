@@ -117,7 +117,13 @@ pub fn incoming_attribute_delta(
                 _ => 0,
             }
         }
-        _ => attribute_delta(feature, attr_id),
+        Some(super::registry::BuffActKind::AttrOnlyCalDamageBeAttacked) => {
+            match feature.values.as_slice() {
+                [_, raw_attr, value, _] if AttrId::from_raw(*raw_attr) == Some(attr_id) => *value,
+                _ => 0,
+            }
+        }
+        _ => 0,
     }
 }
 
