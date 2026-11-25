@@ -1,3 +1,4 @@
+use super::super::reactions::terminal_owner_scope;
 use super::*;
 
 pub fn run_command_group(
@@ -678,6 +679,26 @@ fn run_skill_setup_schedule_with_container(
         result.frames.extend(stage_result.frames);
     }
     Ok(result)
+}
+
+pub(crate) fn run_round_start_buff_setup(
+    managers: &mut BattleManagers,
+    pool: &TargetPool,
+    catalog: &SkillEffectCatalog,
+    determinism: &mut RoundDeterminism,
+    context: TargetContext,
+    schedule: &[(SetupStage, i32)],
+) -> Result<DrainResult, DrainError> {
+    let owners = terminal_owner_scope(pool, managers, None);
+    run_buff_act_setup_schedule(
+        managers,
+        pool,
+        catalog,
+        determinism,
+        context,
+        schedule,
+        owners.as_deref(),
+    )
 }
 
 #[allow(clippy::too_many_arguments)]

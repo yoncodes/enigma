@@ -591,7 +591,7 @@ pub(in crate::engine::runtime::drain) fn dispatch_owner_reactions(
     Ok(reactions)
 }
 
-pub(super) fn terminal_owner_scope(
+pub(in crate::engine::runtime::drain) fn terminal_owner_scope(
     pool: &TargetPool,
     managers: &BattleManagers,
     requested: Option<&[i64]>,

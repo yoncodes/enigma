@@ -368,10 +368,10 @@ pub(crate) fn settle_round_start(
         scheduled_card_cleanup.extend(settled_death_uids(&event_setup));
     }
     append_round_phase(&mut settlement, event_setup);
-    if setup_layout == Some(crate::engine::fight::versions::RoundStartSetupLayout::Version7) {
+    if version_seven {
         append_round_phase(
             &mut settlement,
-            drain::run_setup_schedule(
+            drain::run_skill_setup_schedule(
                 managers,
                 pool,
                 catalog,
@@ -550,6 +550,21 @@ pub(crate) fn deal_round_start(
     let mut next_round_begin_steps = DrainResult::default();
     push_cue(&mut next_round_begin_steps.frames, RoundCue::DealCard1);
     let mut dealt_cards = managers.card.refilled()[refill_start..].to_vec();
+    let setup_layout =
+        crate::engine::fight::versions::round_start_setup_layout(managers.fight_version());
+    let buff_threshold_setup =
+        if setup_layout == Some(crate::engine::fight::versions::RoundStartSetupLayout::Version7) {
+            drain::run_round_start_buff_setup(
+                managers,
+                pool,
+                catalog,
+                determinism,
+                context,
+                ROUND_START_THRESHOLD_SETUP,
+            )?
+        } else {
+            DrainResult::default()
+        };
     let round_start_cards = drain::run_round_start_card_event(
         managers,
         pool,
@@ -571,6 +586,7 @@ pub(crate) fn deal_round_start(
     if crate::engine::round::outcome::battle_ended_for_battle_id(context.battle_id, pool, managers)
     {
         append(&mut fight_steps, after_round_start);
+        append(&mut fight_steps, buff_threshold_setup);
         append(&mut fight_steps, round_start_cards);
         append(&mut fight_steps, card_setup);
         append(&mut next_round_begin_steps, round_start_refill);
@@ -578,6 +594,7 @@ pub(crate) fn deal_round_start(
     } else {
         append(&mut next_round_begin_steps, after_round_start);
         append(&mut next_round_begin_steps, round_start_refill);
+        append(&mut next_round_begin_steps, buff_threshold_setup);
         append(&mut next_round_begin_steps, round_start_cards);
         append(&mut next_round_begin_steps, card_energy);
         append(&mut next_round_begin_steps, card_setup);

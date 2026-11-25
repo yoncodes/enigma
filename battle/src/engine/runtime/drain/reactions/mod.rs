@@ -11,7 +11,7 @@ mod dispatch;
 mod event;
 mod queue;
 
-use dispatch::terminal_owner_scope;
+pub(super) use dispatch::terminal_owner_scope;
 pub(super) use dispatch::{ReactionDispatch, dispatch_owner_reactions, dispatch_reactions};
 #[cfg(test)]
 pub(super) use event::dispatch_event_batch;
