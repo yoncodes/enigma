@@ -10,6 +10,8 @@ use crate::engine::{
     },
 };
 
+mod death_link;
+
 pub(crate) struct Handler;
 pub(crate) struct GuardHandler;
 pub(crate) struct OverflowHandler;
@@ -35,6 +37,9 @@ impl BehaviorHandler for Handler {
 
 impl BehaviorHandler for GuardHandler {
     fn emit_ops(context: BehaviorOpContext<'_>, behavior: &ParsedBehavior) -> Option<Vec<RuleOp>> {
+        if let Some(amount) = death_link::amount(&context, behavior) {
+            return emit(&context, behavior, amount, context.target.active_skill_id);
+        }
         let loss = Loss::read(&context, behavior)?;
         let own_break = matches!(
             context.event,
@@ -65,6 +70,14 @@ struct Loss {
 
 impl Loss {
     fn read(context: &BehaviorOpContext<'_>, behavior: &ParsedBehavior) -> Option<Self> {
+        Self::read_from(context, behavior, context.target_uid)
+    }
+
+    fn read_from(
+        context: &BehaviorOpContext<'_>,
+        behavior: &ParsedBehavior,
+        attribute_owner: i64,
+    ) -> Option<Self> {
         let [mode, raw_attr, permille] = behavior.args.as_slice() else {
             return None;
         };
@@ -72,14 +85,19 @@ impl Loss {
         let target = context.target_uid;
         let managers = context.managers;
         let hp = managers.hp.get(target);
+        let basis_hp = if attribute_owner == target {
+            hp
+        } else {
+            managers.hp.get(attribute_owner)
+        };
         let basis = if *mode == 1 {
             hp.current
         } else {
             match attr {
-                AttrId::CurrentHp => hp.current,
-                AttrId::Hp => hp.max,
-                AttrId::LostHp => (hp.max - hp.current).max(0),
-                attr => managers.attribute.get(target, attr),
+                AttrId::CurrentHp => basis_hp.current,
+                AttrId::Hp => basis_hp.max,
+                AttrId::LostHp => (basis_hp.max - basis_hp.current).max(0),
+                attr => managers.attribute.get(attribute_owner, attr),
             }
         };
         Some(Self {

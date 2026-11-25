@@ -2,6 +2,82 @@ use super::*;
 use crate::engine::event::payload::BattleEvent;
 
 #[test]
+fn death_linked_max_hp_loss_uses_the_defeated_source_and_preserves_overkill() {
+    init_config();
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![entity(1, 1, 1, 100, 0)],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![
+                FightEntityInfo {
+                    current_hp: Some(0),
+                    attr: Some(HeroAttribute {
+                        hp: Some(40),
+                        ..Default::default()
+                    }),
+                    ..entity(-1, 2, 1, 40, 0)
+                },
+                FightEntityInfo {
+                    current_hp: Some(25),
+                    attr: Some(HeroAttribute {
+                        hp: Some(100),
+                        ..Default::default()
+                    }),
+                    ..entity(-2, 2, 2, 100, 0)
+                },
+            ],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    let event = BattleEvent::EntityDied(crate::engine::event::payload::EntityDiedEvent {
+        source_uid: 1,
+        target_uid: -1,
+    });
+    let behavior = ParsedBehavior::new(30005, "LostLife", vec![0, AttrId::Hp.id(), 1000]);
+    let ops = crate::engine::skill::behavior::rule_ops(
+        BehaviorOpContext {
+            source_uid: -1,
+            source_team: 2,
+            target_uid: -2,
+            active_skill_id: 20,
+            transfer_count: 1,
+            event: Some(&event),
+            managers: &managers,
+            pool: &pool,
+            determinism: &mut Default::default(),
+            modifiers: &mut Default::default(),
+            target: &mut TargetContext {
+                active_skill_id: 20,
+                ..Default::default()
+            },
+        },
+        &behavior,
+    )
+    .unwrap();
+    let [RuleOp::Command(BattleCommand::Hp(HpCommand::Lose(command)))] = ops.as_slice() else {
+        panic!("expected the death-linked Hp loss");
+    };
+
+    assert_eq!(
+        (command.source_uid, command.target_uid, command.amount),
+        (-1, -2, 40)
+    );
+    let hp = managers
+        .execute_hp(HpCommand::Lose(*command))
+        .unwrap()
+        .hp
+        .unwrap();
+    assert_eq!(hp.delta, -25);
+    assert_eq!(hp.display_amount, Some(40));
+    assert_eq!(hp.hurt.unwrap().reduce_hp, -25);
+}
+
+#[test]
 fn lost_life_attack_uses_all_characters_and_the_configured_hp_basis() {
     crate::test_support::init_config();
     assert!(config::get().skill_buff.get(31200174).is_some());
