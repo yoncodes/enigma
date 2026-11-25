@@ -1,5 +1,9 @@
 use super::*;
-use crate::engine::skill::rule::{CommandOrigin, DefinitionKey, RuleDomain};
+use crate::engine::skill::{
+    effect::{ParsedBehavior, SkillEffectSlot},
+    rule::{CommandOrigin, DefinitionKey, RuleDomain},
+    target::TargetRequest,
+};
 
 #[test]
 fn rejects_unknown_cloth_skill_type_at_runtime_boundary() {
@@ -180,6 +184,7 @@ fn configured_cloth_skills_drive_universal_and_redeal_card_rules() {
         "captured redeal is not reachable: capture has 2 visible cards, replay has 2 ordinary and 1 team cards"
     );
     runtime.seed_observed_redeal(&observed).unwrap();
+    let mut later_defeat = runtime.clone();
     let redeal = runtime
         .use_cloth_skill(UseClothSkillRequest {
             skill_id: Some(30010202),
@@ -238,6 +243,53 @@ fn configured_cloth_skills_drive_universal_and_redeal_card_rules() {
     );
     assert_eq!(runtime.managers.card.team_cards(), &[ultimate]);
     assert!(runtime.take_redeal_card_push().is_none());
+
+    let mut effect = later_defeat.catalog.get(30010202).unwrap().clone();
+    let mut defeat = SkillEffectSlot::new(
+        ParsedBehavior::new(60015, "Kill", Vec::new()),
+        TargetRequest::self_only(),
+    );
+    defeat.conditions = effect.slots[0].conditions.clone();
+    defeat.compiled_route = effect.slots[0].compiled_route.clone();
+    effect.slots.push(defeat);
+    later_defeat.catalog.insert(effect);
+    let redeal = later_defeat
+        .use_cloth_skill(UseClothSkillRequest {
+            skill_id: Some(30010202),
+            from_id: Some(10),
+            to_id: Some(0),
+            r#type: Some(ClothSkillType::ClothSkill as i32),
+        })
+        .unwrap()
+        .round
+        .unwrap();
+    assert_eq!(later_defeat.managers.hp.current(10), 0);
+    assert!(later_defeat.managers.card.team_cards().is_empty());
+    use sonettobuf::effect_type_enum::EffectType;
+    let hand = |kind: EffectType| {
+        &redeal
+            .fight_step
+            .iter()
+            .flat_map(|step| &step.act_effect)
+            .find(|effect| effect.effect_type == Some(kind as i32))
+            .unwrap()
+            .card_info_list
+    };
+    assert!(
+        hand(EffectType::Afterredealcard)
+            .iter()
+            .any(|card| card.skill_id == Some(30280131))
+    );
+    assert!(
+        hand(EffectType::Cardspush)
+            .iter()
+            .map(|card| (card.uid, card.skill_id))
+            .eq(later_defeat
+                .managers
+                .card
+                .visible_cards()
+                .map(|card| (card.uid, card.skill_id)))
+    );
 }
 
 #[test]

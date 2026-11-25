@@ -146,12 +146,11 @@ impl BattleRuntime {
                                     if changes.kind == CardChangeKind::UniversalAdded)
                             })
                         {
-                            let mut snapshot = self.managers.card.state_snapshot(1);
-                            if let Some(team_cards) =
-                                redeal.and_then(|changes| changes.team_cards.as_deref())
-                            {
-                                snapshot.hand.extend_from_slice(team_cards);
-                            }
+                            let snapshot = if redeal.is_some() {
+                                self.managers.card.visible_state_snapshot(1)
+                            } else {
+                                self.managers.card.state_snapshot(1)
+                            };
                             result.frames.push(record::SemanticFrame {
                                 owner: record::FrameOwner::Command,
                                 trigger: record::FrameTrigger::Active,

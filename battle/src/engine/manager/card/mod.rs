@@ -133,6 +133,14 @@ impl CardManager {
         }
     }
 
+    pub(crate) fn visible_state_snapshot(&self, team_type: i32) -> CardStateSnapshot {
+        CardStateSnapshot {
+            hand: self.visible_cards().cloned().collect(),
+            deck_num: self.deck_num(),
+            team_type,
+        }
+    }
+
     pub(crate) fn set_catalog(&mut self, catalog: crate::catalog::BattleCatalog) {
         self.deck = std::mem::take(&mut self.deck).with_catalog(catalog);
     }
