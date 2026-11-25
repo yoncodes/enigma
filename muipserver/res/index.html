@@ -9,6 +9,7 @@
     main { max-width: 880px; margin: 40px auto; padding: 0 20px; }
     input, button { min-width: 0; font: inherit; border: 1px solid #393d46; background: #1c2028; color: #ece7de; padding: 10px 12px; box-sizing: border-box; }
     button { cursor: pointer; background: #394150; }
+    button:disabled { cursor: default; opacity: .55; }
     .grid { display: grid; gap: 10px; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
     .grant { margin-top: 14px; display: grid; gap: 10px; grid-template-columns: 150px minmax(130px, .8fr) minmax(180px, 1.2fr) 90px auto; }
     .dungeon { margin-top: 10px; display: grid; gap: 10px; grid-template-columns: minmax(150px, 1fr) 110px minmax(180px, 1.4fr) auto; }
@@ -65,10 +66,10 @@
     </div>
     <div class="grant">
       <select id="kind"></select>
-      <input id="materialSearch" placeholder="search id or name">
+      <input id="materialSearch" type="search" aria-label="Search materials" placeholder="search id or name">
       <select id="material"></select>
       <input id="amount" type="number" min="1" step="1" value="1">
-      <button id="grant" type="button" onclick="grantSelected()">Grant</button>
+      <button id="grant" type="button" disabled onclick="grantSelected()">Grant</button>
     </div>
     <div class="dungeon">
       <select id="dungeonChapter"></select>
@@ -157,7 +158,10 @@
   </main>
   <script>
     document.getElementById('token').value = localStorage.getItem('enigmaMuipToken') || '';
+    document.getElementById('materialSearch').value = localStorage.getItem('enigmaMuipMaterialSearch') || '';
     let statusTimer = 0;
+    let materialRequest = 0;
+    let materialTimer = 0;
     const catalog = { types: [], items: [] };
     const dungeonCatalog = { chapters: [], episodes: [] };
     const heroCatalog = { heroes: [] };
@@ -202,12 +206,16 @@
         catalog.types = data.types || [];
         const kind = document.getElementById('kind');
         kind.innerHTML = catalog.types.map(x => `<option value="${x.type}">${x.name}</option>`).join('');
+        restoreOption(kind, localStorage.getItem('enigmaMuipMaterialKind'));
         await loadMaterials();
       } catch (err) {
         out.textContent = `Failed to load material catalog: ${err.message}`;
       }
     }
     async function loadMaterials() {
+      const request = ++materialRequest;
+      const grant = document.getElementById('grant');
+      grant.disabled = true;
       try {
         const type = document.getElementById('kind').value;
         if (!type) return;
@@ -221,6 +229,7 @@
         const res = await fetch('/api/materials?' + params);
         if (!res.ok) throw new Error(`materials failed: ${res.status}`);
         const data = await res.json();
+        if (request !== materialRequest) return;
         catalog.items = data.items || [];
         const material = document.getElementById('material');
         material.innerHTML = catalog.items.length === 0
@@ -228,9 +237,18 @@
           : catalog.items
             .map(x => `<option value="${x.id}">${x.id} - ${escapeHtml(x.name)}</option>`)
             .join('');
+        restoreOption(material, localStorage.getItem(`enigmaMuipMaterial:${type}`));
+        grant.disabled = catalog.items.length === 0;
         updateCommandPreview();
       } catch (err) {
-        out.textContent = `Failed to load materials: ${err.message}`;
+        if (request === materialRequest) {
+          out.textContent = `Failed to load materials: ${err.message}`;
+        }
+      }
+    }
+    function restoreOption(select, value) {
+      if (Array.from(select.options).some(option => option.value === value && !option.disabled)) {
+        select.value = value;
       }
     }
     async function loadDungeons() {
@@ -566,15 +584,23 @@
       out.textContent = JSON.stringify(await res.json(), null, 2);
       refreshStatus();
     }
-    document.getElementById('kind').addEventListener('change', () => {
-      document.getElementById('materialSearch').value = '';
+    document.getElementById('kind').addEventListener('change', event => {
+      localStorage.setItem('enigmaMuipMaterialKind', event.target.value);
+      clearTimeout(materialTimer);
       loadMaterials();
     });
-    document.getElementById('materialSearch').addEventListener('input', () => {
-      clearTimeout(window.materialTimer);
-      window.materialTimer = setTimeout(loadMaterials, 150);
+    document.getElementById('materialSearch').addEventListener('input', event => {
+      localStorage.setItem('enigmaMuipMaterialSearch', event.target.value);
+      ++materialRequest;
+      document.getElementById('grant').disabled = true;
+      clearTimeout(materialTimer);
+      materialTimer = setTimeout(loadMaterials, 150);
     });
-    document.getElementById('material').addEventListener('change', updateCommandPreview);
+    document.getElementById('material').addEventListener('change', event => {
+      const type = document.getElementById('kind').value;
+      localStorage.setItem(`enigmaMuipMaterial:${type}`, event.target.value);
+      updateCommandPreview();
+    });
     document.getElementById('amount').addEventListener('input', updateCommandPreview);
     document.getElementById('dungeonKind').addEventListener('change', updateDungeonMode);
     document.getElementById('dungeonChapter').addEventListener('change', loadDungeonEpisodes);
