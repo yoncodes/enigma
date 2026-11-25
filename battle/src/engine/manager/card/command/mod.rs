@@ -35,6 +35,7 @@ pub enum TemporaryCardKind {
     ConfiguredSkill,
     PrecastSkill,
     ConfiguredSkill3,
+    RoundStartSkill3,
     HeroSkill,
 }
 

@@ -113,7 +113,7 @@ fn grouped_thresholds_cross_from_zero_through_the_terminal_card() {
                 CardAddTemporary {
                     skill_id: 312451011,
                     hero_id: Some(3124),
-                    kind: TemporaryCardKind::ConfiguredSkill3,
+                    kind: TemporaryCardKind::RoundStartSkill3,
                     ..
                 }
             ))),
@@ -124,7 +124,7 @@ fn grouped_thresholds_cross_from_zero_through_the_terminal_card() {
                 CardAddTemporary {
                     skill_id: 312451023,
                     hero_id: Some(3124),
-                    kind: TemporaryCardKind::ConfiguredSkill3,
+                    kind: TemporaryCardKind::RoundStartSkill3,
                     ..
                 }
             ))),

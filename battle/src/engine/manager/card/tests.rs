@@ -3,6 +3,50 @@ use rand::{SeedableRng, rngs::StdRng};
 use sonettobuf::{Fight, FightEntityInfo, FightTeam};
 
 #[test]
+fn round_start_temporary_grants_stay_in_hand_without_being_dealt() {
+    use crate::engine::skill::rule::{CommandOrigin, DefinitionKey, RuleDomain};
+
+    let initial = CardInfo {
+        uid: Some(10),
+        skill_id: Some(100),
+        ..Default::default()
+    };
+    let mut manager = CardManager::new(vec![initial.clone()]);
+    manager.begin_opening_deal();
+    let grant = CardAddTemporary {
+        origin: CommandOrigin {
+            domain: RuleDomain::BuffAct,
+            key: DefinitionKey::new(10001, "AdrenalineAddCard"),
+        },
+        target_uid: 10,
+        skill_id: 101,
+        hero_id: Some(1),
+        reserve_id: 0,
+        team_type: 1,
+        kind: TemporaryCardKind::RoundStartSkill3,
+    };
+    let generated = manager
+        .execute_command(CardCommand::AddTemporary(grant))
+        .unwrap();
+    let configured = manager
+        .execute_command(CardCommand::AddTemporary(CardAddTemporary {
+            skill_id: 102,
+            kind: TemporaryCardKind::ConfiguredSkill3,
+            ..grant
+        }))
+        .unwrap();
+
+    assert_eq!(generated.kind, CardChangeKind::ConfiguredSkill3Added);
+    let generated = generated.added.unwrap();
+    let configured = configured.added.unwrap();
+    assert_eq!(
+        manager.hand(),
+        &[initial.clone(), generated, configured.clone()]
+    );
+    assert_eq!(manager.opening_deal().unwrap(), &[initial, configured]);
+}
+
+#[test]
 fn enemy_ai_selects_ultimates_from_current_resource_state() {
     let fight = |ex_point, ex_skill| Fight {
         attacker: Some(FightTeam {

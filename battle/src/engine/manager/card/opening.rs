@@ -74,7 +74,7 @@ impl CardManager {
 
     pub(super) fn record_opening_temporary(&mut self, kind: TemporaryCardKind, card: &CardInfo) {
         match kind {
-            TemporaryCardKind::ConfiguredSkill => {}
+            TemporaryCardKind::ConfiguredSkill | TemporaryCardKind::RoundStartSkill3 => {}
             TemporaryCardKind::GenericSkill
             | TemporaryCardKind::PrecastSkill
             | TemporaryCardKind::ConfiguredSkill3

@@ -81,7 +81,7 @@ pub fn rule_ops(
                 hero_id: Some(hero_id),
                 reserve_id: 0,
                 team_type: subscriber.team_type,
-                kind: TemporaryCardKind::ConfiguredSkill3,
+                kind: TemporaryCardKind::RoundStartSkill3,
             })
         })));
     }

@@ -11,14 +11,15 @@ pub(super) fn add_temporary(
         TemporaryCardKind::GenericSkill
         | TemporaryCardKind::ConfiguredSkill
         | TemporaryCardKind::PrecastSkill => manager.add_temp_card(add.skill_id),
-        TemporaryCardKind::ConfiguredSkill3 | TemporaryCardKind::HeroSkill => manager
-            .add_temp_card_for(
-                add.target_uid,
-                add.skill_id,
-                add.hero_id,
-                add.reserve_id,
-                add.team_type,
-            ),
+        TemporaryCardKind::ConfiguredSkill3
+        | TemporaryCardKind::RoundStartSkill3
+        | TemporaryCardKind::HeroSkill => manager.add_temp_card_for(
+            add.target_uid,
+            add.skill_id,
+            add.hero_id,
+            add.reserve_id,
+            add.team_type,
+        ),
     };
     manager.record_opening_temporary(add.kind, &card);
     let operation = Some(CardChange::SpCardAdd {
@@ -37,7 +38,9 @@ pub(super) fn add_temporary(
                 TemporaryCardKind::ConfiguredSkill | TemporaryCardKind::PrecastSkill => {
                     CardChangeKind::TemporaryAdded
                 }
-                TemporaryCardKind::ConfiguredSkill3 => CardChangeKind::ConfiguredSkill3Added,
+                TemporaryCardKind::ConfiguredSkill3 | TemporaryCardKind::RoundStartSkill3 => {
+                    CardChangeKind::ConfiguredSkill3Added
+                }
                 TemporaryCardKind::HeroSkill => CardChangeKind::HeroTemporaryAdded,
             },
         )
