@@ -217,7 +217,7 @@ pub(super) fn drain_skill(
                 result,
                 state,
             )?;
-            push_death(&mut result.frames, &frame_path, managers, death);
+            push_death(&mut result.frames, &frame_path, managers, state, death);
             defeated_owner_card_cleanups.push(death.transition());
         }
     }

@@ -25,7 +25,7 @@ fn opening_ultimate_reports_the_rejected_fight_task_parameter() {
         }),
         fight_task_box: Some(sonettobuf::FightTaskBox {
             tasks: vec![sonettobuf::FightTask {
-                task_id: Some(260102),
+                task_id: Some(290011),
                 ..Default::default()
             }],
         }),
@@ -39,8 +39,8 @@ fn opening_ultimate_reports_the_rejected_fight_task_parameter() {
     let error = opening_determinism(config::configs::get(), &fight, &round).unwrap_err();
     assert_eq!(
         error,
-        "prepare opening hand for replay setup: unsupported fight task 260102: \
-         taskParam1=\"MonsterBelowHp#83010111#500\": unsupported fight task kind 'MonsterBelowHp'"
+        "prepare opening hand for replay setup: unsupported fight task 290011: \
+         taskParam1=\"MyPlayerBuff#9290309\": unsupported fight task kind 'MyPlayerBuff'"
     );
 }
 

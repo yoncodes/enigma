@@ -59,6 +59,7 @@ pub(super) fn settle(
             after_publish.into(),
             result,
             state,
+            &pending_deaths,
         )?;
         after_publish = after_settlement;
     } else {
@@ -116,7 +117,7 @@ pub(super) fn settle(
                 result,
                 state,
             )?;
-            push_death(&mut result.frames, action_scope, managers, *death);
+            push_death(&mut result.frames, action_scope, managers, state, *death);
         }
         cleanup_deaths.extend(settled_deaths.iter().map(|death| death.transition()));
     } else if let Some(action_scope) = active_action_scope {
@@ -149,7 +150,7 @@ pub(super) fn settle(
                 result,
                 state,
             )?;
-            push_death(&mut result.frames, action_scope, managers, *death);
+            push_death(&mut result.frames, action_scope, managers, state, *death);
         }
         terminal_death = terminal_death.or_else(|| deaths.first().map(|death| death.transition()));
         cleanup_deaths.extend(deaths.into_iter().map(|death| death.transition()));

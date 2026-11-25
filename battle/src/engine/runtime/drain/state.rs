@@ -57,6 +57,7 @@ pub(super) struct DrainState {
     context: TargetContext,
     depth: usize,
     death_settlement_depth: usize,
+    death_settlement_roots: Vec<PendingDeath>,
     defender_card_cleanup_owner: DefenderCardCleanupOwner,
 }
 
@@ -100,16 +101,26 @@ impl DrainState {
         self.budget.consume(self.depth)
     }
 
-    pub(super) fn enter_death_settlement(&mut self) {
+    pub(super) fn enter_death_settlement(&mut self, deaths: &[PendingDeath]) {
+        if self.death_settlement_depth == 0 {
+            self.death_settlement_roots.extend_from_slice(deaths);
+        }
         self.death_settlement_depth += 1;
     }
 
     pub(super) fn leave_death_settlement(&mut self) {
         self.death_settlement_depth -= 1;
+        if self.death_settlement_depth == 0 {
+            self.death_settlement_roots.clear();
+        }
     }
 
     pub(super) fn death_settlement_in_progress(&self) -> bool {
         self.death_settlement_depth > 0
+    }
+
+    pub(super) fn is_primary_death(&self, death: PendingDeath) -> bool {
+        !self.death_settlement_in_progress() || self.death_settlement_roots.contains(&death)
     }
 
     pub(super) fn defer_after_hit(&mut self, action_path: Option<&[usize]>, queued: Vec<QueuedOp>) {

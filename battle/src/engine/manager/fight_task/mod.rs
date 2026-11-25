@@ -4,7 +4,11 @@ use anyhow::{Context, Result, bail, ensure};
 
 use sonettobuf::{Fight, FightTask, FightTaskBox, FightTaskValue};
 
+mod monster_health;
 mod prerequisites;
+
+pub(crate) use monster_health::MonsterHealth;
+use monster_health::MonsterHealthRule;
 
 #[derive(Clone, Copy)]
 #[repr(i32)]
@@ -33,6 +37,7 @@ enum TaskProgress {
     IndicatorValue(i32),
     IndicatorThreshold { indicator_id: i32, threshold: i32 },
     KillMonster(Vec<i32>),
+    MonsterBelowHp(MonsterHealthRule),
     VictoryByRound(i32),
 }
 
@@ -228,7 +233,9 @@ impl FightTaskManager {
     pub(crate) fn record_victory(&mut self, round: i32, team_type: i32) -> Option<FightTaskChange> {
         let mut changed_ids = HashSet::new();
         loop {
-            self.complete_deadlines(round, &mut changed_ids);
+            self.complete_matching(&mut changed_ids, |progress| {
+                matches!(progress, TaskProgress::VictoryByRound(limit) if (1..=*limit).contains(&round))
+            });
             let activated = self.prerequisites.activate(&mut self.tasks);
             if activated.is_empty() {
                 break;
@@ -238,7 +245,30 @@ impl FightTaskManager {
         self.change(team_type, &changed_ids)
     }
 
-    fn complete_deadlines(&mut self, round: i32, changed_ids: &mut HashSet<i32>) {
+    pub(crate) fn record_monster_health<I>(
+        &mut self,
+        monsters: impl Fn() -> I,
+        team_type: i32,
+    ) -> Option<FightTaskChange>
+    where
+        I: Iterator<Item = MonsterHealth>,
+    {
+        let mut changed_ids = HashSet::new();
+        self.complete_matching(&mut changed_ids, |progress| {
+            matches!(progress, TaskProgress::MonsterBelowHp(rule) if monsters().any(|monster| rule.reached(monster)))
+        });
+        if changed_ids.is_empty() {
+            return None;
+        }
+        changed_ids.extend(self.prerequisites.activate(&mut self.tasks));
+        self.change(team_type, &changed_ids)
+    }
+
+    fn complete_matching(
+        &mut self,
+        changed_ids: &mut HashSet<i32>,
+        matches: impl Fn(&TaskProgress) -> bool,
+    ) {
         for task in &mut self.tasks {
             let Some(task_id) = task.task_id else {
                 continue;
@@ -251,10 +281,7 @@ impl FightTaskManager {
             };
             let mut changed = false;
             for definition in definitions {
-                let TaskProgress::VictoryByRound(limit) = definition.progress else {
-                    continue;
-                };
-                if !(1..=limit).contains(&round) {
+                if !matches(&definition.progress) {
                     continue;
                 }
                 if let Some(value) = task.values.iter_mut().find(|value| {
@@ -380,11 +407,11 @@ fn task_rules(row: &config::fight_task::FightTask) -> Result<Vec<(TaskRule, i32)
         let slot = index as i32 + 1;
         let rule = parse_task_rule(slot, parameter)
             .with_context(|| format!("taskParam{slot}={parameter:?}"))?;
-        if matches!(rule.progress, TaskProgress::VictoryByRound(_)) {
-            ensure!(
-                max_progress == 1,
-                "round deadline progress maximum must be 1"
-            );
+        if matches!(
+            rule.progress,
+            TaskProgress::VictoryByRound(_) | TaskProgress::MonsterBelowHp(_)
+        ) {
+            ensure!(max_progress == 1, "completion progress maximum must be 1");
         }
         rules.push((rule, max_progress));
     }
@@ -466,15 +493,12 @@ fn parse_task_rule(value_index: i32, parameter: &str) -> Result<TaskRule> {
         "KillMonster" => {
             let raw_ids = parts.next().context("KillMonster is missing model ids")?;
             ensure!(parts.next().is_none(), "KillMonster has extra arguments");
-            let model_ids = raw_ids
-                .split(',')
-                .map(|raw| {
-                    raw.parse::<i32>()
-                        .with_context(|| format!("invalid monster model id '{raw}'"))
-                })
-                .collect::<Result<Vec<_>>>()?;
-            ensure!(!model_ids.is_empty(), "KillMonster has no model ids");
-            TaskProgress::KillMonster(model_ids)
+            TaskProgress::KillMonster(parse_model_ids(raw_ids)?)
+        }
+        "MonsterBelowHp" => {
+            let rule = MonsterHealthRule::parse(parts.next(), parts.next())?;
+            ensure!(parts.next().is_none(), "MonsterBelowHp has extra arguments");
+            TaskProgress::MonsterBelowHp(rule)
         }
         "Round" => {
             let limit = parse_i32(parts.next(), "round limit")?;
@@ -487,6 +511,15 @@ fn parse_task_rule(value_index: i32, parameter: &str) -> Result<TaskRule> {
         value_index,
         progress,
     })
+}
+
+fn parse_model_ids(raw: &str) -> Result<Vec<i32>> {
+    raw.split(',')
+        .map(|id| {
+            id.parse()
+                .with_context(|| format!("invalid monster model id '{id}'"))
+        })
+        .collect()
 }
 
 fn parse_i32(value: Option<&str>, name: &str) -> Result<i32> {

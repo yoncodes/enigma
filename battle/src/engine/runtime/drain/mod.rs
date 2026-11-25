@@ -34,6 +34,7 @@ mod command_dispatch;
 mod command_prepare;
 mod entry;
 mod field_level;
+mod fight_tasks;
 mod model;
 mod overflow_frame;
 mod paid_ultimate;
@@ -68,15 +69,18 @@ fn push_death(
     frames: &mut [SemanticFrame],
     path: &[usize],
     managers: &mut BattleManagers,
+    state: &DrainState,
     death: crate::engine::manager::hp::PendingDeath,
 ) {
     if !managers.hp.is_current_death(death) {
         return;
     }
     managers.conduit.record_death(death);
+    let check_health = state.is_primary_death(death);
     let death = death.transition();
-    if let Some(model_id) = managers.entity.model_id(death.target_uid)
-        && let Some(change) = managers.fight_task.record_kill(model_id, 1)
+    for change in fight_tasks::settle_death(managers, death.target_uid, check_health)
+        .into_iter()
+        .flatten()
     {
         push_change(
             frames,
@@ -673,6 +677,7 @@ fn drain_nested_queue(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 fn drain_death_settlement_queue(
     managers: &mut BattleManagers,
     pool: &TargetPool,
@@ -681,8 +686,9 @@ fn drain_death_settlement_queue(
     queue: VecDeque<QueuedOp>,
     result: &mut DrainResult,
     state: &mut DrainState,
+    deaths: &[crate::engine::manager::hp::PendingDeath],
 ) -> Result<(), DrainError> {
-    state.enter_death_settlement();
+    state.enter_death_settlement(deaths);
     let nested = drain_nested_queue(managers, pool, catalog, determinism, queue, result, state);
     state.leave_death_settlement();
     nested

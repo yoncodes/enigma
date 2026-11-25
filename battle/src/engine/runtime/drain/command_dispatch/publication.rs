@@ -127,7 +127,7 @@ pub(super) fn record(
         }
     }
     if let RuleOutcome::DeathSettlement(death) = outcome {
-        push_death(&mut result.frames, frame_path, managers, *death);
+        push_death(&mut result.frames, frame_path, managers, state, *death);
     } else {
         for change in outcome.changes() {
             let change = match (replacement, change) {

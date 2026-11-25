@@ -325,6 +325,7 @@ fn death_settlement_restores_depth_after_nested_error() {
         })]),
         &mut result,
         &mut state,
+        &[],
     )
     .unwrap_err();
 
