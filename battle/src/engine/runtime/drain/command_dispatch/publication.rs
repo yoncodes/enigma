@@ -279,6 +279,12 @@ pub(super) fn dispatch_after(
             pending_deaths,
         )?
     };
+    super::super::field_level::bind_reactions(
+        frame_path,
+        action_scope.map(Vec::as_slice),
+        trigger,
+        &mut reactions,
+    );
     super::super::overflow_frame::defer_hit_storage(
         frame_path,
         action_scope.map(Vec::as_slice),

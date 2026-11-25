@@ -461,7 +461,7 @@ pub(super) fn assign_subscriber_death_groups(queues: &mut [&mut Vec<QueuedOp>]) 
             trigger: after.trigger.clone(),
             skill_execution: None,
             frame_path: None,
-            parent_path: None,
+            parent_path: super::field_level::completion_anchor(after),
             frame_group: None,
             independent_parent_group: None,
             frame_owner: None,

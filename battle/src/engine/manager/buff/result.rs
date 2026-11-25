@@ -12,6 +12,7 @@ pub struct BuffApplyResult {
     pub source_uid: i64,
     pub target_uid: i64,
     pub effective: bool,
+    pub(crate) added_type_total: Option<i32>,
     pub buff: BuffInfo,
     pub pre_markers: Vec<BuffActInfoMarkerResult>,
     pub pre_effects: Vec<BuffWireEffectResult>,
@@ -100,6 +101,7 @@ pub struct BuffUpdateResult {
     pub target_uid: i64,
     pub before: BuffInfo,
     pub after: BuffInfo,
+    pub(crate) added_type_total: Option<i32>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -159,6 +161,7 @@ impl BuffReplaceResult {
                 buff_id: buff.buff_id.unwrap_or_default(),
                 before_amount: 0,
                 after_amount: super::count_or_layer(buff),
+                added_type_total: applied.added_type_total,
                 act_id: buff
                     .act_info
                     .first()
@@ -191,6 +194,7 @@ impl BuffReplaceResult {
                         buff_id: refresh.after.buff_id.unwrap_or_default(),
                         before_amount,
                         after_amount,
+                        added_type_total: refresh.added_type_total,
                         act_id: refresh
                             .after
                             .act_info
@@ -239,6 +243,7 @@ impl BuffReplaceResult {
                     buff_id: removed.buff.buff_id.unwrap_or_default(),
                     before_amount: removed.before_amount,
                     after_amount: 0,
+                    added_type_total: None,
                     act_id: removed
                         .buff
                         .act_info

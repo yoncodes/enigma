@@ -70,20 +70,30 @@ pub fn added_type_count_repeats(
     managers: &BattleManagers,
     context: crate::engine::skill::target::TargetContext,
 ) -> i32 {
-    let ParsedConditionKind::AccBuffTypeAddedCount {
-        type_ids,
-        threshold,
-    } = &condition.kind
-    else {
-        return 0;
-    };
-    if context.added_buff_amount <= 0 || !type_ids.contains(&context.added_buff_type_id) {
+    if context.added_buff_amount <= 0 {
         return 0;
     }
-    let total = managers
-        .buff
-        .added_type_count_for_owner(context.added_buff_target_uid, type_ids);
-    let threshold = (*threshold).max(1);
+    let (total, threshold) = match &condition.kind {
+        ParsedConditionKind::AccBuffTypeAddedCount {
+            type_ids,
+            threshold,
+        } if type_ids.contains(&context.added_buff_type_id) => (
+            managers
+                .buff
+                .added_type_count_for_owner(context.added_buff_target_uid, type_ids),
+            *threshold,
+        ),
+        ParsedConditionKind::AccCommittedBuffTypeAddedCount { type_id, threshold }
+            if *type_id == context.added_buff_type_id =>
+        {
+            (
+                context.added_buff_type_total.unwrap_or_default(),
+                *threshold,
+            )
+        }
+        _ => return 0,
+    };
+    let threshold = threshold.max(1);
     let previous = (total - context.added_buff_amount).max(0);
     total / threshold - previous / threshold
 }
@@ -260,6 +270,16 @@ pub fn owner_added_type_count(_: i32, _: &str, raw_args: &[String]) -> Option<Pa
         type_ids: parse_buff_ids(raw_args.get(..1)?)?,
         threshold: raw_args.get(1)?.parse().ok()?,
     })
+}
+
+pub fn owner_added_single_type(
+    _: i32,
+    _: &str,
+    raw_args: &[String],
+) -> Option<ParsedConditionKind> {
+    let [type_id, threshold] = parse_fixed(raw_args)?;
+    (type_id > 0 && threshold > 0)
+        .then_some(ParsedConditionKind::AccCommittedBuffTypeAddedCount { type_id, threshold })
 }
 
 pub fn buff_type_at_least(_: i32, _: &str, raw_args: &[String]) -> Option<ParsedConditionKind> {

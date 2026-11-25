@@ -190,6 +190,7 @@ pub enum ReactionMultiplicity {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ReactionTimingPolicy {
     Fixed(ReactionTiming),
+    AfterFieldLevelSkill,
     ByPassiveSource {
         psychube: ReactionTiming,
         battle_rule: ReactionTiming,
@@ -201,6 +202,7 @@ impl ReactionTimingPolicy {
     pub const fn resolve(self, source: PassiveSourceKind) -> ReactionTiming {
         match self {
             Self::Fixed(timing) => timing,
+            Self::AfterFieldLevelSkill => ReactionTiming::Immediate,
             Self::ByPassiveSource {
                 psychube,
                 battle_rule,
@@ -451,6 +453,11 @@ const fn reads_psychube_target_at_action_start(
 
 pub const fn after_skill(mut metadata: ConditionMetadata) -> ConditionMetadata {
     metadata.reaction_timing = ReactionTimingPolicy::Fixed(ReactionTiming::AfterSkill);
+    metadata
+}
+
+pub const fn after_field_level_skill(mut metadata: ConditionMetadata) -> ConditionMetadata {
+    metadata.reaction_timing = ReactionTimingPolicy::AfterFieldLevelSkill;
     metadata
 }
 
@@ -912,6 +919,7 @@ condition_definitions! {
     [73210] "TeammateAliveNum" => entity_count::teammates_up_to_three, event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterHit));
     [583004] "AccTeamAddBuffCountByBuffId" => buff::team_added_count, reaction_targets_owner(predicate(&[EventKind::BuffAdded, EventKind::BuffChanged]));
     [581] "AccAddBuffCountByBuffId" => buff::owner_added_count, reaction_targets_owner(predicate(&[EventKind::BuffAdded, EventKind::BuffChanged]));
+    [730004] "AccAddBuffCountByBuffTypeIdAllEffect" => buff::owner_added_single_type, after_field_level_skill(event_target_observes(reaction_targets_owner(predicate(&[EventKind::BuffAdded, EventKind::BuffChanged]))));
     [730212] "AccAddBuffCountByBuffTypeIdAllEffect" => buff::owner_added_type_count, in_causing_frame(reaction_targets_owner(predicate(&[EventKind::BuffAdded, EventKind::BuffChanged])));
     [581307] "AccAddBuffCountByBuffId" => buff::buff_id_at_least, event_trigger(EventKind::RoundEndFinalSettlement, None);
     [579018] "ExPointIncrChange" => resource::self_ex_point_increase, reaction_targets_owner(before_publish(event_trigger(EventKind::ExPointChanged, None)));

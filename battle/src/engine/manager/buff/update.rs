@@ -24,6 +24,7 @@ impl BuffManager {
                 target_uid,
                 before,
                 after: active.buff.clone(),
+                added_type_total: None,
             });
         }
         BuffReplaceResult {
@@ -63,6 +64,7 @@ impl BuffManager {
                 target_uid: owner_uid,
                 before,
                 after: active.buff.clone(),
+                added_type_total: None,
             });
         }
         changed
@@ -95,6 +97,7 @@ impl BuffManager {
             target_uid,
             before,
             after: active.buff.clone(),
+            added_type_total: None,
         })
     }
 
@@ -132,16 +135,16 @@ impl BuffManager {
         let after = active.buff.clone();
         let added =
             (count_or_layer_from(&after, active.definition.as_ref()) - before_amount).max(0);
-        let result = BuffUpdateResult {
+        let added_type_total = after
+            .buff_id
+            .and_then(|buff_id| self.record_added(target_uid, buff_id, added));
+        Some(BuffUpdateResult {
             source_uid: before.from_uid.unwrap_or_default(),
             target_uid,
             before,
             after,
-        };
-        if let Some(buff_id) = result.after.buff_id {
-            self.record_added(target_uid, buff_id, added);
-        }
-        Some(result)
+            added_type_total,
+        })
     }
 
     #[cfg(test)]

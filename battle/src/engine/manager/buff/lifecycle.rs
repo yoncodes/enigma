@@ -305,6 +305,7 @@ impl BuffManager {
         self.entities.clear();
         self.team_types.clear();
         self.added_by_owner.clear();
+        self.added_by_owner_type.clear();
         self.added_by_team.clear();
         self.added_history.clear();
         self.act_states.clear();
@@ -430,6 +431,7 @@ impl BuffManager {
             target_uid: plan.target_uid,
             before,
             after: self.buffs[index].buff.clone(),
+            added_type_total: None,
         })
     }
 
@@ -664,6 +666,7 @@ impl BuffManager {
                     target_uid: plan.target_uid,
                     before,
                     after,
+                    added_type_total: None,
                 }],
                 ..Default::default()
             })

@@ -204,9 +204,12 @@ pub(super) fn condition_kind_matches(
         ParsedConditionKind::AccBuffAddedCount { .. } => managers.is_some_and(|managers| {
             super::super::buff::added_count_repeats(condition, source_uid, managers, context) > 0
         }),
-        ParsedConditionKind::AccBuffTypeAddedCount { .. } => managers.is_some_and(|managers| {
-            super::super::buff::added_type_count_repeats(condition, managers, context) > 0
-        }),
+        ParsedConditionKind::AccBuffTypeAddedCount { .. }
+        | ParsedConditionKind::AccCommittedBuffTypeAddedCount { .. } => {
+            managers.is_some_and(|managers| {
+                super::super::buff::added_type_count_repeats(condition, managers, context) > 0
+            })
+        }
         ParsedConditionKind::HpPermille { compare, threshold } => {
             resources::hp_permille(compare, threshold, condition_targets, managers)
         }

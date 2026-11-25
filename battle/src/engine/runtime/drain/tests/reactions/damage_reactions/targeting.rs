@@ -93,6 +93,7 @@ fn side_state_reactions_anchor_their_frame_to_the_applier() {
         buff_id: 109320001,
         before_amount: 1,
         after_amount: 0,
+        added_type_total: None,
         act_id: 0,
         act_value: 0,
         replaced_fixed_max_hp: None,

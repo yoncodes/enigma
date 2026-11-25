@@ -38,6 +38,7 @@ impl EffectPacket {
                     target_uid: refreshed.target_uid,
                     before: refreshed.before.clone(),
                     after: refreshed.before.clone(),
+                    added_type_total: None,
                 }));
             }
             effects.push(Self::buff_update(refreshed));
@@ -183,6 +184,7 @@ impl EffectPacket {
                     target_uid: refreshed.target_uid,
                     before: echoed.clone(),
                     after: echoed,
+                    added_type_total: None,
                 }));
             }
             effects.push(Self::buff_update(refreshed));

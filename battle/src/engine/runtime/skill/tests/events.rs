@@ -668,6 +668,7 @@ fn event_context_does_not_override_a_reactive_skills_own_target_rule() {
         buff_id: 1,
         before_amount: 0,
         after_amount: 1,
+        added_type_total: None,
         act_id: 0,
         act_value: 0,
         replaced_fixed_max_hp: None,

@@ -546,7 +546,8 @@ fn event_condition_count(
             random_roll.map_or(1, |roll| i32::from(roll < *threshold))
         }
         ParsedConditionKind::AccBuffAddedCount { .. }
-        | ParsedConditionKind::AccBuffTypeAddedCount { .. } => 0,
+        | ParsedConditionKind::AccBuffTypeAddedCount { .. }
+        | ParsedConditionKind::AccCommittedBuffTypeAddedCount { .. } => 0,
         _ => i32::from(conditions_match(
             std::slice::from_ref(condition),
             source_uid,

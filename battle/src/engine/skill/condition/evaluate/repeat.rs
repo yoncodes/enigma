@@ -228,7 +228,8 @@ pub(super) fn condition_repeat_count(
                 })
                 .unwrap_or_default(),
         ),
-        ParsedConditionKind::AccBuffTypeAddedCount { .. } => Some(
+        ParsedConditionKind::AccBuffTypeAddedCount { .. }
+        | ParsedConditionKind::AccCommittedBuffTypeAddedCount { .. } => Some(
             managers
                 .map(|managers| {
                     super::super::buff::added_type_count_repeats(condition, managers, context)

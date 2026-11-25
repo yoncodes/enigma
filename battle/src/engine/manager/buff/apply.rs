@@ -186,13 +186,15 @@ impl BuffManager {
             effective,
             buff: buff.clone(),
         });
-        if effective {
+        let added_type_total = if effective {
             self.record_added(
                 target_uid,
                 buff_id,
                 count_or_layer_from(&buff, Some(definition)),
-            );
-        }
+            )
+        } else {
+            None
+        };
         let (pre_markers, pre_effects, markers) = if effective {
             let pre_markers = pre_markers
                 .into_iter()
@@ -218,6 +220,7 @@ impl BuffManager {
             source_uid,
             target_uid,
             effective,
+            added_type_total,
             buff,
             pre_markers,
             pre_effects,
@@ -376,6 +379,7 @@ impl BuffManager {
             target_uid: route.target_uid,
             before,
             after: active.buff.clone(),
+            added_type_total: None,
         })
     }
 
@@ -408,6 +412,7 @@ impl BuffManager {
             target_uid: route.target_uid,
             before,
             after: active.buff.clone(),
+            added_type_total: None,
         })
     }
 
@@ -591,13 +596,15 @@ impl BuffManager {
             active.buff.count = Some(before.count.unwrap_or_default() + definition.count(0));
             active.buff.duration =
                 Some(before.duration.unwrap_or_default().max(definition.duration));
+            let after = active.buff.clone();
+            let added_type_total = self.record_added(target_uid, buff_id, definition.count(0));
             updates.push(BuffUpdateResult {
                 source_uid,
                 target_uid,
                 before,
-                after: active.buff.clone(),
+                after,
+                added_type_total,
             });
-            self.record_added(target_uid, buff_id, definition.count(0));
         }
         updates
     }
@@ -648,6 +655,7 @@ impl BuffManager {
                     target_uid,
                     before: active.buff.clone(),
                     after: active.buff.clone(),
+                    added_type_total: None,
                 });
             }
             LayerRefreshPlan::PromoteRestored {
@@ -680,16 +688,17 @@ impl BuffManager {
         }
         active.buff.layer = Some(next_layer);
         active.buff.duration = Some(next_duration);
-        let result = BuffUpdateResult {
+        let after = active.buff.clone();
+        let added = after.layer.unwrap_or_default() - before.layer.unwrap_or_default();
+        let added_type_total =
+            self.record_added(target_uid, after.buff_id.unwrap_or_default(), added);
+        Some(BuffUpdateResult {
             source_uid,
             target_uid,
             before,
-            after: active.buff.clone(),
-        };
-        let added =
-            result.after.layer.unwrap_or_default() - result.before.layer.unwrap_or_default();
-        self.record_added(target_uid, result.after.buff_id.unwrap_or_default(), added);
-        Some(result)
+            after,
+            added_type_total,
+        })
     }
 
     pub(in crate::engine::manager::buff) fn commit_fanout(

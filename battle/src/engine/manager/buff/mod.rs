@@ -76,6 +76,7 @@ pub struct BuffManager {
     entities: Vec<TrackedEntity>,
     team_types: HashMap<i64, i32>,
     added_by_owner: HashMap<(i64, i32), i32>,
+    added_by_owner_type: HashMap<(i64, i32), i32>,
     added_by_team: HashMap<(i32, i32), i32>,
     added_history: HashMap<i64, Vec<i32>>,
     act_states: HashMap<(i64, i32), state::DotState>,
@@ -100,6 +101,7 @@ impl Default for BuffManager {
             entities: Vec::new(),
             team_types: HashMap::new(),
             added_by_owner: HashMap::new(),
+            added_by_owner_type: HashMap::new(),
             added_by_team: HashMap::new(),
             added_history: HashMap::new(),
             act_states: HashMap::new(),
@@ -405,9 +407,9 @@ impl BuffManager {
         uid
     }
 
-    fn record_added(&mut self, owner_uid: i64, buff_id: i32, amount: i32) {
+    fn record_added(&mut self, owner_uid: i64, buff_id: i32, amount: i32) -> Option<i32> {
         if amount <= 0 {
-            return;
+            return None;
         }
         *self.added_by_owner.entry((owner_uid, buff_id)).or_default() += amount;
         if let Some(team_type) = self.team_type(owner_uid) {
@@ -417,6 +419,13 @@ impl BuffManager {
             .entry(owner_uid)
             .or_default()
             .push(buff_id);
+        let type_id = self.catalog().buff_type_id(buff_id);
+        let total = self
+            .added_by_owner_type
+            .entry((owner_uid, type_id))
+            .or_default();
+        *total = total.saturating_add(amount);
+        Some(*total)
     }
 
     pub fn added_history_for_owner(&self, owner_uid: i64) -> &[i32] {
@@ -439,11 +448,9 @@ impl BuffManager {
     }
 
     pub fn added_type_count_for_owner(&self, owner_uid: i64, type_ids: &[i32]) -> i32 {
-        self.added_by_owner
+        self.added_by_owner_type
             .iter()
-            .filter(|((uid, buff_id), _)| {
-                *uid == owner_uid && type_ids.contains(&self.catalog().buff_type_id(*buff_id))
-            })
+            .filter(|((uid, type_id), _)| *uid == owner_uid && type_ids.contains(type_id))
             .map(|(_, amount)| *amount)
             .sum()
     }

@@ -73,6 +73,14 @@ pub(super) fn drain_skill(
         return Ok(());
     }
 
+    let parent_path = if invocation.field_level_settlement && frame_path.is_none() {
+        parent_path.and_then(|mut path| {
+            path.pop();
+            (!path.is_empty()).then_some(path)
+        })
+    } else {
+        parent_path
+    };
     let parent_path = match caster_frame {
         Some(caster) => Some(ensure_frame(
             &mut result.frames,

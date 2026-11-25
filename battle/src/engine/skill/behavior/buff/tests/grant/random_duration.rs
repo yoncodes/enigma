@@ -266,6 +266,7 @@ fn enemy_burn_conversion_uses_the_settlement_transaction() {
             buff_id: 4150001,
             before_amount: 11,
             after_amount: 5,
+            added_type_total: None,
             act_id: 0,
             act_value: 0,
             replaced_fixed_max_hp: None,

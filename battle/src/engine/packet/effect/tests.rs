@@ -442,6 +442,7 @@ fn buff_update_and_delete_preserve_manager_snapshot_without_scalar_buff_id() {
         target_uid: 10,
         before,
         after: after.clone(),
+        added_type_total: None,
     })];
     let delete = [EffectPacket::buff_delete(&BuffRemoveResult {
         target_uid: 10,
@@ -516,6 +517,7 @@ fn duration_only_refresh_does_not_emit_an_attribute_marker() {
             target_uid: 10,
             before,
             after,
+            added_type_total: None,
         }],
         rejected: None,
         fanout: Vec::new(),
@@ -705,6 +707,7 @@ fn stack_consumption_does_not_emit_an_attribute_marker() {
             target_uid: 10,
             before,
             after,
+            added_type_total: None,
         }],
         rejected: None,
         fanout: Vec::new(),
@@ -741,6 +744,7 @@ fn stack_refresh_emits_configured_refresh_markers() {
             target_uid: 10,
             before,
             after,
+            added_type_total: None,
         }],
         rejected: None,
         fanout: Vec::new(),

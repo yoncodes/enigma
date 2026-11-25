@@ -494,6 +494,57 @@ fn accumulated_owner_buff_type_count_crosses_the_configured_threshold() {
 }
 
 #[test]
+fn owner_buff_type_threshold_keeps_spent_layers_across_rounds() {
+    init_config();
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                team_type: Some(1),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let mut managers = BattleManagers::seeded(&fight);
+    managers.buff.add(&managers.hp, 10, 10, 31350131, 10);
+    managers
+        .buff
+        .consume_by_type_or_id(10, 31350131, 10)
+        .unwrap();
+    managers.begin_round();
+    let gain = managers
+        .buff
+        .add(&managers.hp, 10, 10, 31350131, 5)
+        .unwrap();
+    let condition = exact_condition(
+        730004,
+        "AccAddBuffCountByBuffTypeIdAllEffect",
+        &["31350131", "15"],
+    );
+
+    assert_eq!(
+        conditions_fire_count(
+            &[condition],
+            10,
+            &[10],
+            Some(&managers),
+            &TargetPool::from_fight(&fight),
+            TargetContext {
+                added_buff_id: 31350131,
+                added_buff_type_id: 31350131,
+                added_buff_amount: 5,
+                added_buff_type_total: gain.added_type_total,
+                added_buff_target_uid: 10,
+                ..Default::default()
+            },
+        ),
+        1
+    );
+}
+
+#[test]
 fn round_power_conditions_preserve_consumed_and_overflow_counts() {
     init_config();
     let fight = Fight {

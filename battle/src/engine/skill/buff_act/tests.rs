@@ -49,6 +49,7 @@ fn transaction_event(buff_id: i32, before_amount: i32, after_amount: i32) -> Bat
         buff_id,
         before_amount,
         after_amount,
+        added_type_total: None,
         act_id: 0,
         act_value: 0,
         replaced_fixed_max_hp: None,

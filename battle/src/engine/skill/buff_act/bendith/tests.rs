@@ -64,6 +64,7 @@ fn retained_mapping_adds_and_removes_as_exact_inverse_commands() {
         buff_id: 31460137,
         before_amount: 0,
         after_amount: 1,
+        added_type_total: None,
         act_id: 0,
         act_value: 0,
         replaced_fixed_max_hp: None,

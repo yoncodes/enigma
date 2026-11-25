@@ -426,6 +426,7 @@ fn obscurity_break_enters_the_witness_round_on_the_next_round() {
             buff_id: 4150001,
             before_amount: 8,
             after_amount: 5,
+            added_type_total: None,
             act_id: 0,
             act_value: 0,
             replaced_fixed_max_hp: None,

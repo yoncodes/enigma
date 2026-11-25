@@ -352,6 +352,7 @@ fn primary_team_raspberry_removes_temporary_capacity_with_the_feast() {
             buff_id: 31250221,
             before_amount: 1,
             after_amount: 0,
+            added_type_total: None,
             act_id: 1041,
             act_value: 525,
             replaced_fixed_max_hp: None,

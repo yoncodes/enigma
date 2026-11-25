@@ -95,6 +95,7 @@ fn carrier_grant_locks_the_selected_bound_ally() {
             buff_id: 31_000_431,
             before_amount: 0,
             after_amount: 1,
+            added_type_total: None,
             act_id: 0,
             act_value: 0,
             replaced_fixed_max_hp: None,
