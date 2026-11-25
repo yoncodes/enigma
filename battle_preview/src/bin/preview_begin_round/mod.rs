@@ -6,7 +6,7 @@ use std::{
 use anyhow::Context;
 use battle::tooling::{
     damage_tracing_enabled,
-    replay::{ClothSkillType, ReplayBattle, seed_observed_redeal},
+    replay::{ClothSkillType, ReplayBattle, seed_observed_redeal, uses_absolute_round_numbers},
     scan::effect_catalog,
 };
 use battle_preview::{
@@ -529,6 +529,7 @@ fn replay_rounds(
                 &previous_captured_round,
                 &captured,
                 captured_extra_round(&round.cloth)?,
+                runtime.fight_version(),
             )?;
             for (offset, cloth) in round.cloth.iter().enumerate() {
                 replay_cloth_input(
@@ -796,12 +797,15 @@ fn validate_captured_round_continuity(
     previous: &FightRound,
     next: &FightRound,
     extra_round: bool,
+    fight_version: i32,
 ) -> io::Result<()> {
     match (previous.cur_round, next.cur_round) {
         (Some(previous), Some(next_round))
             if i64::from(next_round) != i64::from(previous) + i64::from(!extra_round)
                 && !(next_round == previous && next.is_finish == Some(true))
-                && (extra_round || !records_round_advance(next, previous, next_round)) =>
+                && (extra_round
+                    || !uses_absolute_round_numbers(fight_version)
+                    || !records_round_advance(next, previous, next_round)) =>
         {
             Err(io::Error::new(
                 io::ErrorKind::InvalidData,

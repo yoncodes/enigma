@@ -22,15 +22,20 @@ fn multiple_round_advances_require_each_ordered_transition_in_the_reply() {
         ..Default::default()
     };
 
-    assert!(validate_captured_round_continuity(&previous, &reply(&[2, 3]), false).is_ok());
+    assert!(validate_captured_round_continuity(&previous, &reply(&[2, 3]), false, 7).is_ok());
+    for version in [0, 6, 8] {
+        assert!(
+            validate_captured_round_continuity(&previous, &reply(&[2, 3]), false, version).is_err()
+        );
+    }
     for markers in [&[3][..], &[3, 2], &[2, 2, 3], &[2, 3, 4]] {
-        assert!(validate_captured_round_continuity(&previous, &reply(markers), false).is_err());
+        assert!(validate_captured_round_continuity(&previous, &reply(markers), false, 7).is_err());
     }
     let extra = FightRound {
         cur_round: Some(2),
         ..reply(&[2])
     };
-    assert!(validate_captured_round_continuity(&previous, &extra, true).is_err());
+    assert!(validate_captured_round_continuity(&previous, &extra, true, 7).is_err());
 }
 
 #[test]
@@ -69,12 +74,12 @@ fn captured_round_continuity_rejects_skips_and_reversals() {
         ..Default::default()
     };
 
-    let error = validate_captured_round_continuity(&previous, &skipped, false).unwrap_err();
+    let error = validate_captured_round_continuity(&previous, &skipped, false, 7).unwrap_err();
 
     assert_eq!(error.kind(), io::ErrorKind::InvalidData);
     assert!(error.to_string().contains("previous round 1"));
     assert!(error.to_string().contains("next round 3"));
-    assert!(validate_captured_round_continuity(&previous, &reversed, false).is_err());
+    assert!(validate_captured_round_continuity(&previous, &reversed, false, 7).is_err());
 }
 
 #[test]
@@ -91,10 +96,10 @@ fn captured_round_continuity_accepts_next_terminal_and_missing_evidence() {
         is_finish: Some(true),
         ..next.clone()
     };
-    assert!(validate_captured_round_continuity(&previous, &next, false).is_ok());
-    assert!(validate_captured_round_continuity(&next, &terminal, false).is_ok());
-    assert!(validate_captured_round_continuity(&FightRound::default(), &next, false).is_ok());
-    assert!(validate_captured_round_continuity(&next, &FightRound::default(), false).is_ok());
+    assert!(validate_captured_round_continuity(&previous, &next, false, 7).is_ok());
+    assert!(validate_captured_round_continuity(&next, &terminal, false, 7).is_ok());
+    assert!(validate_captured_round_continuity(&FightRound::default(), &next, false, 7).is_ok());
+    assert!(validate_captured_round_continuity(&next, &FightRound::default(), false, 7).is_ok());
 }
 
 #[test]
@@ -104,14 +109,14 @@ fn captured_round_continuity_accepts_same_round_from_extra_round_input() {
         ..Default::default()
     };
 
-    assert!(validate_captured_round_continuity(&round, &round, false).is_err());
-    assert!(validate_captured_round_continuity(&round, &round, true).is_ok());
+    assert!(validate_captured_round_continuity(&round, &round, false, 7).is_err());
+    assert!(validate_captured_round_continuity(&round, &round, true, 7).is_ok());
 
     let maximum = FightRound {
         cur_round: Some(i32::MAX),
         ..Default::default()
     };
-    assert!(validate_captured_round_continuity(&maximum, &maximum, false).is_err());
+    assert!(validate_captured_round_continuity(&maximum, &maximum, false, 7).is_err());
 }
 
 #[test]

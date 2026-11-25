@@ -29,6 +29,12 @@ pub mod replay {
 
     pub use crate::engine::skill::rule::ConfiguredRuleKey;
 
+    pub fn uses_absolute_round_numbers(fight_version: i32) -> bool {
+        use crate::engine::fight::versions::{ChangeRoundWireLayout, change_round_wire_layout};
+
+        change_round_wire_layout(fight_version) == Some(ChangeRoundWireLayout::CurrentRound)
+    }
+
     pub fn seed_observed_redeal(
         runtime: &mut ReplayBattle,
         hand: &[sonettobuf::CardInfo],
