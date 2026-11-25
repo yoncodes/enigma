@@ -20,6 +20,8 @@ use crate::engine::{
     },
 };
 
+mod separate_frame;
+
 #[test]
 fn recipient_reward_follows_the_field_level_skill() {
     crate::test_support::init_config();
@@ -200,8 +202,7 @@ fn earlier_reward_group_finishes_before_the_next_reward() {
     use std::collections::VecDeque;
 
     use super::super::{
-        DrainResult, DrainState, QueuedOp, SubscriberContext, assign_subscriber_death_groups,
-        drain_nested_queue, insert_after_frame,
+        DrainResult, DrainState, QueuedOp, ReactionBatch, SubscriberContext, drain_nested_queue,
     };
     use crate::engine::{
         event::payload::{BuffChangeEvent, BuffExpiry},
@@ -237,15 +238,23 @@ fn earlier_reward_group_finishes_before_the_next_reward() {
         FrameOwner::Command,
         FrameTrigger::Active,
     );
-    let field_skill = push_child(
+    let other = push_root(
         &mut result.frames,
-        &parent,
         FrameOwner::Command,
         FrameTrigger::Active,
     );
+    let field_skill = push_child(
+        &mut result.frames,
+        &other,
+        FrameOwner::Command,
+        FrameTrigger::Active,
+    );
+    let grant = super::Grant {
+        owner: parent.clone(),
+        completion: field_skill.clone(),
+    };
     let reward_batch = |total| {
         let invocation = SkillInvocation {
-            field_level_settlement: true,
             condition_key: Some(DefinitionKey::new(
                 730004,
                 "AccAddBuffCountByBuffTypeIdAllEffect",
@@ -257,33 +266,38 @@ fn earlier_reward_group_finishes_before_the_next_reward() {
             }
             .into()
         };
-        let mut ops = vec![QueuedOp {
-            op: super::RuleOp::Skill(invocation),
-            trigger: super::SkillOpTrigger::Event(BattleEvent::BuffChanged(BuffChangeEvent {
-                source_uid: 10,
-                target_uid: 10,
-                buff_uid: 100,
-                buff_id: 31350131,
-                before_amount: total - 5,
-                after_amount: total,
-                added_type_total: Some(total),
-                act_id: 0,
-                act_value: 0,
-                replaced_fixed_max_hp: None,
-                replaced_buff_id: None,
-                expiry: BuffExpiry::None,
-            })),
-            skill_execution: None,
-            frame_path: None,
-            parent_path: Some(field_skill.clone()),
-            frame_group: None,
-            independent_parent_group: None,
-            frame_owner: None,
-            subscriber: Some(SubscriberContext::for_skill(10, 31350164)),
-            caster_frame: None,
-        }];
-        assign_subscriber_death_groups(&mut [&mut ops]);
-        ops
+        let mut reactions = ReactionBatch {
+            after_publish: vec![QueuedOp {
+                op: super::RuleOp::Skill(invocation),
+                trigger: super::SkillOpTrigger::Event(BattleEvent::BuffChanged(BuffChangeEvent {
+                    source_uid: 10,
+                    target_uid: 10,
+                    buff_uid: 100,
+                    buff_id: 31350131,
+                    before_amount: total - 5,
+                    after_amount: total,
+                    added_type_total: Some(total),
+                    act_id: 0,
+                    act_value: 0,
+                    replaced_fixed_max_hp: None,
+                    replaced_buff_id: None,
+                    expiry: BuffExpiry::None,
+                })),
+                skill_execution: None,
+                frame_path: None,
+                parent_path: Some(field_skill.clone()),
+                frame_group: None,
+                independent_parent_group: None,
+                frame_owner: None,
+                subscriber: Some(SubscriberContext::for_skill(10, 31350164)),
+                caster_frame: None,
+            }],
+            ..Default::default()
+        };
+        super::bind_reactions(Some(&grant), None, &mut reactions);
+        assert!(reactions.after_publish.is_empty());
+        assert_eq!(reactions.after_skill[0].parent_path.as_ref(), Some(&parent));
+        reactions.after_skill
     };
     let mut state = DrainState::new(Default::default());
     let death = managers
@@ -309,8 +323,8 @@ fn earlier_reward_group_finishes_before_the_next_reward() {
         .unwrap();
     state.record_subscriber_deaths(group, &field_skill, [death]);
     let mut queue = VecDeque::new();
-    insert_after_frame(&mut queue, &field_skill, first);
-    insert_after_frame(&mut queue, &field_skill, reward_batch(30));
+    super::schedule_after_skill(&mut queue, &other, Some(&grant), first);
+    super::schedule_after_skill(&mut queue, &other, Some(&grant), reward_batch(30));
 
     drain_nested_queue(
         &mut managers,

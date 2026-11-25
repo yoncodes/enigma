@@ -182,6 +182,13 @@ fn queued_reaction_pass(
             } else {
                 definition.reaction_frame_target
             };
+            let mut context =
+                SubscriberContext::for_skill(subscriber.owner_uid, subscriber.skill_id);
+            context.field_level = super::super::field_level::grant_scope(
+                definition.key,
+                event,
+                parent_path.as_deref(),
+            );
             Ok(QueuedOp {
                 op,
                 trigger: SkillOpTrigger::Event(event.clone()),
@@ -210,10 +217,7 @@ fn queued_reaction_pass(
                     )
                     .or(reentry_target),
                 }),
-                subscriber: Some(SubscriberContext::for_skill(
-                    subscriber.owner_uid,
-                    subscriber.skill_id,
-                )),
+                subscriber: Some(context),
                 caster_frame: None,
             })
         })

@@ -343,6 +343,7 @@ pub(super) fn drain_command(
                 .and_then(|subscriber| subscriber.settlement_owner.as_deref()),
             _ => None,
         },
+        field_level_grant: super::field_level::command_grant(&trigger, subscriber.as_ref()),
         current_skill,
         fanout_output_owner,
         layer_halo_fanout_output_owner,
@@ -563,7 +564,12 @@ pub(super) fn drain_command(
         }
     }
     prepend(queue, immediate_followups);
-    insert_after_frame(queue, &frame_path, reactions.after_skill);
+    super::field_level::schedule_after_skill(
+        queue,
+        &frame_path,
+        publication_scope.field_level_grant,
+        reactions.after_skill,
+    );
     if completes_action {
         insert_after_frame(
             queue,

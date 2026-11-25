@@ -15,7 +15,6 @@ fn invocation_keeps_runtime_target_and_action_kind() {
         condition_key: Some(DefinitionKey::new(30, "TestCondition")),
         reaction_multiplicity_key: None,
         condition_slot: Some(2),
-        field_level_settlement: false,
         reaction_batch_id: None,
         reaction_action_path: None,
         phase: Some(SkillPhase::AfterDamage),

@@ -20,7 +20,7 @@ pub(super) fn drain_skill(
     parent_path: Option<FramePath>,
     frame_group: Option<Rc<RefCell<Option<FramePath>>>>,
     frame_owner: Option<FrameOwner>,
-    subscriber: Option<SubscriberContext>,
+    mut subscriber: Option<SubscriberContext>,
     caster_frame: Option<FrameOwner>,
 ) -> Result<(), DrainError> {
     if let Some(FrameOwner::BuffAct { key, .. }) = &frame_owner
@@ -73,14 +73,6 @@ pub(super) fn drain_skill(
         return Ok(());
     }
 
-    let parent_path = if invocation.field_level_settlement && frame_path.is_none() {
-        parent_path.and_then(|mut path| {
-            path.pop();
-            (!path.is_empty()).then_some(path)
-        })
-    } else {
-        parent_path
-    };
     let parent_path = match caster_frame {
         Some(caster) => Some(ensure_frame(
             &mut result.frames,
@@ -146,6 +138,9 @@ pub(super) fn drain_skill(
         }),
         &trigger,
     );
+    if let Some(subscriber) = &mut subscriber {
+        super::field_level::start_grant(&mut subscriber.field_level, &frame_path);
+    }
     if matches!(trigger, SkillOpTrigger::Event(_))
         && let Some(action_path) = active_skill_scope_path(&result.frames, &frame_path)
         && let FrameOwner::Skill {

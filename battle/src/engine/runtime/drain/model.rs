@@ -135,6 +135,7 @@ pub(super) struct SubscriberContext {
     pub(super) skill_id: Option<i32>,
     pub(super) group: Option<Rc<RefCell<SubscriberDeathGroup>>>,
     pub(super) settlement_owner: Option<FramePath>,
+    pub(super) field_level: Option<super::field_level::Scope>,
 }
 
 impl SubscriberContext {
@@ -144,6 +145,7 @@ impl SubscriberContext {
             skill_id: None,
             group: None,
             settlement_owner: None,
+            field_level: None,
         }
     }
 
@@ -153,6 +155,7 @@ impl SubscriberContext {
             skill_id: Some(skill_id),
             group: None,
             settlement_owner: None,
+            field_level: None,
         }
     }
 }
@@ -501,7 +504,7 @@ pub(super) fn assign_subscriber_death_groups(queues: &mut [&mut Vec<QueuedOp>]) 
             trigger: after.trigger.clone(),
             skill_execution: None,
             frame_path: None,
-            parent_path: super::field_level::completion_anchor(after),
+            parent_path: super::field_level::completion_anchor(after).cloned(),
             frame_group: None,
             independent_parent_group: None,
             frame_owner: None,

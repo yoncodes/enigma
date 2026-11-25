@@ -11,6 +11,7 @@ pub(super) struct Scope<'a> {
     pub(super) action_scope: Option<&'a FramePath>,
     pub(super) entry_halo_scope: &'a FramePath,
     pub(super) field_transfer_owner: Option<&'a [usize]>,
+    pub(super) field_level_grant: Option<&'a super::super::field_level::Grant>,
     pub(super) current_skill: Option<(i64, i32, Option<i64>)>,
     pub(super) fanout_output_owner: OutputOwner,
     pub(super) layer_halo_fanout_output_owner: OutputOwner,
@@ -247,6 +248,7 @@ pub(super) fn dispatch_after(
         entry_halo_scope,
         current_skill,
         field_transfer_owner,
+        field_level_grant,
         ..
     } = scope;
     let ReleasedEvents {
@@ -285,9 +287,8 @@ pub(super) fn dispatch_after(
         )?
     };
     super::super::field_level::bind_reactions(
-        frame_path,
+        field_level_grant,
         action_scope.map(Vec::as_slice),
-        trigger,
         &mut reactions,
     );
     super::super::overflow_frame::defer_hit_storage(

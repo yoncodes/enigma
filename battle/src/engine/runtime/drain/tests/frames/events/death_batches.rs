@@ -68,6 +68,7 @@ fn death_outside_the_subscriber_group_supersedes_its_pending_transition() {
         skill_id: None,
         group: Some(outer_group),
         settlement_owner: None,
+        field_level: None,
     };
     drain_nested_queue(
         &mut managers,
@@ -193,6 +194,7 @@ fn subscriber_death_batch_cleans_each_defeated_halo_emitter() {
         skill_id: None,
         group: Some(group),
         settlement_owner: None,
+        field_level: None,
     };
     let queued = |op| QueuedOp {
         op,
