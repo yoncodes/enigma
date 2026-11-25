@@ -826,7 +826,7 @@ fn observed_redeal_validates_a_legal_draw_before_basic_coverage() {
     let basics = [first.clone(), missing.clone()];
 
     let observed = [first.clone(), missing.clone()];
-    assert!(manager.observed_redeal_draws(&observed, &[]).is_none());
+    assert!(manager.observed_redeal_draws(&observed, &[]).is_err());
     let draws = manager.observed_redeal_draws(&observed, &basics).unwrap();
     assert_eq!(draws, vec![first.clone(); 2]);
     let oversize_hand = vec![first.clone(); 40];
@@ -835,12 +835,12 @@ fn observed_redeal_validates_a_legal_draw_before_basic_coverage() {
     assert!(
         oversize
             .observed_redeal_draws(&oversize_hand, &basics)
-            .is_none()
+            .is_err()
     );
     assert!(
         manager
             .observed_redeal_draws(&[missing.clone(), missing], &basics)
-            .is_none()
+            .is_err()
     );
 }
 

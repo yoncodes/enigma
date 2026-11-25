@@ -234,7 +234,7 @@ impl BattleRuntime {
             .managers
             .card
             .observed_redeal_draws(hand, &basics)
-            .ok_or_else(|| "captured redeal is not reachable from the current hand".to_owned())?;
+            .map_err(|reason| format!("captured redeal is not reachable: {reason}"))?;
         self.seed_card_draws(draws);
         Ok(())
     }

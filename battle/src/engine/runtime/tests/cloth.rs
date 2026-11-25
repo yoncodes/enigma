@@ -162,10 +162,16 @@ fn configured_cloth_skills_drive_universal_and_redeal_card_rules() {
     let mut observed = runtime.card_hand().to_vec();
     observed[0] = card(101);
     observed.push(card(301));
-    assert!(runtime.seed_observed_redeal(&observed).is_err());
+    assert_eq!(
+        runtime.seed_observed_redeal(&observed).unwrap_err(),
+        "captured redeal is not reachable: capture changes preserved team card 1"
+    );
     observed.pop();
     observed.push(ultimate.clone());
-    assert!(runtime.seed_observed_redeal(&observed[..2]).is_err());
+    assert_eq!(
+        runtime.seed_observed_redeal(&observed[..2]).unwrap_err(),
+        "captured redeal is not reachable: capture has 2 visible cards, replay has 2 ordinary and 1 team cards"
+    );
     runtime.seed_observed_redeal(&observed).unwrap();
     let redeal = runtime
         .use_cloth_skill(UseClothSkillRequest {

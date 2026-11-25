@@ -9,28 +9,40 @@ impl CardManager {
         &self,
         observed: &[CardInfo],
         basics: &[CardInfo],
-    ) -> Option<Vec<CardInfo>> {
-        let (observed, team_cards) = observed.split_at_checked(self.hand().len())?;
-        if team_cards.len() != self.team_cards().len()
-            || !self
-                .team_cards()
-                .iter()
-                .zip(team_cards)
-                .all(|(a, b)| same_card(a, b))
+    ) -> Result<Vec<CardInfo>, String> {
+        let ordinary_count = self.hand().len();
+        let team_count = self.team_cards().len();
+        if observed.len() != ordinary_count + team_count {
+            return Err(format!(
+                "capture has {} visible cards, replay has {} ordinary and {} team cards",
+                observed.len(),
+                ordinary_count,
+                team_count,
+            ));
+        }
+        let (observed, team_cards) = observed.split_at(ordinary_count);
+        if let Some(index) = self
+            .team_cards()
+            .iter()
+            .zip(team_cards)
+            .position(|(current, observed)| !same_card(current, observed))
         {
-            return None;
+            return Err(format!("capture changes preserved team card {}", index + 1));
         }
 
         let catalog = self.deck.catalog();
         let mut slots = Vec::new();
-        for (current, observed) in self.hand().iter().zip(observed) {
+        for (index, (current, observed)) in self.hand().iter().zip(observed).enumerate() {
             if is_redealable(current, catalog) {
                 let rank = catalog
                     .map(|catalog| catalog.card_skill_rank(current))
                     .unwrap_or_else(|| current.card_effect.unwrap_or_default());
                 slots.push((rank, observed));
             } else if !same_card(current, observed) {
-                return None;
+                return Err(format!(
+                    "capture changes preserved ordinary card {}",
+                    index + 1
+                ));
             }
         }
         let matches = |card: &CardInfo, rank, observed: &CardInfo| {
@@ -59,16 +71,20 @@ impl CardManager {
         if let Some(draws) = exact
             && reproduces(&draws, basics, &slots, matches)
         {
-            return Some(draws);
+            return Ok(draws);
         }
+        let unreachable = "no legal draw sequence produces the captured hand";
         if !coverage {
-            return None;
+            return Err(unreachable.into());
         }
         let draws = coverage::witness(&pile, basics, slots.len(), |card, index| {
             let (rank, observed) = slots[index];
             matches(card, rank, observed)
-        })?;
-        reproduces(&draws, basics, &slots, matches).then_some(draws)
+        })
+        .ok_or(unreachable)?;
+        reproduces(&draws, basics, &slots, matches)
+            .then_some(draws)
+            .ok_or_else(|| unreachable.into())
     }
 }
 
