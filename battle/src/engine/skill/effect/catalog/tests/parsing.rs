@@ -1,4 +1,5 @@
 use super::*;
+use crate::engine::skill::behavior::registry::BehaviorConfigError;
 
 #[test]
 fn parses_hash_cells_as_opcode_and_args() {
@@ -28,6 +29,50 @@ fn burn_return_keeps_exact_argument_arity() {
     }
     for raw in ["60059#4150001#", "60059#4150001##1", "60059#4150001#2"] {
         assert_eq!(parse(raw), Err(SlotParseError::Behavior), "{raw}");
+    }
+}
+
+#[test]
+fn reserve_clear_requires_the_defeated_owner_as_both_targets() {
+    init_config();
+    let db = config::configs::get();
+    for id in [9260002, 116362010] {
+        let catalog = SkillEffectCatalog::from_roots(db, [id], []);
+        assert!(
+            catalog
+                .get(id)
+                .unwrap()
+                .slots
+                .iter()
+                .any(|slot| slot.behavior.spec.key.opcode == 60178)
+        );
+    }
+
+    for (condition, target, condition_target) in [
+        ("8#", "103", "103"),
+        ("", "103", "103"),
+        ("8", "202", "103"),
+        ("8", "103", "102"),
+        ("8", "999", "103"),
+    ] {
+        let result = parse_slot(
+            db,
+            RawSlot {
+                behavior: "60178",
+                target,
+                condition,
+                condition_target,
+                logic_target: "103",
+                limit: 0,
+                round_limit: 0,
+            },
+        );
+        assert_eq!(
+            result,
+            Err(SlotParseError::BehaviorConfig(
+                BehaviorConfigError::Unsupported
+            ))
+        );
     }
 }
 

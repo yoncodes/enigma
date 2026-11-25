@@ -115,7 +115,7 @@ fn legacy_progress_rejects_surplus_action_trigger_arguments() {
     let mut slot = catalog.get(skill_id).unwrap().slots[0].clone();
     slot.conditions[0].raw_args.push("7".to_owned());
     assert!(matches!(
-        AddHandler::validate_slot(&slot),
+        AddHandler::validate_slot(&slot, "502212#0#7"),
         Err(BehaviorConfigError::Unsupported)
     ));
 }

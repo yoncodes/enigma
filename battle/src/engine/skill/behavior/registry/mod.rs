@@ -140,7 +140,7 @@ pub struct BehaviorDefinition {
     pub supports: Option<fn(&ParsedBehavior) -> bool>,
     pub unsupported_args: fn(&ParsedBehavior) -> bool,
     pub validate_config: fn(&config::GameDB, &ParsedBehavior) -> Result<(), BehaviorConfigError>,
-    pub validate_slot: fn(&SkillEffectSlot) -> Result<(), BehaviorConfigError>,
+    pub validate_slot: fn(&SkillEffectSlot, &str) -> Result<(), BehaviorConfigError>,
     pub supports_slot: fn(&crate::engine::skill::effect::SkillEffectSlot) -> bool,
 }
 
@@ -160,7 +160,7 @@ pub trait BehaviorHandler {
         Ok(())
     }
 
-    fn validate_slot(_: &SkillEffectSlot) -> Result<(), BehaviorConfigError> {
+    fn validate_slot(_: &SkillEffectSlot, _: &str) -> Result<(), BehaviorConfigError> {
         Ok(())
     }
 

@@ -239,7 +239,7 @@ pub(super) fn parse_slot(db: &GameDB, raw: RawSlot<'_>) -> Result<SkillEffectSlo
         limit,
         round_limit,
     };
-    (definition.validate_slot)(&slot).map_err(SlotParseError::BehaviorConfig)?;
+    (definition.validate_slot)(&slot, condition).map_err(SlotParseError::BehaviorConfig)?;
     Ok(slot)
 }
 

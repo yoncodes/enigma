@@ -27,7 +27,7 @@ impl BehaviorHandler for AddHandler {
         behavior.raw_arity == 2 && matches!(behavior.args.as_slice(), [1, 0] | [0, i32::MIN..=0])
     }
 
-    fn validate_slot(slot: &SkillEffectSlot) -> Result<(), BehaviorConfigError> {
+    fn validate_slot(slot: &SkillEffectSlot, _: &str) -> Result<(), BehaviorConfigError> {
         let applies_on_death = matches!(
             slot.conditions.as_slice(),
             [condition] if condition.opcode == 8 && condition.kind == ParsedConditionKind::EntityDead
