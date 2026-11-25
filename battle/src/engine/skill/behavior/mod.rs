@@ -8,6 +8,7 @@ pub mod card_copy;
 pub mod card_limit;
 pub mod career;
 pub mod classify;
+mod clear_reserves;
 pub(crate) mod client_effect;
 pub mod contract;
 pub mod crystal_card;

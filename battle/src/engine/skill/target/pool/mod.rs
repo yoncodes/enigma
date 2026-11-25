@@ -288,6 +288,9 @@ impl TargetPool {
     ) -> Self {
         let catalog = self.catalog();
         let refresh = |base: &TargetEntity| {
+            if managers.entity.roster_lane(base.uid) == Some(RosterLane::Inactive) {
+                return None;
+            }
             let mut entity = managers
                 .entity
                 .identity(base.uid)

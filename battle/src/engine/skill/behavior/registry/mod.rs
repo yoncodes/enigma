@@ -813,6 +813,7 @@ behavior_definitions! {
     [60061] "MoveFront" => super::position::Handler, MoveFront, AfterDamage, destination;
     [60015] "Kill" => super::kill::Handler, Kill, Immediate, destination, super::kill::supports;
     [60018] "Kill" => super::kill::Handler, LethalHpLoss, Immediate, destination, super::kill::supports;
+    [60178] "ClearMonsterSub" => super::clear_reserves::Handler, ClearMonsterSub, Immediate, destination;
     [60019] "KillTargets" => super::kill::Handler, KillTargets, AfterDamage, destination, super::kill::supports_targets;
     [40006] "MonsterChange" => super::monster_change::Handler, MonsterChange, Immediate, destination, super::monster_change::supports;
     [40020] "ImmediatelyMonster" => super::general::ImmediatelyMonsterHandler, ImmediatelyMonster, Immediate, once_destination, arguments::none;

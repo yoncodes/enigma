@@ -291,6 +291,21 @@ impl EffectPacket {
         }
     }
 
+    pub fn clear_monster_sub(team_type: i32, uids: &[i64]) -> ActEffect {
+        ActEffect {
+            target_id: Some(0),
+            effect_type: Some(EffectType::Clearmonstersub as i32),
+            reserve_str: Some(
+                uids.iter()
+                    .map(i64::to_string)
+                    .collect::<Vec<_>>()
+                    .join("#"),
+            ),
+            team_type: Some(team_type),
+            ..Default::default()
+        }
+    }
+
     pub fn new_change_wave(fight: sonettobuf::Fight) -> ActEffect {
         ActEffect {
             effect_type: Some(EffectType::Newchangewave as i32),

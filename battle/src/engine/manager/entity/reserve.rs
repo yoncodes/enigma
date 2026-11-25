@@ -1,7 +1,27 @@
 use super::*;
-use crate::engine::fight::reserve::{CycleCommand, Promotion, ReserveQueued, ReserveRetired};
+use crate::engine::fight::reserve::{
+    ClearReserves, CycleCommand, Promotion, ReserveQueued, ReserveRetired, ReservesCleared,
+};
 
 impl EntityManager {
+    pub(crate) fn clear_reserves(
+        &mut self,
+        command: ClearReserves,
+    ) -> Result<Option<ReservesCleared>, EntityCommandError> {
+        let team_type = self
+            .team_type(command.owner_uid)
+            .ok_or(EntityCommandError::MissingSource)?;
+        let uids = self.roster_uids(team_type, RosterLane::Reserve);
+        if uids.is_empty() {
+            return Ok(None);
+        }
+        self.reserve_order.remove(&team_type);
+        for &uid in &uids {
+            self.roster_lanes.insert(uid, RosterLane::Inactive);
+        }
+        Ok(Some(ReservesCleared { team_type, uids }))
+    }
+
     pub(crate) fn promote_reserves(&mut self, hp: &HpManager) -> Vec<Promotion> {
         self.promote_reserves_matching(hp, |_| true)
     }

@@ -8,6 +8,54 @@ fn catalog() -> crate::catalog::BattleCatalog {
 }
 
 #[test]
+fn clearing_reserves_removes_only_the_owners_queue_in_roster_order() {
+    use crate::engine::fight::reserve::ClearReserves;
+
+    let entity = |uid, team_type, position, current_hp| FightEntityInfo {
+        uid: Some(uid),
+        team_type: Some(team_type),
+        position: Some(position),
+        current_hp: Some(current_hp),
+        ..Default::default()
+    };
+    let mut fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![entity(1, 1, 1, 100)],
+            sub_entitys: vec![entity(2, 1, -1, 100)],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![entity(-1, 2, 1, 0)],
+            sub_entitys: vec![entity(-7, 2, -1, 100), entity(-3, 2, -2, 100)],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let mut manager = EntityManager::seed(&fight);
+    let mut hp = HpManager::default();
+    hp.seed(&fight);
+    let command = ClearReserves {
+        origin: CommandOrigin {
+            domain: RuleDomain::Behavior,
+            key: DefinitionKey::new(60178, "ClearMonsterSub"),
+        },
+        owner_uid: -1,
+    };
+    assert!(manager.has_pending_reserve_promotion(-1, &hp));
+    let change = manager.clear_reserves(command).unwrap().unwrap();
+    assert_eq!(change.team_type, 2);
+    assert_eq!(change.uids, [-7, -3]);
+    assert_eq!(manager.roster_lane(-1), Some(RosterLane::Main));
+    assert_eq!(hp.current(-7), 100);
+    assert!(!manager.has_pending_reserve_promotion(-1, &hp));
+    assert!(manager.clear_reserves(command).unwrap().is_none());
+
+    manager.sync_to_fight(&mut fight);
+    assert!(fight.defender.unwrap().sub_entitys.is_empty());
+    assert_eq!(fight.attacker.unwrap().sub_entitys[0].uid, Some(2));
+}
+
+#[test]
 fn configured_seed_preserves_defender_uid_reservations() {
     let fight = Fight {
         battle_id: Some(9_000_161),

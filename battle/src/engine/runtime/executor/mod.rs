@@ -80,6 +80,7 @@ pub(crate) enum RuleOutcome {
     BloodtitheSpend(Box<crate::engine::mechanic::bloodtithe::spend::SpendChanges>),
     NuoDiKa(crate::engine::mechanic::nuo_di_ka::NuoDiKaChange),
     Emitter(EmitterChange),
+    ReservesCleared(crate::engine::fight::reserve::ReservesCleared),
     Entity(Box<EntityChanges>),
     MoveFront(MoveFrontChanges),
     MonsterChange(Box<MonsterChangeChanges>),
@@ -363,6 +364,7 @@ impl RuleOutcome {
             Self::BloodtitheSpend(_) => Vec::new(),
             Self::NuoDiKa(change) => vec![BattleChange::NuoDiKa(*change)],
             Self::Emitter(change) => vec![BattleChange::Emitter(*change)],
+            Self::ReservesCleared(change) => vec![BattleChange::ReservesCleared(change.clone())],
             Self::Entity(change) => vec![BattleChange::Entity(change.clone())],
             Self::MoveFront(change) => vec![BattleChange::MoveFront(change.clone())],
             Self::MonsterChange(changes) => {
@@ -984,6 +986,10 @@ pub(crate) fn execute_rule_op_with(
         RuleOp::Command(BattleCommand::Emitter(command)) => {
             Ok(RuleOutcome::Emitter(managers.execute_emitter(command)))
         }
+        RuleOp::Command(BattleCommand::ClearReserves(command)) => Ok(managers
+            .entity
+            .clear_reserves(command)?
+            .map_or(RuleOutcome::StateChanged, RuleOutcome::ReservesCleared)),
         RuleOp::Command(BattleCommand::Entity(command)) => {
             let changes = managers.execute_entity(command)?;
             for event in changes.events() {

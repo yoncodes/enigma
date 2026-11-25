@@ -679,6 +679,10 @@ fn project_change(
             retired.uid,
             retired.team_type,
         )],
+        BattleChange::ReservesCleared(cleared) => vec![EffectPacket::clear_monster_sub(
+            cleared.team_type,
+            &cleared.uids,
+        )],
         BattleChange::WaveAdvanced(change) => {
             vec![EffectPacket::new_change_wave(change.fight.clone())]
         }

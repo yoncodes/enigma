@@ -1,5 +1,17 @@
 use sonettobuf::FightEntityInfo;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ClearReserves {
+    pub origin: crate::engine::skill::rule::CommandOrigin,
+    pub owner_uid: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReservesCleared {
+    pub team_type: i32,
+    pub uids: Vec<i64>,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Promotion {
     pub defeated_uid: i64,

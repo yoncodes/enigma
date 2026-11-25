@@ -61,5 +61,6 @@ pub enum BattleChange {
     EntityPromotion(Box<crate::engine::fight::reserve::Promotion>),
     ReserveQueued(Box<crate::engine::fight::reserve::ReserveQueued>),
     ReserveRetired(crate::engine::fight::reserve::ReserveRetired),
+    ReservesCleared(crate::engine::fight::reserve::ReservesCleared),
     WaveAdvanced(Box<crate::engine::manager::wave::WaveAdvanced>),
 }

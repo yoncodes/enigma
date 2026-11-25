@@ -89,6 +89,7 @@ pub enum BattleCommand {
     ContinueRawGaugeBatch(GaugeBatchId),
     CommitRawGaugeBatch(GaugeBatchId),
     Emitter(EmitterCommand),
+    ClearReserves(crate::engine::fight::reserve::ClearReserves),
     Entity(EntityCommand),
     MoveFront(MoveFrontCommand),
     MonsterChange(MonsterChangeCommand),

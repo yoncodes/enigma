@@ -163,6 +163,7 @@ pub enum BehaviorKind {
     Kill,
     LethalHpLoss,
     KillTargets,
+    ClearMonsterSub,
     MonsterChange,
     ImmediatelyMonster,
     Assassinate,
