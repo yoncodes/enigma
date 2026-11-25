@@ -734,3 +734,46 @@ fn battle_tag_check_uses_the_condition_target() {
         TargetContext::default(),
     ));
 }
+
+#[test]
+fn all_rounder_counts_for_the_configured_tag_conditions() {
+    init_config();
+    let entity = |uid, model_id| FightEntityInfo {
+        uid: Some(uid),
+        model_id: Some(model_id),
+        current_hp: Some(100),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![entity(10, 3141), entity(11, 3146)],
+            ..Default::default()
+        }),
+        ..Default::default()
+    });
+    assert!(condition_matches(
+        &exact_condition(762005, "BattleTagNum", &["113", "2", "3"]),
+        10,
+        &[10],
+        None,
+        &pool,
+        TargetContext::default(),
+    ));
+    let conduit = exact_condition(1021101, "BattleTagCheck", &["131"]);
+    assert!(condition_matches(
+        &conduit,
+        10,
+        &[11],
+        None,
+        &pool,
+        TargetContext::default()
+    ));
+    assert!(!condition_matches(
+        &conduit,
+        10,
+        &[10],
+        None,
+        &pool,
+        TargetContext::default()
+    ));
+}

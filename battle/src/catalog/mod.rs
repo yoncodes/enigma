@@ -3,6 +3,7 @@ use crate::engine::mechanic::impromptu::ImpromptuDefinition;
 use crate::engine::round::power::ClothPower;
 use crate::engine::skill::rule::{CommandOrigin, RuleDomain};
 
+mod battle_tag;
 pub(crate) mod rouge2;
 
 const BURN_BUFF_FIGHT_CONST: i32 = 29;
@@ -947,46 +948,6 @@ impl BattleCatalog {
             .find(|row| row.hero_id == model_id && row.level == level)
             .map(|row| row.technic)
             .unwrap_or(fallback)
-    }
-
-    pub(crate) fn entity_battle_tags(
-        self,
-        model_id: i32,
-        destiny_stone: i32,
-        destiny_rank: i32,
-    ) -> Vec<i32> {
-        let stone_tags = if destiny_stone <= 0 || destiny_rank <= 0 {
-            None
-        } else {
-            self.game_data
-                .character_destiny_facets_consume
-                .iter()
-                .find(|row| row.facets_id == destiny_stone)
-                .and_then(|row| {
-                    let tags = row
-                        .tag
-                        .split('#')
-                        .filter_map(|tag| tag.parse().ok())
-                        .collect::<Vec<_>>();
-                    (!tags.is_empty()).then_some(tags)
-                })
-        };
-        let mut tags = stone_tags.unwrap_or_else(|| {
-            self.game_data
-                .character
-                .get(model_id)
-                .map(|character| {
-                    character
-                        .battle_tag
-                        .split('#')
-                        .filter_map(|tag| tag.parse().ok())
-                        .collect()
-                })
-                .unwrap_or_default()
-        });
-        tags.sort_unstable();
-        tags.dedup();
-        tags
     }
 
     pub(crate) fn entity_ex_attributes(

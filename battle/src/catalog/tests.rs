@@ -708,6 +708,12 @@ fn normalizes_entity_battle_tags() {
         catalog.entity_battle_tags(3081, 308101, 0),
         vec![101, 105, 117]
     );
+    assert_eq!(
+        catalog.entity_battle_tags(3146, 0, 0),
+        vec![
+            102, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 131, 10000
+        ]
+    );
     assert!(catalog.entity_battle_tags(-1, -1, -1).is_empty());
 }
 
