@@ -1,6 +1,39 @@
 use super::*;
 
 #[test]
+fn multiple_round_advances_require_each_ordered_transition_in_the_reply() {
+    let previous = FightRound {
+        cur_round: Some(1),
+        ..Default::default()
+    };
+    let reply = |markers: &[i32]| FightRound {
+        cur_round: Some(3),
+        fight_step: markers
+            .iter()
+            .map(|&round| FightStep {
+                act_effect: vec![sonettobuf::ActEffect {
+                    effect_type: Some(EffectType::Changeround as i32),
+                    effect_num: Some(round),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            })
+            .collect(),
+        ..Default::default()
+    };
+
+    assert!(validate_captured_round_continuity(&previous, &reply(&[2, 3]), false).is_ok());
+    for markers in [&[3][..], &[3, 2], &[2, 2, 3], &[2, 3, 4]] {
+        assert!(validate_captured_round_continuity(&previous, &reply(markers), false).is_err());
+    }
+    let extra = FightRound {
+        cur_round: Some(2),
+        ..reply(&[2])
+    };
+    assert!(validate_captured_round_continuity(&previous, &extra, true).is_err());
+}
+
+#[test]
 fn auto_reply_diffs_report_each_mismatched_field() {
     let generated = serde_json::json!({
         "clothSkill": null,

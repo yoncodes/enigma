@@ -18,7 +18,7 @@ use battle_preview::{
 };
 use sonettobuf::{
     AutoRoundReply, AutoRoundRequest, BeginRoundReply, BeginRoundRequest, Fight, FightRound,
-    FightStep, UseClothSkillReply, UseClothSkillRequest,
+    FightStep, UseClothSkillReply, UseClothSkillRequest, effect_type_enum::EffectType,
 };
 
 mod capture;
@@ -800,7 +800,8 @@ fn validate_captured_round_continuity(
     match (previous.cur_round, next.cur_round) {
         (Some(previous), Some(next_round))
             if i64::from(next_round) != i64::from(previous) + i64::from(!extra_round)
-                && !(next_round == previous && next.is_finish == Some(true)) =>
+                && !(next_round == previous && next.is_finish == Some(true))
+                && (extra_round || !records_round_advance(next, previous, next_round)) =>
         {
             Err(io::Error::new(
                 io::ErrorKind::InvalidData,
@@ -811,6 +812,16 @@ fn validate_captured_round_continuity(
         }
         _ => Ok(()),
     }
+}
+
+fn records_round_advance(round: &FightRound, previous: i32, next: i32) -> bool {
+    let transitions = round
+        .fight_step
+        .iter()
+        .flat_map(|step| &step.act_effect)
+        .filter(|effect| effect.effect_type == Some(EffectType::Changeround as i32))
+        .map(|effect| effect.effect_num.map(i64::from));
+    next > previous && transitions.eq((i64::from(previous) + 1..=i64::from(next)).map(Some))
 }
 
 fn round_index(path: &Path) -> anyhow::Result<i32> {
