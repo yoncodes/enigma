@@ -25,6 +25,7 @@ use crate::engine::{
 
 mod conduit;
 mod defense_setup;
+mod dynamo_opening;
 mod queue_setup;
 mod sovereign;
 mod tuning;
@@ -218,6 +219,7 @@ fn plan_cards_inner(
                     matches!(live_pool.skill_slot(managers, uid, skill_id), 1 | 2)
                 })
         });
+    let mut dynamo_opening = dynamo_opening::Order::new(fight, ordinary_queue);
     let selected_power_types = conduit::selected_power_types(managers, planned_devices);
     let mut opers = assist_boss_operation(
         fight,
@@ -267,6 +269,7 @@ fn plan_cards_inner(
             basic_opening && opers.is_empty(),
             opening_setup && !opers.is_empty(),
             queue_setup,
+            &mut dynamo_opening,
             vision_order.as_ref(),
         )?
         else {
@@ -598,6 +601,7 @@ fn best_candidate(
     opening: bool,
     opening_after_setup: bool,
     queue_setup: bool,
+    dynamo_opening: &mut dynamo_opening::Order,
     vision_order: Option<&sovereign::vision::Order>,
 ) -> Result<Option<Candidate>, AutoBattleError> {
     let candidates = cards
@@ -824,6 +828,9 @@ fn best_candidate(
         )
     };
     let best = candidates.iter().max_by_key(|candidate| rank(candidate));
+    if let Some(preparation) = dynamo_opening.pick(&candidates, best, cards, catalog) {
+        return Ok(Some(preparation.clone()));
+    }
     if let Some(best) = best.filter(|candidate| {
         candidate.first_for_owner
             && !candidate.free

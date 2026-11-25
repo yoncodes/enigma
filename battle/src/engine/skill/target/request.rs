@@ -1,4 +1,5 @@
 pub const SOURCE_TARGET_CODE: i32 = 103;
+pub(crate) const MAIN_ALLIES_TARGET_CODE: i32 = 101;
 pub(crate) const ALL_ENEMIES_TARGET_CODE: i32 = 202;
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]

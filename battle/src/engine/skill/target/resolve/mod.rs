@@ -743,7 +743,7 @@ fn target_rule(code: i32) -> Option<TargetRule> {
         4 | 5 | 104 | 105 => TargetRule::Allies,
         130 => TargetRule::AlliesPreservingSelection,
         1005 => TargetRule::BossAllies,
-        101 => TargetRule::MainAllies,
+        super::request::MAIN_ALLIES_TARGET_CODE => TargetRule::MainAllies,
         102 => TargetRule::OtherAllies,
         309 => TargetRule::BoundAlly,
         310 => TargetRule::AlliesWithBuff,
