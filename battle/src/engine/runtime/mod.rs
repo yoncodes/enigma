@@ -438,7 +438,7 @@ impl BattleRuntime {
         player_level: i32,
     ) -> Result<Self, String> {
         let mut managers = BattleManagers::seeded_with_catalog(catalog, &fight)
-            .map_err(|error| error.to_string())?;
+            .map_err(|error| format!("{error:#}"))?;
         managers.player = crate::engine::manager::player::BattlePlayerManager::new(player_level);
         if let Some(target_model_ids) = catalog.boss_rush_target_models(
             fight.episode_id.unwrap_or_default(),

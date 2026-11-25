@@ -12,6 +12,39 @@ fn card(uid: i64, skill_id: i32, temporary: bool) -> CardInfo {
 }
 
 #[test]
+fn opening_ultimate_reports_the_rejected_fight_task_parameter() {
+    crate::init_test_config();
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                ex_skill: Some(20),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        fight_task_box: Some(sonettobuf::FightTaskBox {
+            tasks: vec![sonettobuf::FightTask {
+                task_id: Some(381207),
+                ..Default::default()
+            }],
+        }),
+        ..Default::default()
+    };
+    let round = FightRound {
+        team_a_cards1: vec![card(10, 20, false)],
+        ..Default::default()
+    };
+
+    let error = opening_determinism(config::configs::get(), &fight, &round).unwrap_err();
+    assert_eq!(
+        error,
+        "prepare opening hand for replay setup: unsupported fight task 381207: \
+         taskParam1=\"Round#8\": unsupported fight task kind 'Round'"
+    );
+}
+
+#[test]
 fn card_level_add_choice_reads_the_captured_hand_position() {
     use sonettobuf::effect_type_enum::EffectType;
     let add = |buff_act_id| sonettobuf::ActEffect {

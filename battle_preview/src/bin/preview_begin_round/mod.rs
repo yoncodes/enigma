@@ -3,6 +3,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use anyhow::Context;
 use battle::tooling::{
     damage_tracing_enabled,
     replay::{ClothSkillType, ReplayBattle, seed_observed_redeal},
@@ -467,7 +468,8 @@ fn replay_rounds(
         ex_attributes,
         sp_attributes,
     )
-    .map_err(anyhow::Error::msg)?;
+    .map_err(anyhow::Error::msg)
+    .context("initialize replay from captured setup")?;
     runtime
         .inherit_absorb_hurt_map_layout(&captured_start_round)
         .map_err(anyhow::Error::msg)?;

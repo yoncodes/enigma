@@ -190,7 +190,7 @@ pub fn ultimate_ignores_limit(
     skill_id: i32,
 ) -> Result<bool, String> {
     let managers = crate::engine::manager::BattleManagers::seeded_with_catalog(catalog, fight)
-        .map_err(|error| error.to_string())?;
+        .map_err(|error| format!("{error:#}"))?;
     Ok(crate::engine::mechanic::card::CardMechanic
         .ultimate_ignores_limit(&managers, owner_uid, skill_id))
 }

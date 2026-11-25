@@ -306,7 +306,10 @@ fn task_rules(row: &config::fight_task::FightTask) -> Result<Vec<(TaskRule, i32)
             .parse::<i32>()
             .with_context(|| format!("invalid maximum progress '{raw_max}'"))?;
         ensure!(max_progress > 0, "maximum progress must be positive");
-        rules.push((parse_task_rule(index as i32 + 1, parameter)?, max_progress));
+        let slot = index as i32 + 1;
+        let rule = parse_task_rule(slot, parameter)
+            .with_context(|| format!("taskParam{slot}={parameter:?}"))?;
+        rules.push((rule, max_progress));
     }
     ensure!(!rules.is_empty(), "task has no progress rules");
     Ok(rules)

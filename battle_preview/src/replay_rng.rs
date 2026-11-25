@@ -54,7 +54,8 @@ pub fn opening_determinism(
                 card.skill_id.unwrap_or_default(),
             )?;
             Ok::<_, String>(count + usize::from(!ignores_limit))
-        })?;
+        })
+        .map_err(|error| format!("prepare opening hand for replay setup: {error}"))?;
     let normal_draws = draws
         .into_iter()
         .filter(|card| {
