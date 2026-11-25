@@ -1,4 +1,4 @@
-use sonettobuf::Fight;
+use sonettobuf::{CardInfo, Fight};
 
 use crate::engine::{
     manager::card::CardManager,
@@ -11,6 +11,10 @@ use crate::engine::{
 
 use super::{Candidate, Support};
 
+mod aim;
+
+pub(super) use aim::{aim, allows_aim, has_channel};
+
 pub(super) enum Order {
     Inactive,
     Pending,
@@ -19,7 +23,7 @@ pub(super) enum Order {
 
 impl Order {
     pub(super) fn new(fight: &Fight, ordinary_queue: bool) -> Self {
-        if fight.version == Some(7) && fight.cur_round == Some(1) && ordinary_queue {
+        if ordinary_queue && opens(fight) {
             Self::Pending
         } else {
             Self::Inactive
@@ -68,9 +72,15 @@ fn ordinary_rank_one(candidate: &Candidate, cards: &CardManager) -> bool {
         && candidate.strength.is_some_and(|(_, rank)| rank == 1)
         && cards
             .visible_card(candidate.card_index)
-            .is_some_and(|card| {
-                !card.temp_card.unwrap_or_default() && card.energy.unwrap_or_default() == 0
-            })
+            .is_some_and(ordinary)
+}
+
+fn ordinary(card: &CardInfo) -> bool {
+    !card.temp_card.unwrap_or_default() && card.energy.unwrap_or_default() == 0
+}
+
+pub(super) fn opens(fight: &Fight) -> bool {
+    fight.version == Some(7) && fight.cur_round == Some(1)
 }
 
 fn channel(skill_id: i32, catalog: &SkillEffectCatalog) -> bool {

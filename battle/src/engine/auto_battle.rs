@@ -188,6 +188,17 @@ fn plan_cards_inner(
     let mut choice_determinism = determinism.clone();
     let mut normal_ap = round_state.act_point.max(0);
     let mut played_owners = HashSet::new();
+    let live_pool = pool.runtime_view(managers);
+    let ordinary_hand = planned_devices.is_empty()
+        && fight.attacker.as_ref().is_some_and(|team| {
+            team.device_area
+                .as_ref()
+                .is_none_or(|area| area.devices.is_empty() && area.powers.is_empty())
+        });
+    let preparation_aim = !request.opers.is_empty()
+        && ordinary_hand
+        && dynamo_opening::opens(fight)
+        && dynamo_opening::has_channel(&cards, managers, &live_pool, catalog, normal_ap);
     let prefix = apply_prefix(
         &mut cards,
         &mut normal_ap,
@@ -195,21 +206,15 @@ fn plan_cards_inner(
         &request.opers,
         managers,
         catalog,
-        pool,
+        &live_pool,
         determinism,
+        preparation_aim,
     );
     if !matches!(prefix, Ok(true)) {
         conduit::demand::unavailable(round_state.cur_round, planned_devices, "prefix rejected");
         return prefix.map(|_| None);
     }
-    let live_pool = pool.runtime_view(managers);
-    let ordinary_queue = request.opers.is_empty()
-        && planned_devices.is_empty()
-        && fight.attacker.as_ref().is_some_and(|team| {
-            team.device_area
-                .as_ref()
-                .is_none_or(|area| area.devices.is_empty() && area.powers.is_empty())
-        });
+    let ordinary_queue = request.opers.is_empty() && ordinary_hand;
     let basic_opening = fight.cur_round == Some(1)
         && ordinary_queue
         && cards.visible_cards().all(|card| {
@@ -475,6 +480,7 @@ fn apply_prefix(
     catalog: &SkillEffectCatalog,
     pool: &TargetPool,
     determinism: &RoundDeterminism,
+    preparation_aim: bool,
 ) -> Result<bool, AutoBattleError> {
     for oper in opers {
         let Some(command) = RoundCommand::from_oper(oper) else {
@@ -537,15 +543,20 @@ fn apply_prefix(
                         AutoBattleError::InvalidChoice
                     });
                 }
-                let legal_target = legal_target(
-                    source_uid,
-                    skill_id,
-                    target_uid,
-                    managers,
-                    &pool.runtime_view(managers),
-                    catalog,
-                    determinism,
-                );
+                let setup_aim = preparation_aim
+                    && dynamo_opening::allows_aim(
+                        card, skill_id, target_uid, pool, managers, catalog,
+                    );
+                let legal_target = setup_aim
+                    || legal_target(
+                        source_uid,
+                        skill_id,
+                        target_uid,
+                        managers,
+                        pool,
+                        catalog,
+                        determinism,
+                    );
                 if card_skill_is_blocked(managers, catalog, source_uid, skill_id) || !legal_target {
                     return Ok(false);
                 }
@@ -829,7 +840,11 @@ fn best_candidate(
     };
     let best = candidates.iter().max_by_key(|candidate| rank(candidate));
     if let Some(preparation) = dynamo_opening.pick(&candidates, best, cards, catalog) {
-        return Ok(Some(preparation.clone()));
+        return Ok(Some(dynamo_opening::aim(
+            preparation,
+            live_pool,
+            preferred_target,
+        )));
     }
     if let Some(best) = best.filter(|candidate| {
         candidate.first_for_owner

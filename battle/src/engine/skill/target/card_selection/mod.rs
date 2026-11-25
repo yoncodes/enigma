@@ -52,6 +52,14 @@ impl CardSelectionResolver {
         if !uses_enemy_aim(catalog, skill_id, source_uid, Some(managers)) {
             return None;
         }
+        Self::enemy_aim(source_uid, pool, preferred_target)
+    }
+
+    pub(crate) fn enemy_aim(
+        source_uid: i64,
+        pool: &TargetPool,
+        preferred_target: Option<i64>,
+    ) -> Option<i64> {
         selectable_enemies(pool, source_uid)
             .min_by_key(|enemy| {
                 (
@@ -61,6 +69,10 @@ impl CardSelectionResolver {
                 )
             })
             .map(|enemy| enemy.uid)
+    }
+
+    pub(crate) fn is_enemy_aim(source_uid: i64, target_uid: i64, pool: &TargetPool) -> bool {
+        selectable_enemies(pool, source_uid).any(|enemy| enemy.uid == target_uid)
     }
 
     #[allow(clippy::too_many_arguments)]

@@ -15,6 +15,21 @@ fn dynamo_opening_picks_channels_and_team_buffs_in_hand_order() {
         let reply = runtime.plan_auto_round(&AutoRoundRequest::default());
         assert_eq!(reply.opers.len(), 3);
         assert!(reply.opers.iter().all(|op| op.param1 == Some(2)));
+        assert!(reply.opers.iter().all(|op| op.to_id == Some(-1)));
+        for count in [1, 2] {
+            let continuation = runtime.plan_auto_round(&AutoRoundRequest {
+                opers: reply.opers[..count].to_vec(),
+                ..Default::default()
+            });
+            assert_eq!(continuation.opers.len(), 3 - count);
+        }
+        let mut invalid = reply.opers[0].clone();
+        invalid.to_id = Some(-99);
+        let rejected = runtime.plan_auto_round(&AutoRoundRequest {
+            opers: vec![invalid],
+            ..Default::default()
+        });
+        assert!(rejected.opers.is_empty());
     }
 }
 
