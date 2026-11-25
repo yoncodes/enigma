@@ -412,6 +412,14 @@ fn resolves_exact_buff_act_command_origins() {
             key: crate::engine::skill::rule::DefinitionKey::new(1062, "HeatScaleDecrCounter",),
         })
     );
+    use crate::engine::skill::buff_act::registry::{BuffActDestination, destination};
+    for args in [[50], [100]] {
+        assert_eq!(
+            destination(1062, "HeatScaleDecrCounter", &args),
+            Some(BuffActDestination::StateConsumer)
+        );
+    }
+    assert!(destination(1062, "HeatScaleDecrCounter", &[50, 100]).is_none());
     assert!(
         catalog
             .buff_act_origin(

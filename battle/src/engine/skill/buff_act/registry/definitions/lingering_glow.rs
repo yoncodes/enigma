@@ -44,5 +44,7 @@ buff_act_definitions! {
         parser: buff_act::consume_buff_layer_cast_channel::parse,
         references: references_for_feature,
         wire: (buff_act::wire::BuffActWireDefinition::all(DefinitionKey::new(1054, "ConsumeBuffLayerCastChannel"), &[]));
-    (1062, "HeatScaleDecrCounter") => HeatScaleDecrCounter, wire: (buff_act::wire::BuffActWireDefinition::all(DefinitionKey::new(1062, "HeatScaleDecrCounter"), &[EffectType::None as i32]));
+    (1062, "HeatScaleDecrCounter") => HeatScaleDecrCounter, effect_time_subscription: false,
+        supports: |args| matches!(args, [50 | 100]), state_consumer: true,
+        wire: (buff_act::wire::BuffActWireDefinition::all(DefinitionKey::new(1062, "HeatScaleDecrCounter"), &[EffectType::None as i32]));
 }
