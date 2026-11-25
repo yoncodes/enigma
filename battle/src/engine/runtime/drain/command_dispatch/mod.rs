@@ -219,6 +219,7 @@ pub(super) fn drain_command(
     let layer_halo_fanout_output_owner = if !entry_halo_fanout
         && current_skill.is_some()
         && matches!(trigger, SkillOpTrigger::Setup { .. })
+        && event_scope == frame_path
     {
         crate::engine::skill::behavior::registry::OutputOwner::Parent
     } else {

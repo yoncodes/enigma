@@ -131,6 +131,11 @@ fn event_owned_layer_halo_fanout_follows_the_master_step() {
 
 #[test]
 fn setup_owned_layer_halo_fanout_follows_the_master_step() {
+    assert_setup_layer_halo_fanout(false);
+    assert_setup_layer_halo_fanout(true);
+}
+
+fn assert_setup_layer_halo_fanout(grouped: bool) {
     let (pool, mut managers, _) = rapport_fixture();
     let mut slot = SkillEffectSlot::new(
         ParsedBehavior::new(1, "AddBuff", vec![31460002]),
@@ -161,6 +166,16 @@ fn setup_owned_layer_halo_fanout_follows_the_master_step() {
         FrameOwner::SetupSide(crate::engine::runtime::record::SetupSide::Attacker),
         frame_trigger(&trigger),
     );
+    let scope = if grouped {
+        push_child(
+            &mut frames,
+            &side,
+            FrameOwner::SetupEntity { owner_uid: 10 },
+            frame_trigger(&trigger),
+        )
+    } else {
+        side
+    };
     let mut invocation = grant();
     invocation.condition_slot = Some(0);
     invocation.condition_key = Some(crate::engine::skill::rule::DefinitionKey::new(103, "None"));
@@ -169,7 +184,7 @@ fn setup_owned_layer_halo_fanout_follows_the_master_step() {
         trigger,
         skill_execution: None,
         frame_path: None,
-        parent_path: Some(side),
+        parent_path: Some(scope.clone()),
         frame_group: None,
         independent_parent_group: None,
         frame_owner: None,
@@ -186,5 +201,8 @@ fn setup_owned_layer_halo_fanout_follows_the_master_step() {
         frames,
     )
     .unwrap();
-    assert_eq!(order(&result.frames[0].items), ["skill", "fanout"]);
+    assert_eq!(
+        order(&crate::engine::runtime::record::frame_at(&result.frames, &scope).items),
+        ["skill", "fanout"]
+    );
 }
