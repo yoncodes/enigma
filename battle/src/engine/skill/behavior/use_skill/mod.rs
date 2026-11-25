@@ -26,6 +26,7 @@ use crate::engine::{
 pub(super) struct Handler;
 
 mod free_ultimate;
+pub(super) mod no_action;
 mod paid_ultimate;
 
 pub(super) fn supports_consume_power_direct_skill(behavior: &ParsedBehavior) -> bool {
@@ -496,7 +497,6 @@ impl BehaviorHandler for Handler {
                 invocation.mode = crate::engine::skill::action::SkillExecutionMode::Active;
                 Some(vec![RuleOp::Skill(invocation)])
             }
-            BehaviorKind::DirectUseSkillNoAct => direct_no_action_skill(context, behavior),
             BehaviorKind::DirectUseSkillNoAct2 => direct_no_action_skill(context, behavior),
             BehaviorKind::DirectUseSkillNotExtra => {
                 let mut invocation: crate::engine::skill::action::SkillInvocation =

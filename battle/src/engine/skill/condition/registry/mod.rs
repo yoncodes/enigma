@@ -23,6 +23,9 @@ use crate::engine::{
 
 mod channel_timing;
 
+pub(crate) const AFTER_HIT_MASTER_HALO_KEY: DefinitionKey =
+    DefinitionKey::new(701210, "HasMasterHalo");
+
 pub type Parser = fn(i32, &str, &[String]) -> Option<ParsedConditionKind>;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -201,6 +201,7 @@ pub enum SkillTrigger {
     #[default]
     None,
     Inherited,
+    AssassinationReward,
     Explicit(i32),
 }
 

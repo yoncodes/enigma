@@ -335,7 +335,8 @@ pub(in crate::engine::runtime) fn attack_has_no_target(
         SkillTarget::Explicit(uid)
             if uid == invocation.plan.source_uid
                 && logic_target == crate::engine::skill::target::request::SOURCE_TARGET_CODE
-                && catalog.damage_rate(invocation.plan.skill_id) == 0 =>
+                && managers.wave.has_next_wave()
+                && is_assassination_reward(invocation, catalog) =>
         {
             false
         }
@@ -364,6 +365,35 @@ pub(in crate::engine::runtime) fn attack_has_no_target(
         | SkillTarget::Inherited
         | SkillTarget::Explicit(_) => pool.enemies(invocation.plan.source_uid, false).is_empty(),
     }
+}
+
+fn is_assassination_reward(
+    invocation: &crate::engine::skill::action::SkillInvocation,
+    catalog: &SkillEffectCatalog,
+) -> bool {
+    use crate::engine::skill::{
+        action::{SkillExecutionMode, SkillTrigger},
+        behavior::registry::ADD_BUFF_KEY,
+        condition::{ParsedConditionKind, registry::AFTER_HIT_MASTER_HALO_KEY},
+        target::request::{MAIN_ALLIES_TARGET_CODE, SOURCE_TARGET_CODE},
+    };
+
+    invocation.trigger == SkillTrigger::AssassinationReward
+        && invocation.mode == SkillExecutionMode::Nested
+        && catalog.damage_rate(invocation.plan.skill_id) == 0
+        && catalog.get(invocation.plan.skill_id).is_some_and(|effect| {
+            matches!(effect.slots.as_slice(), [slot]
+                if ADD_BUFF_KEY.matches(slot.behavior.spec.key.opcode, &slot.behavior.spec.key.type_name)
+                    && !slot.target_from_condition
+                    && slot.target.code == MAIN_ALLIES_TARGET_CODE
+                    && slot.target.raw.is_empty()
+                    && slot.condition_target.code == SOURCE_TARGET_CODE
+                    && slot.condition_target.raw.is_empty()
+                    && matches!(slot.conditions.as_slice(), [condition]
+                        if AFTER_HIT_MASTER_HALO_KEY.matches(condition.opcode, &condition.type_name)
+                            && condition.raw_args.is_empty()
+                            && condition.kind == ParsedConditionKind::MasterHalo))
+        })
 }
 
 #[derive(Default)]

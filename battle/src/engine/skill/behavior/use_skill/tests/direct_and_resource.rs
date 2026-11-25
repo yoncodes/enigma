@@ -300,7 +300,7 @@ fn direct_use_skill_no_act_uses_its_configured_target() {
         ..Default::default()
     };
 
-    let ops = Handler::emit_ops(
+    let ops = crate::engine::skill::behavior::rule_ops(
         BehaviorOpContext {
             source_uid: 10,
             source_team: 1,

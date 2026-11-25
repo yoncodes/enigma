@@ -9,6 +9,7 @@ use crate::engine::skill::{
 };
 
 pub type BehaviorPhase = SkillPhase;
+pub(crate) const ADD_BUFF_KEY: DefinitionKey = DefinitionKey::new(1, "AddBuff");
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FireCountMode {
@@ -751,7 +752,7 @@ behavior_definitions! {
     [60053] "DirectUseSkill2" => super::use_skill::Handler, DirectUseSkill2, Immediate, destination, super::use_skill::supports_direct_use_skill_two;
     [60014] "DirectUseSkillPrev" => super::use_skill::Handler, DirectUseSkillPrev, Immediate, destination, arguments::none;
     [50039] "DirectUseSkillCard" => super::use_skill::Handler, DirectUseSkillCard, Immediate, plain, super::use_skill::supports_direct_skill_card;
-    [50012] "DirectUseSkillNoAct" => super::use_skill::Handler, DirectUseSkillNoAct, Immediate, once_destination, super::use_skill::supports_direct_no_action_skill;
+    [50012] "DirectUseSkillNoAct" => super::use_skill::no_action::Handler, DirectUseSkillNoAct, Immediate, once_destination, super::use_skill::supports_direct_no_action_skill;
     [50038] "DirectUseSkillNoAct2" => super::use_skill::Handler, DirectUseSkillNoAct2, Immediate, destination, super::use_skill::supports_nested_skill;
     [60223] "DirectUseSkillNotExtra" => super::use_skill::Handler, DirectUseSkillNotExtra, Immediate, parent_destination, super::use_skill::supports_nested_skill;
     [60225] "RandomUseSkill" => super::use_skill::Handler, RandomUseSkill, Immediate, destination, super::use_skill::supports_random_skill;

@@ -1195,6 +1195,23 @@ fn direct_use_skill_cast_names_its_destination_while_hitting_its_configured_targ
 
 #[test]
 fn explicitly_self_targeted_reward_settles_when_no_enemies_remain() {
+    use crate::engine::runtime::record::FrameItem;
+
+    fn count_skill(frame: &SemanticFrame, skill_id: i32) -> usize {
+        let direct =
+            matches!(frame.owner, FrameOwner::Skill { skill_id: id, .. } if id == skill_id);
+        usize::from(direct)
+            + frame
+                .items
+                .iter()
+                .filter_map(|item| match item {
+                    FrameItem::Child(child) => Some(count_skill(child, skill_id)),
+                    _ => None,
+                })
+                .sum::<usize>()
+    }
+
+    let passive = 435211;
     let reward = 435221;
     let offensive = 312451011;
     let halo = 312411442;
@@ -1208,9 +1225,12 @@ fn explicitly_self_targeted_reward_settles_when_no_enemies_remain() {
         ..Default::default()
     };
     let fight = Fight {
+        battle_id: Some(120384100),
+        cur_wave: Some(1),
         attacker: Some(FightTeam {
             entitys: vec![
                 FightEntityInfo {
+                    passive_skill: vec![passive],
                     buffs: vec![BuffInfo {
                         buff_id: Some(halo),
                         uid: Some(20),
@@ -1232,10 +1252,17 @@ fn explicitly_self_targeted_reward_settles_when_no_enemies_remain() {
         ..Default::default()
     };
     let db = crate::test_support::game_data();
-    let catalog = SkillEffectCatalog::from_roots(db, [reward, offensive], [halo]);
+    let mut catalog = SkillEffectCatalog::from_fight(db, &fight);
+    catalog.extend_roots(db, [offensive], []);
     let pool = TargetPool::from_fight(&fight);
     let mut managers = BattleManagers::seeded(&fight);
     assert!(catalog.is_attack(reward));
+    assert!(managers.wave.has_next_wave());
+    let context = TargetContext {
+        battle_id: 120384100,
+        current_round: 1,
+        ..Default::default()
+    };
 
     let cast = |managers: &mut BattleManagers, skill_id, target_uid| {
         let mut invocation: SkillInvocation = SkillRequest {
@@ -1249,20 +1276,55 @@ fn explicitly_self_targeted_reward_settles_when_no_enemies_remain() {
             &pool,
             &catalog,
             &mut RoundDeterminism::default(),
-            TargetContext::default(),
+            context,
             [RuleOp::Skill(invocation)],
         )
         .unwrap()
     };
-    assert!(cast(&mut managers, offensive, -1).frames.is_empty());
-    assert!(cast(&mut managers, offensive, 10).frames.is_empty());
+    for (skill, target) in [(offensive, -1), (offensive, 10), (reward, 10)] {
+        assert!(cast(&mut managers, skill, target).frames.is_empty());
+    }
 
-    cast(&mut managers, reward, 10);
+    let settle = |managers: &mut BattleManagers, catalog: &SkillEffectCatalog| {
+        let result = run_event(
+            managers,
+            &pool,
+            catalog,
+            &mut RoundDeterminism::default(),
+            context,
+            BattleEvent::AllyAction(ActionEvent {
+                source_uid: 10,
+                target_uid: -1,
+                skill_id: offensive,
+                is_attack: true,
+                mode: SkillExecutionMode::Active,
+                assassinate: true,
+                damage_amount: 100,
+                ..Default::default()
+            }),
+        )
+        .unwrap();
+        result
+            .frames
+            .iter()
+            .map(|frame| count_skill(frame, reward))
+            .sum::<usize>()
+    };
+    for target in [103, 202] {
+        let mut unrelated = catalog.clone();
+        let mut effect = unrelated.get(reward).unwrap().clone();
+        effect.slots[0].target.code = target;
+        unrelated.insert(effect);
+        assert_eq!(settle(&mut managers, &unrelated), 0);
+    }
+    assert_eq!(managers.buff.buff_id_amount(10, reward), 0);
+    assert_eq!(managers.buff.buff_id_amount(11, reward), 0);
+    assert_eq!(settle(&mut managers, &catalog), 1);
     assert_eq!(managers.buff.buff_id_amount(10, reward), 1);
     assert_eq!(managers.buff.buff_id_amount(11, reward), 1);
 
     assert!(managers.commit_terminal(crate::engine::round::outcome::BattleOutcome::Victory));
-    assert!(cast(&mut managers, reward, 10).frames.is_empty());
+    assert_eq!(settle(&mut managers, &catalog), 0);
     assert_eq!(managers.buff.buff_id_amount(10, reward), 1);
     assert_eq!(managers.buff.buff_id_amount(11, reward), 1);
 }
