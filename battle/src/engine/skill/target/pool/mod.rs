@@ -145,6 +145,7 @@ pub struct TargetContext {
     pub action_kill_count: i32,
     pub action_guard_break_count: i32,
     pub toughness_broken_uid: i64,
+    pub toughness_break_defeated: bool,
     pub blood_pool_max: i32,
     pub blood_pool_value: i32,
     pub blood_sacrifice_points: i32,

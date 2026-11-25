@@ -524,7 +524,8 @@ pub(super) fn condition_kind_matches(
         ParsedConditionKind::BeforeCrit => context.action_crit_count > 0,
         ParsedConditionKind::TargetGuardBroken => context.action_guard_break_count > 0,
         ParsedConditionKind::GuardBroken => {
-            context.toughness_broken_uid != 0
+            !context.toughness_break_defeated
+                && context.toughness_broken_uid != 0
                 && condition_targets.contains(&context.toughness_broken_uid)
         }
         ParsedConditionKind::EntityBroken => managers.is_some_and(|managers| {

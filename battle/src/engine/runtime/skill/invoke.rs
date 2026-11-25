@@ -182,7 +182,8 @@ pub(super) fn apply_event_context(
             ..
         } => {
             context.runtime_target_uid = *target_uid;
-            context.toughness_broken_uid = if *target_defeated { 0 } else { *target_uid };
+            context.toughness_broken_uid = *target_uid;
+            context.toughness_break_defeated = *target_defeated;
         }
         BattleEvent::Hit(hit) => {
             context.runtime_target_uid = hit.target_uid;

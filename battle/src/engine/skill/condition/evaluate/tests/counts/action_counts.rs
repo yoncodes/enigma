@@ -237,7 +237,7 @@ fn guard_broken_only_matches_the_entity_from_the_break_event() {
         kind: ParsedConditionKind::GuardBroken,
         raw_args: Vec::new(),
     };
-    let matches = |condition_target, toughness_broken_uid| {
+    let matches = |condition_target, toughness_broken_uid, toughness_break_defeated| {
         conditions_match(
             std::slice::from_ref(&condition),
             condition_target,
@@ -246,13 +246,15 @@ fn guard_broken_only_matches_the_entity_from_the_break_event() {
             &TargetPool::default(),
             TargetContext {
                 toughness_broken_uid,
+                toughness_break_defeated,
                 ..Default::default()
             },
         )
     };
 
-    assert!(matches(-1, -1));
-    assert!(!matches(-1, -2));
+    assert!(matches(-1, -1, false));
+    assert!(!matches(-1, -2, false));
+    assert!(!matches(-1, -1, true));
 }
 
 #[test]
