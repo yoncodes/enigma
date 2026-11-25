@@ -88,6 +88,7 @@ fn rebound_claim_survives_each_damage_batch_and_resets_between_casts() {
             None,
             Some(ReactionLane::BuffActs),
             None,
+            None,
         )
         .unwrap();
         let damage_count = |ops: &[QueuedOp]| {
@@ -179,6 +180,7 @@ fn charged_rebound_is_spent_before_a_nested_attack() {
             PublicationPhase::AfterPublish,
             None,
             Some(ReactionLane::BuffActs),
+            None,
             None,
         )
         .unwrap();

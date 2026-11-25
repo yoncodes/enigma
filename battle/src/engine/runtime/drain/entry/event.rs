@@ -1,5 +1,5 @@
 use super::*;
-use crate::engine::manager::buff::BuffDurationAdvance;
+use crate::engine::{event::kind::EventKind, manager::buff::BuffDurationAdvance};
 
 pub fn run_event(
     managers: &mut BattleManagers,
@@ -386,7 +386,14 @@ fn run_grouped_owner_event_at(
                     None,
                 )?;
                 reactions.assign_subscriber_death_groups(None);
-                let mut queue = reactions.into_ordered().into();
+                let mut queue: VecDeque<_> = reactions.into_ordered().into();
+                if lane == ReactionLane::Skills && event.kind() == EventKind::SmallRoundEnd {
+                    for operation in &mut queue {
+                        if let Some(subscriber) = &mut operation.subscriber {
+                            subscriber.settlement_owner = Some(scope.clone());
+                        }
+                    }
+                }
                 let next = drain_queue_with_frames(
                     managers,
                     pool,

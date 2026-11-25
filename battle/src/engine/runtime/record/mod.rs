@@ -273,22 +273,6 @@ pub(crate) fn round_end_owner_scope<'a>(
         })
 }
 
-pub(crate) fn field_transfer_scope<'a>(frames: &[SemanticFrame], path: &'a [usize]) -> &'a [usize] {
-    use crate::engine::event::kind::EventKind;
-
-    let Some((_, parent)) = path.split_last() else {
-        return path;
-    };
-    let settlement = FrameTrigger::Event(BattleEvent::Kind(EventKind::SmallRoundEnd));
-    if !parent.is_empty() && frame_at(frames, path).trigger == settlement {
-        let group = frame_at(frames, parent);
-        if matches!(group.owner, FrameOwner::EventRule) && group.trigger == settlement {
-            return parent;
-        }
-    }
-    path
-}
-
 pub(crate) fn entity_entry_halo_scope_path(frames: &[SemanticFrame], path: &[usize]) -> FramePath {
     let mut parent = path.to_vec();
     parent.pop();

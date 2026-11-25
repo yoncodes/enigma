@@ -165,11 +165,13 @@ pub(in crate::engine::runtime::drain) fn dispatch_event_groups(
     owner_uids: Option<&[i64]>,
     lane: Option<ReactionLane>,
     pending_deaths: Option<&[crate::engine::manager::hp::PendingDeath]>,
+    field_transfer_owner: Option<&[usize]>,
 ) -> Result<ReactionBatch, DrainError> {
     let mut all_events = event_groups.iter().flatten().cloned().collect::<Vec<_>>();
     drain_state.record_action_shared_damage(action_path, &mut all_events);
     let mut state = EventBatchState {
         batch_id: drain_state.next_event_batch_id(),
+        field_transfer_owner,
         ..Default::default()
     };
     let mut unscoped_reactions = super::super::state::ActionReactions::default();
@@ -283,8 +285,9 @@ pub(in crate::engine::runtime::drain) fn dispatch_event_batch(
 }
 
 #[derive(Default)]
-struct EventBatchState {
+struct EventBatchState<'a> {
     batch_id: u64,
+    field_transfer_owner: Option<&'a [usize]>,
     queued_attack_consumption: bool,
     hit_passives_pending: bool,
     fired_once_per_batch_target:
@@ -311,7 +314,7 @@ fn dispatch_event_batch_inner(
     publication_phase: crate::engine::event::subscription::PublicationPhase,
     owner_uids: Option<&[i64]>,
     lane: Option<ReactionLane>,
-    state: &mut EventBatchState,
+    state: &mut EventBatchState<'_>,
     action_reactions: &mut super::super::state::ActionReactions,
 ) -> Result<ReactionBatch, DrainError> {
     let scoped_owner_uids = terminal_owner_scope(pool, managers, owner_uids);
@@ -421,7 +424,11 @@ fn dispatch_event_batch_inner(
             ReactionDispatch {
                 event,
                 parent_path: Some(parent_path),
-                reuse_path: Some(reuse_path),
+                reuse_path: Some(if matches!(event, BattleEvent::FieldTransferred { .. }) {
+                    state.field_transfer_owner.unwrap_or(reuse_path)
+                } else {
+                    reuse_path
+                }),
                 action_path,
                 entry_halo_scope,
                 reentry_skill,

@@ -134,6 +134,7 @@ pub(super) struct SubscriberContext {
     pub(super) owner_uid: i64,
     pub(super) skill_id: Option<i32>,
     pub(super) group: Option<Rc<RefCell<SubscriberDeathGroup>>>,
+    pub(super) settlement_owner: Option<FramePath>,
 }
 
 impl SubscriberContext {
@@ -142,6 +143,7 @@ impl SubscriberContext {
             owner_uid,
             skill_id: None,
             group: None,
+            settlement_owner: None,
         }
     }
 
@@ -150,6 +152,7 @@ impl SubscriberContext {
             owner_uid,
             skill_id: Some(skill_id),
             group: None,
+            settlement_owner: None,
         }
     }
 }

@@ -10,6 +10,7 @@ pub(super) struct Scope<'a> {
     pub(super) event_scope: &'a FramePath,
     pub(super) action_scope: Option<&'a FramePath>,
     pub(super) entry_halo_scope: &'a FramePath,
+    pub(super) field_transfer_owner: Option<&'a [usize]>,
     pub(super) current_skill: Option<(i64, i32, Option<i64>)>,
     pub(super) fanout_output_owner: OutputOwner,
     pub(super) layer_halo_fanout_output_owner: OutputOwner,
@@ -41,6 +42,7 @@ pub(super) fn record(
         current_skill,
         fanout_output_owner,
         layer_halo_fanout_output_owner,
+        ..
     } = scope;
     let (leading_fanout, fanout): (Vec<_>, Vec<_>) = fanout
         .into_iter()
@@ -99,6 +101,7 @@ pub(super) fn record(
                 false,
                 context.current_round > 0,
                 crate::engine::event::subscription::PublicationPhase::BeforePublish,
+                None,
                 None,
                 None,
                 None,
@@ -243,6 +246,7 @@ pub(super) fn dispatch_after(
         action_scope,
         entry_halo_scope,
         current_skill,
+        field_transfer_owner,
         ..
     } = scope;
     let ReleasedEvents {
@@ -277,6 +281,7 @@ pub(super) fn dispatch_after(
             terminal_owner_uids,
             None,
             pending_deaths,
+            field_transfer_owner,
         )?
     };
     super::super::field_level::bind_reactions(
@@ -340,6 +345,7 @@ pub(super) fn dispatch_after(
             terminal_owner_uids,
             Some(ReactionLane::BuffActs),
             None,
+            None,
         )?;
         let mut hit_skills = dispatch_event_groups(
             pool,
@@ -358,6 +364,7 @@ pub(super) fn dispatch_after(
             crate::engine::event::subscription::PublicationPhase::AfterPublish,
             terminal_owner_uids,
             Some(ReactionLane::Skills),
+            None,
             None,
         )?;
         hit_buff_acts

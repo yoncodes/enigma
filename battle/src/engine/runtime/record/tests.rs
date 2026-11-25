@@ -1,28 +1,6 @@
 use super::*;
 
 #[test]
-fn field_transfer_reaction_uses_the_cast_or_small_round_settlement_frame() {
-    use crate::engine::event::kind::EventKind;
-
-    let mut frames = Vec::new();
-    let skill = FrameOwner::Skill {
-        source_uid: 10,
-        skill_id: 20,
-        card_index: 0,
-        target_uid: Some(10),
-    };
-    let active = push_root(&mut frames, skill.clone(), FrameTrigger::Active);
-    let settlement = FrameTrigger::Event(BattleEvent::Kind(EventKind::SmallRoundEnd));
-    let group = push_root(&mut frames, FrameOwner::EventRule, settlement.clone());
-    let settled_skill = push_child(&mut frames, &group, skill.clone(), settlement);
-    let followup = push_child(&mut frames, &settled_skill, skill, FrameTrigger::Active);
-
-    assert_eq!(field_transfer_scope(&frames, &active), active);
-    assert_eq!(field_transfer_scope(&frames, &settled_skill), group);
-    assert_eq!(field_transfer_scope(&frames, &followup), followup);
-}
-
-#[test]
 fn resolved_skill_target_does_not_replace_the_invocation_target() {
     let mut frames = Vec::new();
     let skill = push_root(

@@ -1,4 +1,5 @@
 use crate::engine::{
+    event::kind::EventKind,
     manager::{
         buff::{BuffFanoutResult, BuffReplacementParts},
         hp::PendingDeath,
@@ -37,7 +38,7 @@ pub(super) fn drain_command(
     mut command: RuleOp,
     trigger: SkillOpTrigger,
     skill_execution: Option<SkillExecution>,
-    mut frame_path: Option<FramePath>,
+    frame_path: Option<FramePath>,
     parent_path: Option<FramePath>,
     frame_group: Option<Rc<RefCell<Option<FramePath>>>>,
     independent_parent_group: Option<Rc<RefCell<Option<FramePath>>>>,
@@ -45,12 +46,6 @@ pub(super) fn drain_command(
     subscriber: Option<SubscriberContext>,
     caster_frame: Option<FrameOwner>,
 ) -> Result<(), DrainError> {
-    if let SkillOpTrigger::Event(BattleEvent::FieldTransferred { .. }) = &trigger
-        && let Some(path) = &mut frame_path
-    {
-        let scope = crate::engine::runtime::record::field_transfer_scope(&result.frames, path);
-        path.truncate(scope.len());
-    }
     // After-hit observers must execute before the lifecycle operation
     // that closes their boundary, so requeue that closer behind them.
     let releases_after_hit = matches!(
@@ -316,6 +311,7 @@ pub(super) fn drain_command(
             None,
             Some(ReactionLane::BuffActs),
             None,
+            None,
         )?;
         drain_nested_queue(
             managers,
@@ -341,6 +337,12 @@ pub(super) fn drain_command(
         event_scope: &event_scope,
         action_scope: action_scope.as_ref(),
         entry_halo_scope: &entry_halo_scope,
+        field_transfer_owner: match &trigger {
+            SkillOpTrigger::Event(event) if event.kind() == EventKind::SmallRoundEnd => subscriber
+                .as_ref()
+                .and_then(|subscriber| subscriber.settlement_owner.as_deref()),
+            _ => None,
+        },
         current_skill,
         fanout_output_owner,
         layer_halo_fanout_output_owner,

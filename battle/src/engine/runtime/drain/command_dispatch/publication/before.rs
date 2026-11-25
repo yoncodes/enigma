@@ -103,6 +103,7 @@ pub(in super::super) fn prepare(
             None,
             None,
             None,
+            None,
         )?;
         if !removal_reactions.before_publish.is_empty() {
             drain_nested_queue(
@@ -149,6 +150,7 @@ pub(in super::super) fn prepare(
         None,
         None,
         None,
+        None,
     )?;
     if let Some(groups) = all_event_groups {
         event_groups = groups;
@@ -175,6 +177,7 @@ pub(in super::super) fn prepare(
             matches!(outcome, RuleOutcome::HpBatch(_)),
             context.current_round > 0,
             crate::engine::event::subscription::PublicationPhase::AfterPublish,
+            None,
             None,
             None,
             None,
@@ -231,6 +234,7 @@ pub(in super::super) fn prepare(
             crate::engine::event::subscription::PublicationPhase::BeforePublish,
             None,
             Some(ReactionLane::Skills),
+            None,
             None,
         )?;
         result.events.extend(hit_events.iter().cloned());

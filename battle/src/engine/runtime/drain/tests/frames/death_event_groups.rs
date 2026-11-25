@@ -95,6 +95,7 @@ fn each_death_event_group_settles_before_the_next_group_reacts() {
         None,
         None,
         Some(&pending_deaths),
+        None,
     )
     .unwrap();
     assert_eq!(pending_deaths.len(), 2);
