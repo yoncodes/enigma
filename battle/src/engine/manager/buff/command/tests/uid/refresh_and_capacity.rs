@@ -563,7 +563,7 @@ fn reserved_grant_uid_is_claimed_after_intervening_allocations() {
 }
 
 #[test]
-fn normal_uid_grant_keeps_layered_storage_on_the_root_lane() {
+fn ally_action_grants_use_the_configured_uid_for_special_self_layers() {
     crate::test_support::init_config();
     let mut manager = BuffManager::default();
     manager.seed(&Fight {
@@ -612,4 +612,17 @@ fn normal_uid_grant_keeps_layered_storage_on_the_root_lane() {
 
     assert_eq!(grant_plan(&default_plan).uid.unwrap().uid, 1108);
     assert_eq!(grant_plan(&normal_plan).uid.unwrap().uid, 1109);
+
+    for (buff_id, expected_uid) in [(31430151, 1108), (31430155, 1108), (30530102, 1109)] {
+        let plan = manager
+            .plan(
+                &HpManager::default(),
+                BuffCommand::GrantRelated(RelatedBuffGrant {
+                    grant: BuffGrant { buff_id, ..grant },
+                    relation: BuffGrantRelation::AllyAction,
+                }),
+            )
+            .unwrap();
+        assert_eq!(grant_plan(&plan).uid.unwrap().uid, expected_uid);
+    }
 }

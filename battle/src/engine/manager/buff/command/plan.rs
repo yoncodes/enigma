@@ -45,32 +45,11 @@ impl BuffManager {
             }
             BuffCommand::GrantRelated(related) => {
                 let grant = related.grant;
-                let (input, force_normal_uid) = match related.relation {
-                    BuffGrantRelation::Child => (
-                        GrantInput::ChildInstance {
-                            layer: grant.amount.unwrap_or_default(),
-                            layer_specified: grant.amount.is_some(),
-                        },
-                        false,
-                    ),
-                    BuffGrantRelation::Normal => (
-                        grant.amount.map_or(GrantInput::Default, GrantInput::Layer),
-                        true,
-                    ),
-                };
                 (
                     grant.origin,
                     BuffPlanAction::Grant(Box::new(self.plan_grant_with_source_attack(
                         hp,
-                        GrantRequest {
-                            source_uid: grant.source_uid,
-                            target_uid: grant.target_uid,
-                            buff_id: grant.buff_id,
-                            input,
-                            occurrences: grant.occurrences,
-                            child_uid_reservations: grant.child_uid_reservations,
-                            force_normal_uid,
-                        },
+                        GrantRequest::related(&grant, Some(related.relation)),
                         inputs,
                     )?)),
                 )
@@ -89,7 +68,7 @@ impl BuffManager {
                         },
                         occurrences: grant.occurrences,
                         child_uid_reservations: grant.child_uid_reservations,
-                        force_normal_uid: false,
+                        uid_mode: GrantUidMode::Configured,
                     },
                     inputs,
                 )?)),
@@ -109,7 +88,7 @@ impl BuffManager {
                         input: grant.amount.map_or(GrantInput::Default, GrantInput::Layer),
                         occurrences: 1,
                         child_uid_reservations: 0,
-                        force_normal_uid: false,
+                        uid_mode: GrantUidMode::Configured,
                     },
                     inputs,
                 )?;
@@ -124,34 +103,9 @@ impl BuffManager {
             }
             BuffCommand::GrantSourceRelative(stateful) => {
                 let grant = stateful.grant;
-                let (input, force_normal_uid) = match stateful.relation {
-                    Some(BuffGrantRelation::Child) => (
-                        GrantInput::ChildInstance {
-                            layer: grant.amount.unwrap_or_default(),
-                            layer_specified: grant.amount.is_some(),
-                        },
-                        false,
-                    ),
-                    Some(BuffGrantRelation::Normal) => (
-                        grant.amount.map_or(GrantInput::Default, GrantInput::Layer),
-                        true,
-                    ),
-                    None => (
-                        grant.amount.map_or(GrantInput::Default, GrantInput::Layer),
-                        false,
-                    ),
-                };
                 let mut plan = self.plan_grant_with_source_attack(
                     hp,
-                    GrantRequest {
-                        source_uid: grant.source_uid,
-                        target_uid: grant.target_uid,
-                        buff_id: grant.buff_id,
-                        input,
-                        occurrences: grant.occurrences,
-                        child_uid_reservations: grant.child_uid_reservations,
-                        force_normal_uid,
-                    },
+                    GrantRequest::related(&grant, stateful.relation),
                     inputs,
                 )?;
                 plan.initial_act_info_markers = Some(stateful.act_info.clone());
@@ -173,7 +127,7 @@ impl BuffManager {
                         },
                         occurrences: grant.occurrences,
                         child_uid_reservations: grant.child_uid_reservations,
-                        force_normal_uid: false,
+                        uid_mode: GrantUidMode::Configured,
                     },
                     inputs,
                 )?)),
@@ -189,7 +143,7 @@ impl BuffManager {
                         input: grant.amount.map_or(GrantInput::Default, GrantInput::Layer),
                         occurrences: grant.occurrences,
                         child_uid_reservations: grant.child_uid_reservations,
-                        force_normal_uid: true,
+                        uid_mode: GrantUidMode::Normal,
                     },
                     inputs,
                 )?)),
@@ -228,7 +182,7 @@ impl BuffManager {
                         },
                         occurrences: 1,
                         child_uid_reservations: 0,
-                        force_normal_uid: false,
+                        uid_mode: GrantUidMode::Configured,
                     },
                     inputs,
                 )?;
@@ -324,7 +278,7 @@ impl BuffManager {
                                 input: GrantInput::Default,
                                 occurrences: 1,
                                 child_uid_reservations: 0,
-                                force_normal_uid: false,
+                                uid_mode: GrantUidMode::Configured,
                             },
                             inputs,
                         )
@@ -674,6 +628,16 @@ impl BuffManager {
         let mut definition =
             BuffDefinition::configured(self.catalog().game_data(), request.buff_id)
                 .ok_or(BuffCommandError::MissingDefinition(request.buff_id))?;
+        let force_normal_uid = match request.uid_mode {
+            GrantUidMode::Configured => false,
+            GrantUidMode::Normal => true,
+            GrantUidMode::AllyAction => !super::super::ally_action_grant::uses_configured_uid(
+                self.shared_uid_lane,
+                request.source_uid,
+                request.target_uid,
+                &definition,
+            ),
+        };
         let semantic_grant_allowed = definition.features().iter().all(|feature| {
             feature.kind
                 != Some(crate::engine::skill::buff_act::registry::BuffActKind::Rouge2AttrToRole)
@@ -982,7 +946,7 @@ impl BuffManager {
                     GrantInput::ChildUid { .. }
                         | GrantInput::ChildInstance { .. }
                         | GrantInput::TriggeredChildInstance { .. }
-                ) || (!request.force_normal_uid
+                ) || (!force_normal_uid
                     && (policy.uid.allocation.uses_child_for_apply(args)
                         || super::uid_policy::follows_replaced_halo_copies(
                             self,
@@ -1389,7 +1353,7 @@ impl BuffManager {
                 input: GrantInput::UnconditionalLayer(0),
                 occurrences: 1,
                 child_uid_reservations: 0,
-                force_normal_uid: false,
+                uid_mode: GrantUidMode::Configured,
             },
             inputs,
         )?;
@@ -1542,7 +1506,7 @@ impl BuffManager {
                 },
                 occurrences: 1,
                 child_uid_reservations,
-                force_normal_uid: false,
+                uid_mode: GrantUidMode::Configured,
             },
             inputs,
         )?;

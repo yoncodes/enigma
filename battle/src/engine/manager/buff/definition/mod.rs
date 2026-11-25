@@ -806,7 +806,7 @@ impl BuffDefinition {
             })
     }
 
-    fn is_layer_type(&self) -> bool {
+    pub(super) fn is_layer_type(&self) -> bool {
         self.has_include_type(BuffIncludeType::Layer)
     }
 

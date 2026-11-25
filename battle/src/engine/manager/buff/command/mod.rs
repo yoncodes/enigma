@@ -38,6 +38,7 @@ pub struct BuffGrant {
 pub enum BuffGrantRelation {
     Child,
     Normal,
+    AllyAction,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -72,7 +73,14 @@ pub(super) struct GrantRequest {
     pub input: GrantInput,
     pub occurrences: u32,
     pub child_uid_reservations: u32,
-    pub force_normal_uid: bool,
+    pub uid_mode: GrantUidMode,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(super) enum GrantUidMode {
+    Configured,
+    Normal,
+    AllyAction,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -95,8 +103,26 @@ impl From<&BuffGrant> for GrantRequest {
             input: grant.amount.map_or(GrantInput::Default, GrantInput::Layer),
             occurrences: grant.occurrences,
             child_uid_reservations: grant.child_uid_reservations,
-            force_normal_uid: false,
+            uid_mode: GrantUidMode::Configured,
         }
+    }
+}
+
+impl GrantRequest {
+    fn related(grant: &BuffGrant, relation: Option<BuffGrantRelation>) -> Self {
+        let mut request = Self::from(grant);
+        match relation {
+            Some(BuffGrantRelation::Child) => {
+                request.input = GrantInput::ChildInstance {
+                    layer: grant.amount.unwrap_or_default(),
+                    layer_specified: grant.amount.is_some(),
+                };
+            }
+            Some(BuffGrantRelation::Normal) => request.uid_mode = GrantUidMode::Normal,
+            Some(BuffGrantRelation::AllyAction) => request.uid_mode = GrantUidMode::AllyAction,
+            None => {}
+        }
+        request
     }
 }
 

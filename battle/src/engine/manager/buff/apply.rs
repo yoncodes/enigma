@@ -40,7 +40,7 @@ impl BuffManager {
             input: command::GrantInput::UnconditionalLayer(layer),
             occurrences: 1,
             child_uid_reservations: 0,
-            force_normal_uid: false,
+            uid_mode: super::command::GrantUidMode::Configured,
         };
         self.plan_grant(hp, request)
             .ok()
@@ -82,7 +82,7 @@ impl BuffManager {
             },
             occurrences: 1,
             child_uid_reservations: 0,
-            force_normal_uid: false,
+            uid_mode: super::command::GrantUidMode::Configured,
         };
         self.plan_grant(hp, request)
             .map(|plan| self.commit_grant_plan(hp, plan))
@@ -105,7 +105,7 @@ impl BuffManager {
             input: command::GrantInput::Default,
             occurrences: u32::try_from(layer).unwrap_or_default(),
             child_uid_reservations: 0,
-            force_normal_uid: false,
+            uid_mode: super::command::GrantUidMode::Configured,
         };
         self.plan_grant(hp, request)
             .map(|plan| self.commit_grant_plan(hp, plan))

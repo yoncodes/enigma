@@ -94,6 +94,10 @@ fn source_relative_grant_keeps_snapshot_when_selecting_a_uid_lane() {
             ConsequencePolicy::NormalBuffGrant,
             BuffGrantRelation::Normal,
         ),
+        (
+            ConsequencePolicy::AllyActionBuffGrant,
+            BuffGrantRelation::AllyAction,
+        ),
     ] {
         assert_eq!(
             attach_buff_grant_relation(

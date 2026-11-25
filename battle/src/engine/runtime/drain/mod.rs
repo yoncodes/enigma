@@ -781,29 +781,18 @@ fn attach_relation(
     use crate::engine::manager::buff::{BuffCommand, BuffGrantRelation, RelatedBuffGrant};
     use crate::engine::skill::condition::registry::ConsequencePolicy;
 
+    let relation = match consequence {
+        ConsequencePolicy::ChildBuffGrant => BuffGrantRelation::Child,
+        ConsequencePolicy::NormalBuffGrant => BuffGrantRelation::Normal,
+        ConsequencePolicy::AllyActionBuffGrant => BuffGrantRelation::AllyAction,
+        _ => return command,
+    };
     match command {
-        BuffCommand::Grant(grant) if consequence == ConsequencePolicy::ChildBuffGrant => {
-            BuffCommand::GrantRelated(RelatedBuffGrant {
-                grant,
-                relation: BuffGrantRelation::Child,
-            })
+        BuffCommand::Grant(grant) => {
+            BuffCommand::GrantRelated(RelatedBuffGrant { grant, relation })
         }
-        BuffCommand::Grant(grant) if consequence == ConsequencePolicy::NormalBuffGrant => {
-            BuffCommand::GrantRelated(RelatedBuffGrant {
-                grant,
-                relation: BuffGrantRelation::Normal,
-            })
-        }
-        BuffCommand::GrantSourceRelative(mut stateful)
-            if consequence == ConsequencePolicy::ChildBuffGrant =>
-        {
-            stateful.relation = Some(BuffGrantRelation::Child);
-            BuffCommand::GrantSourceRelative(stateful)
-        }
-        BuffCommand::GrantSourceRelative(mut stateful)
-            if consequence == ConsequencePolicy::NormalBuffGrant =>
-        {
-            stateful.relation = Some(BuffGrantRelation::Normal);
+        BuffCommand::GrantSourceRelative(mut stateful) => {
+            stateful.relation = Some(relation);
             BuffCommand::GrantSourceRelative(stateful)
         }
         other => other,

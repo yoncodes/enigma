@@ -6,6 +6,7 @@ use crate::engine::buff::halo;
 use crate::engine::entity::attr::AttrId;
 use crate::engine::manager::hp::HpManager;
 
+mod ally_action_grant;
 mod apply;
 mod command;
 mod definition;

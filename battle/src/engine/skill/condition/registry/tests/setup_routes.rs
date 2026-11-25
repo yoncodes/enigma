@@ -911,7 +911,7 @@ fn child_buff_allocation_is_owned_by_the_exact_condition_route() {
     );
     assert_eq!(
         find_key(502212, "ActiveUseSkill").map(|definition| definition.consequence),
-        Some(ConsequencePolicy::NormalBuffGrant)
+        Some(ConsequencePolicy::AllyActionBuffGrant)
     );
     assert_eq!(
         find_key(662208, "ActiveUseSkillId").map(|definition| definition.behavior_target_source),
@@ -934,7 +934,10 @@ fn active_ally_reactions_inherit_the_causing_frame_target() {
         definition.reaction_frame_target,
         ReactionFrameTarget::CausingFrame
     );
-    assert_eq!(definition.consequence, ConsequencePolicy::NormalBuffGrant);
+    assert_eq!(
+        definition.consequence,
+        ConsequencePolicy::AllyActionBuffGrant
+    );
 }
 
 #[test]

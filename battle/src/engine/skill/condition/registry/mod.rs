@@ -93,6 +93,7 @@ pub enum ConsequencePolicy {
     Default,
     ChildBuffGrant,
     NormalBuffGrant,
+    AllyActionBuffGrant,
     LatestHolderGrant,
 }
 
@@ -566,8 +567,8 @@ pub const fn child_buff_grant(mut metadata: ConditionMetadata) -> ConditionMetad
     metadata
 }
 
-pub const fn normal_buff_grant(mut metadata: ConditionMetadata) -> ConditionMetadata {
-    metadata.consequence = ConsequencePolicy::NormalBuffGrant;
+pub const fn ally_action_buff_grant(mut metadata: ConditionMetadata) -> ConditionMetadata {
+    metadata.consequence = ConsequencePolicy::AllyActionBuffGrant;
     metadata
 }
 
@@ -1079,7 +1080,7 @@ condition_definitions! {
     [25212] "UseExSkill" => trigger::parse_use_ex_skill, event_trigger(EventKind::AllyAction, None);
     [720212] "TeammateUseExSkill" => trigger::parse_teammate_use_ex_skill, event_trigger(EventKind::AllyAction, None);
     [737212] "IsEffectEntity" => target_identity::active_skill_source, predicate(&[]);
-    [502212] "ActiveUseSkill" => active_skill::active_ally_use, reaction_targets_causing_frame(normal_buff_grant(event_trigger(EventKind::AllyAction, None)));
+    [502212] "ActiveUseSkill" => active_skill::active_ally_use, reaction_targets_causing_frame(ally_action_buff_grant(event_trigger(EventKind::AllyAction, None)));
     [502213] "ActiveUseSkill" => active_skill::active_source_use, filters_behavior_targets(reaction_targets_event_source(latest_holder_grant(after_skill(opposing_team_observes(event_trigger(EventKind::SkillAction, Some(SkillPhase::HitPassives)))))));
     [620212] "CurrSkillLevel" => active_skill::rank, event_trigger(EventKind::AllyAction, None);
     [502203] "ActiveUseSkill" => active_skill::active_use, event_trigger(EventKind::SkillAction, Some(SkillPhase::Immediate));
