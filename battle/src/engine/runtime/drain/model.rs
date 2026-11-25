@@ -329,6 +329,13 @@ pub(in crate::engine::runtime) fn attack_has_no_target(
     };
     let logic_target = request.code;
     match invocation.target {
+        SkillTarget::Explicit(uid)
+            if uid == invocation.plan.source_uid
+                && logic_target == crate::engine::skill::target::request::SOURCE_TARGET_CODE
+                && catalog.damage_rate(invocation.plan.skill_id) == 0 =>
+        {
+            false
+        }
         SkillTarget::Configured | SkillTarget::LogicRule(_)
             if targets_enemy(logic_target).is_some() =>
         {

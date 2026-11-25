@@ -1192,3 +1192,77 @@ fn direct_use_skill_cast_names_its_destination_while_hitting_its_configured_targ
         vec![-4]
     );
 }
+
+#[test]
+fn explicitly_self_targeted_reward_settles_when_no_enemies_remain() {
+    let reward = 435221;
+    let offensive = 312451011;
+    let halo = 312411442;
+    let entity = |uid, hp| FightEntityInfo {
+        uid: Some(uid),
+        current_hp: Some(hp),
+        attr: Some(HeroAttribute {
+            hp: Some(100),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![
+                FightEntityInfo {
+                    buffs: vec![BuffInfo {
+                        buff_id: Some(halo),
+                        uid: Some(20),
+                        from_uid: Some(10),
+                        layer: Some(1),
+                        r#type: Some(1),
+                        ..Default::default()
+                    }],
+                    ..entity(10, 100)
+                },
+                entity(11, 100),
+            ],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![entity(-1, 0)],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let db = crate::test_support::game_data();
+    let catalog = SkillEffectCatalog::from_roots(db, [reward, offensive], [halo]);
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    assert!(catalog.is_attack(reward));
+
+    let cast = |managers: &mut BattleManagers, skill_id, target_uid| {
+        let mut invocation: SkillInvocation = SkillRequest {
+            source_uid: 10,
+            skill_id,
+        }
+        .into();
+        invocation.target = SkillTarget::Explicit(target_uid);
+        run(
+            managers,
+            &pool,
+            &catalog,
+            &mut RoundDeterminism::default(),
+            TargetContext::default(),
+            [RuleOp::Skill(invocation)],
+        )
+        .unwrap()
+    };
+    assert!(cast(&mut managers, offensive, -1).frames.is_empty());
+    assert!(cast(&mut managers, offensive, 10).frames.is_empty());
+
+    cast(&mut managers, reward, 10);
+    assert_eq!(managers.buff.buff_id_amount(10, reward), 1);
+    assert_eq!(managers.buff.buff_id_amount(11, reward), 1);
+
+    assert!(managers.commit_terminal(crate::engine::round::outcome::BattleOutcome::Victory));
+    assert!(cast(&mut managers, reward, 10).frames.is_empty());
+    assert_eq!(managers.buff.buff_id_amount(10, reward), 1);
+    assert_eq!(managers.buff.buff_id_amount(11, reward), 1);
+}
