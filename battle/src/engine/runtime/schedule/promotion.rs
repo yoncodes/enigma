@@ -10,12 +10,11 @@ pub(crate) fn sync_cycle_roster(
     pool: &mut TargetPool,
     actions: &DrainResult,
 ) {
-    if actions.frames.iter().any(|frame| {
-        matches!(
-            frame.owner,
-            FrameOwner::RoundPhase(RoundPhase::ReserveCycle)
-        )
-    }) && pool.roster_changed(managers)
+    if actions
+        .outcomes
+        .iter()
+        .any(|outcome| matches!(outcome, RuleOutcome::ReserveCycleCommitted))
+        && pool.roster_changed(managers)
     {
         managers.sync_entities(fight);
         managers.sync_roster(fight);
@@ -49,7 +48,7 @@ pub(super) fn run_cycles(
     else {
         return Ok(DrainResult::default());
     };
-    run_cycles_batch(
+    let mut result = run_cycles_batch(
         pool,
         managers,
         catalog,
@@ -57,7 +56,9 @@ pub(super) fn run_cycles(
         context,
         &promotions,
         team_type,
-    )
+    )?;
+    result.outcomes.push(RuleOutcome::ReserveCycleCommitted);
+    Ok(result)
 }
 
 pub fn run_promotions(

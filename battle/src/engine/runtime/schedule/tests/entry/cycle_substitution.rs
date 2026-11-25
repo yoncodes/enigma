@@ -149,7 +149,7 @@ fn a_cycle_reserve_enters_after_the_action_without_promoting_ordinary_deaths() {
         (fight, managers, result)
     };
 
-    let (mut fight, mut managers, result) = run(false);
+    let (mut fight, mut managers, mut result) = run(false);
     let effects = crate::engine::packet::timeline::project(&result.frames).unwrap();
     assert_eq!(managers.hp.current(-2), 0);
     assert_eq!(managers.entity.roster_lane(-1), Some(RosterLane::Main));
@@ -168,6 +168,7 @@ fn a_cycle_reserve_enters_after_the_action_without_promoting_ordinary_deaths() {
     );
 
     let mut pool = TargetPool::from_fight(&fight);
+    result.frames.clear();
     sync_cycle_roster(&mut fight, &mut managers, &mut pool, &result);
     assert!(pool.defender_main.iter().any(|entity| entity.uid == -5));
     assert!(!pool.defender_main.iter().any(|entity| entity.uid == -2));

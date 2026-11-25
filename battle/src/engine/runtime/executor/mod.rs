@@ -80,6 +80,7 @@ pub(crate) enum RuleOutcome {
     BloodtitheSpend(Box<crate::engine::mechanic::bloodtithe::spend::SpendChanges>),
     NuoDiKa(crate::engine::mechanic::nuo_di_ka::NuoDiKaChange),
     Emitter(EmitterChange),
+    ReserveCycleCommitted,
     ReservesCleared(crate::engine::fight::reserve::ReservesCleared),
     Entity(Box<EntityChanges>),
     MoveFront(MoveFrontChanges),
@@ -303,7 +304,7 @@ impl RuleOutcome {
             Self::BuffActInfoMarker(change) => {
                 vec![BattleChange::BuffActInfoMarker(change.clone())]
             }
-            Self::StateChanged => Vec::new(),
+            Self::StateChanged | Self::ReserveCycleCommitted => Vec::new(),
             Self::NuoDiKaHit(hit) => vec![BattleChange::NuoDiKaHit(*hit)],
             Self::Hp(execution) => execution
                 .before_hp_markers
