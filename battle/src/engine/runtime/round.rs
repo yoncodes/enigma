@@ -201,6 +201,7 @@ impl BattleRuntime {
         let refill_slots = player.refill_slots;
         let next_action_index = player.next_action_index;
         let player = player.drain;
+        schedule::sync_cycle_roster(&mut self.fight, &mut self.managers, &mut pool, &player);
         let ended_by_player = battle_ended(&self.fight, &pool, &self.managers);
         self.objectives
             .record_player_round(&commands, catalog, &player, ended_by_player);
@@ -501,6 +502,7 @@ impl BattleRuntime {
                     promotions.promotions(),
                 )
                 .map_err(|error| format!("{error:?}"))?;
+                schedule::sync_cycle_roster(&mut self.fight, &mut self.managers, &mut pool, &ai);
                 fight_steps.extend(project_result(ai, fight_version, absorb_hurt_map_layout)?);
             }
             let after_ai_round_end = schedule::run_after_ai_round_end(

@@ -102,6 +102,20 @@ impl EffectPacket {
         }
     }
 
+    pub(crate) fn reserve_split(team_type: i32, effect_type: EffectType) -> ActEffect {
+        ActEffect {
+            target_id: Some(0),
+            effect_type: Some(effect_type as i32),
+            effect_num: Some(0),
+            config_effect: Some(0),
+            buff_act_id: Some(0),
+            reserve_id: Some(0),
+            team_type: Some(team_type),
+            effect_num1: Some(0),
+            ..Default::default()
+        }
+    }
+
     pub fn change_round(round: i32) -> ActEffect {
         ActEffect {
             target_id: Some(0),

@@ -99,6 +99,7 @@ mod card_rewards;
 mod duration;
 mod extra_round;
 mod player;
+mod promotion;
 mod refill;
 mod resolution;
 mod settlement;
@@ -113,6 +114,8 @@ pub use player::*;
 use player::{
     ActiveActionRequest, card_play_resource_delta, run_active_action, run_card_composition_rewards,
 };
+pub use promotion::run_promotions;
+pub(super) use promotion::sync_cycle_roster;
 use refill::run_opening_hand_refill;
 pub use refill::*;
 pub use resolution::*;
@@ -581,135 +584,6 @@ pub fn run_no_action_round(
                 Some(std::slice::from_ref(&owner_uid)),
             )?,
         );
-    }
-    Ok(result)
-}
-
-#[allow(clippy::too_many_arguments)]
-pub fn run_promotions(
-    pool: &TargetPool,
-    managers: &mut BattleManagers,
-    catalog: &SkillEffectCatalog,
-    determinism: &mut RoundDeterminism,
-    context: TargetContext,
-    promotions: &crate::engine::fight::reserve::PromotionBatch,
-) -> Result<DrainResult, DrainError> {
-    let pool = pool.runtime_view(managers);
-    let mut result = DrainResult::default();
-    let mut retire = Vec::new();
-    for mut promotion in promotions.promotions().iter().cloned() {
-        let entering_uid = promotion.entering_uid;
-        let origin = CommandOrigin {
-            domain: RuleDomain::Lifecycle,
-            key: DefinitionKey::new(0, "ReservePromotion"),
-        };
-        let mut promoted = drain::run_command_group(
-            managers,
-            &pool,
-            catalog,
-            determinism,
-            context,
-            [RuleOp::Command(BattleCommand::Card(
-                CardCommand::remove_owner(crate::engine::manager::card::CardRemoveOwner {
-                    origin,
-                    owner_uid: promotion.defeated_uid,
-                    team_type: promotion.team_type,
-                }),
-            ))],
-        )?;
-        let composed_owners = promoted
-            .outcomes
-            .iter()
-            .filter_map(|outcome| match outcome {
-                RuleOutcome::Card(changes) => Some(changes.composed_owners.as_slice()),
-                _ => None,
-            })
-            .flatten()
-            .copied()
-            .filter(|owner_uid| managers.ex_point.gains_composition_ex_point(*owner_uid))
-            .collect::<Vec<_>>();
-        let mut rewards = run_card_composition_rewards(
-            managers,
-            &pool,
-            catalog,
-            determinism,
-            context,
-            origin,
-            composed_owners.into_iter().map(|owner_uid| (owner_uid, 1)),
-        )?;
-        promoted.outcomes.append(&mut rewards.outcomes);
-        promoted.events.append(&mut rewards.events);
-        promoted
-            .frames
-            .first_mut()
-            .expect("a promotion command group owns one root frame")
-            .items
-            .extend(
-                rewards
-                    .frames
-                    .pop()
-                    .expect("composition rewards own one root frame")
-                    .items,
-            );
-        debug_assert!(rewards.frames.is_empty());
-        let command_frame = promoted
-            .frames
-            .pop()
-            .expect("a promotion command group owns one root frame");
-        debug_assert!(promoted.frames.is_empty());
-        let mut items = vec![FrameItem::Child(Box::new(command_frame))];
-        let queued = promotion.queued_reserve.take();
-        if queued.is_some() {
-            retire.push(promotion.defeated_uid);
-        }
-        items.push(FrameItem::Change(Box::new(BattleChange::EntityPromotion(
-            Box::new(promotion),
-        ))));
-        if let Some(queued) = queued {
-            items.push(FrameItem::Change(Box::new(BattleChange::ReserveQueued(
-                Box::new(queued),
-            ))));
-        }
-        let entered = drain::run_owner_event(
-            managers,
-            &pool,
-            catalog,
-            determinism,
-            context,
-            BattleEvent::EntityEntered {
-                target_uid: entering_uid,
-                entry: EntityEntry::Reserve,
-            },
-            std::slice::from_ref(&entering_uid),
-        )?;
-        items.extend(
-            entered
-                .frames
-                .into_iter()
-                .map(|frame| FrameItem::Child(Box::new(frame))),
-        );
-        promoted.frames.push(SemanticFrame {
-            owner: FrameOwner::Command,
-            trigger: FrameTrigger::Active,
-            items,
-        });
-        promoted.outcomes.extend(entered.outcomes);
-        promoted.events.extend(entered.events);
-        append(&mut result, promoted);
-    }
-    for uid in retire {
-        let retired = managers
-            .entity
-            .retire_reserve(uid)
-            .map_err(|error| DrainError::Command(error.into()))?;
-        result
-            .frames
-            .last_mut()
-            .expect("reserve retirement follows a promotion")
-            .items
-            .push(FrameItem::Change(Box::new(BattleChange::ReserveRetired(
-                retired,
-            ))));
     }
     Ok(result)
 }

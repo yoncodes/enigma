@@ -68,6 +68,144 @@ fn collect_cycle_grants(frame: &SemanticFrame, owner: i64, grants: &mut Vec<()>)
 }
 
 #[test]
+fn a_cycle_reserve_enters_after_the_action_without_promoting_ordinary_deaths() {
+    use crate::engine::skill::action::{SkillInvocation, SkillRequest, SkillTarget};
+    use sonettobuf::effect_type_enum::EffectType;
+
+    init_config();
+    let limbo_entity = |uid, position, cycle: bool| {
+        let mut entity = entity(uid, position, cycle);
+        entity.model_id = Some(120384122);
+        entity.passive_skill = vec![9260001];
+        for buff in &mut entity.buffs {
+            buff.buff_id = Some(9260001);
+        }
+        entity
+    };
+    let run = |terminal| {
+        let mut ordinary = limbo_entity(-1, 1, false);
+        ordinary.model_id = Some(120384121);
+        let fight = Fight {
+            battle_id: Some(120384100).filter(|_| terminal),
+            version: Some(7),
+            progress: Some(0),
+            progress_max: Some(100),
+            attacker: Some(FightTeam {
+                entitys: vec![FightEntityInfo {
+                    uid: Some(10),
+                    team_type: Some(1),
+                    current_hp: Some(100),
+                    position: Some(1),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }),
+            defender: Some(FightTeam {
+                entitys: vec![ordinary, limbo_entity(-2, 2, true)],
+                sub_entitys: vec![limbo_entity(-5, -1, false), limbo_entity(-6, -2, false)],
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let pool = TargetPool::from_fight(&fight);
+        let mut managers = BattleManagers::seeded(&fight);
+        let mut catalog = SkillEffectCatalog::from_fight(crate::test_support::game_data(), &fight);
+        catalog.insert(ParsedSkillEffect {
+            skill_id: 900,
+            slots: vec![SkillEffectSlot::new(
+                ParsedBehavior::new(60015, "Kill", Vec::new()),
+                TargetRequest {
+                    code: 202,
+                    raw: Vec::new(),
+                },
+            )],
+        });
+        let mut skill: SkillInvocation = SkillRequest {
+            source_uid: 10,
+            skill_id: 900,
+        }
+        .into();
+        skill.target = SkillTarget::Explicit(-2);
+
+        let result = run_active_action(
+            &mut managers,
+            &pool,
+            &catalog,
+            &mut RoundDeterminism::default(),
+            TargetContext {
+                battle_id: fight.battle_id.unwrap_or_default(),
+                ..Default::default()
+            },
+            ActiveActionRequest {
+                skill,
+                grants_ex_point: false,
+                grant_after_action: false,
+                composition_rewards: Vec::new(),
+                prelude: Vec::new(),
+            },
+        )
+        .unwrap();
+
+        (fight, managers, result)
+    };
+
+    let (mut fight, mut managers, result) = run(false);
+    let effects = crate::engine::packet::timeline::project(&result.frames).unwrap();
+    assert_eq!(managers.hp.current(-2), 0);
+    assert_eq!(managers.entity.roster_lane(-1), Some(RosterLane::Main));
+    assert_eq!(managers.entity.roster_lane(-2), Some(RosterLane::Replaced));
+    assert_eq!(managers.entity.roster_lane(-5), Some(RosterLane::Main));
+    assert_eq!(managers.entity_snapshot(-5).unwrap().position, Some(2));
+    assert_eq!(managers.entity.roster_lane(-6), Some(RosterLane::Reserve));
+    let split = effects.last().unwrap();
+    assert_eq!(
+        split.act_effect[0].effect_type,
+        Some(EffectType::Splitstart as i32)
+    );
+    assert_eq!(
+        split.act_effect.last().unwrap().effect_type,
+        Some(EffectType::Splitend as i32)
+    );
+
+    let mut pool = TargetPool::from_fight(&fight);
+    sync_cycle_roster(&mut fight, &mut managers, &mut pool, &result);
+    assert!(pool.defender_main.iter().any(|entity| entity.uid == -5));
+    assert!(!pool.defender_main.iter().any(|entity| entity.uid == -2));
+
+    let catalog = SkillEffectCatalog::from_fight(crate::test_support::game_data(), &fight);
+    run_ai_actions(
+        &fight,
+        &mut managers,
+        &pool,
+        &catalog,
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+        [AiSkillChoice {
+            source_uid: -2,
+            skill_id: 100,
+            target_uid: 10,
+        }],
+        &[],
+    )
+    .unwrap();
+    assert_eq!(managers.ex_point.get(-5), 0);
+    assert_eq!(managers.ex_point.get(-2), 0);
+
+    let (_, managers, result) = run(true);
+    let effects = crate::engine::packet::timeline::project(&result.frames).unwrap();
+    assert_eq!(managers.hp.current(-1), 0);
+    assert_eq!(managers.hp.current(-2), 0);
+    assert_eq!(managers.entity.roster_lane(-2), Some(RosterLane::Main));
+    assert_eq!(managers.entity.roster_lane(-5), Some(RosterLane::Reserve));
+    assert!(
+        !effects
+            .iter()
+            .flat_map(|step| &step.act_effect)
+            .any(|effect| effect.effect_type == Some(EffectType::Splitstart as i32))
+    );
+}
+
+#[test]
 fn cycle_to_sub_repeats_through_entering_reserves_in_capture_order() {
     init_config();
     let mut fight = Fight {

@@ -1,14 +1,30 @@
-use crate::engine::{fight::reserve::PromotionBatch, manager::BattleManagers};
+use crate::engine::{
+    fight::reserve::PromotionBatch, manager::BattleManagers, skill::buff_act::registry::BuffActKind,
+};
 
-pub(crate) fn promote(
-    managers: &mut BattleManagers,
-    promotes: impl Fn(i32) -> bool + Copy,
-) -> PromotionBatch {
+#[derive(Clone, Copy)]
+pub(crate) enum Window {
+    ActionDrain,
+    AfterAction,
+    EndOfPhase,
+}
+
+pub(crate) fn promote(managers: &mut BattleManagers, window: Window) -> PromotionBatch {
     let mut promotions = Vec::new();
     loop {
-        let batch = managers
-            .entity
-            .promote_immediate_reserves(&managers.hp, promotes);
+        let battle_rule = &managers.battle_rule;
+        let buffs = &managers.buff;
+        let batch =
+            managers
+                .entity
+                .promote_reserves_matching(&managers.hp, |uid, team| match window {
+                    Window::ActionDrain => battle_rule.promotes_reserves_immediately(team),
+                    Window::AfterAction => {
+                        !battle_rule.promotes_reserves_immediately(team)
+                            && buffs.has_buff_act_kind(uid, BuffActKind::CycleToSub)
+                    }
+                    Window::EndOfPhase => true,
+                });
         if batch.is_empty() {
             break;
         }

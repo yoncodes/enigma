@@ -3,6 +3,7 @@ mod conduit;
 mod gauge;
 mod hp;
 
+use sonettobuf::effect_type_enum::EffectType;
 use sonettobuf::{ActEffect, FightStep, MagicCircleInfo};
 
 use crate::engine::{
@@ -802,6 +803,18 @@ fn project_cue(
                 ChangeRoundWireLayout::Incremental => 0,
                 ChangeRoundWireLayout::CurrentRound => *round,
             })]
+        }
+        RoundCue::ReserveSplitStart { team_type } => {
+            vec![EffectPacket::reserve_split(
+                *team_type,
+                EffectType::Splitstart,
+            )]
+        }
+        RoundCue::ReserveSplitEnd { team_type } => {
+            vec![EffectPacket::reserve_split(
+                *team_type,
+                EffectType::Splitend,
+            )]
         }
         RoundCue::ExtraRoundGranted => vec![EffectPacket::fight_param_change(18, 1)],
     }

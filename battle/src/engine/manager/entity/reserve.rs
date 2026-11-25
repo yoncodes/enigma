@@ -22,28 +22,18 @@ impl EntityManager {
         Ok(Some(ReservesCleared { team_type, uids }))
     }
 
+    #[cfg(test)]
     pub(crate) fn promote_reserves(&mut self, hp: &HpManager) -> Vec<Promotion> {
-        self.promote_reserves_matching(hp, |_| true)
+        self.promote_reserves_matching(hp, |_, _| true)
     }
 
-    pub(crate) fn promote_immediate_reserves(
+    pub(crate) fn promote_reserves_matching(
         &mut self,
         hp: &HpManager,
-        promotes_immediately: impl Fn(i32) -> bool,
-    ) -> Vec<Promotion> {
-        self.promote_reserves_matching(hp, promotes_immediately)
-    }
-
-    fn promote_reserves_matching(
-        &mut self,
-        hp: &HpManager,
-        promotes: impl Fn(i32) -> bool,
+        promotes: impl Fn(i64, i32) -> bool + Copy,
     ) -> Vec<Promotion> {
         let mut promotions = Vec::new();
-        for (defeated_uid, entering_uid, team_type) in self
-            .pending_reserve_promotions(hp)
-            .into_iter()
-            .filter(|(_, _, team_type)| promotes(*team_type))
+        for (defeated_uid, entering_uid, team_type) in self.pending_reserve_promotions(hp, promotes)
         {
             let Some(mut defeated) = self.identities.get(&defeated_uid).cloned() else {
                 continue;
@@ -145,24 +135,28 @@ impl EntityManager {
     }
 
     pub(crate) fn has_pending_reserve_promotion(&self, uid: i64, hp: &HpManager) -> bool {
-        self.pending_reserve_promotions(hp)
+        self.pending_reserve_promotions(hp, |_, _| true)
             .iter()
             .any(|(defeated_uid, _, _)| *defeated_uid == uid)
     }
 
     pub(crate) fn team_has_pending_promotion(&self, team: i32, hp: &HpManager) -> bool {
-        self.pending_reserve_promotions(hp)
+        self.pending_reserve_promotions(hp, |_, _| true)
             .into_iter()
             .any(|(_, _, side)| side == team)
     }
 
-    fn pending_reserve_promotions(&self, hp: &HpManager) -> Vec<(i64, i64, i32)> {
+    fn pending_reserve_promotions(
+        &self,
+        hp: &HpManager,
+        promotes: impl Fn(i64, i32) -> bool + Copy,
+    ) -> Vec<(i64, i64, i32)> {
         [1, 2]
             .into_iter()
             .flat_map(|team_type| {
                 self.roster_uids(team_type, RosterLane::Main)
                     .into_iter()
-                    .filter(|uid| hp.current(*uid) <= 0)
+                    .filter(move |uid| hp.current(*uid) <= 0 && promotes(*uid, team_type))
                     .zip(
                         self.roster_uids(team_type, RosterLane::Reserve)
                             .into_iter()

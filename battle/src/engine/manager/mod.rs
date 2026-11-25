@@ -1439,7 +1439,10 @@ impl BattleManagers {
         &mut self,
         fight: &mut Fight,
     ) -> crate::engine::fight::reserve::PromotionBatch {
-        let promotions = crate::engine::mechanic::reserve_cycle::promote(self, |_| true);
+        let promotions = crate::engine::mechanic::reserve_cycle::promote(
+            self,
+            crate::engine::mechanic::reserve_cycle::Window::EndOfPhase,
+        );
         self.sync_entities(fight);
         promotions
     }
@@ -1447,13 +1450,10 @@ impl BattleManagers {
     pub(crate) fn promote_immediate_reserves(
         &mut self,
     ) -> crate::engine::fight::reserve::PromotionBatch {
-        let immediate = [1, 2]
-            .into_iter()
-            .filter(|team_type| self.battle_rule.promotes_reserves_immediately(*team_type))
-            .collect::<Vec<_>>();
-        crate::engine::mechanic::reserve_cycle::promote(self, |team_type| {
-            immediate.contains(&team_type)
-        })
+        crate::engine::mechanic::reserve_cycle::promote(
+            self,
+            crate::engine::mechanic::reserve_cycle::Window::ActionDrain,
+        )
     }
 
     pub(crate) fn queue_reserve_cycle(

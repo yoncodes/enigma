@@ -1408,5 +1408,9 @@ pub(super) fn run_active_action(
             )?,
         );
     }
+    append(
+        &mut result,
+        promotion::run_cycles(managers, pool, catalog, determinism, context)?,
+    );
     Ok(result)
 }

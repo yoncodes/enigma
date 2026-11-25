@@ -93,6 +93,7 @@ pub enum RoundPhase {
     EntityBuffCleanup,
     EntityCardCleanup,
     EntityEntrySetup,
+    ReserveCycle,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -146,6 +147,12 @@ pub enum RoundCue {
     },
     ChangeRound {
         round: i32,
+    },
+    ReserveSplitStart {
+        team_type: i32,
+    },
+    ReserveSplitEnd {
+        team_type: i32,
     },
     ExtraRoundGranted,
 }
