@@ -21,7 +21,7 @@ buff_act_definitions! {
         runtime: |context| buff_act::per_electric_add_buff::rule_ops(context.managers, context.subscriber, context.event?),
         supports: buff_act::per_electric_add_buff::supports,
         references: buff_act::per_electric_add_buff::references,
-        wire: (buff_act::wire::BuffActWireDefinition::all(DefinitionKey::new(1076, "PerElectricAddBuff"), &[]));
+        wire: (buff_act::wire::BuffActWireDefinition::add(DefinitionKey::new(1076, "PerElectricAddBuff"), &[EffectType::None as i32]));
     (1077, "ConsumeCurBuffAndAuraAddBuff") => ConsumeCurBuffAndAuraAddBuff,
         runtime: |context| buff_act::consume_and_grant::rule_ops(context.managers, context.subscriber, context.event?),
         supports: buff_act::consume_and_grant::supports, references: references_for_feature,
