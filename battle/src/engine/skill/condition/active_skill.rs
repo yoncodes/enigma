@@ -85,6 +85,14 @@ pub fn skill_type(_: i32, _: &str, args: &[String]) -> Option<ParsedConditionKin
     Some(ParsedConditionKind::ActiveSkillType(first_i32(args)?))
 }
 
+pub fn completed_attack_type(_: i32, _: &str, args: &[String]) -> Option<ParsedConditionKind> {
+    let [kind] = args else {
+        return None;
+    };
+    let kind = kind.parse().ok()?;
+    matches!(kind, 1 | 2).then_some(ParsedConditionKind::DamageTargetCountKind(kind))
+}
+
 pub fn effect_tag(_: i32, _: &str, args: &[String]) -> Option<ParsedConditionKind> {
     Some(ParsedConditionKind::ActiveSkillEffectTag(parse_i32_list(
         args.first()?,

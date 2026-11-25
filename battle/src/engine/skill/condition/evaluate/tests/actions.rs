@@ -819,3 +819,27 @@ fn ally_ultimate_and_summon_selectors_use_runtime_owners() {
         0
     ));
 }
+
+#[test]
+fn divination_attack_type_rejects_nonattacking_mass_actions() {
+    init_config();
+    let condition = exact_condition(500212, "SkillType", &["2"]);
+    for (kind, is_attack, expected) in [(1, true, false), (2, false, false), (2, true, true)] {
+        assert_eq!(
+            condition_matches(
+                &condition,
+                10,
+                &[11],
+                None,
+                &TargetPool::default(),
+                TargetContext {
+                    active_skill_type: kind,
+                    damage_target_count_kind: kind,
+                    active_skill_is_attack: is_attack,
+                    ..Default::default()
+                },
+            ),
+            expected
+        );
+    }
+}

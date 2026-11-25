@@ -5,7 +5,7 @@ use crate::engine::{
             BehaviorOpContext,
             registry::{BehaviorConfigError, BehaviorHandler},
         },
-        condition::ParsedConditionKind,
+        condition::{ParsedCondition, ParsedConditionKind},
         effect::{ParsedBehavior, SkillEffectSlot},
         rule::output::{BattleCommand, RuleOp},
         target::request::SOURCE_TARGET_CODE,
@@ -16,6 +16,7 @@ pub(super) struct AddHandler;
 
 impl BehaviorHandler for AddHandler {
     const VALIDATES_ARGUMENTS: bool = true;
+    const COMPLETED_ACTION_ACTOR_ONLY: bool = true;
 
     fn supports(behavior: &ParsedBehavior) -> bool {
         behavior.raw_arity == 2 && matches!(behavior.args.as_slice(), [0, amount] if *amount > 0)
@@ -34,7 +35,7 @@ impl BehaviorHandler for AddHandler {
             && [&slot.condition_target, &slot.target]
                 .into_iter()
                 .all(|target| target.code == SOURCE_TARGET_CODE && target.raw.is_empty());
-        if applies_on_death && source_only {
+        if source_only && (applies_on_death || on_completed_action(&slot.conditions)) {
             Ok(())
         } else {
             Err(BehaviorConfigError::Unsupported)
@@ -54,6 +55,28 @@ impl BehaviorHandler for AddHandler {
                 amount,
             },
         ))])
+    }
+}
+
+fn on_completed_action(conditions: &[ParsedCondition]) -> bool {
+    let [trigger, filters @ ..] = conditions else {
+        return false;
+    };
+    if trigger.opcode != 502212
+        || trigger.raw_args.len() != 1
+        || trigger.kind != (ParsedConditionKind::ActiveAllyUseSkill { slot: 0 })
+    {
+        return false;
+    }
+    match filters {
+        [] => true,
+        [damage, kind] => {
+            damage.opcode == 501212
+                && damage.kind == ParsedConditionKind::UseHurtSkill
+                && kind.opcode == 500212
+                && kind.kind == ParsedConditionKind::DamageTargetCountKind(2)
+        }
+        _ => false,
     }
 }
 
@@ -95,3 +118,6 @@ impl BehaviorHandler for InitializeHandler {
         ))])
     }
 }
+
+#[cfg(test)]
+mod tests;

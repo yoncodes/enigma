@@ -621,7 +621,9 @@ fn retain_observing_subscribers(
             if subscriber.key.event == EventKind::SkillCast {
                 subscriber.owner_uid == action.source_uid
             } else {
-                skill_subscriber_observes_completed_action(pool, subscriber, action)
+                skill_subscriber_observes_completed_action(
+                    pool, managers, catalog, subscriber, action,
+                )
             }
         });
         let team = if attacker { 1 } else { 2 };
@@ -742,9 +744,32 @@ fn skill_subscriber_observes_action(
 
 fn skill_subscriber_observes_completed_action(
     pool: &TargetPool,
+    managers: &BattleManagers,
+    catalog: &SkillEffectCatalog,
     subscriber: &SkillSubscriber,
     action: &crate::engine::skill::action::ActionEvent,
 ) -> bool {
+    if subscriber.key.event == EventKind::AllyAction
+        && let Some(slot) = subscriber
+            .slot_index
+            .and_then(|index| catalog.get(subscriber.skill_id)?.slots.get(index))
+        && crate::engine::skill::behavior::registry::find(&slot.behavior)
+            .is_some_and(|definition| definition.completed_action_actor_only)
+    {
+        if subscriber.owner_uid != action.source_uid {
+            return false;
+        }
+        let mut context = TargetContext::default();
+        action.apply_context(&mut context);
+        return crate::engine::skill::condition::conditions_match(
+            &slot.conditions,
+            subscriber.owner_uid,
+            &[subscriber.owner_uid],
+            Some(managers),
+            pool,
+            context,
+        );
+    }
     let same_team =
         pool.source_is_attacker(subscriber.owner_uid) == pool.source_is_attacker(action.source_uid);
     match crate::engine::skill::condition::registry::find_key(

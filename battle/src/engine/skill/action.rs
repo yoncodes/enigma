@@ -160,6 +160,33 @@ pub struct ActionEvent {
     pub card_enchants: Vec<i32>,
 }
 
+impl ActionEvent {
+    pub(crate) fn apply_context(&self, context: &mut crate::engine::skill::target::TargetContext) {
+        context.event_source_uid = self.source_uid;
+        context.runtime_target_uid = self.target_uid;
+        context.active_skill_id = self.skill_id;
+        context.active_skill_source_uid = self.source_uid;
+        context.active_skill_slot = self.skill_slot;
+        context.active_skill_is_attack = self.is_attack;
+        context.active_skill_rank = self.rank;
+        context.active_skill_type = self.skill_type;
+        context.damage_target_count_kind = self.skill_type;
+        context.active_skill_effect_tag = self.effect_tag;
+        context.additional_moxie = self.additional_moxie;
+        context.active_skill_mode = self.mode;
+        context.extra_skill_kind = self.extra_skill_kind;
+        context.action_damage_amount = self.damage_amount;
+        context.action_dealt_damage = self.damage_amount > 0;
+        context.action_kill_count = self.kill_count;
+        context.action_crit_count = self.crit_count;
+        context.active_skill_assassinate = self.assassinate;
+        context.teammate_injury_count = self.teammate_injury_count;
+        context.teammate_injury_count_not_reset = self.teammate_injury_count_not_reset;
+        context.team_injury_count_round = self.team_injury_count_round;
+        context.direct_skill_body = true;
+    }
+}
+
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub enum SkillTarget {
     Inherited,

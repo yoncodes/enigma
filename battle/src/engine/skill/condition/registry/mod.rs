@@ -1138,6 +1138,7 @@ condition_definitions! {
     [6210] "UseSkillStar" => active_skill::incantation_rank, reaction_targets_causing_frame(after_skill(before_publish(event_trigger(EventKind::SkillAction, Some(SkillPhase::HitPassives)))));
     [500203] "SkillType" => active_skill::skill_type, predicate(&[EventKind::SkillAction]);
     [500210] "SkillType" => active_skill::skill_type, predicate(&[EventKind::SkillAction]);
+    [500212] "SkillType" => active_skill::completed_attack_type, predicate(&[EventKind::AllyAction]);
     [34203] "UseSkillEffectTag" => active_skill::effect_tag, event_trigger(EventKind::SkillEffectStarted, Some(SkillPhase::Immediate));
     [34212] "UseSkillEffectTag" => active_skill::effect_tag, predicate(&[]);
     [551213] "BeAttackedByEffectTag" => active_skill::single_effect_tag, opposing_team_observes(event_trigger(EventKind::SkillAction, Some(SkillPhase::HitPassives)));

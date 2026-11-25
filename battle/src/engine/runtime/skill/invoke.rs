@@ -293,28 +293,6 @@ pub(super) fn apply_event_context(
         BattleEvent::SkillEffectStarted(_)
         | BattleEvent::SkillEffectsPrepared(_)
         | BattleEvent::SkillAction(_) => unreachable!(),
-        BattleEvent::AllyAction(action) => {
-            context.runtime_target_uid = action.target_uid;
-            context.active_skill_id = action.skill_id;
-            context.active_skill_source_uid = action.source_uid;
-            context.active_skill_slot = action.skill_slot;
-            context.active_skill_is_attack = action.is_attack;
-            context.active_skill_rank = action.rank;
-            context.active_skill_type = action.skill_type;
-            context.damage_target_count_kind = action.skill_type;
-            context.active_skill_effect_tag = action.effect_tag;
-            context.additional_moxie = action.additional_moxie;
-            context.active_skill_mode = action.mode;
-            context.extra_skill_kind = action.extra_skill_kind;
-            context.action_damage_amount = action.damage_amount;
-            context.action_dealt_damage = action.damage_amount > 0;
-            context.action_kill_count = action.kill_count;
-            context.action_crit_count = action.crit_count;
-            context.active_skill_assassinate = action.assassinate;
-            context.teammate_injury_count = action.teammate_injury_count;
-            context.teammate_injury_count_not_reset = action.teammate_injury_count_not_reset;
-            context.team_injury_count_round = action.team_injury_count_round;
-            context.direct_skill_body = true;
-        }
+        BattleEvent::AllyAction(action) => action.apply_context(context),
     }
 }
