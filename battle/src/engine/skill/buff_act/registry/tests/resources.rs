@@ -1,6 +1,15 @@
 use super::*;
 
 #[test]
+fn bloodtithe_moxie_setup_is_owned_by_the_side_subscriber() {
+    let definition = find(1021, "BloodPoolCountAddExPoint").unwrap();
+    assert_eq!(
+        definition.setup_frame(SetupStage::RoundStart, 4),
+        (SetupFrameScope::SideSubscriberFrame, 0),
+    );
+}
+
+#[test]
 fn moxie_loss_keeps_its_exact_routes() {
     assert_eq!(
         runtime_event(605, "ExPointDel", 302),

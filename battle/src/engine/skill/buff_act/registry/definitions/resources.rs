@@ -42,6 +42,7 @@ buff_act_definitions! {
     (1021, "BloodPoolCountAddExPoint") => BloodPoolCountAddExPoint,
         transactions: [EventKind::SkillAction],
         setup: [RoundStart(4)],
+        side_subscriber_setup: [RoundStart(4)],
         timing: AfterAction, runtime_marker: BeforeChanges(Owner),
         transaction: buff_act::blood_pool::count_add_ex_point::event_rule_ops,
         setup_handler: |context| buff_act::blood_pool::count_add_ex_point::setup_rule_ops(context.managers, &context.subscriber.feature),
