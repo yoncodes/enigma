@@ -1,3 +1,5 @@
+use crate::engine::mechanic::bloodtithe::progress as bloodtithe_progress;
+
 use super::{
     act_order, active_skill, battle_tag, buff, card, career, conduit, entity_count, extra, hp,
     indicator, injury, lifecycle, magic_circle, none,
@@ -492,6 +494,11 @@ pub const fn after_hit_skills(mut metadata: ConditionMetadata) -> ConditionMetad
     metadata
 }
 
+const fn after_settlement(mut metadata: ConditionMetadata) -> ConditionMetadata {
+    metadata.reaction_timing = ReactionTimingPolicy::Fixed(ReactionTiming::AfterSettlement);
+    metadata
+}
+
 pub const fn attacked_skills(mut metadata: ConditionMetadata) -> ConditionMetadata {
     metadata.reaction_timing = ReactionTimingPolicy::Fixed(ReactionTiming::AttackedSkills);
     metadata
@@ -759,6 +766,9 @@ condition_definitions! {
     [10411] "None" => none::round_start, setup_route(SetupStage::RoundStart, 3, &[]);
     [105] "None" => none::after_round_start, setup_route(SetupStage::AfterRoundStart, 0, &[]);
     [106] "None" => none::card_setup, setup_route(SetupStage::CardSetup, 0, &[]);
+    [742106] "PerBloodPoolAddOrDec" => bloodtithe_progress::parse, companion_setup(event_trigger(EventKind::RoundStartCard, None), &[(SetupStage::CardSetup, 0)]);
+    [742209] "PerBloodPoolAddOrDec" => bloodtithe_progress::parse, after_settlement(event_target_observes(event_trigger(EventKind::TargetAttacked, None)));
+    [742210] "PerBloodPoolAddOrDec" => bloodtithe_progress::parse, reaction_targets_causing_frame(event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterHit)));
     [552106] "Random" => parse::random, setup_route(SetupStage::CardSetup, 0, &[]);
     [107] "None" => none::before_ap_resolve, companion_setup(event_trigger(EventKind::ActionQueueCommitted, None), &[(SetupStage::GeneratedCard, 0)]);
     [203] "None" => none::skill_action_start, event_trigger(EventKind::SkillAction, Some(SkillPhase::Immediate));

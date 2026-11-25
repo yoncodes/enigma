@@ -164,6 +164,7 @@ pub enum ParsedConditionKind {
         interval_permille: i32,
         max_count: i32,
     },
+    BloodtitheProgress,
     BloodPoolMax {
         min: i32,
         max: i32,

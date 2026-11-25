@@ -244,12 +244,15 @@ pub struct GaugeManager {
     base_max: HashMap<GaugeKey, i32>,
     accumulators: HashMap<GaugeKey, i32>,
     positive_gains: HashMap<GaugeKey, i32>,
+    positive_gains_claimed: HashMap<(GaugeKey, i32), i32>,
     positive_raw_gains: HashMap<GaugeKey, i32>,
     consumed_raw_progress: HashMap<(GaugeKey, i64, i32), i32>,
     pending_raw_batches: HashMap<GaugeBatchId, PendingRawGaugeBatch>,
     positive_gain_round_start: HashMap<GaugeKey, i32>,
     positive_threshold_crossings_paid_this_round: HashMap<(GaugeKey, i64, i32), i32>,
 }
+
+mod positive_gains;
 
 impl GaugeManager {
     pub fn get(&self, key: GaugeKey) -> Option<GaugeState> {
@@ -685,6 +688,8 @@ impl GaugeManager {
                 self.accumulators.remove(&command.key);
                 self.raw_values.remove(&command.key);
                 self.positive_gains.remove(&command.key);
+                self.positive_gains_claimed
+                    .retain(|(key, _), _| *key != command.key);
                 self.positive_raw_gains.remove(&command.key);
                 self.consumed_raw_progress
                     .retain(|(key, _, _), _| *key != command.key);

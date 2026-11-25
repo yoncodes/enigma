@@ -460,7 +460,7 @@ pub(super) fn emit(
                         modifiers: &mut execution.modifiers,
                         target: &mut execution.context,
                     },
-                    &slot.behavior,
+                    slot,
                     catalog,
                 )
                 .ok_or(SkillOpError::MissingBehaviorOp {

@@ -1,12 +1,13 @@
 use crate::engine::{
     manager::fight_progress::{LegacyProgressAdd, LegacyProgressInit},
+    mechanic::bloodtithe::progress,
     skill::{
         behavior::{
             BehaviorOpContext,
             registry::{BehaviorConfigError, BehaviorHandler},
         },
         condition::{ParsedCondition, ParsedConditionKind},
-        effect::{ParsedBehavior, SkillEffectSlot},
+        effect::{ParsedBehavior, SkillEffectCatalog, SkillEffectSlot},
         rule::output::{BattleCommand, RuleOp},
         target::request::SOURCE_TARGET_CODE,
     },
@@ -35,11 +36,26 @@ impl BehaviorHandler for AddHandler {
             && [&slot.condition_target, &slot.target]
                 .into_iter()
                 .all(|target| target.code == SOURCE_TARGET_CODE && target.raw.is_empty());
-        if source_only && (applies_on_death || on_completed_action(&slot.conditions)) {
+        if source_only
+            && (applies_on_death
+                || on_completed_action(&slot.conditions)
+                || progress::matches(slot))
+        {
             Ok(())
         } else {
             Err(BehaviorConfigError::Unsupported)
         }
+    }
+
+    fn emit_runtime_ops(
+        context: BehaviorOpContext<'_>,
+        slot: &SkillEffectSlot,
+        _: &SkillEffectCatalog,
+    ) -> Option<Vec<RuleOp>> {
+        if progress::matches(slot) {
+            return progress::rule_ops(context, &slot.behavior);
+        }
+        Self::emit_ops(context, &slot.behavior)
     }
 
     fn emit_ops(_: BehaviorOpContext<'_>, behavior: &ParsedBehavior) -> Option<Vec<RuleOp>> {

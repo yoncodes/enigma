@@ -178,10 +178,10 @@ pub trait BehaviorHandler {
 
     fn emit_runtime_ops(
         context: BehaviorOpContext<'_>,
-        behavior: &ParsedBehavior,
+        slot: &SkillEffectSlot,
         _: &SkillEffectCatalog,
     ) -> Option<Vec<RuleOp>> {
-        Self::emit_ops(context, behavior)
+        Self::emit_ops(context, &slot.behavior)
     }
 
     fn collect_attack_modifier(
@@ -582,7 +582,7 @@ macro_rules! behavior_definitions {
             &[$(behavior_definitions!(@maybe_support $mode, $handler, $opcode, $type_name, $kind, $phase $(, @route($route))? $(, $supports)?)),+];
         const RUNTIME_EMITTERS: &[for<'a> fn(
             BehaviorOpContext<'a>,
-            &ParsedBehavior,
+            &SkillEffectSlot,
             &SkillEffectCatalog,
         ) -> Option<Vec<RuleOp>>] = &[$(<$handler as BehaviorHandler>::emit_runtime_ops),+];
     };
@@ -675,13 +675,13 @@ macro_rules! behavior_definitions {
 pub(crate) fn emit_runtime_ops(
     definition: &BehaviorDefinition,
     context: BehaviorOpContext<'_>,
-    behavior: &ParsedBehavior,
+    slot: &SkillEffectSlot,
     catalog: &SkillEffectCatalog,
 ) -> Option<Vec<RuleOp>> {
     let index = DEFINITIONS
         .iter()
         .position(|candidate| std::ptr::eq(candidate, definition))?;
-    RUNTIME_EMITTERS[index](context, behavior, catalog)
+    RUNTIME_EMITTERS[index](context, slot, catalog)
 }
 
 behavior_definitions! {

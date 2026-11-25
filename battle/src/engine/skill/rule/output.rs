@@ -106,6 +106,7 @@ pub enum BattleCommand {
     FightProgress(FightProgressCommand),
     LegacyProgressInit(LegacyProgressInit),
     LegacyProgressAdd(LegacyProgressAdd),
+    LegacyProgressBloodtithe(crate::engine::mechanic::bloodtithe::progress::Gain),
     FightProgressValue(FightProgressValueCommand),
     FieldTransfer(FieldTransferCommand),
     MagicCircleLevel(MagicCircleLevelCommand),

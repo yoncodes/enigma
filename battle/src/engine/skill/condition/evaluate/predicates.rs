@@ -226,6 +226,7 @@ pub(super) fn condition_kind_matches(
         } => {
             resources::team_lost_hp_percent(team_type, interval_permille, max_count, managers, pool)
         }
+        ParsedConditionKind::BloodtitheProgress => true,
         ParsedConditionKind::BloodPoolMax { min, max } => {
             (*min..=*max).contains(&context.blood_pool_max)
         }

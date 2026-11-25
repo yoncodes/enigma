@@ -1132,6 +1132,10 @@ pub(crate) fn execute_rule_op_with(
             .change_value(command)?
             .map(RuleOutcome::FightProgressValue)
             .unwrap_or(RuleOutcome::StateChanged)),
+        RuleOp::Command(BattleCommand::LegacyProgressBloodtithe(command)) => Ok(
+            crate::engine::mechanic::bloodtithe::progress::settle(managers, command)?
+                .map_or(RuleOutcome::StateChanged, RuleOutcome::LegacyProgressGain),
+        ),
         RuleOp::Command(BattleCommand::LegacyProgressAdd(command)) => Ok(managers
             .fight_progress
             .add_legacy(command)?

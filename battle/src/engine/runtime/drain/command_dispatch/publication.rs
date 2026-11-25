@@ -407,13 +407,18 @@ pub(super) fn dispatch_after(
         }
         let shared_hit_skills = std::mem::take(&mut hit_skills.shared_hit_skills);
         state.defer_hit_skills(action_scope.map(Vec::as_slice), shared_hit_skills);
+        let hit_settlements = std::mem::take(&mut hit_skills.after_settlement);
         state.defer_hit_passive_skills(action_scope.map(Vec::as_slice), hit_skills.into_ordered());
         drain_nested_queue(
             managers,
             pool,
             catalog,
             determinism,
-            hit_buff_acts.into_ordered().into(),
+            hit_buff_acts
+                .into_ordered()
+                .into_iter()
+                .chain(hit_settlements)
+                .collect(),
             result,
             state,
         )?;

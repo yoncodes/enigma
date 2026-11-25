@@ -41,10 +41,10 @@ impl BehaviorHandler for Handler {
 
     fn emit_runtime_ops(
         context: BehaviorOpContext<'_>,
-        behavior: &ParsedBehavior,
+        slot: &crate::engine::skill::effect::SkillEffectSlot,
         catalog: &SkillEffectCatalog,
     ) -> Option<Vec<RuleOp>> {
-        emit_ops(context, behavior, catalog)
+        emit_ops(context, &slot.behavior, catalog)
     }
 
     fn references(behavior: &ParsedBehavior) -> RuleReferences {
