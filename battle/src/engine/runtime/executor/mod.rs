@@ -92,6 +92,7 @@ pub(crate) enum RuleOutcome {
     Field(FieldChange),
     FightProgress(FightProgressChange),
     FightProgressValue(FightProgressValueChange),
+    LegacyProgressGain(crate::engine::manager::fight_progress::LegacyProgressGain),
     FieldTransfer(Box<FieldTransferChanges>),
     MagicCircleLevel(Box<MagicCircleLevelChanges>),
     FocusAllEntityBuff(Box<FocusAllEntityBuffChanges>),
@@ -391,6 +392,7 @@ impl RuleOutcome {
             Self::Field(change) => vec![BattleChange::Field(*change)],
             Self::FightProgress(change) => vec![BattleChange::FightProgress(*change)],
             Self::FightProgressValue(change) => vec![BattleChange::FightProgressValue(*change)],
+            Self::LegacyProgressGain(change) => vec![BattleChange::LegacyProgressGain(*change)],
             Self::FieldTransfer(changes) => changes
                 .buffs
                 .iter()
@@ -1130,6 +1132,10 @@ pub(crate) fn execute_rule_op_with(
             .change_value(command)?
             .map(RuleOutcome::FightProgressValue)
             .unwrap_or(RuleOutcome::StateChanged)),
+        RuleOp::Command(BattleCommand::LegacyProgressAdd(command)) => Ok(managers
+            .fight_progress
+            .add_legacy(command)?
+            .map_or(RuleOutcome::StateChanged, RuleOutcome::LegacyProgressGain)),
         RuleOp::Command(BattleCommand::FieldTransfer(command)) => {
             let changes = crate::engine::mechanic::field_transfer::execute(managers, command)?;
             for buff in &changes.buffs {

@@ -180,6 +180,7 @@ pub enum BehaviorKind {
     AddIndicator,
     DelIndicator,
     ProgressInit,
+    ProgressChange,
     ProgressInitNew,
     ProgressChangeNew,
     ChangeScene,

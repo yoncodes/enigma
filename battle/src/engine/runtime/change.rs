@@ -51,6 +51,7 @@ pub enum BattleChange {
     Field(FieldChange),
     FightProgress(FightProgressChange),
     FightProgressValue(FightProgressValueChange),
+    LegacyProgressGain(crate::engine::manager::fight_progress::LegacyProgressGain),
     FightTask(crate::engine::manager::fight_task::FightTaskChange),
     RaspberryCapacity(Box<crate::engine::skill::buff_act::raspberry::CapacityResult>),
     Summon(SummonChanges),

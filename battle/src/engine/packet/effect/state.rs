@@ -66,17 +66,23 @@ impl EffectPacket {
     pub fn fight_progress_changed(
         change: crate::engine::manager::fight_progress::FightProgressValueChange,
     ) -> ActEffect {
-        let clamp_boundary = if change.delta > 0 {
-            change.after.max
-        } else {
-            0
-        };
+        Self::progress_delta(change.after.id, change.after.max, change.delta)
+    }
+
+    pub fn legacy_progress_gained(
+        change: crate::engine::manager::fight_progress::LegacyProgressGain,
+    ) -> ActEffect {
+        Self::progress_delta(0, change.max, change.delta)
+    }
+
+    fn progress_delta(id: i32, max: i32, delta: i32) -> ActEffect {
+        let clamp_boundary = if delta > 0 { max } else { 0 };
         ActEffect {
-            target_id: Some(i64::from(change.after.id)),
+            target_id: Some(i64::from(id)),
             effect_type: Some(EffectType::Progresschange as i32),
-            effect_num: Some(change.delta),
+            effect_num: Some(delta),
             config_effect: Some(0),
-            buff_act_id: Some(change.after.id),
+            buff_act_id: Some(id),
             reserve_id: Some(0),
             reserve_str: Some(clamp_boundary.to_string()),
             team_type: Some(0),

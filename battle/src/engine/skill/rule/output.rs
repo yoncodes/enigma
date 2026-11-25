@@ -11,7 +11,9 @@ use crate::engine::{
         eureka::EurekaCommand,
         ex_point::{ExPointCommand, LowestExPointChange},
         field::FieldCommand,
-        fight_progress::{FightProgressCommand, FightProgressValueCommand, LegacyProgressInit},
+        fight_progress::{
+            FightProgressCommand, FightProgressValueCommand, LegacyProgressAdd, LegacyProgressInit,
+        },
         gauge::{GaugeBatchId, GaugeCommand},
         hedone_counter::{HedoneCounterClearCommand, HedoneCounterCommand, HedoneDamageCommand},
         hp::{HpCommand, LinkedHit},
@@ -103,6 +105,7 @@ pub enum BattleCommand {
     Field(FieldCommand),
     FightProgress(FightProgressCommand),
     LegacyProgressInit(LegacyProgressInit),
+    LegacyProgressAdd(LegacyProgressAdd),
     FightProgressValue(FightProgressValueCommand),
     FieldTransfer(FieldTransferCommand),
     MagicCircleLevel(MagicCircleLevelCommand),

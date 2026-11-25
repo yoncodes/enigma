@@ -46,6 +46,32 @@ fn legacy_initialization_owns_scalar_progress_and_keeps_indexed_records() {
 }
 
 #[test]
+fn legacy_progress_gain_publishes_only_the_amount_that_fits() {
+    let mut fight = Fight {
+        progress: Some(99),
+        progress_max: Some(100),
+        ..Default::default()
+    };
+    let mut manager = FightProgressManager::default();
+    manager.seed(&fight);
+    let command = LegacyProgressAdd {
+        origin: CommandOrigin {
+            domain: RuleDomain::Behavior,
+            key: DefinitionKey::new(60107, "ProgressChange"),
+        },
+        amount: 5,
+    };
+
+    assert_eq!(
+        manager.add_legacy(command).unwrap(),
+        Some(LegacyProgressGain { max: 100, delta: 1 })
+    );
+    assert!(manager.add_legacy(command).unwrap().is_none());
+    manager.sync_fight(&mut fight);
+    assert_eq!(fight.progress, Some(100));
+}
+
+#[test]
 fn initialization_owns_the_complete_progress_record() {
     let origin = CommandOrigin {
         domain: RuleDomain::Behavior,

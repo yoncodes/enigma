@@ -4,7 +4,7 @@ use crate::engine::skill::{
     action::SkillPhase,
     behavior::{AttackModifierContext, BehaviorOpContext, classify::BehaviorKind},
     condition::ParsedCondition,
-    effect::{ParsedBehavior, SkillEffectCatalog},
+    effect::{ParsedBehavior, SkillEffectCatalog, SkillEffectSlot},
     rule::{DefinitionKey, RuleReferences, SetupStage, output::RuleOp},
 };
 
@@ -139,6 +139,7 @@ pub struct BehaviorDefinition {
     pub supports: Option<fn(&ParsedBehavior) -> bool>,
     pub unsupported_args: fn(&ParsedBehavior) -> bool,
     pub validate_config: fn(&config::GameDB, &ParsedBehavior) -> Result<(), BehaviorConfigError>,
+    pub validate_slot: fn(&SkillEffectSlot) -> Result<(), BehaviorConfigError>,
     pub supports_slot: fn(&crate::engine::skill::effect::SkillEffectSlot) -> bool,
 }
 
@@ -154,6 +155,10 @@ pub trait BehaviorHandler {
     }
 
     fn validate_config(_: &config::GameDB, _: &ParsedBehavior) -> Result<(), BehaviorConfigError> {
+        Ok(())
+    }
+
+    fn validate_slot(_: &SkillEffectSlot) -> Result<(), BehaviorConfigError> {
         Ok(())
     }
 
@@ -263,6 +268,7 @@ pub const fn definition<H: BehaviorHandler>(
         },
         unsupported_args: H::unsupported_args,
         validate_config: H::validate_config,
+        validate_slot: H::validate_slot,
         supports_slot: H::supports_slot,
     }
 }
@@ -837,6 +843,7 @@ behavior_definitions! {
     [60016] "AddIndicator" => super::general::AddIndicatorHandler, AddIndicator, Immediate, destination;
     [60017] "DelIndicator" => super::general::DelIndicatorHandler, DelIndicator, Immediate, destination;
     [60106] "ProgressInit" => super::legacy_progress::InitializeHandler, ProgressInit, Immediate, destination;
+    [60107] "ProgressChange" => super::legacy_progress::AddHandler, ProgressChange, Immediate, destination;
     [100015] "ProgressInitNew" => super::fight_progress::InitializeHandler, ProgressInitNew, Immediate, destination;
     [100016] "ProgressChangeNew" => super::fight_progress::ChangeHandler, ProgressChangeNew, Immediate, destination;
     [60268] "ChangeScene" => super::scene::Handler, ChangeScene, Immediate, destination;

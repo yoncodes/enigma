@@ -692,6 +692,41 @@ mod tests {
     }
 
     #[test]
+    fn legacy_progress_admits_own_death_gain_and_keeps_other_routes_unsupported() {
+        crate::test_support::init_config();
+        let db = crate::test_support::game_data();
+        let mut catalog = SkillEffectCatalog::default();
+
+        let defeat = db.skill_effect.get(9260008).unwrap();
+        catalog.insert_configured_effect(db, defeat);
+        assert!(catalog.issues(defeat.id).is_empty());
+        assert_eq!(catalog.get(defeat.id).unwrap().slots.len(), 1);
+
+        let mut all_enemies = defeat.clone();
+        all_enemies.behavior_target1 = "202".to_owned();
+        let mut targets_catalog = SkillEffectCatalog::default();
+        targets_catalog.insert_configured_effect(db, &all_enemies);
+        let [issue] = targets_catalog.issues(defeat.id) else {
+            panic!("expected the multi-target scalar gain to be unsupported");
+        };
+        assert_eq!(issue.reason, RuleIssueReason::UnsupportedBehavior);
+        assert!(!issue.reason.is_blocking());
+
+        for (effect_id, slot) in [(823500202, 1), (9260005, 3), (104331023, 1)] {
+            let row = db.skill_effect.get(effect_id).unwrap();
+            catalog.insert_configured_effect(db, row);
+            let issue = catalog
+                .issues(effect_id)
+                .iter()
+                .find(|issue| issue.slot == slot)
+                .unwrap();
+            assert_eq!(issue.opcode, Some(60107));
+            assert_eq!(issue.reason, RuleIssueReason::UnsupportedBehavior);
+            assert!(!issue.reason.is_blocking());
+        }
+    }
+
+    #[test]
     fn missing_team_moxie_buff_is_a_blocking_catalog_issue() {
         crate::test_support::init_config();
         let db = crate::test_support::game_data();

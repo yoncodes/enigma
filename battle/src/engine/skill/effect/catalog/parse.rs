@@ -227,7 +227,7 @@ pub(super) fn parse_slot(db: &GameDB, raw: RawSlot<'_>) -> Result<SkillEffectSlo
         target => target,
     };
 
-    Ok(SkillEffectSlot {
+    let slot = SkillEffectSlot {
         behavior,
         conditions,
         compiled_route,
@@ -238,7 +238,9 @@ pub(super) fn parse_slot(db: &GameDB, raw: RawSlot<'_>) -> Result<SkillEffectSlo
         ordered_phase: None,
         limit,
         round_limit,
-    })
+    };
+    (definition.validate_slot)(&slot).map_err(SlotParseError::BehaviorConfig)?;
+    Ok(slot)
 }
 
 pub(super) fn parse_target(raw: &str) -> Option<TargetRequest> {

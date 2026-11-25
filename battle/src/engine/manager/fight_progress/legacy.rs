@@ -12,6 +12,18 @@ pub struct LegacyProgressInit {
     pub skill_id: i32,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct LegacyProgressAdd {
+    pub origin: CommandOrigin,
+    pub amount: i32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct LegacyProgressGain {
+    pub max: i32,
+    pub delta: i32,
+}
+
 #[derive(Debug, Clone, Default)]
 pub(super) struct LegacyProgress {
     value: Option<i32>,
@@ -54,5 +66,26 @@ impl LegacyProgress {
     pub(super) fn sync(&self, fight: &mut Fight) {
         fight.progress = self.value;
         fight.progress_max = self.max;
+    }
+
+    pub(super) fn add(
+        &mut self,
+        command: LegacyProgressAdd,
+    ) -> Result<Option<LegacyProgressGain>, FightProgressError> {
+        if command.amount <= 0 {
+            return Err(FightProgressError::InvalidDefinition);
+        }
+        let (Some(before), Some(max)) = (self.value, self.max) else {
+            return Err(FightProgressError::MissingProgress(0));
+        };
+        if max <= 0 || !(0..=max).contains(&before) {
+            return Err(FightProgressError::InvalidStoredProgress(0));
+        }
+        let after = before.saturating_add(command.amount).min(max);
+        self.value = Some(after);
+        Ok((after != before).then_some(LegacyProgressGain {
+            max,
+            delta: after - before,
+        }))
     }
 }
