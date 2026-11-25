@@ -1024,7 +1024,7 @@ impl BuffDefinition {
         self.preserves_action_lifetime()
             && !(self.is_no_show
                 && !self.has_features
-                && self.cannot_remove
+                && (self.cannot_remove || self.take_act.is_empty())
                 && self.has_include_type(BuffIncludeType::ReplaceExisting))
     }
 

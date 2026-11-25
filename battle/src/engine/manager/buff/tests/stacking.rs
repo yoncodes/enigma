@@ -292,15 +292,17 @@ fn explicit_replacement_policy_still_replaces_permanent_positive_status() {
     let hp = HpManager::default();
     let mut manager = BuffManager::default();
 
-    let policy = BuffPolicy::for_buff_id(25582).expect("explicit replacement definition");
-    assert_eq!(policy.storage, BuffStorage::Single);
-    assert_eq!(policy.on_duplicate, DuplicateGrant::ReplaceExisting);
+    for buff_id in [25582, 31350201] {
+        let policy = BuffPolicy::for_buff_id(buff_id).expect("explicit replacement definition");
+        assert_eq!(policy.storage, BuffStorage::Single);
+        assert_eq!(policy.on_duplicate, DuplicateGrant::ReplaceExisting);
 
-    manager.add_replacing_excluded(&hp, 10, 10, 25582, 0);
-    let replacement = manager.add_replacing_excluded(&hp, 10, 10, 25582, 0);
+        manager.add_replacing_excluded(&hp, 10, 10, buff_id, 0);
+        let replacement = manager.add_replacing_excluded(&hp, 10, 10, buff_id, 0);
 
-    assert_eq!(replacement.removed.len(), 1);
-    assert!(replacement.added.is_some());
+        assert_eq!(replacement.removed.len(), 1);
+        assert!(replacement.added.is_some());
+    }
 }
 
 #[test]
