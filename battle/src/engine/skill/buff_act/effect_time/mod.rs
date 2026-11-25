@@ -15,8 +15,12 @@ pub const ROUND_START_DURATION: i32 = 103;
 pub const ROUND_START_AFTER_REACTION_DURATION: i32 = 104;
 pub const ROUND_START_DURATION_STAGES: [i32; 2] =
     [ROUND_START_DURATION, ROUND_START_AFTER_REACTION_DURATION];
+pub const ROUND_START_CARD_REACTION_DURATION: i32 = 105;
 pub const ROUND_START_CARD_SETTLED_DURATION: i32 = 106;
-pub const ROUND_START_CARD_STAGES: [i32; 2] = [105, ROUND_START_CARD_SETTLED_DURATION];
+pub const ROUND_START_CARD_STAGES: [i32; 2] = [
+    ROUND_START_CARD_REACTION_DURATION,
+    ROUND_START_CARD_SETTLED_DURATION,
+];
 pub(crate) const AFTER_HIT_DURATION: i32 = 210;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -65,7 +69,7 @@ effect_time_definitions! {
     102 => BuffActEvent::Runtime(EventKind::RoundStart),
     103 => BuffActEvent::Runtime(EventKind::RoundStart),
     104 => BuffActEvent::Runtime(EventKind::RoundStart),
-    105 => BuffActEvent::Runtime(EventKind::RoundStartCard),
+    ROUND_START_CARD_REACTION_DURATION => BuffActEvent::Runtime(EventKind::RoundStartCard),
     ROUND_START_CARD_SETTLED_DURATION => BuffActEvent::Runtime(EventKind::RoundStartCard),
     107 => BuffActEvent::Runtime(EventKind::ActionQueueCommitted),
     201 => BuffActEvent::Runtime(EventKind::SkillAction); SkillPhase::Immediate,

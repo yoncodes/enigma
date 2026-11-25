@@ -4,6 +4,7 @@ mod action;
 mod buff_act;
 mod electric_setup;
 mod event;
+mod round_start_card;
 mod schedule;
 mod setup;
 
@@ -11,6 +12,7 @@ pub use action::*;
 pub use buff_act::*;
 pub(crate) use electric_setup::OpeningFields;
 pub use event::*;
+pub(crate) use round_start_card::opening_duration as opening_round_start_card_duration;
 pub use schedule::*;
 pub use setup::*;
 

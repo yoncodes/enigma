@@ -1190,6 +1190,11 @@ pub fn run_start(
         .filter(|entity| managers.hp.current(entity.uid) > 0)
         .map(|entity| entity.uid)
         .collect::<Vec<_>>();
+    let reaction_duration = if version7_opening {
+        drain::opening_round_start_card_duration(managers, &owner_uids)
+    } else {
+        None
+    };
     let card_duration = if version7_opening {
         buff_act::add_sp_temp_card::opening_duration(managers, &owner_uids)
     } else {
@@ -1233,7 +1238,7 @@ pub fn run_start(
             catalog,
             determinism,
             context,
-            card_duration,
+            reaction_duration.into_iter().chain(card_duration),
         )?,
     );
     append(

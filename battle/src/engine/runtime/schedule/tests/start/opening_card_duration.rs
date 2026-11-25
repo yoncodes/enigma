@@ -2,6 +2,81 @@ use super::*;
 use crate::engine::{event::payload::BuffExpiry, manager::card::CardChangeKind};
 
 #[test]
+fn opening_card_phase_expires_advancement() {
+    init_config();
+    let fight = Fight {
+        version: Some(7),
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                model_id: Some(3086),
+                entity_type: Some(1),
+                team_type: Some(1),
+                current_hp: Some(100),
+                buffs: vec![BuffInfo {
+                    uid: Some(20),
+                    buff_id: Some(30860131),
+                    from_uid: Some(10),
+                    duration: Some(1),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let mut managers = BattleManagers::seeded(&fight);
+    let (start, _) = run_start(
+        managers.catalog(),
+        &mut managers,
+        &TargetPool::from_fight(&fight),
+        &SkillEffectCatalog::default(),
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+        CardSetup {
+            hand: Vec::new(),
+            draw_pile: Vec::new(),
+            deck_num: 0,
+        },
+        0,
+    )
+    .unwrap();
+
+    assert!(!managers.buff.has_buff_id(10, 30860131));
+    let removal = start.events.iter().find_map(|event| match event {
+        BattleEvent::BuffRemoved(change) if change.buff_uid == 20 => Some(change),
+        _ => None,
+    });
+    assert_eq!(removal.unwrap().expiry, BuffExpiry::Duration(105));
+    let expiry_frame = start
+        .frames
+        .iter()
+        .position(|frame| {
+            matches!(
+                (&frame.owner, &frame.trigger),
+                (
+                    FrameOwner::EventRule,
+                    FrameTrigger::Event(BattleEvent::Kind(EventKind::RoundStartCard))
+                )
+            ) && frame.items.iter().any(|item| {
+                matches!(item, FrameItem::Change(change) if
+                matches!(change.as_ref(), BattleChange::Buff(changes) if
+                    changes.change.removed.iter().any(|entry| entry.buff.uid == Some(20))))
+            })
+        })
+        .expect("Advancement expired in the RoundStartCard phase");
+    let is_deck_count = |frame: &SemanticFrame| {
+        frame
+            .items
+            .iter()
+            .any(|item| matches!(item, FrameItem::Cue(RoundCue::DeckCount { .. })))
+    };
+    assert!(start.frames.iter().position(is_deck_count).unwrap() < expiry_frame);
+    assert!(expiry_frame < start.frames.iter().rposition(is_deck_count).unwrap());
+}
+
+#[test]
 fn preparation_expires_after_opening_sovereign_unlock() {
     init_config();
     let fight = Fight {

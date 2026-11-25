@@ -70,11 +70,7 @@ pub fn run_round_start_card_event(
     let advances = crate::engine::skill::buff_act::effect_time::ROUND_START_CARD_STAGES
         .into_iter()
         .filter_map(|take_stage| {
-            let buff_uids = managers.buff.duration_buff_uids(take_stage, owner_uids);
-            if buff_uids.is_empty() {
-                return None;
-            }
-            BuffDurationAdvance::new(take_stage, owner_uids.to_vec(), Some(buff_uids))
+            super::round_start_card::duration_snapshot(managers, owner_uids, take_stage)
         })
         .collect::<Vec<_>>();
     let mut result = run_group_event_lanes(
