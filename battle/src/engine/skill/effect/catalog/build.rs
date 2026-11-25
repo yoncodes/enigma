@@ -340,6 +340,10 @@ impl SkillEffectCatalog {
                     let mut issue = rule_issue(db, row.id, index as u8 + 1, behavior);
                     if let SlotParseError::BehaviorConfig(error) = error {
                         issue.reason = match error {
+                            BehaviorConfigError::MalformedCondition => {
+                                issue.raw = condition.to_owned();
+                                RuleIssueReason::MalformedCondition
+                            }
                             BehaviorConfigError::MissingBuff => RuleIssueReason::MissingBuff,
                             BehaviorConfigError::Unsupported => {
                                 RuleIssueReason::UnsupportedBehavior

@@ -99,6 +99,7 @@ pub type QueuePreparationCollector = fn(i32, &ParsedBehavior) -> Option<Vec<Rule
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BehaviorConfigError {
+    MalformedCondition,
     MissingBuff,
     Unsupported,
 }

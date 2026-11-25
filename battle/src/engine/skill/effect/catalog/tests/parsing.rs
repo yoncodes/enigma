@@ -77,6 +77,88 @@ fn reserve_clear_requires_the_defeated_owner_as_both_targets() {
 }
 
 #[test]
+fn scalar_progress_requires_complete_condition_arguments() {
+    init_config();
+    let db = config::configs::get();
+    for valid in ["8", "502212#0", "502212#0&501212&500212#2"] {
+        let parse = |condition| {
+            parse_slot(
+                db,
+                RawSlot {
+                    behavior: "60107#0#4",
+                    target: "103",
+                    condition,
+                    condition_target: "103",
+                    logic_target: "103",
+                    limit: 0,
+                    round_limit: 0,
+                },
+            )
+        };
+        assert!(parse(valid).is_ok(), "{valid}");
+    }
+    let mut unconditional = db.skill_effect.get(9260008).unwrap().clone();
+    unconditional.condition1.clear();
+    let mut catalog = SkillEffectCatalog::default();
+    catalog.insert_configured_effect(db, &unconditional);
+    assert_eq!(
+        catalog.issues(unconditional.id)[0].reason,
+        RuleIssueReason::UnsupportedBehavior
+    );
+
+    for (id, condition) in [
+        (9260008, "8#"),
+        (117333503, "502212#0#"),
+        (117333503, "502212#0&"),
+        (117333503, "502212#0|"),
+    ] {
+        let mut row = db.skill_effect.get(id).unwrap().clone();
+        row.condition1 = condition.to_owned();
+        let mut catalog = SkillEffectCatalog::default();
+        catalog.insert_configured_effect(db, &row);
+        let [issue] = catalog.issues(id) else {
+            panic!("expected one issue for {condition}");
+        };
+        assert_eq!(issue.reason, RuleIssueReason::MalformedCondition);
+        assert_eq!(issue.raw, condition);
+        assert!(issue.reason.is_blocking());
+    }
+
+    use crate::engine::{
+        event::kind::EventKind,
+        manager::BattleManagers,
+        skill::{subscriber, target::TargetPool},
+    };
+    use sonettobuf::{Fight, FightEntityInfo, FightTeam};
+
+    let mut malformed = db.skill_effect.get(9260008).unwrap().clone();
+    malformed.condition1.push('#');
+    let fight = Fight {
+        defender: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(-1),
+                passive_skill: vec![malformed.id],
+                current_hp: Some(100),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let managers = BattleManagers::seeded(&fight);
+    let pool = TargetPool::from_fight(&fight);
+    let mut catalog = SkillEffectCatalog::default();
+    catalog.insert_configured_effect(db, &malformed);
+    assert!(matches!(
+        subscriber::for_compiled_events(&pool, &managers, &catalog, [EventKind::SkillAction]),
+        Err(subscriber::SubscriberError::MalformedCondition {
+            skill_id: 9260008,
+            ..
+        })
+    ));
+}
+
+#[test]
 fn parses_target_code_and_raw_args() {
     let target = parse_target("103#7").unwrap();
 

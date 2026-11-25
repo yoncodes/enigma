@@ -46,6 +46,13 @@ impl From<crate::engine::skill::subscriber::SubscriberError> for SkillOpError {
             crate::engine::skill::subscriber::SubscriberError::MissingSkill {
                 skill_id, ..
             } => Self::MissingSkill(skill_id),
+            crate::engine::skill::subscriber::SubscriberError::MalformedCondition {
+                skill_id,
+                issue,
+            } => Self::InvalidSkillDefinition {
+                skill_id,
+                issues: vec![issue],
+            },
             crate::engine::skill::subscriber::SubscriberError::UncompiledRoute {
                 skill_id,
                 route,

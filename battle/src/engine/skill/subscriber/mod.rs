@@ -5,7 +5,10 @@ use crate::engine::{
     skill::{
         buff_act,
         condition::registry as condition_registry,
-        effect::{SkillEffectCatalog, SkillEffectSlot},
+        effect::{
+            SkillEffectCatalog, SkillEffectSlot,
+            catalog::{RuleIssue, RuleIssueReason},
+        },
         rule::{DefinitionKey, SetupStage, route::RouteError},
         target::{TargetEntity, TargetPool},
     },
@@ -63,7 +66,22 @@ pub struct EventSubscribers {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SubscriberError {
     MissingSkill { owner_uid: i64, skill_id: i32 },
+    MalformedCondition { skill_id: i32, issue: RuleIssue },
     UncompiledRoute { skill_id: i32, route: RouteError },
+}
+
+fn check_conditions(catalog: &SkillEffectCatalog, skill_id: i32) -> Result<(), SubscriberError> {
+    if let Some(issue) = catalog
+        .issues(skill_id)
+        .iter()
+        .find(|issue| issue.reason == RuleIssueReason::MalformedCondition)
+    {
+        return Err(SubscriberError::MalformedCondition {
+            skill_id,
+            issue: issue.clone(),
+        });
+    }
+    Ok(())
 }
 
 pub fn for_entity(
@@ -490,6 +508,7 @@ fn push_skill_subscribers(
                 skill_id,
             });
         }
+        check_conditions(catalog, skill_id)?;
         let keys = subscriptions(skill_id)
             .map_err(|route| SubscriberError::UncompiledRoute { skill_id, route })?;
         let mut entry_slot = None;
@@ -627,6 +646,7 @@ fn collect_setup_stage(
             owner_uid,
             skill_id,
         })?;
+        check_conditions(catalog, skill_id)?;
         for (slot_index, slot) in effect.slots.iter().enumerate() {
             for key in
                 keys(slot).map_err(|route| SubscriberError::UncompiledRoute { skill_id, route })?
