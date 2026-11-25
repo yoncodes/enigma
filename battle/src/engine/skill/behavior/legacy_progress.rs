@@ -22,6 +22,14 @@ impl BehaviorHandler for InitializeHandler {
             )
     }
 
+    fn unsupported_args(behavior: &ParsedBehavior) -> bool {
+        behavior.raw_arity == 2
+            && matches!(
+                behavior.args.as_slice(),
+                [initial, max] if *max > 0 && (0..=*max).contains(initial)
+            )
+    }
+
     fn emit_ops(context: BehaviorOpContext<'_>, behavior: &ParsedBehavior) -> Option<Vec<RuleOp>> {
         let [initial, max, show_id] = *behavior.args.as_slice() else {
             return None;

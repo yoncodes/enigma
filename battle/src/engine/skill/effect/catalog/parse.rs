@@ -178,7 +178,11 @@ pub(super) fn parse_slot(db: &GameDB, raw: RawSlot<'_>) -> Result<SkillEffectSlo
         .is_some_and(|supports| !supports(&behavior))
         || (has_registered_syntax && definition.supports.is_none())
     {
-        return Err(SlotParseError::Behavior);
+        return Err(if (definition.unsupported_args)(&behavior) {
+            SlotParseError::BehaviorConfig(BehaviorConfigError::Unsupported)
+        } else {
+            SlotParseError::Behavior
+        });
     }
     (definition.validate_config)(db, &behavior).map_err(SlotParseError::BehaviorConfig)?;
 

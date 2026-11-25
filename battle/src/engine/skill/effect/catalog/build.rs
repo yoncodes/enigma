@@ -663,6 +663,35 @@ mod tests {
     use super::*;
 
     #[test]
+    fn two_argument_legacy_progress_initializers_remain_nonblocking() {
+        crate::test_support::init_config();
+        let db = crate::test_support::game_data();
+        let mut catalog = SkillEffectCatalog::default();
+
+        for effect_id in [823000201, 823500201, 104332241] {
+            catalog.insert_configured_effect(db, db.skill_effect.get(effect_id).unwrap());
+            let issue = catalog
+                .issues(effect_id)
+                .iter()
+                .find(|issue| issue.slot == 1)
+                .unwrap();
+            assert_eq!(issue.opcode, Some(60106));
+            assert_eq!(issue.reason, RuleIssueReason::UnsupportedBehavior);
+            assert!(!issue.reason.is_blocking());
+        }
+
+        let mut malformed = db.skill_effect.get(823500201).unwrap().clone();
+        malformed.behavior1.push('#');
+        let mut catalog = SkillEffectCatalog::default();
+        catalog.insert_configured_effect(db, &malformed);
+        let [issue] = catalog.issues(malformed.id) else {
+            panic!("expected one malformed initializer issue");
+        };
+        assert_eq!(issue.reason, RuleIssueReason::MalformedBehavior);
+        assert!(issue.reason.is_blocking());
+    }
+
+    #[test]
     fn missing_team_moxie_buff_is_a_blocking_catalog_issue() {
         crate::test_support::init_config();
         let db = crate::test_support::game_data();

@@ -137,6 +137,7 @@ pub struct BehaviorDefinition {
     pub condition_route_override: Option<ConditionRouteOverride>,
     pub required_event: Option<EventKind>,
     pub supports: Option<fn(&ParsedBehavior) -> bool>,
+    pub unsupported_args: fn(&ParsedBehavior) -> bool,
     pub validate_config: fn(&config::GameDB, &ParsedBehavior) -> Result<(), BehaviorConfigError>,
     pub supports_slot: fn(&crate::engine::skill::effect::SkillEffectSlot) -> bool,
 }
@@ -145,6 +146,10 @@ pub trait BehaviorHandler {
     const VALIDATES_ARGUMENTS: bool = false;
 
     fn supports(_: &ParsedBehavior) -> bool {
+        false
+    }
+
+    fn unsupported_args(_: &ParsedBehavior) -> bool {
         false
     }
 
@@ -256,6 +261,7 @@ pub const fn definition<H: BehaviorHandler>(
         } else {
             None
         },
+        unsupported_args: H::unsupported_args,
         validate_config: H::validate_config,
         supports_slot: H::supports_slot,
     }
