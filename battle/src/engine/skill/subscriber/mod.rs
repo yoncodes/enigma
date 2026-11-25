@@ -5,10 +5,7 @@ use crate::engine::{
     skill::{
         buff_act,
         condition::registry as condition_registry,
-        effect::{
-            SkillEffectCatalog, SkillEffectSlot,
-            catalog::{RuleIssue, RuleIssueReason},
-        },
+        effect::{SkillEffectCatalog, SkillEffectSlot, catalog::RuleIssue},
         rule::{DefinitionKey, SetupStage, route::RouteError},
         target::{TargetEntity, TargetPool},
     },
@@ -65,20 +62,29 @@ pub struct EventSubscribers {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SubscriberError {
-    MissingSkill { owner_uid: i64, skill_id: i32 },
-    MalformedCondition { skill_id: i32, issue: RuleIssue },
-    UncompiledRoute { skill_id: i32, route: RouteError },
+    MissingSkill {
+        owner_uid: i64,
+        skill_id: i32,
+    },
+    MalformedCondition {
+        skill_id: i32,
+        issue: Box<RuleIssue>,
+    },
+    UncompiledRoute {
+        skill_id: i32,
+        route: RouteError,
+    },
 }
 
 fn check_conditions(catalog: &SkillEffectCatalog, skill_id: i32) -> Result<(), SubscriberError> {
     if let Some(issue) = catalog
         .issues(skill_id)
         .iter()
-        .find(|issue| issue.reason == RuleIssueReason::MalformedCondition)
+        .find(|issue| issue.reason.is_condition_error())
     {
         return Err(SubscriberError::MalformedCondition {
             skill_id,
-            issue: issue.clone(),
+            issue: Box::new(issue.clone()),
         });
     }
     Ok(())

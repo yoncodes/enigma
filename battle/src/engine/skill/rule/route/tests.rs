@@ -3,6 +3,44 @@ use crate::engine::skill::condition::parse_conditions;
 use crate::test_support::init_config;
 
 #[test]
+fn bloodtithe_gain_routes_require_scalar_progress() {
+    init_config();
+    let db = config::configs::get();
+    let row = db.skill_effect.get(8300201).unwrap();
+    let grant = BehaviorSpec::new(1, "AddBuff");
+    let progress = BehaviorSpec::new(60107, "ProgressChange");
+    for (raw, opcode) in [
+        (&row.condition2, 742209),
+        (&row.condition3, 742210),
+        (&row.condition4, 742106),
+    ] {
+        let conditions = parse_conditions(db, raw);
+        let driver = DefinitionKey::new(opcode, "PerBloodPoolAddOrDec");
+        let route = ConditionRoute::compile_for_behavior(&conditions, &progress).unwrap();
+        assert_eq!(route.branches[0].driver_key(), Some(driver));
+        let rejected = |raw: &str, behavior: &BehaviorSpec| {
+            let conditions = parse_conditions(db, raw);
+            assert_eq!(
+                ConditionRoute::compile_for_behavior(&conditions, behavior),
+                Err(RouteError::StandaloneConditionRequired {
+                    condition: driver,
+                    actual: behavior.key.clone(),
+                    required: DefinitionKey::new(60107, "ProgressChange"),
+                }),
+                "{raw}"
+            );
+        };
+        rejected(raw, &grant);
+        rejected(&format!("210&{raw}"), &progress);
+        rejected(&format!("208&210&{raw}"), &progress);
+        rejected(&format!("{raw}&210"), &progress);
+        rejected(&format!("19004#30631|{raw}"), &progress);
+        rejected(&format!("{raw}!"), &progress);
+        rejected(&format!("{raw}！"), &progress);
+    }
+}
+
+#[test]
 fn predicate_order_does_not_change_the_after_hit_route() {
     init_config();
     let expected = Some(ConditionDriver::Trigger(ConditionTrigger {

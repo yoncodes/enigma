@@ -115,6 +115,10 @@ pub(super) struct RawSlot<'a> {
 pub(super) enum SlotParseError {
     Behavior,
     BehaviorConfig(BehaviorConfigError),
+    StandaloneCondition {
+        condition: DefinitionKey,
+        required: DefinitionKey,
+    },
     Target {
         raw: String,
         opcode: i32,
@@ -201,6 +205,17 @@ pub(super) fn parse_slot(db: &GameDB, raw: RawSlot<'_>) -> Result<SkillEffectSlo
         &conditions,
         &behavior.spec,
     );
+    if let Err(crate::engine::skill::rule::route::RouteError::StandaloneConditionRequired {
+        condition,
+        required,
+        ..
+    }) = &compiled_route
+    {
+        return Err(SlotParseError::StandaloneCondition {
+            condition: *condition,
+            required: *required,
+        });
+    }
     let parsed_condition_target =
         parse_target(condition_target).ok_or_else(|| target_error(condition_target))?;
     if !crate::engine::skill::target::is_supported_target(&parsed_condition_target) {

@@ -352,6 +352,18 @@ impl SkillEffectCatalog {
                     }
                     self.issues.entry(row.id).or_default().push(issue);
                 }
+                Err(SlotParseError::StandaloneCondition {
+                    condition: key,
+                    required,
+                }) => {
+                    let mut issue = rule_issue(db, row.id, index as u8 + 1, behavior);
+                    issue.reason = RuleIssueReason::StandaloneConditionRequired {
+                        condition: key,
+                        required,
+                    };
+                    issue.raw = condition.to_owned();
+                    self.issues.entry(row.id).or_default().push(issue);
+                }
                 Err(SlotParseError::Target {
                     raw,
                     opcode,

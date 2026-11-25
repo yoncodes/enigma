@@ -172,6 +172,19 @@ fn scan_skill(
                     "MissingConditionRoute path={slot_path} opcode={opcode} type={type_name}"
                 ));
             }
+            Err(RouteError::StandaloneConditionRequired {
+                condition,
+                actual,
+                required,
+            }) => {
+                report.gap(
+                    CapabilityKey::new("condition", condition.opcode, condition.type_name),
+                    "requires a standalone condition and its registered behavior",
+                );
+                report.error(format!(
+                    "StandaloneConditionRequired path={slot_path} condition={condition:?} actual={actual:?} required={required:?}"
+                ));
+            }
             Ok(route)
                 if db.rule.get(pending.id).is_some()
                     && !slot.conditions.is_empty()

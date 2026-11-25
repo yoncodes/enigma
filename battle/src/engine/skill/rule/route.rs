@@ -2,11 +2,12 @@ use crate::engine::{
     event::kind::EventKind,
     skill::{
         action::SkillPhase,
+        behavior::classify::{BehaviorKey, BehaviorSpec},
         condition::{
             ParsedCondition, ParsedConditionKind,
             registry::{self, ConditionRole},
         },
-        rule::{RuleDescriptor, RuleDomain, SetupStage},
+        rule::{DefinitionKey, RuleDescriptor, RuleDomain, SetupStage},
     },
 };
 
@@ -87,6 +88,11 @@ pub enum RouteError {
         first: ConditionDriver,
         second: ConditionDriver,
     },
+    StandaloneConditionRequired {
+        condition: DefinitionKey,
+        actual: BehaviorKey,
+        required: DefinitionKey,
+    },
 }
 
 impl ConditionRoute {
@@ -96,10 +102,11 @@ impl ConditionRoute {
 
     pub fn compile_for_behavior(
         conditions: &[ParsedCondition],
-        behavior: &crate::engine::skill::behavior::classify::BehaviorSpec,
+        behavior: &BehaviorSpec,
     ) -> Result<Self, RouteError> {
         use crate::engine::skill::behavior::registry::ConditionRouteOverride;
 
+        validate_behavior(conditions, behavior, conditions.len() == 1)?;
         let definition = crate::engine::skill::behavior::registry::find_key(
             behavior.key.opcode,
             &behavior.key.type_name,
@@ -155,6 +162,33 @@ impl ConditionRoute {
 
         Ok(Self { branches })
     }
+}
+
+fn validate_behavior(
+    conditions: &[ParsedCondition],
+    behavior: &BehaviorSpec,
+    standalone: bool,
+) -> Result<(), RouteError> {
+    for condition in conditions {
+        if let ParsedConditionKind::Any(groups) = &condition.kind {
+            for group in groups {
+                validate_behavior(group, behavior, false)?;
+            }
+        } else if let Some(definition) = registry::find_key(condition.opcode, &condition.type_name)
+            && let Some(required) = definition.standalone_behavior
+            && (!standalone
+                || matches!(condition.kind, ParsedConditionKind::Not(_))
+                || behavior.key.opcode != required.opcode
+                || behavior.key.type_name != required.type_name)
+        {
+            return Err(RouteError::StandaloneConditionRequired {
+                condition: definition.key,
+                actual: behavior.key.clone(),
+                required,
+            });
+        }
+    }
+    Ok(())
 }
 
 fn compile_branch(

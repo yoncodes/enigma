@@ -285,6 +285,7 @@ pub struct ConditionDefinition {
     pub reaction_multiplicity: ReactionMultiplicity,
     pub consequence: ConsequencePolicy,
     pub behavior_ownership: BehaviorOwnership,
+    pub standalone_behavior: Option<DefinitionKey>,
     pub filters_behavior_targets: bool,
     pub behavior_target_order: BehaviorTargetOrder,
     pub behavior_target_source: BehaviorTargetSource,
@@ -312,6 +313,7 @@ pub struct ConditionMetadata {
     pub reaction_multiplicity: ReactionMultiplicity,
     pub consequence: ConsequencePolicy,
     pub behavior_ownership: BehaviorOwnership,
+    pub standalone_behavior: Option<DefinitionKey>,
     pub filters_behavior_targets: bool,
     pub behavior_target_order: BehaviorTargetOrder,
     pub behavior_target_source: BehaviorTargetSource,
@@ -346,6 +348,7 @@ pub const fn definition(
         reaction_multiplicity: metadata.reaction_multiplicity,
         consequence: metadata.consequence,
         behavior_ownership: metadata.behavior_ownership,
+        standalone_behavior: metadata.standalone_behavior,
         filters_behavior_targets: metadata.filters_behavior_targets,
         behavior_target_order: metadata.behavior_target_order,
         behavior_target_source: metadata.behavior_target_source,
@@ -374,6 +377,7 @@ pub const fn predicate(dependencies: &'static [EventKind]) -> ConditionMetadata 
         reaction_multiplicity: ReactionMultiplicity::PerEvent,
         consequence: ConsequencePolicy::Default,
         behavior_ownership: BehaviorOwnership::Skill,
+        standalone_behavior: None,
         filters_behavior_targets: false,
         behavior_target_order: BehaviorTargetOrder::Resolved,
         behavior_target_source: BehaviorTargetSource::Resolved,
@@ -402,6 +406,7 @@ pub const fn event_trigger(event: EventKind, phase: Option<SkillPhase>) -> Condi
         reaction_multiplicity: ReactionMultiplicity::PerEvent,
         consequence: ConsequencePolicy::Default,
         behavior_ownership: BehaviorOwnership::Skill,
+        standalone_behavior: None,
         filters_behavior_targets: false,
         behavior_target_order: BehaviorTargetOrder::Resolved,
         behavior_target_source: BehaviorTargetSource::Resolved,
@@ -434,6 +439,7 @@ pub const fn setup_route(
         reaction_multiplicity: ReactionMultiplicity::PerEvent,
         consequence: ConsequencePolicy::Default,
         behavior_ownership: BehaviorOwnership::Skill,
+        standalone_behavior: None,
         filters_behavior_targets: false,
         behavior_target_order: BehaviorTargetOrder::Resolved,
         behavior_target_source: BehaviorTargetSource::Resolved,
@@ -586,6 +592,11 @@ pub const fn latest_holder_grant(mut metadata: ConditionMetadata) -> ConditionMe
 
 pub const fn matching_buff_act_owns_behavior(mut metadata: ConditionMetadata) -> ConditionMetadata {
     metadata.behavior_ownership = BehaviorOwnership::MatchingBuffAct;
+    metadata
+}
+
+const fn bloodtithe_gain(mut metadata: ConditionMetadata) -> ConditionMetadata {
+    metadata.standalone_behavior = Some(DefinitionKey::new(60107, "ProgressChange"));
     metadata
 }
 
@@ -766,9 +777,9 @@ condition_definitions! {
     [10411] "None" => none::round_start, setup_route(SetupStage::RoundStart, 3, &[]);
     [105] "None" => none::after_round_start, setup_route(SetupStage::AfterRoundStart, 0, &[]);
     [106] "None" => none::card_setup, setup_route(SetupStage::CardSetup, 0, &[]);
-    [742106] "PerBloodPoolAddOrDec" => bloodtithe_progress::parse, companion_setup(event_trigger(EventKind::RoundStartCard, None), &[(SetupStage::CardSetup, 0)]);
-    [742209] "PerBloodPoolAddOrDec" => bloodtithe_progress::parse, after_settlement(event_target_observes(event_trigger(EventKind::TargetAttacked, None)));
-    [742210] "PerBloodPoolAddOrDec" => bloodtithe_progress::parse, reaction_targets_causing_frame(event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterHit)));
+    [742106] "PerBloodPoolAddOrDec" => bloodtithe_progress::parse, bloodtithe_gain(companion_setup(event_trigger(EventKind::RoundStartCard, None), &[(SetupStage::CardSetup, 0)]));
+    [742209] "PerBloodPoolAddOrDec" => bloodtithe_progress::parse, bloodtithe_gain(after_settlement(event_target_observes(event_trigger(EventKind::TargetAttacked, None))));
+    [742210] "PerBloodPoolAddOrDec" => bloodtithe_progress::parse, bloodtithe_gain(reaction_targets_causing_frame(event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterHit))));
     [552106] "Random" => parse::random, setup_route(SetupStage::CardSetup, 0, &[]);
     [107] "None" => none::before_ap_resolve, companion_setup(event_trigger(EventKind::ActionQueueCommitted, None), &[(SetupStage::GeneratedCard, 0)]);
     [203] "None" => none::skill_action_start, event_trigger(EventKind::SkillAction, Some(SkillPhase::Immediate));

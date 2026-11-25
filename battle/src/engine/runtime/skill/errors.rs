@@ -51,7 +51,7 @@ impl From<crate::engine::skill::subscriber::SubscriberError> for SkillOpError {
                 issue,
             } => Self::InvalidSkillDefinition {
                 skill_id,
-                issues: vec![issue],
+                issues: vec![*issue],
             },
             crate::engine::skill::subscriber::SubscriberError::UncompiledRoute {
                 skill_id,

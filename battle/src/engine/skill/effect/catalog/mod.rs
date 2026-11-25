@@ -73,12 +73,23 @@ pub enum RuleIssueReason {
     MissingBehavior,
     MissingBuff,
     MissingSummoned,
+    StandaloneConditionRequired {
+        condition: DefinitionKey,
+        required: DefinitionKey,
+    },
     UnsupportedBehavior,
 }
 
 impl RuleIssueReason {
     pub const fn is_blocking(self) -> bool {
         !matches!(self, Self::UnsupportedBehavior)
+    }
+
+    pub(crate) const fn is_condition_error(self) -> bool {
+        matches!(
+            self,
+            Self::MalformedCondition | Self::StandaloneConditionRequired { .. }
+        )
     }
 }
 

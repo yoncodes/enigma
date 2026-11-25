@@ -124,6 +124,45 @@ fn scalar_progress_requires_complete_condition_arguments() {
         assert!(issue.reason.is_blocking());
     }
 
+    let mut altered = db.skill_effect.get(8300201).unwrap().clone();
+    altered.condition2.push('!');
+    let mut catalog = SkillEffectCatalog::default();
+    catalog.insert_configured_effect(db, &altered);
+    let issue = catalog
+        .issues(altered.id)
+        .iter()
+        .find(|issue| issue.slot == 2)
+        .unwrap();
+    assert_eq!(
+        issue.reason,
+        RuleIssueReason::StandaloneConditionRequired {
+            condition: DefinitionKey::new(742209, "PerBloodPoolAddOrDec"),
+            required: DefinitionKey::new(60107, "ProgressChange"),
+        }
+    );
+    assert_eq!(issue.opcode, Some(60107));
+    assert_eq!(issue.type_name.as_deref(), Some("ProgressChange"));
+    assert_eq!(issue.raw, altered.condition2);
+    assert!(issue.reason.is_blocking());
+
+    altered.condition3.insert_str(0, "208&210&");
+    let mut catalog = SkillEffectCatalog::default();
+    catalog.insert_configured_effect(db, &altered);
+    let issue = catalog
+        .issues(altered.id)
+        .iter()
+        .find(|issue| issue.slot == 3)
+        .unwrap();
+    assert_eq!(
+        issue.reason,
+        RuleIssueReason::StandaloneConditionRequired {
+            condition: DefinitionKey::new(742210, "PerBloodPoolAddOrDec"),
+            required: DefinitionKey::new(60107, "ProgressChange"),
+        }
+    );
+    assert_eq!(issue.raw, altered.condition3);
+    assert!(issue.reason.is_blocking());
+
     use crate::engine::{
         event::kind::EventKind,
         manager::BattleManagers,
