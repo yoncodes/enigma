@@ -661,10 +661,24 @@ pub fn run_start(
     let mut opening_duration_captured = false;
     let mut opening_settlement = None;
     let mut opening_late_ran = false;
+    let mut opening_fields = drain::OpeningFields::default();
     let version7_opening =
         crate::engine::fight::versions::round_start_setup_layout(managers.fight_version())
             == Some(crate::engine::fight::versions::RoundStartSetupLayout::Version7);
     for (stage, priority) in START.iter().copied() {
+        if version7_opening && (stage, priority) == (SetupStage::RoundStart, -1) {
+            append(
+                &mut result,
+                opening_fields.deploy(
+                    managers,
+                    pool,
+                    catalog,
+                    determinism,
+                    context,
+                    &setup_owner_uids,
+                )?,
+            );
+        }
         if version7_opening && stage == SetupStage::BuffSync {
             let sync_setup = drain::run_opening_sync_setup_in_owner_order(
                 managers,
@@ -994,6 +1008,7 @@ pub fn run_start(
                 stage,
                 priority,
                 &setup_owner_uids,
+                |subscriber| opening_fields.includes_remaining(subscriber),
             )?
         } else if stage == SetupStage::RoundStart && priority == 2 {
             drain::run_buff_act_setup_stage_for_owners(

@@ -2,12 +2,14 @@ use super::*;
 
 mod action;
 mod buff_act;
+mod electric_setup;
 mod event;
 mod schedule;
 mod setup;
 
 pub use action::*;
 pub use buff_act::*;
+pub(crate) use electric_setup::OpeningFields;
 pub use event::*;
 pub use schedule::*;
 pub use setup::*;

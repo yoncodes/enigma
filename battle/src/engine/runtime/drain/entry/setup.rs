@@ -1,4 +1,5 @@
 use super::*;
+use crate::engine::skill::{effect::slot::SkillEffectSlot, subscriber::SetupSubscriber};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum SetupFrameContainer {
@@ -7,24 +8,27 @@ pub(super) enum SetupFrameContainer {
     OpeningRoundPhase,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum SetupSkillFilter {
+#[derive(Clone, Copy)]
+pub(super) enum SetupSkillFilter<'a> {
     All,
     ParentOnly,
     ExcludeParent,
+    Select(&'a dyn Fn(&SetupSubscriber, &SkillEffectSlot) -> bool),
 }
 
-impl SetupSkillFilter {
-    fn includes(self, behavior: &crate::engine::skill::effect::ParsedBehavior) -> bool {
-        let setup_parent =
-            crate::engine::skill::behavior::registry::find(behavior).is_some_and(|definition| {
-                definition.output_owner
-                    == crate::engine::skill::behavior::registry::OutputOwner::SetupParent
-            });
+impl SetupSkillFilter<'_> {
+    fn includes(self, subscriber: &SetupSubscriber, slot: &SkillEffectSlot) -> bool {
         match self {
             Self::All => true,
-            Self::ParentOnly => setup_parent,
-            Self::ExcludeParent => !setup_parent,
+            Self::ParentOnly | Self::ExcludeParent => {
+                let setup_parent = crate::engine::skill::behavior::registry::find(&slot.behavior)
+                    .is_some_and(|definition| {
+                        definition.output_owner
+                            == crate::engine::skill::behavior::registry::OutputOwner::SetupParent
+                    });
+                setup_parent == matches!(self, Self::ParentOnly)
+            }
+            Self::Select(includes) => includes(subscriber, slot),
         }
     }
 }
@@ -107,7 +111,7 @@ pub fn run_setup_stage_for_owners(
 }
 
 #[allow(clippy::too_many_arguments)]
-pub fn run_opening_setup_stage_for_owners(
+pub(crate) fn run_opening_setup_stage_for_owners(
     managers: &mut BattleManagers,
     pool: &TargetPool,
     catalog: &SkillEffectCatalog,
@@ -116,7 +120,9 @@ pub fn run_opening_setup_stage_for_owners(
     stage: SetupStage,
     priority: i32,
     player_owner_uids: &[i64],
+    includes: impl Fn(&SetupSubscriber) -> bool,
 ) -> Result<DrainResult, DrainError> {
+    let select = |subscriber: &SetupSubscriber, _: &SkillEffectSlot| includes(subscriber);
     run_skill_then_buff_act_setup_stage_filtered(
         managers,
         pool,
@@ -128,7 +134,7 @@ pub fn run_opening_setup_stage_for_owners(
         Some(player_owner_uids),
         &[],
         true,
-        SetupSkillFilter::All,
+        SetupSkillFilter::Select(&select),
         true,
         SetupFrameContainer::Standalone,
         DefenderCardCleanupOwner::DeathAction,
@@ -161,7 +167,7 @@ pub(super) fn run_skill_then_buff_act_setup_stage_filtered(
     owner_uids: Option<&[i64]>,
     excluded_owner_uids: &[i64],
     include_both_sides_opening: bool,
-    skill_filter: SetupSkillFilter,
+    skill_filter: SetupSkillFilter<'_>,
     include_buff_acts: bool,
     frame_container: SetupFrameContainer,
     cleanup_owner: DefenderCardCleanupOwner,
@@ -277,7 +283,7 @@ fn append_skill_setup_stage(
     owner_uids: Option<&[i64]>,
     excluded_owner_uids: &[i64],
     include_both_sides_opening: bool,
-    skill_filter: SetupSkillFilter,
+    skill_filter: SetupSkillFilter<'_>,
     frame_container: SetupFrameContainer,
     cleanup_owner: DefenderCardCleanupOwner,
     state: &mut SetupStageState,
@@ -291,9 +297,7 @@ fn append_skill_setup_stage(
         let slot = catalog
             .get(subscriber.skill_id)
             .and_then(|effect| effect.slots.get(subscriber.slot_index));
-        let included = slot.is_some_and(|slot| skill_filter.includes(&slot.behavior));
         !excluded_owner_uids.contains(&subscriber.owner_uid)
-            && included
             && (owner_uids.is_none_or(|uids| uids.contains(&subscriber.owner_uid))
                 || (include_both_sides_opening
                     && crate::engine::skill::condition::registry::opening_owner_eligibility(
@@ -303,6 +307,7 @@ fn append_skill_setup_stage(
                     .is_some_and(|eligibility| {
                         slot.is_some_and(|slot| eligibility.includes_defender(slot))
                     })))
+            && slot.is_some_and(|slot| skill_filter.includes(subscriber, slot))
     });
     let subscribers = subscribers.collect::<Vec<_>>();
     let mut frames = std::mem::take(&mut state.result.frames);

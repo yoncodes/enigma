@@ -454,7 +454,7 @@ fn run_sync_setup_in_owner_order(
     context: TargetContext,
     owner_uids: &[i64],
     schedule: &[(SetupStage, i32)],
-    late_skill_filter: SetupSkillFilter,
+    late_skill_filter: SetupSkillFilter<'_>,
     include_late_buff_acts: bool,
     frame_container: SetupFrameContainer,
     cleanup_owner: DefenderCardCleanupOwner,
