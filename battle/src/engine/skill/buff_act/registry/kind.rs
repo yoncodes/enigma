@@ -196,6 +196,7 @@ pub enum BuffActKind {
     ModifyMaxBurnLayers,
     MasterHalo,
     MockTaunt,
+    PerElectricAddBuff,
     Petrified,
     PassiveSkillInvalid,
     MonsterLabel,

@@ -16,6 +16,12 @@ buff_act_definitions! {
         supports: |args| matches!(args, [value] if *value != 0), state_consumer: true, wire: (buff_act::wire::BuffActWireDefinition::all(DefinitionKey::new(1070, "HeatScaleAddFix"), &[EffectType::None as i32]));
     (1075, "CardLimitAdd") => CardLimitAdd, effect_time_subscription: false,
         supports: |args| matches!(args, [delta] if *delta != 0), state_consumer: true, wire: (buff_act::wire::BuffActWireDefinition::add(DefinitionKey::new(1075, "CardLimitAdd"), &[EffectType::None as i32]));
+    (1076, "PerElectricAddBuff") => PerElectricAddBuff, effect_time_subscription: false,
+        events: [EventKind::FieldTransferred], frame: CausingFrame,
+        runtime: |context| buff_act::per_electric_add_buff::rule_ops(context.managers, context.subscriber, context.event?),
+        supports: buff_act::per_electric_add_buff::supports,
+        references: buff_act::per_electric_add_buff::references,
+        wire: (buff_act::wire::BuffActWireDefinition::all(DefinitionKey::new(1076, "PerElectricAddBuff"), &[]));
     (1077, "ConsumeCurBuffAndAuraAddBuff") => ConsumeCurBuffAndAuraAddBuff,
         runtime: |context| buff_act::consume_and_grant::rule_ops(context.managers, context.subscriber, context.event?),
         supports: buff_act::consume_and_grant::supports, references: references_for_feature,

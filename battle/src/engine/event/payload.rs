@@ -326,6 +326,10 @@ pub enum BattleEvent {
     CardChanged(CardChangeEvent),
     SovereignCardCreated(SovereignCardCreatedEvent),
     FieldChanged(FieldChangeEvent),
+    FieldTransferred {
+        team: i32,
+        amount: i32,
+    },
     SummonChanged(SummonChangeEvent),
     ShellChanged(ShellChangeEvent),
     BloodtitheChanged {
@@ -383,6 +387,7 @@ impl BattleEvent {
             | Self::BattleTerminalCommitted { .. }
             | Self::CardChanged(_)
             | Self::FieldChanged(_)
+            | Self::FieldTransferred { .. }
             | Self::BuffsSettled(_)
             | Self::AfterSideFinalExpiry(_)
             | Self::BloodtitheChanged { .. }
@@ -426,6 +431,7 @@ impl BattleEvent {
             | Self::GaugeChanged(_)
             | Self::CardChanged(_)
             | Self::FieldChanged(_)
+            | Self::FieldTransferred { .. }
             | Self::BuffsSettled(_)
             | Self::AfterSideFinalExpiry(_)
             | Self::BloodtitheChanged { .. }
@@ -470,6 +476,7 @@ impl BattleEvent {
             Self::CardChanged(_) => EventKind::CardChanged,
             Self::SovereignCardCreated(_) => EventKind::SovereignCardCreated,
             Self::FieldChanged(_) => EventKind::FieldChanged,
+            Self::FieldTransferred { .. } => EventKind::FieldTransferred,
             Self::SummonChanged(_) => EventKind::SummonChanged,
             Self::ShellChanged(change) => match change.kind {
                 crate::engine::mechanic::shell::ShellChangeKind::Deployed => {

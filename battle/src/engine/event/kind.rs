@@ -31,6 +31,7 @@ pub enum EventKind {
     SovereignCardCreated,
     SovereignUnlock,
     FieldChanged,
+    FieldTransferred,
     SummonChanged,
     ShellDeployed,
     ShellRetrieved,

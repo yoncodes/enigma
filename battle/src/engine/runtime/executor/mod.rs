@@ -1,5 +1,5 @@
 use crate::engine::{
-    event::bus::EventBus,
+    event::{bus::EventBus, payload::BattleEvent},
     manager::{
         BattleManagers, HpExecution,
         buff::{BuffChanges, BuffCommandError},
@@ -1131,6 +1131,10 @@ pub(crate) fn execute_rule_op_with(
             for event in changes.field.events() {
                 events.push(event);
             }
+            events.push(BattleEvent::FieldTransferred {
+                team: changes.field.team,
+                amount: changes.field.applied_delta,
+            });
             Ok(RuleOutcome::FieldTransfer(Box::new(changes)))
         }
         RuleOp::Command(BattleCommand::MagicCircleLevel(command)) => {

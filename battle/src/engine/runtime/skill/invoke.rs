@@ -285,6 +285,7 @@ pub(super) fn apply_event_context(
         | BattleEvent::BuffsSettled(_)
         | BattleEvent::AfterSideFinalExpiry(_)
         | BattleEvent::CardChanged(_)
+        | BattleEvent::FieldTransferred { .. }
         | BattleEvent::SummonChanged(_)
         | BattleEvent::BloodtitheChanged { .. }
         | BattleEvent::Kind(_) => {}

@@ -37,7 +37,7 @@ pub(super) fn drain_command(
     mut command: RuleOp,
     trigger: SkillOpTrigger,
     skill_execution: Option<SkillExecution>,
-    frame_path: Option<FramePath>,
+    mut frame_path: Option<FramePath>,
     parent_path: Option<FramePath>,
     frame_group: Option<Rc<RefCell<Option<FramePath>>>>,
     independent_parent_group: Option<Rc<RefCell<Option<FramePath>>>>,
@@ -45,6 +45,12 @@ pub(super) fn drain_command(
     subscriber: Option<SubscriberContext>,
     caster_frame: Option<FrameOwner>,
 ) -> Result<(), DrainError> {
+    if let SkillOpTrigger::Event(BattleEvent::FieldTransferred { .. }) = &trigger
+        && let Some(path) = &mut frame_path
+    {
+        let scope = crate::engine::runtime::record::field_transfer_scope(&result.frames, path);
+        path.truncate(scope.len());
+    }
     // After-hit observers must execute before the lifecycle operation
     // that closes their boundary, so requeue that closer behind them.
     let releases_after_hit = matches!(

@@ -122,6 +122,7 @@ pub mod monitor_continue_channel;
 pub mod must_crit_and_fix_temp_attr;
 pub mod nuo_di_ka_cast_channel;
 pub mod paper_circle_continue_channel;
+pub mod per_electric_add_buff;
 pub mod petrified;
 pub mod raspberry;
 pub mod real_damage_kill;
