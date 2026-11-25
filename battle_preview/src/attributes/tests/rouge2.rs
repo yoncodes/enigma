@@ -14,6 +14,10 @@ fn rouge2_side_skills_use_the_buff_inventory_at_battle_start() {
         fs::write(&path, json).unwrap();
         path
     };
+    let unseeded = write(0, "StartDungeonReply", r#"{"fight":{"battleId":0}}"#);
+    let isolated = numbered.join("Isolated").join("StartDungeonReply.json");
+    fs::create_dir(isolated.parent().unwrap()).unwrap();
+    fs::write(&isolated, r#"{"fight":{"battleId":4}}"#).unwrap();
     write(
         1,
         "Rouge2InfoPush",
@@ -48,6 +52,12 @@ fn rouge2_side_skills_use_the_buff_inventory_at_battle_start() {
         }],
         ..Default::default()
     };
+    for (path, diagnostic) in [(isolated, "timeline"), (unseeded, "snapshot")] {
+        let error = rouge2_side_skills(db, &fight, &path)
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains(diagnostic), "{error}");
+    }
     assert!(rouge2_side_skills(db, &fight, &before).unwrap().is_empty());
     for path in [start, extracted] {
         let skills = rouge2_side_skills(db, &fight, &path).unwrap();
@@ -55,5 +65,26 @@ fn rouge2_side_skills_use_the_buff_inventory_at_battle_start() {
         assert_eq!(skills[0].skill_id, 8290407);
     }
     assert!(rouge2_side_skills(db, &fight, &after).unwrap().is_empty());
+
+    for (index, snapshot, diagnostic) in [
+        (8, r#"{}"#, "missing Rouge2 info"),
+        (10, r#"{"rouge2Info":{}}"#, "missing Rouge2 state"),
+        (
+            12,
+            r#"{"rouge2Info":{"state":2}}"#,
+            "missing active Rouge2 inventory",
+        ),
+    ] {
+        write(index, "Rouge2InfoPush", snapshot);
+        let path = write(
+            index + 1,
+            "StartDungeonReply",
+            r#"{"fight":{"battleId":5}}"#,
+        );
+        let error = rouge2_side_skills(db, &fight, &path)
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains(diagnostic), "{error}");
+    }
     fs::remove_dir_all(directory).unwrap();
 }

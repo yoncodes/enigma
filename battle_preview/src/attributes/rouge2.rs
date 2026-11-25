@@ -24,23 +24,38 @@ pub fn rouge2_side_skills(
     {
         return Ok(Vec::new());
     }
-    let Some(files) = capture_timeline_through(start)? else {
-        return Ok(Vec::new());
-    };
-    let Some(index) = files.iter().rposition(|file| is_snapshot(file)) else {
-        return Ok(Vec::new());
-    };
-    let snapshot: Rouge2InfoPush = serde_json::from_value(read_capture_value(&files[index])?)?;
-    let Some(info) = snapshot
+    let files = capture_timeline_through(start)?.ok_or_else(|| {
+        anyhow::anyhow!("missing Rouge2 inventory timeline for {}", start.display())
+    })?;
+    let index = files
+        .iter()
+        .rposition(|file| is_snapshot(file))
+        .ok_or_else(|| {
+            anyhow::anyhow!(
+                "missing Rouge2 inventory snapshot before {}",
+                start.display()
+            )
+        })?;
+    let snapshot_path = &files[index];
+    let snapshot: Rouge2InfoPush = serde_json::from_value(read_capture_value(snapshot_path)?)?;
+    let info = snapshot
         .rouge2_info
-        .filter(|info| info.state == Some(ACTIVE_RUN))
-    else {
+        .ok_or_else(|| anyhow::anyhow!("missing Rouge2 info in {}", snapshot_path.display()))?;
+    let state = info
+        .state
+        .ok_or_else(|| anyhow::anyhow!("missing Rouge2 state in {}", snapshot_path.display()))?;
+    if state != ACTIVE_RUN {
         return Ok(Vec::new());
-    };
-    let mut buffs = info
-        .bag_info
+    }
+    let bag = info.bag_info.ok_or_else(|| {
+        anyhow::anyhow!(
+            "missing active Rouge2 inventory in {}",
+            snapshot_path.display()
+        )
+    })?;
+    let mut buffs = bag
+        .bags
         .into_iter()
-        .flat_map(|info| info.bags)
         .filter(|bag| bag.bag_type == Some(BUFF_BAG))
         .flat_map(|bag| bag.items)
         .collect::<Vec<_>>();
