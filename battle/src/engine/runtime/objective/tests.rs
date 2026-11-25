@@ -28,13 +28,13 @@ fn records_only_committed_active_incantations_and_actual_finisher() {
         ..Default::default()
     };
 
-    progress.record_player_round(&commands, &catalog, &result, false);
+    progress.record_player_round(&commands, &catalog, [&result], false);
     assert!(progress.used_healing_incantation);
     assert!(!progress.used_debuff_incantation);
     assert_eq!(progress.max_incantation_damage, 5_001);
     assert_eq!(progress.finishing_action, None);
 
-    progress.record_player_round(&commands, &catalog, &result, true);
+    progress.record_player_round(&commands, &catalog, [&result], true);
     assert_eq!(
         progress.finishing_action,
         Some(FinishingAction {
@@ -51,7 +51,7 @@ fn records_only_committed_active_incantations_and_actual_finisher() {
         ],
         ..Default::default()
     };
-    progress.record_player_round(&commands, &catalog, &follow_up, true);
+    progress.record_player_round(&commands, &catalog, [&follow_up], true);
     assert_eq!(progress.finishing_action, None);
 }
 

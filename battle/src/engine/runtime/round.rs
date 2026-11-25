@@ -203,8 +203,6 @@ impl BattleRuntime {
         let player = player.drain;
         schedule::sync_cycle_roster(&mut self.fight, &mut self.managers, &mut pool, &player);
         let ended_by_player = battle_ended(&self.fight, &pool, &self.managers);
-        self.objectives
-            .record_player_round(&commands, catalog, &player, ended_by_player);
         apply_cloth_power(&self.fight, &self.managers, &mut self.round_state, &player);
         let conduit_context = selected_enemy_target(&commands, &pool)
             .map(
@@ -240,6 +238,14 @@ impl BattleRuntime {
             next_action_index,
         )
         .map_err(|error| format!("{error:?}"))?;
+        let ended_by_extra_action = !extra_round_skill.outcomes.is_empty()
+            && battle_ended(&self.fight, &pool, &self.managers);
+        self.objectives.record_player_round(
+            &commands,
+            catalog,
+            [&player, &extra_round_skill],
+            ended_by_player || ended_by_extra_action,
+        );
         let action_phase_end = schedule::run_action_phase_end(
             &mut self.managers,
             &pool,

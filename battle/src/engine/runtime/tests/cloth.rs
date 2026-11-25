@@ -666,6 +666,29 @@ fn owned_charge_starts_the_captured_extra_round_flow() {
             })
             .is_none()
     );
+    let mut finisher = runtime.clone();
+    finisher
+        .managers
+        .execute_hp(crate::engine::manager::hp::HpCommand::SetCurrent(
+            crate::engine::manager::hp::CurrentHpSet {
+                origin: crate::engine::skill::rule::CommandOrigin {
+                    domain: crate::engine::skill::rule::RuleDomain::Lifecycle,
+                    key: crate::engine::skill::rule::DefinitionKey::new(0, "TestFinisher"),
+                },
+                source_uid: 10,
+                target_uid: -1,
+                value: 1,
+                config_effect: 0,
+                effect_type: 1,
+            },
+        ))
+        .unwrap();
+    let finished = finisher
+        .advance_round(BeginRoundRequest::default())
+        .unwrap();
+    assert_eq!(finished.is_finish, Some(true));
+    assert_eq!(finisher.meets_advanced_condition(5, 1), Some(true));
+
     let active_round = runtime.current_round();
     assert_eq!(round.ai_use_cards, vec![enemy_card.clone()]);
     runtime.seed_next_ai_cards(vec![enemy_card]);

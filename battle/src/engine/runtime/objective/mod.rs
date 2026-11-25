@@ -39,11 +39,11 @@ impl ObjectiveProgress {
         );
     }
 
-    pub(super) fn record_player_round(
+    pub(super) fn record_player_round<'a>(
         &mut self,
         commands: &[RoundCommand],
         catalog: &SkillEffectCatalog,
-        result: &DrainResult,
+        results: impl IntoIterator<Item = &'a DrainResult>,
         ended_by_player: bool,
     ) {
         self.moved_incantation |= commands
@@ -52,7 +52,7 @@ impl ObjectiveProgress {
 
         let mut ultimates = 0;
         let mut terminal_action = None;
-        for outcome in &result.outcomes {
+        for outcome in results.into_iter().flat_map(|result| &result.outcomes) {
             if outcome.death_count() > 0 {
                 terminal_action = None;
             }
