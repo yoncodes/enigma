@@ -25,6 +25,7 @@ pub struct Promotion {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct CycleCommand {
     pub defeated_uid: i64,
+    pub entering_uid: i64,
     pub team_type: i32,
 }
 

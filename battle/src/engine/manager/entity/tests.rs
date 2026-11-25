@@ -1,4 +1,4 @@
-use sonettobuf::{BuffInfo, FightTeam, HeroAttribute, PowerInfo};
+use sonettobuf::{BuffInfo, EnhanceInfoBox, FightTeam, HeroAttribute, PowerInfo};
 
 use super::*;
 use crate::engine::skill::rule::{DefinitionKey, RuleDomain};
@@ -414,15 +414,20 @@ fn promoted_defeated_unit_moves_behind_the_remaining_reserves() {
 }
 
 #[test]
-fn cycle_substitution_replaces_the_defeated_reserve_with_a_fresh_copy() {
+fn cycle_substitution_queues_a_fresh_copy_of_the_entrant() {
     let entity = |uid, hp, position| FightEntityInfo {
         uid: Some(uid),
-        model_id: Some(116_320_003),
+        model_id: Some(if uid == -1 { 120384122 } else { 120384123 }),
         team_type: Some(2),
         current_hp: Some(hp),
         ex_point: Some(3),
         shield_value: Some(20),
         position: Some(position),
+        enhance_info_box: Some(EnhanceInfoBox {
+            uid: Some(uid),
+            upgraded_options: vec![7],
+            ..Default::default()
+        }),
         attr: Some(HeroAttribute {
             hp: Some(100),
             ..Default::default()
@@ -457,12 +462,21 @@ fn cycle_substitution_replaces_the_defeated_reserve_with_a_fresh_copy() {
         catalog(),
         crate::engine::fight::reserve::CycleCommand {
             defeated_uid: promotion.defeated_uid,
+            entering_uid: promotion.entering_uid,
             team_type: promotion.team_type,
         },
     );
     manager.sync_to_fight(&mut fight);
 
     assert_eq!(queued.entity.uid, Some(-4));
+    assert_eq!(queued.entity.model_id, Some(120384123));
+    let enhance = queued.entity.enhance_info_box.unwrap();
+    assert_eq!(enhance.uid, queued.entity.uid);
+    assert_eq!(enhance.upgraded_options, [7]);
+    assert_eq!(
+        manager.snapshot(-2).unwrap().enhance_info_box.unwrap().uid,
+        Some(-2)
+    );
     assert_eq!(queued.entity.current_hp, Some(100));
     assert_eq!(queued.entity.position, Some(-2));
     assert_eq!(queued.entity.ex_point, Some(3));

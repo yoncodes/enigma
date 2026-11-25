@@ -7,6 +7,7 @@ pub(super) fn supports(args: &[i32]) -> bool {
 pub(super) fn plan(promotion: &Promotion) -> CycleCommand {
     CycleCommand {
         defeated_uid: promotion.defeated_uid,
+        entering_uid: promotion.entering_uid,
         team_type: promotion.team_type,
     }
 }

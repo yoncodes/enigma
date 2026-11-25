@@ -75,12 +75,13 @@ impl EntityManager {
     ) -> ReserveQueued {
         let CycleCommand {
             defeated_uid,
+            entering_uid,
             team_type,
         } = command;
         let mut reserve = self
             .identities
-            .get(&defeated_uid)
-            .expect("a committed promotion retains the defeated identity")
+            .get(&entering_uid)
+            .expect("a committed promotion registers the entering identity")
             .clone();
         let reserves = self
             .reserve_order
@@ -103,6 +104,9 @@ impl EntityManager {
         let uid = self.next_special_uid;
         self.next_special_uid -= 1;
         reserve.uid = Some(uid);
+        if let Some(enhance) = &mut reserve.enhance_info_box {
+            enhance.uid = Some(uid);
+        }
         reserve.position = Some(-((reserves.len() + 1) as i32));
         reserve.current_hp = reserve
             .attr
