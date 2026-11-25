@@ -809,10 +809,89 @@ fn observed_redeal_result_resolves_legal_base_rank_draws() {
     manager.rank_up.insert((10, 31340111), 31340112);
 
     let draws = manager
-        .observed_redeal_draws(&[card(20, 31270122), card(10, 31340111)])
+        .observed_redeal_draws(&[card(20, 31270122), card(10, 31340111)], &[])
         .unwrap();
 
     assert_eq!(draws, vec![card(20, 31270121), card(10, 31340111)]);
+}
+
+#[test]
+fn observed_redeal_validates_a_legal_draw_before_basic_coverage() {
+    crate::test_support::init_config();
+    let catalog = crate::catalog::BattleCatalog::new(crate::test_support::game_data());
+    let first = card(10, 31340111);
+    let missing = card(10, 31340121);
+    let mut manager = CardManager::with_draw_pile(vec![first.clone(); 2], vec![first.clone()]);
+    manager.set_catalog(catalog);
+    let basics = [first.clone(), missing.clone()];
+
+    let observed = [first.clone(), missing.clone()];
+    assert!(manager.observed_redeal_draws(&observed, &[]).is_none());
+    let draws = manager.observed_redeal_draws(&observed, &basics).unwrap();
+    assert_eq!(draws, vec![first.clone(); 2]);
+    let oversize_hand = vec![first.clone(); 40];
+    let mut oversize = CardManager::with_draw_pile(oversize_hand.clone(), basics.to_vec());
+    oversize.set_catalog(catalog);
+    assert!(
+        oversize
+            .observed_redeal_draws(&oversize_hand, &basics)
+            .is_none()
+    );
+    assert!(
+        manager
+            .observed_redeal_draws(&[missing.clone(), missing], &basics)
+            .is_none()
+    );
+}
+
+#[test]
+fn observed_redeal_uses_the_live_rank_projection_for_upgraded_draws() {
+    crate::test_support::init_config();
+    let catalog = crate::catalog::BattleCatalog::new(crate::test_support::game_data());
+    let base = card(10, 31340111);
+    let rank_two = card(10, 31340112);
+    let rank_three = card(10, 31340113);
+    let other = card(10, 31340121);
+    let mut manager = CardManager::with_draw_pile(
+        vec![rank_three.clone(), base.clone()],
+        vec![rank_two.clone(), base.clone()],
+    );
+    manager.set_catalog(catalog);
+    manager.rank_up.insert((10, 31340111), 31340112);
+    manager.rank_up.insert((10, 31340112), 31340113);
+
+    let basics = [base.clone(), other.clone()];
+    let mut draws = manager
+        .observed_redeal_draws(&[rank_three, other], &basics)
+        .unwrap();
+    start::preserve_basic_coverage(&basics, &mut draws);
+    assert_eq!(draws.as_slice(), basics.as_slice());
+    let rank_three = card(10, 31340113);
+    let other = card(10, 31340121);
+    let mut coverage = CardManager::with_draw_pile(
+        vec![rank_three.clone(), base.clone(), base.clone()],
+        vec![base.clone(), rank_two.clone()],
+    );
+    coverage.set_catalog(catalog);
+    coverage.rank_up.clone_from(&manager.rank_up);
+    let basics = [base.clone(), other.clone()];
+    let draws = coverage
+        .observed_redeal_draws(&[rank_three, other, base.clone()], &basics)
+        .unwrap();
+    assert_eq!(
+        draws,
+        vec![rank_two.clone(), rank_two.clone(), base.clone()]
+    );
+
+    for before in [base, card(10, 31340113)] {
+        let mut ranked = CardManager::with_draw_pile(vec![before], vec![rank_two.clone()]);
+        ranked.set_catalog(catalog);
+        ranked.rank_up.insert((10, 31340112), 31340113);
+        let mut live = ranked.clone();
+        live.redeal_keep_ranks(vec![rank_two.clone()]);
+        let draws = ranked.observed_redeal_draws(live.hand(), &[]).unwrap();
+        assert_eq!(draws, vec![rank_two.clone()]);
+    }
 }
 
 #[test]

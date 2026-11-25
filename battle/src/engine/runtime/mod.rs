@@ -223,10 +223,17 @@ impl BattleRuntime {
     }
 
     pub(crate) fn seed_observed_redeal(&mut self, hand: &[CardInfo]) -> Result<(), String> {
+        let pool = crate::engine::skill::target::TargetPool::from_fight_with_catalog(
+            self.catalog_data
+                .expect("battle runtime was not constructed with a catalog"),
+            &self.fight,
+        );
+        let basics =
+            crate::engine::mechanic::card::CardMechanic.redeal_basics(&self.managers, &pool);
         let draws = self
             .managers
             .card
-            .observed_redeal_draws(hand)
+            .observed_redeal_draws(hand, &basics)
             .ok_or_else(|| "captured redeal is not reachable from the current hand".to_owned())?;
         self.seed_card_draws(draws);
         Ok(())

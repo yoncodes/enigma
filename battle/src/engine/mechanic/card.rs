@@ -85,6 +85,27 @@ impl CardMechanic {
             ))
     }
 
+    pub(crate) fn redeal_basics(
+        &self,
+        managers: &BattleManagers,
+        pool: &TargetPool,
+    ) -> Vec<CardInfo> {
+        if crate::engine::fight::versions::round_start_setup_layout(managers.fight_version())
+            != Some(crate::engine::fight::versions::RoundStartSetupLayout::Version7)
+        {
+            return Vec::new();
+        }
+        let current_pool = pool.runtime_view(managers);
+        let basics = crate::engine::manager::card::pool::target_basic_candidate_pool(
+            &current_pool.attacker_main,
+        );
+        if basics.len() == current_pool.attacker_main.len().saturating_mul(2) {
+            basics
+        } else {
+            Vec::new()
+        }
+    }
+
     pub fn required_ultimate_cost(&self, managers: &BattleManagers, entity: &TargetEntity) -> i32 {
         if ExPointKind::from_wire(managers.ex_point.kind(entity.uid)) != ExPointKind::Common {
             return managers

@@ -13,6 +13,7 @@ mod hedone_card;
 pub mod op;
 mod opening;
 mod permissions;
+mod redeal;
 pub(crate) use permissions::consumes_action_point;
 pub mod pool;
 pub(crate) mod prepared;
@@ -919,45 +920,6 @@ impl CardManager {
         self.redealable_cards().count()
     }
 
-    pub(crate) fn observed_redeal_draws(&self, observed: &[CardInfo]) -> Option<Vec<CardInfo>> {
-        let (observed, team_cards) = observed.split_at_checked(self.hand().len())?;
-        if team_cards.len() != self.team_cards().len()
-            || !self
-                .team_cards()
-                .iter()
-                .zip(team_cards)
-                .all(|(current, observed)| {
-                    current.uid == observed.uid && current.skill_id == observed.skill_id
-                })
-        {
-            return None;
-        }
-        let catalog = self.deck.catalog();
-        self.hand()
-            .iter()
-            .zip(observed)
-            .map(|(current, observed)| {
-                if !is_redealable(current, catalog) {
-                    return (current.uid == observed.uid && current.skill_id == observed.skill_id)
-                        .then_some(None);
-                }
-                let rank = catalog
-                    .map(|catalog| catalog.card_skill_rank(current))
-                    .unwrap_or_else(|| current.card_effect.unwrap_or_default());
-                self.draw_pile().iter().find_map(|candidate| {
-                    let owner_uid = candidate.uid?;
-                    let mut skill_id = candidate.skill_id?;
-                    for _ in 1..rank {
-                        skill_id = self.rank_up.get(&(owner_uid, skill_id)).copied()?;
-                    }
-                    (candidate.uid == observed.uid && Some(skill_id) == observed.skill_id)
-                        .then(|| Some(candidate.clone()))
-                })
-            })
-            .collect::<Option<Vec<_>>>()
-            .map(|draws| draws.into_iter().flatten().collect())
-    }
-
     fn add_universal_cards(&mut self, count: i32, skill: UniversalCardSkill) {
         for _ in 0..count {
             self.deck.add_to_hand(CardInfo {
@@ -1007,14 +969,8 @@ impl CardManager {
                 .map(|catalog| catalog.card_skill_rank(card))
                 .unwrap_or_else(|| card.card_effect.unwrap_or_default());
             let owner_uid = replacement.uid.unwrap_or_default();
-            let mut skill_id = replacement.skill_id.unwrap_or_default();
-            for _ in 1..rank {
-                let Some(next) = self.rank_up.get(&(owner_uid, skill_id)).copied() else {
-                    break;
-                };
-                skill_id = next;
-            }
-            replacement.skill_id = Some(skill_id);
+            let skill_id = replacement.skill_id.unwrap_or_default();
+            replacement.skill_id = Some(redeal_skill(&self.rank_up, owner_uid, skill_id, rank));
             *card = replacement;
         }
     }
@@ -1405,6 +1361,21 @@ impl CardManager {
             .push(played.skill_id);
         Some(played)
     }
+}
+
+fn redeal_skill(
+    rank_up: &HashMap<(i64, i32), i32>,
+    owner_uid: i64,
+    mut skill_id: i32,
+    rank: i32,
+) -> i32 {
+    for _ in 1..rank {
+        let Some(next) = rank_up.get(&(owner_uid, skill_id)).copied() else {
+            break;
+        };
+        skill_id = next;
+    }
+    skill_id
 }
 
 fn is_redealable(card: &CardInfo, catalog: Option<crate::catalog::BattleCatalog>) -> bool {
