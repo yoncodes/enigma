@@ -830,7 +830,6 @@ fn run_player_card_ops(
     }
     let refill_slots = RefillSlots::capture(managers, pool);
     let submitted_actions = skills.len();
-    let next_action_index = (submitted_actions + usize::from(!selections.is_empty()) + 1) as i32;
     let actions = managers
         .card
         .played()
@@ -869,6 +868,14 @@ fn run_player_card_ops(
             prelude: Vec::new(),
         })
     }));
+    let reserved_slots = (skills.len() + usize::from(!selections.is_empty())) as i32;
+    let next_action_index = managers
+        .card
+        .queued_use_cards()
+        .iter()
+        .map(|queued| queued.card_index)
+        .fold(reserved_slots, i32::max)
+        .saturating_add(1);
     append(&mut result, committed);
     let queue_preparation = queue_preparation_ops(managers, pool, catalog, context, &skills);
     if !queue_preparation.is_empty() {

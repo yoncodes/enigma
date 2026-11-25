@@ -24,6 +24,74 @@ fn queue_from_played(
 }
 
 #[test]
+fn next_player_action_index_follows_generated_casts() {
+    init_config();
+    let fight = Fight {
+        version: Some(7),
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                model_id: Some(3097),
+                team_type: Some(1),
+                current_hp: Some(100),
+                passive_skill: vec![30970161],
+                skill_group1: vec![30970111, 30970112, 30970113],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(-1),
+                team_type: Some(2),
+                current_hp: Some(100_000),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    managers
+        .execute_card(CardCommand::Setup(CardSetup {
+            hand: vec![CardInfo {
+                uid: Some(10),
+                skill_id: Some(30970113),
+                ..Default::default()
+            }],
+            draw_pile: Vec::new(),
+            deck_num: 1,
+        }))
+        .unwrap();
+    let catalog = SkillEffectCatalog::from_fight(config::configs::get(), &fight);
+    let player = run_player_phase(
+        &fight,
+        &mut managers,
+        &pool,
+        &catalog,
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+        [RoundCommand::PlayCard {
+            card_index: 0,
+            target_uid: Some(-1),
+            chosen_skill_id: None,
+            recorded_skill: None,
+        }],
+        &[],
+        1,
+        99_998,
+    )
+    .unwrap();
+    let [generated] = managers.card.queued_use_cards() else {
+        panic!("expected one generated cast");
+    };
+    assert_eq!(generated.card.skill_id, Some(30970171));
+    assert_eq!(generated.card_index, 2);
+    assert_eq!(player.next_action_index, 3);
+}
+
+#[test]
 fn action_queue_commit_selects_everecho_group_for_its_enabling_buff() {
     init_config();
     for (initial_group, buff, expected_group) in [
