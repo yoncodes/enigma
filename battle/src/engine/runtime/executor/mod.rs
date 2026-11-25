@@ -1122,6 +1122,9 @@ pub(crate) fn execute_rule_op_with(
         RuleOp::Command(BattleCommand::FightProgress(command)) => Ok(RuleOutcome::FightProgress(
             managers.fight_progress.initialize(command)?,
         )),
+        RuleOp::Command(BattleCommand::LegacyProgressInit(command)) => Ok(
+            RuleOutcome::FightProgress(managers.fight_progress.initialize_legacy(command)?),
+        ),
         RuleOp::Command(BattleCommand::FightProgressValue(command)) => Ok(managers
             .fight_progress
             .change_value(command)?

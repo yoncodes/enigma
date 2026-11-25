@@ -2,6 +2,11 @@ use sonettobuf::{Fight, FightProgressInfo};
 
 use crate::engine::skill::rule::CommandOrigin;
 
+mod legacy;
+
+use legacy::LegacyProgress;
+pub use legacy::LegacyProgressInit;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct FightProgressState {
     pub id: i32,
@@ -65,12 +70,21 @@ pub enum FightProgressError {
 
 #[derive(Debug, Clone, Default)]
 pub struct FightProgressManager {
+    legacy: LegacyProgress,
     records: Vec<FightProgressInfo>,
 }
 
 impl FightProgressManager {
     pub fn seed(&mut self, fight: &Fight) {
+        self.legacy = LegacyProgress::seed(fight);
         self.records.clone_from(&fight.progress_list);
+    }
+
+    pub(crate) fn initialize_legacy(
+        &mut self,
+        command: LegacyProgressInit,
+    ) -> Result<FightProgressChange, FightProgressError> {
+        self.legacy.initialize(command)
     }
 
     pub fn initialize(
@@ -183,6 +197,7 @@ impl FightProgressManager {
     }
 
     pub fn sync_fight(&self, fight: &mut Fight) {
+        self.legacy.sync(fight);
         fight.progress_list.clone_from(&self.records);
     }
 }

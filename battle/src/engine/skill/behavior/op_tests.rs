@@ -41,6 +41,15 @@ fn exact_definition_owns_its_destination_op_emitter() {
 }
 
 #[test]
+fn legacy_progress_initializer_requires_three_raw_arguments() {
+    let mut behavior = ParsedBehavior::new(60106, "ProgressInit", vec![0, 100, 2]);
+    assert!(is_supported(&behavior));
+
+    behavior.raw_arity = 4;
+    assert!(!is_supported(&behavior));
+}
+
+#[test]
 fn progress_init_new_emits_the_exact_progress_definition() {
     let managers = BattleManagers::default();
     let pool = TargetPool::default();

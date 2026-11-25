@@ -2,6 +2,50 @@ use super::*;
 use crate::engine::skill::rule::{DefinitionKey, RuleDomain};
 
 #[test]
+fn legacy_initialization_owns_scalar_progress_and_keeps_indexed_records() {
+    let record = FightProgressInfo {
+        id: Some(8),
+        max: Some(50),
+        value: Some(20),
+        ..Default::default()
+    };
+    let mut fight = Fight {
+        progress: Some(0),
+        progress_max: Some(0),
+        progress_list: vec![record],
+        ..Default::default()
+    };
+    let mut manager = FightProgressManager::default();
+    manager.seed(&fight);
+    let change = manager
+        .initialize_legacy(LegacyProgressInit {
+            origin: CommandOrigin {
+                domain: RuleDomain::Behavior,
+                key: DefinitionKey::new(60106, "ProgressInit"),
+            },
+            initial: 10,
+            max: 90,
+            show_id: 2,
+            skill_id: 100,
+        })
+        .unwrap();
+
+    assert_eq!(
+        change.state,
+        FightProgressState {
+            id: 0,
+            value: 10,
+            max: 90,
+            show_id: 2,
+            skill_id: 100,
+        }
+    );
+    manager.sync_fight(&mut fight);
+    assert_eq!((fight.progress, fight.progress_max), (Some(10), Some(90)));
+    assert_eq!(fight.progress_list, vec![record]);
+}
+
+#[test]
 fn initialization_owns_the_complete_progress_record() {
     let origin = CommandOrigin {
         domain: RuleDomain::Behavior,

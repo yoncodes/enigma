@@ -179,6 +179,7 @@ pub enum BehaviorKind {
     AddMaxRound,
     AddIndicator,
     DelIndicator,
+    ProgressInit,
     ProgressInitNew,
     ProgressChangeNew,
     ChangeScene,

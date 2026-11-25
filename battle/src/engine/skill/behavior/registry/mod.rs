@@ -830,6 +830,7 @@ behavior_definitions! {
     [60249] "AddMaxRound" => super::general::AddMaxRoundHandler, AddMaxRound, Immediate, destination;
     [60016] "AddIndicator" => super::general::AddIndicatorHandler, AddIndicator, Immediate, destination;
     [60017] "DelIndicator" => super::general::DelIndicatorHandler, DelIndicator, Immediate, destination;
+    [60106] "ProgressInit" => super::legacy_progress::InitializeHandler, ProgressInit, Immediate, destination;
     [100015] "ProgressInitNew" => super::fight_progress::InitializeHandler, ProgressInitNew, Immediate, destination;
     [100016] "ProgressChangeNew" => super::fight_progress::ChangeHandler, ProgressChangeNew, Immediate, destination;
     [60268] "ChangeScene" => super::scene::Handler, ChangeScene, Immediate, destination;

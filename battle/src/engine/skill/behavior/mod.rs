@@ -27,6 +27,7 @@ pub mod hedone_card;
 pub mod hedone_device_power;
 pub mod injury_bank;
 pub mod kill;
+mod legacy_progress;
 pub mod magic_circle;
 pub mod monster_change;
 pub mod nuo_di_ka;
