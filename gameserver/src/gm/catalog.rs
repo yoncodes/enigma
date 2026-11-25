@@ -137,8 +137,10 @@ pub(super) struct HeroUpgradeEntry {
     pub(super) ranks: Vec<HeroUpgradeRank>,
     pub(super) destiny_rank: i32,
     pub(super) destiny_level: i32,
+    pub(super) destiny_stone: i32,
     pub(super) max_destiny_rank: i32,
     pub(super) destiny_stones: Vec<HeroUpgradeDestinyStone>,
+    pub(super) destiny_stone_options: Vec<HeroUpgradeDestinyStone>,
 }
 
 #[derive(Debug, Serialize)]
@@ -149,7 +151,7 @@ pub(super) struct HeroUpgradeRank {
     pub(super) max_level: i32,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 pub(super) struct HeroUpgradeDestinyStone {
     pub(super) id: i32,
     name: String,
@@ -228,25 +230,28 @@ pub(super) async fn build_hero_upgrade_catalog(
         } else {
             &character.name_eng
         };
-        let destiny_stones = if crate::logic::hero::destiny_available(
-            hero_id,
-            hero.record.rank,
-            hero.record.level,
-        ) {
-            crate::logic::hero::destiny_stones(hero_id)
-                .into_iter()
-                .filter_map(|stone_id| {
-                    let stone = tables.character_destiny_stone_cost(stone_id)?;
-                    Some(HeroUpgradeDestinyStone {
-                        id: stone_id,
-                        name: resolve_name(tables, &stone.name),
-                        unlocked: hero.destiny_stone_unlocks.contains(&stone_id),
-                    })
-                })
-                .collect()
-        } else {
-            Vec::new()
-        };
+        let destiny_available =
+            crate::logic::hero::destiny_available(hero_id, hero.record.rank, hero.record.level);
+        let mut destiny_stones = Vec::new();
+        let mut destiny_stone_options = Vec::new();
+        for stone_id in crate::logic::hero::destiny_stones(hero_id)
+            .into_iter()
+            .filter(|&stone_id| stone_id > 0)
+        {
+            let cost = tables.character_destiny_stone_cost(stone_id);
+            let stone = HeroUpgradeDestinyStone {
+                id: stone_id,
+                name: cost.map_or_else(
+                    || "Destiny Stone".to_owned(),
+                    |stone| resolve_name(tables, &stone.name),
+                ),
+                unlocked: hero.destiny_stone_unlocks.contains(&stone_id),
+            };
+            if destiny_available && cost.is_some() {
+                destiny_stones.push(stone.clone());
+            }
+            destiny_stone_options.push(stone);
+        }
         let max_destiny_rank = tables
             .character_destiny(hero_id)
             .and_then(|destiny| {
@@ -270,8 +275,10 @@ pub(super) async fn build_hero_upgrade_catalog(
             ranks,
             destiny_rank: hero.record.destiny_rank,
             destiny_level: hero.record.destiny_level,
+            destiny_stone: hero.record.destiny_stone,
             max_destiny_rank,
             destiny_stones,
+            destiny_stone_options,
         });
     }
     heroes.sort_unstable_by(|left, right| left.name.cmp(&right.name).then(left.id.cmp(&right.id)));

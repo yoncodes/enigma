@@ -41,6 +41,7 @@
     .dialog-grid .wide { grid-column: 1 / -1; }
     .current-hero { margin: 0; padding: 10px 12px; color: #aeb6c4; background: #111318; border: 1px solid #393d46; }
     .destiny { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; padding-top: 6px; border-top: 1px solid #393d46; }
+    .destiny > button { align-self: end; }
     .dialog-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 18px; flex-wrap: wrap; }
     [hidden] { display: none !important; }
     pre { white-space: pre-wrap; overflow-wrap: anywhere; background: #1c2028; border: 1px solid #393d46; padding: 16px; min-height: 180px; }
@@ -95,7 +96,7 @@
       <span id="server">server: checking</span>
       <span id="players">players: checking</span>
     </div>
-    <pre id="out">commands: help, status, players, achievement unlock all, background unlock all, bgm unlock all, garment unlock all, guide complete all, hero level &lt;hero id&gt; &lt;level&gt;, hero resonance &lt;hero id&gt; &lt;level&gt;, hero portrait &lt;hero id&gt; &lt;1-5&gt;, hero portrait all, hero upgrade materials &lt;hero id&gt; &lt;1-180&gt; &lt;resonance 1-15&gt; [destiny rank] [destiny stone id], psychube max &lt;uid&gt;, dungeon unlock &lt;stage|chapter&gt; &lt;id&gt;, material &lt;type&gt; &lt;id&gt; &lt;amount&gt;</pre>
+    <pre id="out">commands: help, status, players, achievement unlock all, background unlock all, bgm unlock all, garment unlock all, guide complete all, hero level &lt;hero id&gt; &lt;level&gt;, hero resonance &lt;hero id&gt; &lt;level&gt;, hero destiny &lt;hero id&gt; &lt;stone id or 0&gt;, hero portrait &lt;hero id&gt; &lt;1-5&gt;, hero portrait all, hero upgrade materials &lt;hero id&gt; &lt;1-180&gt; &lt;resonance 1-15&gt; [destiny rank] [destiny stone id], psychube max &lt;uid&gt;, dungeon unlock &lt;stage|chapter&gt; &lt;id&gt;, material &lt;type&gt; &lt;id&gt; &lt;amount&gt;</pre>
     <dialog id="heroUpgradeDialog">
       <div class="dialog-head">
         <h2>Hero editor</h2>
@@ -103,24 +104,32 @@
       </div>
       <div class="dialog-body">
         <div class="dialog-grid">
+          <label class="wide">Search heroes<input id="heroUpgradeSearch" type="search" autofocus placeholder="Name or ID"></label>
           <label class="wide">Owned hero<select id="heroUpgradeHero"></select></label>
-          <p id="heroUpgradeCurrent" class="current-hero wide"></p>
-          <label>Target rank<select id="heroUpgradeRank"></select></label>
-          <label>Target level<select id="heroUpgradeLevel"></select></label>
-          <label>Material target Resonance<select id="heroUpgradeResonance"></select></label>
-          <label>Editable Resonance<select id="heroEditResonance"></select></label>
-          <label>Target Portrait<select id="heroUpgradePortrait"></select></label>
-          <div id="heroUpgradeDestiny" class="destiny wide" hidden>
-            <label>Target Destiny rank<select id="heroUpgradeDestinyRank"></select></label>
-            <label>Destiny stone<select id="heroUpgradeDestinyStone"></select></label>
+          <p id="heroUpgradeCurrent" class="current-hero wide" aria-live="polite"></p>
+          <div id="heroUpgradeFields" class="dialog-grid wide">
+            <label>Target rank<select id="heroUpgradeRank"></select></label>
+            <label>Target level<select id="heroUpgradeLevel"></select></label>
+            <label>Material target Resonance<select id="heroUpgradeResonance"></select></label>
+            <label>Target Portrait<select id="heroUpgradePortrait"></select></label>
+            <div id="heroUpgradeDestiny" class="destiny wide" hidden>
+              <label>Material target Destiny rank<select id="heroUpgradeDestinyRank"></select></label>
+              <label>Destiny Stone materials<select id="heroUpgradeDestinyStone"></select></label>
+            </div>
+            <div class="dialog-actions wide">
+              <button type="button" onclick="grantHeroUpgradeMaterials()">Grant missing materials</button>
+              <button type="button" onclick="setHeroLevel()">Set hero level</button>
+              <button type="button" onclick="setHeroPortrait()">Set Portrait level</button>
+            </div>
+            <div class="destiny wide">
+              <label>Target Resonance<select id="heroEditResonance"></select></label>
+              <button id="applyHeroResonance" type="button" onclick="setHeroResonance()">Set Resonance</button>
+            </div>
+            <div id="heroEditDestiny" class="destiny wide" hidden>
+              <label>Equipped Destiny Stone<select id="heroEditDestinyStone"></select></label>
+              <button id="applyHeroDestiny" type="button" onclick="setHeroDestiny()">Set Destiny Stone</button>
+            </div>
           </div>
-        </div>
-        <div class="dialog-actions">
-          <button type="button" onclick="closeHeroUpgrade()">Cancel</button>
-          <button type="button" onclick="grantHeroUpgradeMaterials()">Grant missing materials</button>
-          <button type="button" onclick="setHeroLevel()">Set hero level</button>
-          <button type="button" onclick="setHeroResonance()">Set Resonance</button>
-          <button type="button" onclick="setHeroPortrait()">Set Portrait level</button>
         </div>
       </div>
     </dialog>
@@ -164,7 +173,7 @@
     let materialTimer = 0;
     const catalog = { types: [], items: [] };
     const dungeonCatalog = { chapters: [], episodes: [] };
-    const heroCatalog = { heroes: [] };
+    const heroCatalog = { heroes: [], playerUid: '' };
     const equipmentCatalog = { equipment: [] };
     const out = document.getElementById('out');
     async function refreshStatus() {
@@ -323,12 +332,12 @@
         const res = await fetch('/api/heroes?' + new URLSearchParams({ token, player_uid: uid }), { cache: 'no-store' });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || `hero list failed: ${res.status}`);
+        if (uid !== document.getElementById('uid').value.trim()) return;
         heroCatalog.heroes = data.heroes || [];
         if (heroCatalog.heroes.length === 0) throw new Error('This player has no owned heroes.');
-        document.getElementById('heroUpgradeHero').innerHTML = heroCatalog.heroes
-          .map(hero => `<option value="${hero.id}">${hero.id} - ${escapeHtml(hero.name)}</option>`)
-          .join('');
-        updateHeroUpgradeTargets();
+        heroCatalog.playerUid = uid;
+        document.getElementById('heroUpgradeSearch').value = localStorage.getItem(heroEditorKey('search')) || '';
+        filterUpgradeHeroes();
         document.getElementById('heroUpgradeDialog').showModal();
       } catch (err) {
         out.textContent = `Unable to load owned heroes: ${err.message}`;
@@ -337,15 +346,35 @@
     function closeHeroUpgrade() {
       document.getElementById('heroUpgradeDialog').close();
     }
+    function heroEditorKey(field) {
+      return `enigmaMuipHeroEditor:${heroCatalog.playerUid}:${field}`;
+    }
+    function filterUpgradeHeroes() {
+      const query = document.getElementById('heroUpgradeSearch').value.trim().toLowerCase();
+      const select = document.getElementById('heroUpgradeHero');
+      const heroes = heroCatalog.heroes.filter(hero =>
+        hero.name.toLowerCase().includes(query) || String(hero.id).includes(query));
+      select.innerHTML = heroes.map(hero =>
+        `<option value="${hero.id}">${hero.id} - ${escapeHtml(hero.name)}</option>`).join('');
+      select.disabled = heroes.length === 0;
+      restoreOption(select, localStorage.getItem(heroEditorKey('hero')));
+      updateHeroUpgradeTargets();
+    }
+    function rememberUpgradeHero() {
+      const hero = selectedUpgradeHero();
+      if (hero) localStorage.setItem(heroEditorKey('hero'), String(hero.id));
+    }
     function selectedUpgradeHero() {
       const heroId = Number(document.getElementById('heroUpgradeHero').value);
       return heroCatalog.heroes.find(hero => hero.id === heroId);
     }
     function updateHeroUpgradeTargets() {
       const hero = selectedUpgradeHero();
+      document.getElementById('heroUpgradeFields').hidden = !hero;
+      document.getElementById('heroUpgradeCurrent').textContent = hero
+        ? `Current: R${hero.rank} Lv${hero.level} · Resonance ${hero.resonance} · Portrait ${hero.portraitLevel}`
+        : 'No matching owned heroes.';
       if (!hero) return;
-      document.getElementById('heroUpgradeCurrent').textContent =
-        `Current: R${hero.rank} Lv${hero.level} · Resonance ${hero.resonance} · Portrait ${hero.portraitLevel}`;
       const ranks = hero.ranks.filter(rank => rank.rank >= hero.rank);
       document.getElementById('heroUpgradeRank').innerHTML = ranks
         .map((rank, index) => `<option value="${rank.rank}"${index === ranks.length - 1 ? ' selected' : ''}>R${rank.rank}</option>`)
@@ -356,7 +385,7 @@
       ).map(level => `<option value="${level}"${level === hero.maxResonance ? ' selected' : ''}>${level}</option>`)
         .join('');
       document.getElementById('heroEditResonance').innerHTML = Array.from(
-        { length: hero.maxEditableResonance - hero.resonance + 1 },
+        { length: (hero.maxEditableResonance ?? hero.resonance) - hero.resonance + 1 },
         (_, index) => hero.resonance + index
       ).map(level => `<option value="${level}"${level === hero.maxEditableResonance ? ' selected' : ''}>${level}</option>`)
         .join('');
@@ -365,20 +394,33 @@
         (_, index) => hero.portraitLevel + index
       ).map(level => `<option value="${level}"${level === 5 ? ' selected' : ''}>Portrait ${level}</option>`)
         .join('');
-      const destiny = document.getElementById('heroUpgradeDestiny');
-      const stones = hero.destinyStones || [];
-      destiny.hidden = stones.length === 0;
+      const materialStones = hero.destinyStones || [];
+      document.getElementById('heroUpgradeDestiny').hidden =
+        materialStones.length === 0 || hero.maxDestinyRank < Math.max(1, hero.destinyRank);
       document.getElementById('heroUpgradeDestinyStone').innerHTML = [
         '<option value="0">Do not include Destiny</option>',
-        ...stones.map(stone => `<option value="${stone.id}">${stone.id} - ${escapeHtml(stone.name)}${stone.unlocked ? ' (unlocked)' : ''}</option>`)
+        ...materialStones.map(stone => `<option value="${stone.id}">${stone.id} - ${escapeHtml(stone.name)}</option>`)
       ].join('');
+      const stones = hero.destinyStoneOptions || [];
+      document.getElementById('heroEditDestiny').hidden = stones.length === 0;
+      const equipped = hero.destinyStone || 0;
+      const stoneSelect = document.getElementById('heroEditDestinyStone');
+      stoneSelect.innerHTML = [
+        '<option value="0">None equipped</option>',
+        ...stones.map(stone => {
+          const locked = !stone.unlocked && stone.id !== equipped;
+          return `<option value="${stone.id}"${locked ? ' disabled' : ''}>${stone.id} - ${escapeHtml(stone.name)}${locked ? ' (locked)' : ''}</option>`;
+        })
+      ].join('');
+      restoreOption(stoneSelect, String(equipped));
       const firstDestinyRank = Math.max(hero.destinyRank, 1);
       document.getElementById('heroUpgradeDestinyRank').innerHTML = Array.from(
         { length: Math.max(0, hero.maxDestinyRank - firstDestinyRank + 1) },
         (_, index) => firstDestinyRank + index
       ).map(rank => `<option value="${rank}"${rank === hero.maxDestinyRank ? ' selected' : ''}>Rank ${rank}</option>`)
         .join('');
-      updateHeroDestinyTarget();
+      updateHeroDestinyMaterials();
+      updateHeroEditActions();
       updateHeroUpgradeLevels();
     }
     function updateHeroUpgradeLevels() {
@@ -402,11 +444,9 @@
       const resonance = Number(document.getElementById('heroUpgradeResonance').value);
       const stoneId = Number(document.getElementById('heroUpgradeDestinyStone').value);
       const destinyRank = Number(document.getElementById('heroUpgradeDestinyRank').value);
-      const destinyArgs = stoneId ? ` ${destinyRank} ${stoneId}` : '';
-      document.getElementById('command').value =
-        `hero upgrade materials ${hero.id} ${rank.levelOffset + level} ${resonance}${destinyArgs}`;
-      closeHeroUpgrade();
-      await run();
+      const includeDestiny = !document.getElementById('heroUpgradeDestiny').hidden && stoneId;
+      const destinyArgs = includeDestiny ? ` ${destinyRank} ${stoneId}` : '';
+      await runHeroEdit(`hero upgrade materials ${hero.id} ${rank.levelOffset + level} ${resonance}${destinyArgs}`);
     }
     async function setHeroLevel() {
       const hero = selectedUpgradeHero();
@@ -414,28 +454,41 @@
       const rank = hero?.ranks.find(entry => entry.rank === rankId);
       if (!hero || !rank) return;
       const level = Number(document.getElementById('heroUpgradeLevel').value);
-      document.getElementById('command').value =
-        `hero level ${hero.id} ${rank.levelOffset + level}`;
-      closeHeroUpgrade();
-      await run();
+      await runHeroEdit(`hero level ${hero.id} ${rank.levelOffset + level}`);
     }
     async function setHeroPortrait() {
       const hero = selectedUpgradeHero();
       if (!hero) return;
       const level = Number(document.getElementById('heroUpgradePortrait').value);
-      document.getElementById('command').value = `hero portrait ${hero.id} ${level}`;
-      closeHeroUpgrade();
-      await run();
+      await runHeroEdit(`hero portrait ${hero.id} ${level}`);
     }
     async function setHeroResonance() {
       const hero = selectedUpgradeHero();
+      if (!hero || document.getElementById('applyHeroResonance').disabled) return;
+      const resonance = Number(document.getElementById('heroEditResonance').value);
+      await runHeroEdit(`hero resonance ${hero.id} ${resonance}`);
+    }
+    async function setHeroDestiny() {
+      const hero = selectedUpgradeHero();
+      if (!hero || document.getElementById('applyHeroDestiny').disabled) return;
+      const stone = Number(document.getElementById('heroEditDestinyStone').value);
+      await runHeroEdit(`hero destiny ${hero.id} ${stone}`);
+    }
+    async function runHeroEdit(command) {
+      rememberUpgradeHero();
+      document.getElementById('command').value = command;
+      closeHeroUpgrade();
+      await run(heroCatalog.playerUid);
+    }
+    function updateHeroEditActions() {
+      const hero = selectedUpgradeHero();
       if (!hero) return;
       const resonance = Number(document.getElementById('heroEditResonance').value);
-      document.getElementById('command').value = `hero resonance ${hero.id} ${resonance}`;
-      closeHeroUpgrade();
-      await run();
+      document.getElementById('applyHeroResonance').disabled = resonance <= hero.resonance;
+      const stone = Number(document.getElementById('heroEditDestinyStone').value);
+      document.getElementById('applyHeroDestiny').disabled = stone === (hero.destinyStone || 0);
     }
-    function updateHeroDestinyTarget() {
+    function updateHeroDestinyMaterials() {
       document.getElementById('heroUpgradeDestinyRank').disabled =
         Number(document.getElementById('heroUpgradeDestinyStone').value) === 0;
     }
@@ -571,14 +624,13 @@
         .replaceAll('>', '&gt;')
         .replaceAll('"', '&quot;');
     }
-    async function run() {
+    async function run(uid = document.getElementById('uid').value.trim()) {
       const token = document.getElementById('token').value;
       localStorage.setItem('enigmaMuipToken', token);
       const params = new URLSearchParams({
         token,
         command: document.getElementById('command').value
       });
-      const uid = document.getElementById('uid').value.trim();
       if (uid) params.set('player_uid', uid);
       const res = await fetch('/muip/gm?' + params);
       out.textContent = JSON.stringify(await res.json(), null, 2);
@@ -604,9 +656,18 @@
     document.getElementById('amount').addEventListener('input', updateCommandPreview);
     document.getElementById('dungeonKind').addEventListener('change', updateDungeonMode);
     document.getElementById('dungeonChapter').addEventListener('change', loadDungeonEpisodes);
-    document.getElementById('heroUpgradeHero').addEventListener('change', updateHeroUpgradeTargets);
+    document.getElementById('heroUpgradeSearch').addEventListener('input', event => {
+      localStorage.setItem(heroEditorKey('search'), event.target.value);
+      filterUpgradeHeroes();
+    });
+    document.getElementById('heroUpgradeHero').addEventListener('change', () => {
+      rememberUpgradeHero();
+      updateHeroUpgradeTargets();
+    });
     document.getElementById('heroUpgradeRank').addEventListener('change', updateHeroUpgradeLevels);
-    document.getElementById('heroUpgradeDestinyStone').addEventListener('change', updateHeroDestinyTarget);
+    document.getElementById('heroUpgradeDestinyStone').addEventListener('change', updateHeroDestinyMaterials);
+    document.getElementById('heroEditDestinyStone').addEventListener('change', updateHeroEditActions);
+    document.getElementById('heroEditResonance').addEventListener('change', updateHeroEditActions);
     document.getElementById('psychubeSelect').addEventListener('change', updatePsychube);
     loadTypes();
     loadDungeons();

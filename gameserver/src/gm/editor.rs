@@ -210,8 +210,22 @@ pub(super) async fn hero(
                 update,
             ))
         }
+        [destiny, hero_id, stone_id] if destiny.eq_ignore_ascii_case("destiny") => {
+            let hero_id = parse_positive(hero_id, "hero id")?;
+            let stone_id = stone_id.parse::<i32>()?;
+            let (_, update) = HeroManager::new(player_id)
+                .destiny_stone(state.db, hero_id, stone_id)
+                .await?;
+            let mut data = GrantData::empty(player_id);
+            data.changed_hero_ids.push(hero_id);
+            send_snapshot_pushes(state, &data).await?;
+            Ok(GmResponse::ok_data(
+                format!("set hero {hero_id} Destiny Stone to {stone_id}"),
+                update,
+            ))
+        }
         _ => anyhow::bail!(
-            "usage: hero level <hero id> <level>, hero resonance <hero id> <level>, hero portrait <hero id> <1-5>, or hero portrait all"
+            "usage: hero level <hero id> <level>, hero resonance <hero id> <level>, hero destiny <hero id> <stone id or 0>, hero portrait <hero id> <1-5>, or hero portrait all"
         ),
     }
 }
