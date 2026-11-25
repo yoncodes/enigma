@@ -167,7 +167,14 @@ fn configured_cloth_skills_drive_universal_and_redeal_card_rules() {
         "captured redeal is not reachable: capture changes preserved team card 1"
     );
     observed.pop();
-    observed.push(ultimate.clone());
+    let mut changed = ultimate.clone();
+    changed.energy = Some(2);
+    observed.push(changed);
+    assert_eq!(
+        runtime.seed_observed_redeal(&observed).unwrap_err(),
+        "captured redeal is not reachable: capture changes preserved team card 1"
+    );
+    observed.last_mut().unwrap().energy = Some(0);
     assert_eq!(
         runtime.seed_observed_redeal(&observed[..2]).unwrap_err(),
         "captured redeal is not reachable: capture has 2 visible cards, replay has 2 ordinary and 1 team cards"

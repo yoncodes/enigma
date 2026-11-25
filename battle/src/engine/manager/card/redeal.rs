@@ -25,7 +25,7 @@ impl CardManager {
             .team_cards()
             .iter()
             .zip(team_cards)
-            .position(|(current, observed)| !same_card(current, observed))
+            .position(|(current, observed)| !same_team_card(current, observed))
         {
             return Err(format!("capture changes preserved team card {}", index + 1));
         }
@@ -90,6 +90,21 @@ impl CardManager {
 
 fn same_card(a: &CardInfo, b: &CardInfo) -> bool {
     a.uid == b.uid && a.skill_id == b.skill_id
+}
+
+fn same_team_card(a: &CardInfo, b: &CardInfo) -> bool {
+    fn normalized(card: &CardInfo) -> CardInfo {
+        let mut card = card.clone();
+        card.temp_card.get_or_insert(false);
+        card.card_type.get_or_insert(0);
+        card.status.get_or_insert(0);
+        card.target_uid.get_or_insert(0);
+        card.energy.get_or_insert(0);
+        card.area_red_or_blue.get_or_insert(0);
+        card.heat_id.get_or_insert(0);
+        card
+    }
+    normalized(a) == normalized(b)
 }
 
 fn reproduces(
