@@ -260,9 +260,13 @@ pub(in crate::engine::runtime::drain) fn dispatch_reactions(
     if lane.is_none()
         && let BattleEvent::SkillAction(action) = event
     {
+        let owner_cast_slot = managers
+            .conduit
+            .incantation_cast_slot(action)
+            .unwrap_or(action.skill_slot);
         for settlement in managers
             .buff
-            .plan_action_settlements(action, &managers.conduit)
+            .plan_action_settlements(action, owner_cast_slot)
         {
             let in_action = settlement.in_action;
             let queue = if settlement.after_hit_reactions {

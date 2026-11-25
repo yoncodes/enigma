@@ -1,5 +1,8 @@
 use super::*;
-use crate::engine::skill::action::{SkillActionEvent, SkillPhase};
+use crate::engine::{
+    manager::conduit::ConduitManager,
+    skill::action::{SkillActionEvent, SkillExecutionMode, SkillPhase},
+};
 use sonettobuf::{BuffInfo, Fight, FightEntityInfo, FightTeam};
 
 #[test]
@@ -25,11 +28,14 @@ fn permanent_action_marker_does_not_expire() {
     let mut manager = BuffManager::default();
     manager.seed(&fight);
 
-    assert!(
-        manager
-            .plan_action_settlements(&action(), &ConduitManager::default())
-            .is_empty()
-    );
+    assert!(ordinary_settlements(&manager, &action()).is_empty());
+}
+
+fn ordinary_settlements(
+    manager: &BuffManager,
+    action: &SkillActionEvent,
+) -> Vec<BuffActionSettlement> {
+    manager.plan_action_settlements(action, action.skill_slot)
 }
 
 fn action() -> SkillActionEvent {
@@ -90,8 +96,7 @@ fn counted_action_settlement_consumes_one_charge() {
         manager.seed(&fight);
         let hp = HpManager::default();
         for &remaining in remaining_counts {
-            let settlements =
-                manager.plan_action_settlements(&action(), &ConduitManager::default());
+            let settlements = ordinary_settlements(&manager, &action());
             assert_eq!(settlements.len(), 1);
             let result = manager
                 .execute(&hp, settlements[0].command.clone())
@@ -129,18 +134,14 @@ fn next_incantation_might_expires_on_a_cast_without_damage() {
     };
     let mut manager = BuffManager::default();
     manager.seed(&fight);
-    assert!(
-        manager
-            .plan_action_settlements(&action(), &ConduitManager::default())
-            .is_empty()
-    );
+    assert!(ordinary_settlements(&manager, &action()).is_empty());
 
     let cast = SkillActionEvent {
         skill_slot: 2,
         is_attack: false,
         ..action()
     };
-    let settlements = manager.plan_action_settlements(&cast, &ConduitManager::default());
+    let settlements = ordinary_settlements(&manager, &cast);
     let [settlement] = settlements.as_slice() else {
         panic!("expected one cast settlement");
     };
@@ -190,7 +191,10 @@ fn conduit_incantations_spend_the_next_incantation_might() {
         };
         let mut manager = BuffManager::default();
         manager.seed(&fight);
-        let settlements = manager.plan_action_settlements(&cast, &conduit);
+        let cast_slot = conduit.incantation_cast_slot(&cast);
+        assert_eq!(cast_slot.is_some(), consumes);
+        let cast_slot = cast_slot.unwrap_or(cast.skill_slot);
+        let settlements = manager.plan_action_settlements(&cast, cast_slot);
         if consumes {
             let [settlement] = settlements.as_slice() else {
                 panic!("expected one cast settlement for {skill_id}");
@@ -201,7 +205,7 @@ fn conduit_incantations_spend_the_next_incantation_might() {
                 .execute(&HpManager::default(), settlement.command.clone())
                 .unwrap();
             assert!(manager.snapshot(10, 20).is_none());
-            assert!(manager.plan_action_settlements(&cast, &conduit).is_empty());
+            assert!(manager.plan_action_settlements(&cast, cast_slot).is_empty());
         } else {
             assert!(settlements.is_empty());
             assert!(manager.snapshot(10, 20).is_some());
@@ -239,7 +243,7 @@ fn attack_drops_only_the_oldest_include_fourteen_copy() {
     manager.seed(&fight);
     let hp = HpManager::default();
 
-    let settlements = manager.plan_action_settlements(&action(), &ConduitManager::default());
+    let settlements = ordinary_settlements(&manager, &action());
     assert_eq!(settlements.len(), 1);
     assert_eq!(settlements[0].buff_uid, 1017);
     assert!(settlements[0].in_action);
@@ -282,7 +286,7 @@ fn attack_spends_a_featureless_attacked_marker_in_its_own_frame() {
     manager.seed(&fight);
     let hp = HpManager::default();
 
-    let settlements = manager.plan_action_settlements(&action(), &ConduitManager::default());
+    let settlements = ordinary_settlements(&manager, &action());
     assert_eq!(settlements.len(), 1);
     assert!(!settlements[0].in_action);
     let removed = manager
@@ -293,11 +297,7 @@ fn attack_spends_a_featureless_attacked_marker_in_its_own_frame() {
 
     assert_eq!(removed[0].buff.count, Some(0));
     assert!(!manager.has_buff_id(-1, 303020010));
-    assert!(
-        manager
-            .plan_action_settlements(&action(), &ConduitManager::default())
-            .is_empty()
-    );
+    assert!(ordinary_settlements(&manager, &action()).is_empty());
 }
 
 #[test]
@@ -324,11 +324,7 @@ fn attack_leaves_featureless_layer_markers_to_their_own_rule() {
     let mut manager = BuffManager::default();
     manager.seed(&fight);
 
-    assert!(
-        manager
-            .plan_action_settlements(&action(), &ConduitManager::default())
-            .is_empty()
-    );
+    assert!(ordinary_settlements(&manager, &action()).is_empty());
 }
 
 #[test]
@@ -360,8 +356,7 @@ fn attack_settles_copies_in_the_attack_target_order() {
     mass.attacked_target_uids = vec![-1, -2];
 
     assert_eq!(
-        manager
-            .plan_action_settlements(&mass, &ConduitManager::default())
+        ordinary_settlements(&manager, &mass)
             .iter()
             .map(|settlement| settlement.owner_uid)
             .collect::<Vec<_>>(),

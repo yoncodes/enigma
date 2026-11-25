@@ -1,6 +1,11 @@
 use std::collections::{BTreeMap, HashSet};
 
-use crate::engine::skill::rule::CommandOrigin;
+use crate::engine::skill::{
+    action::{SkillActionEvent, SkillExecutionMode},
+    rule::CommandOrigin,
+};
+
+const BASIC_INCANTATION_CAST_SLOT: i32 = 5;
 
 mod execute;
 mod payment;
@@ -474,17 +479,19 @@ impl ConduitManager {
         self.configured_skill(source_uid, skill_id).is_some()
     }
 
-    pub(crate) fn is_basic_skill(&self, source_uid: i64, skill_id: i32) -> bool {
-        self.devices()
-            .find(|device| device.uid == source_uid)
-            .is_some_and(|device| {
-                device
-                    .skill_groups
-                    .iter()
-                    .take(ConduitSkillGroup::Unique as usize)
-                    .flatten()
-                    .any(|skill| skill.skill_id == skill_id)
-            })
+    pub(crate) fn incantation_cast_slot(&self, action: &SkillActionEvent) -> Option<i32> {
+        if action.mode != SkillExecutionMode::Device {
+            return None;
+        }
+        let device = self
+            .devices()
+            .find(|device| device.uid == action.source_uid)?;
+        [ConduitSkillGroup::Primary, ConduitSkillGroup::Secondary]
+            .into_iter()
+            .filter_map(|group| device.skill_groups.get(group as usize))
+            .flatten()
+            .any(|skill| skill.skill_id == action.skill_id)
+            .then_some(BASIC_INCANTATION_CAST_SLOT)
     }
 
     pub(crate) fn is_unique_skill(&self, source_uid: i64, skill_id: i32) -> bool {
