@@ -356,3 +356,75 @@ fn configured_buff_acts_adjust_the_normal_hand_limit() {
         );
     }
 }
+
+#[test]
+fn refill_capacity_distinguishes_a_defeated_fourth_ally_from_a_three_hero_lineup() {
+    crate::test_support::init_config();
+    let mut fight = Fight {
+        version: Some(7),
+        attacker: Some(FightTeam {
+            entitys: (1..=4)
+                .map(|uid| FightEntityInfo {
+                    uid: Some(uid),
+                    position: Some(uid as i32),
+                    current_hp: Some(100),
+                    ..Default::default()
+                })
+                .collect(),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let mut managers = BattleManagers::seeded(&fight);
+    let pool = TargetPool::from_fight(&fight);
+    let limit = CardMechanic.refill_limit(8, &managers, &pool);
+    let set_hp = |managers: &mut BattleManagers, hp| {
+        managers.hp.register(&FightEntityInfo {
+            uid: Some(4),
+            current_hp: Some(hp),
+            ..Default::default()
+        });
+    };
+
+    assert_eq!(limit.current(&fight, &managers), 8);
+    set_hp(&mut managers, 0);
+    assert_eq!(limit.current(&fight, &managers), 6);
+    set_hp(&mut managers, 100);
+    assert_eq!(limit.current(&fight, &managers), 8);
+
+    let mut with_reserve = fight.clone();
+    with_reserve.attacker.as_mut().unwrap().sub_entitys = vec![FightEntityInfo {
+        uid: Some(5),
+        position: Some(-1),
+        current_hp: Some(100),
+        ..Default::default()
+    }];
+    let mut reserve_managers = BattleManagers::seeded(&with_reserve);
+    set_hp(&mut reserve_managers, 0);
+    assert_eq!(limit.current(&with_reserve, &reserve_managers), 8);
+    assert_eq!(
+        reserve_managers
+            .entity
+            .promote_reserves(&reserve_managers.hp)
+            .len(),
+        1
+    );
+    assert_eq!(limit.current(&with_reserve, &reserve_managers), 8);
+
+    set_hp(&mut managers, 0);
+    managers.card.reset(vec![CardInfo::default(); 8], 0);
+    managers.card.preserve_refill_floor();
+    assert_eq!(limit.current(&fight, &managers), 8);
+
+    fight.version = Some(6);
+    let mut legacy = BattleManagers::seeded(&fight);
+    set_hp(&mut legacy, 0);
+    assert_eq!(limit.current(&fight, &legacy), 8);
+
+    fight.version = Some(7);
+    fight.attacker.as_mut().unwrap().entitys.pop();
+    let managers = BattleManagers::seeded(&fight);
+    let pool = TargetPool::from_fight(&fight);
+    let limit = CardMechanic.refill_limit(7, &managers, &pool);
+    assert_eq!(limit.current(&fight, &managers), 7);
+}

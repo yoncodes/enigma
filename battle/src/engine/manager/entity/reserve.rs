@@ -130,6 +130,12 @@ impl EntityManager {
             .any(|(defeated_uid, _, _)| *defeated_uid == uid)
     }
 
+    pub(crate) fn team_has_pending_promotion(&self, team: i32, hp: &HpManager) -> bool {
+        self.pending_reserve_promotions(hp)
+            .into_iter()
+            .any(|(_, _, side)| side == team)
+    }
+
     fn pending_reserve_promotions(&self, hp: &HpManager) -> Vec<(i64, i64, i32)> {
         [1, 2]
             .into_iter()

@@ -253,7 +253,7 @@ impl BattleRuntime {
             card_energy_finalized,
         )
         .map_err(|error| format!("{error:?}"))?;
-        let hand_size = crate::engine::mechanic::card::CardMechanic.normal_hand_limit(
+        let refill_limit = crate::engine::mechanic::card::CardMechanic.refill_limit(
             crate::engine::manager::card::start::hand_size(&self.fight),
             &self.managers,
             &pool,
@@ -345,6 +345,7 @@ impl BattleRuntime {
         let wave_defeated_after_attacker_settlement =
             crate::engine::round::outcome::defenders_defeated(&pool, &self.managers);
         let runs_phase_two = !ended_after_attacker_settlement;
+        let hand_size = refill_limit.current(&self.fight, &self.managers);
         let post_action_hand_size = refill_slots.target(&self.managers, &pool, hand_size);
         let needs_refill = crate::engine::mechanic::card::CardMechanic
             .refill_hand_len(&self.managers, &pool)
@@ -604,6 +605,7 @@ impl BattleRuntime {
                 self.round_state.power =
                     power.recover_round(self.round_state.power, self.round_state.cur_round);
             }
+            let next_hand_size = refill_limit.current(&self.fight, &self.managers);
             let (round_start, next_round, hand_snapshot, dealt_cards) =
                 schedule::run_round_start_after_ai_split(
                     &mut self.managers,
@@ -612,7 +614,7 @@ impl BattleRuntime {
                     &mut self.determinism,
                     context,
                     &wave_entering_uids,
-                    hand_size,
+                    next_hand_size,
                 )
                 .map_err(|error| format!("{error:?}"))?;
             if !wave_entering_uids.is_empty() {

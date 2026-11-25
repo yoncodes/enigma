@@ -1,4 +1,4 @@
-use sonettobuf::CardInfo;
+use sonettobuf::{CardInfo, Fight};
 
 use crate::engine::{
     manager::{
@@ -12,6 +12,44 @@ use crate::engine::{
 
 #[derive(Debug, Clone, Default)]
 pub struct CardMechanic;
+
+pub(crate) struct RefillLimit {
+    base: usize,
+    buff_delta: i32,
+    skill_delta: i32,
+}
+
+impl RefillLimit {
+    fn adjusted(&self, base: usize, managers: &BattleManagers) -> usize {
+        usize::try_from(
+            (base as i32)
+                .saturating_add(self.buff_delta)
+                .saturating_add(self.skill_delta)
+                .max(0),
+        )
+        .unwrap_or(usize::MAX)
+        .max(managers.card.refill_floor())
+    }
+
+    pub(crate) fn current(&self, fight: &Fight, managers: &BattleManagers) -> usize {
+        use crate::engine::fight::versions::{RoundStartSetupLayout, round_start_setup_layout};
+
+        let mut base = self.base;
+        if round_start_setup_layout(managers.fight_version())
+            == Some(RoundStartSetupLayout::Version7)
+            && fight
+                .attacker
+                .as_ref()
+                .is_some_and(|team| team.entitys.len() == 4)
+        {
+            let active = managers.entity.alive_combatants(1, &managers.hp).len();
+            if active == 3 && !managers.entity.team_has_pending_promotion(1, &managers.hp) {
+                base = active * 2;
+            }
+        }
+        self.adjusted(base, managers)
+    }
+}
 
 impl CardMechanic {
     pub(crate) fn uses_action_point(
@@ -48,7 +86,17 @@ impl CardMechanic {
         managers: &BattleManagers,
         pool: &TargetPool,
     ) -> usize {
-        let modifier = pool
+        self.refill_limit(base, managers, pool)
+            .adjusted(base, managers)
+    }
+
+    pub(crate) fn refill_limit(
+        &self,
+        base: usize,
+        managers: &BattleManagers,
+        pool: &TargetPool,
+    ) -> RefillLimit {
+        let buff_delta = pool
             .attacker_main
             .iter()
             .filter(|entity| managers.hp.current(entity.uid) > 0)
@@ -58,14 +106,11 @@ impl CardMechanic {
                     .buff_act_scalar(entity.uid, BuffActKind::CardLimitAdd)
             })
             .fold(0_i32, i32::saturating_add);
-        usize::try_from(
-            (base as i32)
-                .saturating_add(modifier)
-                .saturating_add(managers.card.hand_limit_bonus())
-                .max(0),
-        )
-        .unwrap_or(usize::MAX)
-        .max(managers.card.refill_floor())
+        RefillLimit {
+            base,
+            buff_delta,
+            skill_delta: managers.card.hand_limit_bonus(),
+        }
     }
 
     pub fn ultimate_cost_offset(&self, managers: &BattleManagers, owner_uid: i64) -> i32 {
