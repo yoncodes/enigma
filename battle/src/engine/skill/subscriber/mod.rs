@@ -508,7 +508,12 @@ fn push_skill_subscribers(
             if let Some(definition) =
                 condition_registry::find_key(key.timing_policy.opcode, key.timing_policy.type_name)
             {
-                key = key.with_timing(definition.reaction_timing.resolve(passive_source));
+                let slot = slot_index.and_then(|index| catalog.get(skill_id)?.slots.get(index));
+                key = key.with_timing(
+                    definition
+                        .reaction_timing
+                        .resolve_slot(passive_source, slot),
+                );
             }
             let subscriber = SkillSubscriber {
                 owner_uid,

@@ -19,6 +19,8 @@ use crate::engine::{
     },
 };
 
+mod channel_timing;
+
 pub type Parser = fn(i32, &str, &[String]) -> Option<ParsedConditionKind>;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -191,6 +193,7 @@ pub enum ReactionMultiplicity {
 pub enum ReactionTimingPolicy {
     Fixed(ReactionTiming),
     AfterFieldLevelSkill,
+    ChannelPsychube,
     ByPassiveSource {
         psychube: ReactionTiming,
         battle_rule: ReactionTiming,
@@ -203,6 +206,7 @@ impl ReactionTimingPolicy {
         match self {
             Self::Fixed(timing) => timing,
             Self::AfterFieldLevelSkill => ReactionTiming::Immediate,
+            Self::ChannelPsychube => ReactionTiming::AfterSkill,
             Self::ByPassiveSource {
                 psychube,
                 battle_rule,
@@ -212,6 +216,17 @@ impl ReactionTimingPolicy {
                 PassiveSourceKind::BattleRule => battle_rule,
                 _ => fallback,
             },
+        }
+    }
+
+    pub(crate) fn resolve_slot(
+        self,
+        source: PassiveSourceKind,
+        slot: Option<&SkillEffectSlot>,
+    ) -> ReactionTiming {
+        match self {
+            Self::ChannelPsychube => channel_timing::resolve(source, slot),
+            _ => self.resolve(source),
         }
     }
 }
@@ -453,6 +468,11 @@ const fn reads_psychube_target_at_action_start(
 
 pub const fn after_skill(mut metadata: ConditionMetadata) -> ConditionMetadata {
     metadata.reaction_timing = ReactionTimingPolicy::Fixed(ReactionTiming::AfterSkill);
+    metadata
+}
+
+const fn channel_psychube(mut metadata: ConditionMetadata) -> ConditionMetadata {
+    metadata.reaction_timing = ReactionTimingPolicy::ChannelPsychube;
     metadata
 }
 
@@ -1113,7 +1133,7 @@ condition_definitions! {
     [552203] "Random" => parse::random, predicate(&[]);
     [552210] "Random" => parse::random, predicate(&[]);
     [34201] "UseSkillEffectTag" => active_skill::effect_tags, event_trigger(EventKind::SkillAction, Some(SkillPhase::Immediate));
-    [34210] "UseSkillEffectTag" => active_skill::effect_tag, reaction_targets_causing_frame(after_skill(before_publish(event_trigger(EventKind::SkillAction, Some(SkillPhase::HitPassives)))));
+    [34210] "UseSkillEffectTag" => active_skill::effect_tag, reaction_targets_causing_frame(channel_psychube(before_publish(event_trigger(EventKind::SkillAction, Some(SkillPhase::HitPassives)))));
     [6210] "UseSkillStar" => active_skill::incantation_rank, reaction_targets_causing_frame(after_skill(before_publish(event_trigger(EventKind::SkillAction, Some(SkillPhase::HitPassives)))));
     [500203] "SkillType" => active_skill::skill_type, predicate(&[EventKind::SkillAction]);
     [500210] "SkillType" => active_skill::skill_type, predicate(&[EventKind::SkillAction]);
