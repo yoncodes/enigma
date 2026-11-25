@@ -131,11 +131,15 @@ pub(crate) fn finish_if_battle_ended(
 }
 
 pub(crate) fn round_limit_reached(fight: &Fight, managers: &BattleManagers) -> bool {
+    round_limit_reached_at(fight.cur_round.unwrap_or_default(), managers)
+}
+
+pub(crate) fn round_limit_reached_at(round: i32, managers: &BattleManagers) -> bool {
     // Setup starts at 1, and each played round has already advanced the counter.
     managers
         .battle_rule
         .max_round()
-        .is_some_and(|max_round| max_round > 0 && fight.cur_round.unwrap_or_default() > max_round)
+        .is_some_and(|max_round| max_round > 0 && round > max_round)
 }
 
 fn configured_win_target_defeated(battle_id: i32, managers: &BattleManagers) -> Option<bool> {

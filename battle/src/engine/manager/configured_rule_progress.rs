@@ -16,6 +16,7 @@ pub(super) struct ConfiguredRuleProgressManager {
 
 impl ConfiguredRuleProgressManager {
     pub(super) fn begin_round_start(&mut self) {
+        self.clear_completed_round_start_casts();
         self.round_start_casts.clear();
         self.in_round_start = true;
         self.in_cloth_sequence = false;

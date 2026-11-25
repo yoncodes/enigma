@@ -507,11 +507,34 @@ fn enemy_phase_reaction_clear_advances_the_configured_wave() {
 }
 
 #[test]
-fn round_start_clear_advances_the_configured_wave() {
+fn round_start_clear_prepares_the_new_wave_before_dealing_once() {
+    use crate::engine::manager::buff::{BuffCommand, BuffGrant};
+    use crate::engine::skill::rule::{CommandOrigin, DefinitionKey, RuleDomain};
+    use sonettobuf::effect_type_enum::EffectType;
+
     let (mut runtime, _) = wave_clear_runtime(Vec::new());
     runtime.managers.hp.set_max(10, 1_000_000);
     runtime.managers.hp.heal(10, 999_900, 0);
-    install_round_start_enemy_kill(&mut runtime, 10, 9_900_090);
+    let skill_id = 9_900_090;
+    install_round_start_enemy_kill(&mut runtime, 10, skill_id);
+    let mut kill = runtime.catalog.get(skill_id).unwrap().clone();
+    kill.slots[0].limit = 1;
+    runtime.catalog.insert(kill);
+    runtime
+        .managers
+        .execute_buff(BuffCommand::Grant(BuffGrant {
+            origin: CommandOrigin {
+                domain: RuleDomain::Behavior,
+                key: DefinitionKey::new(1, "AddBuff"),
+            },
+            source_uid: 10,
+            target_uid: 10,
+            buff_id: 30880150,
+            amount: None,
+            occurrences: 1,
+            child_uid_reservations: 0,
+        }))
+        .unwrap();
 
     let round = runtime
         .build_begin_round_from_schedule(&BeginRoundRequest::default())
@@ -532,10 +555,80 @@ fn round_start_clear_advances_the_configured_wave() {
             .collect::<Vec<_>>(),
         vec![-3, -4]
     );
-    assert!(round.fight_step.iter().any(|step| {
-        step.act_effect.iter().any(|effect| {
-            effect.effect_type
-                == Some(sonettobuf::effect_type_enum::EffectType::Newchangewave as i32)
+    assert_eq!(round.cur_round, Some(3));
+    assert_eq!(runtime.fight.cur_round, Some(3));
+    assert_eq!(runtime.round_state.cur_round, 3);
+    assert_eq!(
+        runtime
+            .managers
+            .buff
+            .active_for(10)
+            .find(|buff| buff.buff_id == Some(30880150))
+            .and_then(|buff| buff.duration),
+        Some(1)
+    );
+
+    let round_and_wave = round
+        .fight_step
+        .iter()
+        .flat_map(|step| &step.act_effect)
+        .filter_map(|effect| match effect.effect_type {
+            Some(kind) if kind == EffectType::Changeround as i32 => {
+                Some((EffectType::Changeround, effect.effect_num))
+            }
+            Some(kind) if kind == EffectType::Newchangewave as i32 => Some((
+                EffectType::Newchangewave,
+                effect.fight.as_ref().and_then(|fight| fight.cur_round),
+            )),
+            _ => None,
         })
-    }));
+        .collect::<Vec<_>>();
+    assert_eq!(
+        round_and_wave,
+        [
+            (EffectType::Changeround, Some(2)),
+            (EffectType::Newchangewave, Some(3)),
+            (EffectType::Changeround, Some(3)),
+        ]
+    );
+    assert_eq!(
+        round
+            .next_round_begin_step
+            .iter()
+            .flat_map(|step| &step.act_effect)
+            .filter(|effect| effect.effect_type == Some(EffectType::Dealcard1 as i32))
+            .count(),
+        1
+    );
+}
+
+#[test]
+fn round_start_wave_clear_at_the_round_cap_does_not_prepare_or_deal_again() {
+    use crate::engine::round::outcome::BattleOutcome;
+    use sonettobuf::effect_type_enum::EffectType;
+
+    let (mut runtime, _) = wave_clear_runtime(Vec::new());
+    let limit = runtime.managers.battle_rule.max_round().unwrap();
+    runtime.fight.cur_round = Some(limit - 1);
+    runtime.round_state.cur_round = limit - 1;
+    runtime.managers.hp.set_max(10, 1_000_000);
+    runtime.managers.hp.heal(10, 999_900, 0);
+    // Without the round cap this reaction could also kill the replacement wave.
+    install_round_start_enemy_kill(&mut runtime, 10, 9_900_090);
+
+    let round = runtime
+        .build_begin_round_from_schedule(&BeginRoundRequest::default())
+        .unwrap();
+
+    assert_eq!(runtime.fight.cur_wave, Some(1));
+    assert_eq!(round.act_point, Some(0));
+    assert_eq!(round.is_finish, Some(true));
+    assert_eq!(runtime.outcome(), BattleOutcome::OutOfRounds);
+    assert!(
+        !round
+            .next_round_begin_step
+            .iter()
+            .flat_map(|step| &step.act_effect)
+            .any(|effect| effect.effect_type == Some(EffectType::Dealcard1 as i32))
+    );
 }

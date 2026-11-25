@@ -190,6 +190,12 @@ pub fn run_before_ai_round_start(
     Ok(result)
 }
 
+pub(crate) struct RoundStart {
+    pub(crate) steps: DrainResult,
+    owner_uids: Vec<i64>,
+}
+
+#[cfg(test)]
 pub fn run_round_start_after_ai_split(
     managers: &mut BattleManagers,
     pool: &TargetPool,
@@ -207,6 +213,26 @@ pub fn run_round_start_after_ai_split(
     ),
     DrainError,
 > {
+    let started = settle_round_start(managers, pool, catalog, determinism, context, entering_uids)?;
+    deal_round_start(
+        managers,
+        pool,
+        catalog,
+        determinism,
+        context,
+        started,
+        hand_size,
+    )
+}
+
+pub(crate) fn settle_round_start(
+    managers: &mut BattleManagers,
+    pool: &TargetPool,
+    catalog: &SkillEffectCatalog,
+    determinism: &mut RoundDeterminism,
+    context: TargetContext,
+    entering_uids: &[i64],
+) -> Result<RoundStart, DrainError> {
     // These mechanics are the first actions of the next round, even though they are projected in
     // the preceding BeginRound reply. Their reactions use the next round's fresh quotas.
     managers.begin_reaction_round();
@@ -473,6 +499,33 @@ pub fn run_round_start_after_ai_split(
         append(&mut fight_steps, late_setup);
         append(&mut fight_steps, card_cleanup);
     }
+    Ok(RoundStart {
+        steps: fight_steps,
+        owner_uids,
+    })
+}
+
+pub(crate) fn deal_round_start(
+    managers: &mut BattleManagers,
+    pool: &TargetPool,
+    catalog: &SkillEffectCatalog,
+    determinism: &mut RoundDeterminism,
+    context: TargetContext,
+    started: RoundStart,
+    hand_size: usize,
+) -> Result<
+    (
+        DrainResult,
+        DrainResult,
+        Vec<sonettobuf::CardInfo>,
+        Vec<sonettobuf::CardInfo>,
+    ),
+    DrainError,
+> {
+    let RoundStart {
+        steps: mut fight_steps,
+        owner_uids,
+    } = started;
     let hand_snapshot = managers.card.hand().to_vec();
     let after_round_start = drain::run_setup_stage(
         managers,

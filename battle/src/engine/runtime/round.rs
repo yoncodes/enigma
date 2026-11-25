@@ -6,7 +6,7 @@ use crate::engine::{
         command::{RoundCommand, commands_from_opers},
         outcome::{
             BattleOutcome, battle_ended, battle_outcome, finish_if_battle_ended,
-            round_limit_reached, should_advance_wave,
+            round_limit_reached, round_limit_reached_at, should_advance_wave,
         },
         power::ClothPower,
         state::{RoundCardSnapshotPolicy, RoundState, next_action_points, next_round_shell},
@@ -36,6 +36,7 @@ fn advance_wave_transition(
     battle_catalog: crate::catalog::BattleCatalog,
     pool: &crate::engine::skill::target::TargetPool,
     power: i32,
+    round: i32,
     fight_version: i32,
     absorb_hurt_map_layout: crate::engine::fight::versions::AbsorbHurtMapLayout,
 ) -> Result<Option<WaveTransition>, String> {
@@ -44,7 +45,7 @@ fn advance_wave_transition(
     }
     sync_attacker_team_state(fight, managers.card.deck_num(), power);
     let Some(change) = managers
-        .advance_wave(fight)
+        .advance_wave(fight, round)
         .map_err(|error| error.to_string())?
     else {
         return Ok(None);
@@ -165,7 +166,7 @@ impl BattleRuntime {
                 .expect("battle runtime was not constructed with a catalog"),
             &self.fight,
         );
-        let context = crate::engine::skill::target::TargetContext {
+        let mut context = crate::engine::skill::target::TargetContext {
             battle_id: self.fight.battle_id.unwrap_or_default(),
             current_round: self.round_state.cur_round,
             ..Default::default()
@@ -524,6 +525,7 @@ impl BattleRuntime {
             battle_catalog,
             &pool,
             self.round_state.power,
+            self.round_state.cur_round,
             fight_version,
             absorb_hurt_map_layout,
         )? {
@@ -590,56 +592,128 @@ impl BattleRuntime {
                 (round_start, next_round, Vec::new(), Vec::new(), false)
             }
         } else {
-            // Snapshot next-round AP before lifecycle cleanup removes one-round
-            // modifiers that have already contributed to this value.
-            self.round_state.act_point = next_action_points(
-                &self.fight,
-                &pool,
-                &self.managers,
-                catalog,
-                &mut self.determinism,
-                context,
-            );
-            if let Some(power) = self
-                .catalog_data
-                .expect("battle runtime was not constructed with a catalog")
-                .cloth_power(&self.fight)
-            {
-                self.round_state.power =
-                    power.recover_round(self.round_state.power, self.round_state.cur_round);
-            }
-            let next_hand_size = refill_limit.current(&self.fight, &self.managers);
-            let (round_start, next_round, hand_snapshot, dealt_cards) =
-                schedule::run_round_start_after_ai_split(
+            let mut prep_refill_limit = refill_limit;
+            let prepared = loop {
+                // AP and hand size can depend on modifiers settled by round start.
+                self.round_state.act_point = next_action_points(
+                    &self.fight,
+                    &pool,
+                    &self.managers,
+                    catalog,
+                    &mut self.determinism,
+                    context,
+                );
+                if let Some(power) = battle_catalog.cloth_power(&self.fight) {
+                    self.round_state.power =
+                        power.recover_round(self.round_state.power, self.round_state.cur_round);
+                }
+                let next_hand_size = prep_refill_limit.current(&self.fight, &self.managers);
+                let started = schedule::settle_round_start(
                     &mut self.managers,
                     &pool,
                     catalog,
                     &mut self.determinism,
                     context,
                     &wave_entering_uids,
-                    next_hand_size,
                 )
                 .map_err(|error| format!("{error:?}"))?;
-            if !wave_entering_uids.is_empty() {
-                self.wave_entry_condition_uids = wave_entering_uids;
+                if !wave_entering_uids.is_empty() {
+                    self.wave_entry_condition_uids = wave_entering_uids;
+                }
+                if !version_seven
+                    || !self.managers.wave.has_next_wave()
+                    || !should_advance_wave(&self.fight, &pool, &self.managers)
+                {
+                    break Some((started, next_hand_size));
+                }
+
+                // A wave defeated during setup consumes that round. Prepare the replacement
+                // wave after advancing the clock, leaving the hand to deal once on the active wave.
+                let next = self.round_state.cur_round.saturating_add(1);
+                if round_limit_reached_at(next, &self.managers) {
+                    self.round_state.cur_round = next;
+                    self.fight.cur_round = Some(next);
+                    self.round_state.act_point = 0;
+                    self.round_state.is_finish = true;
+                    fight_steps.extend(project_result(
+                        started.steps,
+                        fight_version,
+                        absorb_hurt_map_layout,
+                    )?);
+                    break None;
+                }
+                let Some(transition) = advance_wave_transition(
+                    &mut self.fight,
+                    &mut self.managers,
+                    catalog,
+                    battle_catalog,
+                    &pool,
+                    self.round_state.power,
+                    next,
+                    fight_version,
+                    absorb_hurt_map_layout,
+                )?
+                else {
+                    break Some((started, next_hand_size));
+                };
+                self.round_state.cur_round = next;
+                context.current_round = next;
+                pool = transition.pool;
+                wave_entering_uids = transition.entering_uids;
+                prep_refill_limit = crate::engine::mechanic::card::CardMechanic.refill_limit(
+                    crate::engine::manager::card::start::hand_size(&self.fight),
+                    &self.managers,
+                    &pool,
+                );
+                fight_steps.extend(project_result(
+                    started.steps,
+                    fight_version,
+                    absorb_hurt_map_layout,
+                )?);
+                fight_steps.extend(transition.steps);
+            };
+            if let Some((started, next_hand_size)) = prepared {
+                let (round_start, next_round, hand_snapshot, dealt_cards) =
+                    schedule::deal_round_start(
+                        &mut self.managers,
+                        &pool,
+                        catalog,
+                        &mut self.determinism,
+                        context,
+                        started,
+                        next_hand_size,
+                    )
+                    .map_err(|error| format!("{error:?}"))?;
+                (round_start, next_round, hand_snapshot, dealt_cards, true)
+            } else {
+                let (_, next_round) = schedule::run_finished_round_transition(&self.managers);
+                (
+                    Default::default(),
+                    next_round,
+                    Vec::new(),
+                    Vec::new(),
+                    false,
+                )
             }
-            (round_start, next_round, hand_snapshot, dealt_cards, true)
         };
         fight_steps.extend(project_result(
             round_start,
             fight_version,
             absorb_hurt_map_layout,
         )?);
-        if let Some(transition) = advance_wave_transition(
-            &mut self.fight,
-            &mut self.managers,
-            catalog,
-            battle_catalog,
-            &pool,
-            self.round_state.power,
-            fight_version,
-            absorb_hurt_map_layout,
-        )? {
+        if !self.round_state.is_finish
+            && let Some(transition) = advance_wave_transition(
+                &mut self.fight,
+                &mut self.managers,
+                catalog,
+                battle_catalog,
+                &pool,
+                self.round_state.power,
+                self.round_state.cur_round,
+                fight_version,
+                absorb_hurt_map_layout,
+            )?
+        {
             let entering_uids = transition.entering_uids;
             pool = transition.pool;
             fight_steps.extend(transition.steps);

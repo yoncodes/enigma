@@ -1469,6 +1469,7 @@ impl BattleManagers {
     pub(crate) fn advance_wave(
         &mut self,
         fight: &mut Fight,
+        round: i32,
     ) -> anyhow::Result<Option<wave::WaveAdvanced>> {
         self.sync_entities(fight);
         let catalog = self.catalog();
@@ -1481,6 +1482,7 @@ impl BattleManagers {
             self.register_entity_state(entity);
         }
         fight.cur_wave = Some(roster.wave);
+        fight.cur_round = Some(round);
         fight.is_record = Some(false);
         self.sync_entities(fight);
         Ok(Some(wave::WaveAdvanced {

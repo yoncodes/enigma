@@ -52,3 +52,16 @@ fn completed_cast_progress_resets_at_its_next_phase_but_untouched_progress_carri
     assert!(!advance(&mut cloth, 4));
     assert!(advance(&mut cloth, 1));
 }
+
+#[test]
+fn completed_cast_progress_clears_when_new_round_start_follows_settlement() {
+    let mut manager = ConfiguredRuleProgressManager::default();
+    manager.begin_round_start();
+    assert!(manager.advance_until_cast(10, RULE, 7, 7));
+    manager.release(10, RULE);
+    assert!(!manager.advance_until_cast(10, RULE, 7, 2));
+
+    manager.begin_round_start();
+    assert!(!manager.advance_until_cast(10, RULE, 7, 6));
+    assert!(manager.advance_until_cast(10, RULE, 7, 1));
+}

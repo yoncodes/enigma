@@ -101,12 +101,12 @@ fn third_wave_entity_info_uses_the_latest_authoritative_roster() {
 
     runtime
         .managers
-        .advance_wave(&mut runtime.fight)
+        .advance_wave(&mut runtime.fight, 1)
         .unwrap()
         .unwrap();
     let third = runtime
         .managers
-        .advance_wave(&mut runtime.fight)
+        .advance_wave(&mut runtime.fight, 1)
         .unwrap()
         .unwrap();
     let uid = third.entering_uids[0];
