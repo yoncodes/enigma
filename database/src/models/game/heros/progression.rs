@@ -7,6 +7,25 @@ impl UserHeroModel {
         HeroModel::<HeroData>::destiny_stone(self, hero_id, stone_id).await
     }
 
+    pub async fn set_destiny_stone_in_transaction(
+        &self,
+        tx: &mut Transaction<'_, Sqlite>,
+        hero_id: i32,
+        stone_id: i32,
+    ) -> Result<()> {
+        let result =
+            sqlx::query("UPDATE heroes SET destiny_stone = ? WHERE user_id = ? AND hero_id = ?")
+                .bind(stone_id)
+                .bind(self.user_id)
+                .bind(hero_id)
+                .execute(&mut **tx)
+                .await?;
+        if result.rows_affected() != 1 {
+            return Err(sqlx::Error::RowNotFound.into());
+        }
+        Ok(())
+    }
+
     pub async fn set_rank_and_level(&self, hero_id: i32, rank: i32, level: i32) -> Result<()> {
         let mut tx = self.pool.begin().await?;
         self.set_rank_and_level_in_transaction(&mut tx, hero_id, rank, level)

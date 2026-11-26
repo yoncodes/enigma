@@ -704,13 +704,10 @@ impl HeroModel<HeroData> for UserHeroModel {
     }
 
     async fn destiny_stone(&self, hero_id: i32, stone_id: i32) -> Result<()> {
-        let hero_data = self.get(hero_id).await?;
-        sqlx::query("UPDATE heroes SET destiny_stone = ? WHERE uid = ?")
-            .bind(stone_id)
-            .bind(hero_data.record.uid)
-            .execute(&self.pool)
+        let mut tx = self.pool.begin().await?;
+        self.set_destiny_stone_in_transaction(&mut tx, hero_id, stone_id)
             .await?;
-
+        tx.commit().await?;
         Ok(())
     }
 

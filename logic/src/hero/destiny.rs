@@ -3,6 +3,45 @@ use super::*;
 const FIRST_STAGE_NODE: i32 = 1;
 
 impl HeroManager {
+    pub async fn set_destiny_stone(
+        self,
+        db: &SqlitePool,
+        hero_id: i32,
+        stone_id: i32,
+    ) -> Result<HeroInfo, AppError> {
+        let hero = UserHeroModel::new(self.player_id, db.clone());
+        let current = hero.get(hero_id).await?;
+        if stone_id != 0 && !destiny_stones(hero_id).contains(&stone_id) {
+            return Err(AppError::InvalidRequest);
+        }
+
+        let mut tx = db.begin().await?;
+        if stone_id != 0 {
+            if current.record.destiny_rank == 0 {
+                let slot = next_destiny_slot(hero_id, 0, 0).ok_or(AppError::InvalidRequest)?;
+                if !hero
+                    .update_destiny_progress_in_transaction(
+                        &mut tx,
+                        hero_id,
+                        current.record.destiny_rank,
+                        current.record.destiny_level,
+                        slot.stage,
+                        slot.node,
+                    )
+                    .await?
+                {
+                    return Err(AppError::InvalidRequest);
+                }
+            }
+            hero.unlock_destiny_stone_in_transaction(&mut tx, hero_id, stone_id)
+                .await?;
+        }
+        hero.set_destiny_stone_in_transaction(&mut tx, hero_id, stone_id)
+            .await?;
+        tx.commit().await?;
+        snapshot(db, hero.get(hero_id).await?).await
+    }
+
     pub async fn destiny_stone(
         self,
         db: &SqlitePool,

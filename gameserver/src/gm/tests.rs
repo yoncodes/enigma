@@ -3,7 +3,7 @@ use super::{
         MaterialKind, build_hero_upgrade_catalog, dungeon_catalog, entries_for_kind,
         is_premium_hero_skin,
     },
-    command::workflow::unlock_dungeon,
+    command::{run_command, workflow::unlock_dungeon},
 };
 use crate::net::app::AppState;
 use database::models::game::heros::UserHeroModel;
@@ -157,4 +157,53 @@ async fn hero_upgrade_catalog_reports_only_owned_current_progression() {
     assert_eq!(destiny_hero.destiny_stones.len(), 1);
     assert_eq!(destiny_hero.destiny_stones[0].id, 305201);
     assert!(!destiny_hero.destiny_stones[0].unlocked);
+    assert_eq!(destiny_hero.destiny_stone_options[0].id, 305201);
+}
+
+#[tokio::test]
+async fn hero_editor_unlocks_and_equips_destiny_stones() {
+    let data_dir = format!("{}/../data/excel2json", env!("CARGO_MANIFEST_DIR"));
+    let _ = config::init(&data_dir);
+    let pool = sqlx::SqlitePool::connect("sqlite::memory:").await.unwrap();
+    database::run_migrations(&pool).await.unwrap();
+    sqlx::query(
+        "INSERT INTO users (id, username, created_at, updated_at)
+         VALUES (46, 'destiny-editor', 0, 0)",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+    let heroes = UserHeroModel::new(46, pool.clone());
+    heroes.create_hero(3052).await.unwrap();
+    heroes.set_rank_and_level(3052, 3, 75).await.unwrap();
+    let state = Box::leak(Box::new(AppState::new(
+        pool.clone(),
+        config::configs::get(),
+    )));
+
+    assert!(run_command(state, 46, "hero destiny 3052 1").await.is_err());
+    for _ in 0..2 {
+        run_command(state, 46, "hero destiny 3052 305201")
+            .await
+            .unwrap();
+    }
+    let catalog = build_hero_upgrade_catalog(state, 46).await.unwrap();
+    let hero = &catalog.heroes[0];
+    assert_eq!(hero.destiny_stone, 305201);
+    assert_eq!(hero.destiny_rank, 1);
+    assert_eq!(hero.destiny_level, 1);
+    assert!(hero.destiny_stones.is_empty());
+    assert!(hero.destiny_stone_options[0].unlocked);
+    assert!(hero.max_editable_resonance > hero.resonance);
+    let command = format!("hero resonance 3052 {}", hero.max_editable_resonance);
+    run_command(state, 46, &command).await.unwrap();
+    let updated = heroes.get_hero(3052).await.unwrap().record;
+    assert_eq!(updated.talent, hero.max_editable_resonance);
+    assert_eq!(updated.destiny_stone, 305201);
+
+    run_command(state, 46, "hero destiny 3052 0").await.unwrap();
+    let updated = heroes.get_hero(3052).await.unwrap();
+    assert_eq!(updated.record.destiny_stone, 0);
+    assert_eq!(updated.record.talent, hero.max_editable_resonance);
+    assert!(updated.destiny_stone_unlocks.contains(&305201));
 }
