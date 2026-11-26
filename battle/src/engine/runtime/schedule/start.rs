@@ -329,7 +329,19 @@ pub(crate) fn settle_round_start(
             settlement_plan,
         )?,
     );
-    if setup_layout != Some(crate::engine::fight::versions::RoundStartSetupLayout::Version7) {
+    if version_seven {
+        append_round_phase(
+            &mut settlement,
+            run_round_start_duration(
+                managers,
+                pool,
+                catalog,
+                determinism,
+                context,
+                &round_start_duration_snapshot,
+            )?,
+        );
+    } else {
         let duration = run_round_start_durations(
             managers,
             pool,
@@ -339,19 +351,6 @@ pub(crate) fn settle_round_start(
             &round_start_duration_snapshot,
         )?;
         append_round_phase(&mut settlement, duration);
-    }
-    if version_seven {
-        append_round_phase(
-            &mut settlement,
-            run_round_start_durations(
-                managers,
-                pool,
-                catalog,
-                determinism,
-                context,
-                &round_start_duration_snapshot,
-            )?,
-        );
     }
     let event_setup = if version_seven {
         drain::run_version_seven_round_start_event_setup(
@@ -418,6 +417,25 @@ pub(crate) fn settle_round_start(
             )?,
         );
     }
+    let after_reaction_duration = if version_seven {
+        append_round_phase(
+            &mut settlement,
+            run_action_phase_start(managers, pool, catalog, determinism, context, 1)?,
+        );
+        drain::run(
+            managers,
+            pool,
+            catalog,
+            determinism,
+            context,
+            duration_advance_rule(
+                effect_time::ROUND_START_AFTER_REACTION_DURATION,
+                &round_start_duration_snapshot,
+            ),
+        )?
+    } else {
+        DrainResult::default()
+    };
     let (sync_setup, late_setup) = if version_seven {
         (
             drain::run_round_sync_setup_in_owner_order(
@@ -493,13 +511,10 @@ pub(crate) fn settle_round_start(
         context,
         defeated_defenders,
     )?;
-    if setup_layout == Some(crate::engine::fight::versions::RoundStartSetupLayout::Version7) {
-        append_round_phase(
-            &mut settlement,
-            run_action_phase_start(managers, pool, catalog, determinism, context, 1)?,
-        );
+    if version_seven {
         append_round_phase(&mut sync_phase, late_setup);
         append(&mut fight_steps, settlement);
+        append(&mut fight_steps, after_reaction_duration);
         append(&mut fight_steps, sync_phase);
         append(&mut fight_steps, deferred_settlement_setup);
         append(&mut fight_steps, card_cleanup);

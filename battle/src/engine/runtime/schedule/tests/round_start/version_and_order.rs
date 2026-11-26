@@ -2,6 +2,81 @@ use super::*;
 use crate::test_support::frame_contains_skill;
 
 #[test]
+fn version_seven_round_start_reads_readiness_before_its_duration_tick() {
+    init_config();
+    let readiness = |uid, duration, layer| BuffInfo {
+        uid: Some(uid),
+        buff_id: Some(31210125),
+        from_uid: Some(10),
+        duration: Some(duration),
+        layer: Some(layer),
+        ..Default::default()
+    };
+    let fight = Fight {
+        version: Some(7),
+        attacker: Some(FightTeam {
+            entitys: vec![
+                FightEntityInfo {
+                    uid: Some(10),
+                    team_type: Some(1),
+                    current_hp: Some(100),
+                    passive_skill: vec![312101452, 40],
+                    buffs: vec![readiness(20, 1, 10), readiness(21, 2, 20)],
+                    ..Default::default()
+                },
+                FightEntityInfo {
+                    uid: Some(11),
+                    model_id: Some(3149),
+                    team_type: Some(1),
+                    current_hp: Some(100),
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut catalog = SkillEffectCatalog::from_fight(config::configs::get(), &fight);
+    let mut expiry = SkillEffectSlot::new(
+        ParsedBehavior::new(60291, "AddDevicePower", vec![1, 3]),
+        TargetRequest::self_only(),
+    );
+    expiry.conditions = vec![ParsedCondition {
+        opcode: 515005,
+        type_name: "BuffIdExpireOnly".into(),
+        kind: ParsedConditionKind::BuffExpired(vec![31210125]),
+        raw_args: vec!["31210125".into()],
+    }];
+    expiry.compiled_route = ConditionRoute::compile(&expiry.conditions);
+    catalog.insert(ParsedSkillEffect {
+        skill_id: 40,
+        slots: vec![expiry],
+    });
+    let mut managers = BattleManagers::seeded(&fight);
+
+    settle_round_start(
+        &mut managers,
+        &pool,
+        &catalog,
+        &mut RoundDeterminism::default(),
+        TargetContext {
+            current_round: 3,
+            ..Default::default()
+        },
+        &[],
+    )
+    .unwrap();
+
+    assert!(managers.buff.has_buff_id(10, 312101452));
+    assert!(managers.buff.snapshot(10, 20).is_none());
+    let remaining = managers.buff.snapshot(10, 21).unwrap();
+    assert_eq!(remaining.layer, Some(20));
+    assert_eq!(remaining.duration, Some(1));
+    assert_eq!(managers.conduit.power(1, 1), 3);
+}
+
+#[test]
 fn version_seven_round_start_event_schedule_runs_each_owners_buff_gate() {
     init_config();
     let fight = Fight {
