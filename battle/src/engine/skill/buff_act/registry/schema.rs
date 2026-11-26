@@ -20,6 +20,7 @@ macro_rules! buff_act_definitions {
             $(, team: $team:ident)?
             $(, actor: $actor:ident)?
             $(, timing: $timing:ident)?
+            $(, timings: [$($timing_event:expr => $event_timing:ident),*])?
             $(, timing_override: $timing_override:expr)?
             $(, multiplicity: $multiplicity:ident)?
             $(, trigger_child_uid: $trigger_child_uid:expr)?
@@ -67,6 +68,7 @@ macro_rules! buff_act_definitions {
                     team_scope: buff_act_definitions!(@team $($team)?),
                     actor_scope: buff_act_definitions!(@actor $($actor)?),
                     reaction_timing: buff_act_definitions!(@timing $($timing)?),
+                    timings: &[$($(($timing_event, ReactionTiming::$event_timing)),*)?],
                     timing_override: buff_act_definitions!(@timing_override $($timing_override)?),
                     event_multiplicity: buff_act_definitions!(@multiplicity $($multiplicity)?),
                     reserves_trigger_child_uid: buff_act_definitions!(@trigger_child_uid $($trigger_child_uid)?),

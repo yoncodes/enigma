@@ -32,7 +32,21 @@ fn skill_cast_publishes_the_feature_without_owning_carrier_consumption() {
         definition.runtime.frame_source,
         super::super::registry::RuntimeFrameSource::Applier
     );
-    let event = BattleEvent::SkillAction(crate::engine::skill::action::SkillActionEvent {
+    let event = BattleEvent::SkillAction(attack());
+    assert!(matches!(
+        rule_ops(&subscriber, &event).as_deref(),
+        Some([RuleOp::Publish(BattleEvent::BuffFeatureTriggered(trigger))])
+            if trigger.owner_uid == 10
+                && trigger.target_uid == -1
+                && trigger.buff_uid == 20
+                && trigger.act_id == 827
+    ));
+    subscriber.owner_alive = false;
+    assert_eq!(rule_ops(&subscriber, &event), Some(Vec::new()));
+}
+
+fn attack() -> crate::engine::skill::action::SkillActionEvent {
+    crate::engine::skill::action::SkillActionEvent {
         source_uid: 10,
         card_index: 0,
         target_uid: -1,
@@ -59,15 +73,90 @@ fn skill_cast_publishes_the_feature_without_owning_carrier_consumption() {
         team_injury_count_round: 0,
         card_enchants: Vec::new(),
         buff_additions: Vec::new(),
+    }
+}
+
+#[test]
+fn a_counted_target_bullet_spends_when_no_target_receives_the_grant() {
+    use crate::engine::{
+        manager::BattleManagers,
+        runtime::determinism::RoundDeterminism,
+        skill::{effect::SkillEffectCatalog, subscriber::for_active_buffs, target::TargetPool},
+    };
+    use sonettobuf::{BuffInfo, Fight, FightEntityInfo, FightTeam};
+
+    crate::test_support::init_config();
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                team_type: Some(1),
+                current_hp: Some(1_000),
+                buffs: vec![BuffInfo {
+                    uid: Some(20),
+                    buff_id: Some(30920151),
+                    from_uid: Some(10),
+                    count: Some(2),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let managers = BattleManagers::seeded(&fight);
+    let catalog = SkillEffectCatalog::from_fight(config::configs::get(), &fight);
+    let pool = TargetPool::from_fight(&fight);
+    let mut determinism = RoundDeterminism::default();
+    let grant = for_active_buffs(&managers, EventKind::SkillCast)
+        .into_iter()
+        .find(|buff| buff.act_type == "AddToTarget")
+        .unwrap();
+    let event = BattleEvent::SkillAction(crate::engine::skill::action::SkillActionEvent {
+        target_uid: 0,
+        target_uids: Vec::new(),
+        ..attack()
     });
+    let ops = add_to_target(&mut RuntimeContext {
+        managers: &managers,
+        catalog: &catalog,
+        pool: &pool,
+        determinism: &mut determinism,
+        subscriber: &grant,
+        event: Some(&event),
+    })
+    .unwrap();
+    let [op] = ops.as_slice() else {
+        panic!("expected one charge trigger and no grant");
+    };
+    let RuleOp::Publish(trigger) = &op.op else {
+        panic!("expected a charge trigger");
+    };
+    let bullet = for_active_buffs(&managers, EventKind::BuffFeatureTriggered)
+        .into_iter()
+        .find(|buff| buff.act_type == "Bullet")
+        .unwrap();
+    let ops = reaction(&mut RuntimeContext {
+        managers: &managers,
+        catalog: &catalog,
+        pool: &pool,
+        determinism: &mut determinism,
+        subscriber: &bullet,
+        event: Some(trigger),
+    })
+    .unwrap();
     assert!(matches!(
-        rule_ops(&subscriber, &event).as_deref(),
-        Some([RuleOp::Publish(BattleEvent::BuffFeatureTriggered(trigger))])
-            if trigger.owner_uid == 10
-                && trigger.target_uid == -1
-                && trigger.buff_uid == 20
-                && trigger.act_id == 827
+        ops.as_slice(),
+        [BuffActRuleOp {
+            op: RuleOp::Command(BattleCommand::Buff(BuffCommand::ConsumeAttackCharge(
+                BuffConsume {
+                    selector: BuffSelector::Uid(20),
+                    amount: 1,
+                    ..
+                }
+            ))),
+            ..
+        }]
     ));
-    subscriber.owner_alive = false;
-    assert_eq!(rule_ops(&subscriber, &event), Some(Vec::new()));
 }

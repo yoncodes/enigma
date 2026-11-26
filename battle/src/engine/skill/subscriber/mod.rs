@@ -172,6 +172,7 @@ pub fn for_active_buffs(managers: &BattleManagers, event: EventKind) -> Vec<Buff
                     managers.catalog(),
                     feature.buff_id,
                     args,
+                    event,
                 )),
                 act_type: feature.act_type,
                 effect_time: feature.effect_time,

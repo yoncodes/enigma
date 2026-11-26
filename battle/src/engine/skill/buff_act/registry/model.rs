@@ -168,6 +168,7 @@ pub struct BuffActRuntimeDefinition {
     pub team_scope: RuntimeTeamScope,
     pub actor_scope: RuntimeActorScope,
     pub reaction_timing: ReactionTiming,
+    pub(super) timings: &'static [(EventKind, ReactionTiming)],
     pub(super) timing_override: Option<RuntimeTiming>,
     pub event_multiplicity: RuntimeEventMultiplicity,
     pub reserves_trigger_child_uid: bool,
@@ -185,9 +186,15 @@ impl BuffActRuntimeDefinition {
         catalog: crate::catalog::BattleCatalog,
         buff_id: i32,
         args: &[i32],
+        event: EventKind,
     ) -> ReactionTiming {
-        self.timing_override
-            .and_then(|timing| timing(catalog, buff_id, args))
+        self.timings
+            .iter()
+            .find_map(|(kind, timing)| (*kind == event).then_some(*timing))
+            .or_else(|| {
+                self.timing_override
+                    .and_then(|timing| timing(catalog, buff_id, args))
+            })
             .unwrap_or(self.reaction_timing)
     }
 }

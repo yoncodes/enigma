@@ -225,3 +225,113 @@ fn attack_consumption_waits_for_hit_reactions() {
         Some(RuleOp::SubscriberGroupComplete)
     ));
 }
+
+#[test]
+fn target_bullet_proc_spends_a_charge_after_granting_the_debuff() {
+    crate::test_support::init_config();
+    let source = FightEntityInfo {
+        uid: Some(10),
+        team_type: Some(1),
+        current_hp: Some(10_000),
+        attr: Some(HeroAttribute {
+            attack: Some(100),
+            hp: Some(10_000),
+            ..Default::default()
+        }),
+        skill_group1: vec![30920131],
+        buffs: [(30, 30920156, 2), (31, 31020117, 0)]
+            .into_iter()
+            .map(|(uid, buff_id, count)| BuffInfo {
+                uid: Some(uid),
+                buff_id: Some(buff_id),
+                count: (count > 0).then_some(count),
+                from_uid: Some(10),
+                ..Default::default()
+            })
+            .collect(),
+        ..Default::default()
+    };
+    let fight = Fight {
+        version: Some(7),
+        attacker: Some(FightTeam {
+            entitys: vec![source],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(-1),
+                team_type: Some(2),
+                current_hp: Some(10_000),
+                attr: Some(HeroAttribute {
+                    hp: Some(10_000),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let catalog = SkillEffectCatalog::from_fight(config::configs::get(), &fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    let mut determinism = RoundDeterminism::default();
+    for spends_charge in [true, false] {
+        let result = run_action(
+            &mut managers,
+            &pool,
+            &catalog,
+            &mut determinism,
+            TargetContext::default(),
+            [],
+            SkillInvocation {
+                mode: SkillExecutionMode::Active,
+                target: SkillTarget::Explicit(-1),
+                ..SkillRequest {
+                    source_uid: 10,
+                    skill_id: 30920131,
+                }
+                .into()
+            },
+        )
+        .unwrap();
+
+        let steps =
+            crate::engine::packet::timeline::project_for_version(&result.frames, 7).unwrap();
+        let attack = steps
+            .iter()
+            .find_map(|step| crate::test_support::find_step(step, 30920131))
+            .unwrap();
+        let frames = &attack.act_effect;
+        let grant = frames
+            .iter()
+            .position(|effect| {
+                effect.fight_step.as_ref().is_some_and(|step| {
+                    step.act_effect
+                        .iter()
+                        .any(|effect| effect.buff_act_id == Some(503))
+                })
+            })
+            .unwrap();
+        let spend = frames.iter().position(|effect| {
+            effect.fight_step.as_ref().is_some_and(|step| {
+                step.act_effect.iter().any(|effect| {
+                    effect
+                        .buff
+                        .as_ref()
+                        .is_some_and(|buff| buff.uid == Some(30) && buff.count == Some(1))
+                })
+            })
+        });
+        if spends_charge {
+            assert!(spend.is_some_and(|spend| spend > grant));
+        } else {
+            assert_eq!(spend, None);
+        }
+        assert_eq!(
+            managers.buff.snapshot(10, 30).and_then(|buff| buff.count),
+            Some(1)
+        );
+        assert!(managers.buff.has_active_buff_id_or_type(-1, 30920158));
+    }
+}

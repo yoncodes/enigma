@@ -135,7 +135,7 @@ buff_act_definitions! {
         publications: [
             EventKind::SkillCast => BeforePublish
         ],
-        scoped_runtime: |context| buff_act::add_to_target::scoped_rule_ops(context.managers, context.subscriber, context.event?, context.catalog, context.pool),
+        scoped_runtime: buff_act::bullet::add_to_target,
         supports: |_| true, wire: (buff_act::wire::BuffActWireDefinition::all(DefinitionKey::new(503, "AddToTarget"), &[EffectType::Addtotarget as i32]));
     (505, "DodgeSpecSkill") => DodgeSpecSkill, effect_time_subscription: false,
         events: [EventKind::AllyAction],

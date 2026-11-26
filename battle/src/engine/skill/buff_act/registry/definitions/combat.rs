@@ -343,8 +343,10 @@ buff_act_definitions! {
         supports: |args| args.is_empty(), state_consumer: true,
         wire: (buff_act::wire::BuffActWireDefinition::add(DefinitionKey::new(826, "LockBulletCountDecr"), &[EffectType::Lockbulletcountdecr as i32]));
     (827, "Bullet") => Bullet,
+        events: [EventKind::BuffFeatureTriggered],
         source: Applier,
         timing: AfterSkill,
-        runtime: |context| buff_act::bullet::rule_ops(context.subscriber, context.event?),
+        timings: [EventKind::BuffFeatureTriggered => AfterHitObservers],
+        scoped_runtime: buff_act::bullet::reaction,
         supports: |_| true, wire: (buff_act::wire::BuffActWireDefinition::all(DefinitionKey::new(827, "Bullet"), &[EffectType::None as i32]));
 }
