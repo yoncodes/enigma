@@ -24,16 +24,16 @@ fn round_end_paid_ultimate_spends_before_hitting_the_marked_enemy() {
             attacker: Some(FightTeam {
                 entitys: vec![
                     FightEntityInfo {
+                        passive_skill: vec![434931],
+                        ..entity(11, 1, 1)
+                    },
+                    FightEntityInfo {
                         model_id: Some(3092),
                         passive_skill: vec![30920001],
                         ex_skill: Some(30920151),
                         ex_point_max: Some(12),
                         ex_point: Some(points),
-                        ..entity(10, 1, 1)
-                    },
-                    FightEntityInfo {
-                        passive_skill: vec![434931],
-                        ..entity(11, 1, 2)
+                        ..entity(10, 1, 2)
                     },
                 ],
                 ..Default::default()
@@ -139,9 +139,86 @@ fn round_end_paid_ultimate_spends_before_hitting_the_marked_enemy() {
                 .unwrap();
             assert!(!ultimate.items.iter().any(is_cost));
             assert!(rest.iter().any(is_cost));
-            assert!(rest.iter().any(|item| matches!(item,
-                FrameItem::Child(frame) if matches!(frame.owner, FrameOwner::Skill { skill_id: 434931, .. })
-            )));
+            let reward = rest
+                .iter()
+                .find_map(|item| match item {
+                    FrameItem::Child(frame)
+                        if matches!(
+                            frame.owner,
+                            FrameOwner::Skill {
+                                source_uid: 11,
+                                skill_id: 434931,
+                                target_uid: Some(11),
+                                ..
+                            }
+                        ) =>
+                    {
+                        Some(frame)
+                    }
+                    _ => None,
+                })
+                .expect("the Moxie-spend subscriber owns the reaction");
+            assert_eq!(
+                reward
+                    .items
+                    .iter()
+                    .filter(|item| matches!(item,
+                        FrameItem::Child(frame) if matches!(frame.owner, FrameOwner::Skill {
+                            source_uid: 11, skill_id: 434921, target_uid: Some(10), ..
+                        })
+                    ))
+                    .count(),
+                8
+            );
+            let payment = result
+                .events
+                .iter()
+                .find_map(|event| match event {
+                    BattleEvent::ExPointChanged(change) if change.applied_delta == -8 => {
+                        Some(*change)
+                    }
+                    _ => None,
+                })
+                .unwrap();
+            let common_spend = BattleEvent::ExPointChanged(payment);
+            assert_eq!(common_spend.moxie_spender(), Some(10));
+            let definition =
+                crate::engine::skill::condition::registry::find_key(660008, "PerDecrExPoint")
+                    .unwrap();
+            let pool = TargetPool::from_fight(&fight);
+            for (event, expected_target) in [
+                (
+                    BattleEvent::ExPointChanged(
+                        crate::engine::event::payload::ExPointChangeEvent {
+                            spent: false,
+                            source_uid: -1,
+                            ..payment
+                        },
+                    ),
+                    Some(-1),
+                ),
+                (
+                    BattleEvent::ExPointChanged(
+                        crate::engine::event::payload::ExPointChangeEvent {
+                            kind: crate::engine::manager::ex_point::ExPointKind::Synchronization,
+                            ..payment
+                        },
+                    ),
+                    Some(10),
+                ),
+            ] {
+                assert_eq!(event.moxie_spender(), None);
+                assert_eq!(
+                    reaction_skill_target(
+                        &pool,
+                        &event,
+                        11,
+                        definition.reaction_frame_target,
+                        None,
+                    ),
+                    expected_target,
+                );
+            }
         }
     }
 }

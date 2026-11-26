@@ -127,6 +127,7 @@ pub enum ChildTargetSource {
     #[default]
     Behavior,
     Event,
+    MoxieSpender,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -134,6 +135,7 @@ pub enum ReactionFrameTarget {
     #[default]
     Counterparty,
     Owner,
+    OwnerOnMoxieSpend,
     OwnerOnSide,
     EventTarget,
     EventSource,
@@ -662,6 +664,12 @@ pub const fn child_targets_event(mut metadata: ConditionMetadata) -> ConditionMe
     metadata
 }
 
+const fn moxie_spend_targets(mut metadata: ConditionMetadata) -> ConditionMetadata {
+    metadata.reaction_frame_target = ReactionFrameTarget::OwnerOnMoxieSpend;
+    metadata.child_target_source = ChildTargetSource::MoxieSpender;
+    metadata
+}
+
 pub const fn reaction_targets_owner(mut metadata: ConditionMetadata) -> ConditionMetadata {
     metadata.reaction_frame_target = ReactionFrameTarget::Owner;
     metadata
@@ -1002,7 +1010,7 @@ condition_definitions! {
     [579023] "ExPointIncrChange" => resource::other_ally_ex_point_increase, reaction_targets_owner(before_publish(event_trigger(EventKind::ExPointChanged, None)));
     [40] "LostExPoint" => resource::ex_point_lost, event_trigger(EventKind::ExPointChanged, None);
     [566] "PowerUseAddBuff" => resource::power_use_add_buff, after_skill(reaction_targets_owner(event_trigger(EventKind::EurekaChanged, None)));
-    [660008] "PerDecrExPoint" => resource::ex_point_decrease, before_publish(event_trigger(EventKind::ExPointChanged, None));
+    [660008] "PerDecrExPoint" => resource::ex_point_decrease, moxie_spend_targets(before_publish(event_trigger(EventKind::ExPointChanged, None)));
     [721017] "CurEntityPowerDel" => resource::current_entity_power_decrease, reaction_targets_owner(event_trigger(EventKind::EurekaChanged, None));
     [724304] "OverFlowPower" => resource::power_overflow, event_trigger(EventKind::RoundEndAfterSettlement, None);
     [725304] "ComsumePower" => resource::power_consumed, event_trigger(EventKind::RoundEndAfterSettlement, None);

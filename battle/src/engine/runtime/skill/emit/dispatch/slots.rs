@@ -470,10 +470,15 @@ pub(super) fn emit(
                     skill_id: invocation.plan.skill_id,
                     key: definition.key,
                 })?;
-                if child_target_source
-                    == crate::engine::skill::condition::registry::ChildTargetSource::Event
-                    && let Some(target_uid) = selected_event.and_then(|event| event.target_uid())
-                {
+                use crate::engine::skill::condition::registry::ChildTargetSource;
+                let child_target = match child_target_source {
+                    ChildTargetSource::Behavior => None,
+                    ChildTargetSource::Event => selected_event.and_then(|event| event.target_uid()),
+                    ChildTargetSource::MoxieSpender => {
+                        selected_event.and_then(|event| event.moxie_spender())
+                    }
+                };
+                if let Some(target_uid) = child_target {
                     for op in &mut behavior_ops {
                         if let RuleOp::Skill(child) = op {
                             child.target = SkillTarget::Explicit(target_uid);

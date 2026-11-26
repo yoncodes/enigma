@@ -384,6 +384,19 @@ pub enum BattleEvent {
 }
 
 impl BattleEvent {
+    pub(crate) fn moxie_spender(&self) -> Option<i64> {
+        match self {
+            Self::ExPointChanged(change)
+                if change.kind == ExPointKind::Common
+                    && change.spent
+                    && change.applied_delta < 0 =>
+            {
+                Some(change.target_uid)
+            }
+            _ => None,
+        }
+    }
+
     pub fn skill_action_event(&self) -> Option<&crate::engine::skill::action::SkillActionEvent> {
         match self {
             Self::SkillEffectStarted(started) => Some(started.action.as_ref()),

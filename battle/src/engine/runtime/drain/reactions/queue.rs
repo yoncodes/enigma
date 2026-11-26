@@ -443,6 +443,13 @@ pub(in crate::engine::runtime::drain) fn reaction_skill_target(
             reaction_counterparty(pool, event, owner_uid)
         }
         ReactionFrameTarget::Owner => Some(owner_uid),
+        ReactionFrameTarget::OwnerOnMoxieSpend => {
+            if event.moxie_spender().is_some() {
+                Some(owner_uid)
+            } else {
+                reaction_counterparty(pool, event, owner_uid)
+            }
+        }
         ReactionFrameTarget::EventTarget => event.target_uid(),
         ReactionFrameTarget::EventSource => event.source_uid(),
         ReactionFrameTarget::CausingFrame => current_skill_target.or_else(|| event.target_uid()),
