@@ -255,15 +255,6 @@ impl Passive {
     }
 
     fn base(game: &config::GameDB, hero_id: i32) -> Vec<PassiveSkill> {
-        if let Some(base_ids) = Self::activity_base(game, hero_id) {
-            return base_ids
-                .into_iter()
-                .map(|skill_id| PassiveSkill {
-                    skill_id,
-                    source: PassiveSource::new(PassiveSourceKind::Extra),
-                })
-                .collect();
-        }
         let mut rows = game
             .skill_passive_level
             .iter()
@@ -333,32 +324,6 @@ impl Passive {
             .filter(|skill_id| *skill_id != 0)
             .map(|skill_id| PassiveSkill { skill_id, source })
             .collect()
-    }
-
-    fn activity_base(game: &config::GameDB, hero_id: i32) -> Option<Vec<i32>> {
-        if let Some(r) = game.activity174_role.iter().find(|r| r.hero_id == hero_id)
-            && !r.passive_skill.is_empty()
-        {
-            return Some(
-                r.passive_skill
-                    .split('|')
-                    .filter_map(|v| v.parse().ok())
-                    .collect(),
-            );
-        }
-
-        if let Some(r) = game.activity191_role.iter().find(|r| r.role_id == hero_id)
-            && !r.passive_skill.is_empty()
-        {
-            return Some(
-                r.passive_skill
-                    .split('|')
-                    .filter_map(|v| v.parse().ok())
-                    .collect(),
-            );
-        }
-
-        None
     }
 
     fn build_ex_map(game: &config::GameDB, hero_id: i32, ex_level: i32) -> HashMap<i32, i32> {

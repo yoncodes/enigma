@@ -6,6 +6,22 @@ use crate::engine::entity::{
 use sonettobuf::PowerInfo;
 
 #[test]
+fn owned_passives_follow_insight_even_when_an_activity_lists_the_full_kit() {
+    crate::test_support::init_config();
+    let passives = [30810141, 30810151, 30810161];
+    for (rank, level, unlocked) in [(1, 30, 0), (2, 70, 1), (3, 120, 2), (4, 121, 3)] {
+        let hero = HeroBuildInput {
+            hero_id: 3081,
+            level,
+            rank,
+            ..Default::default()
+        };
+        let entity = EntityBuilder::new(hero, 1, 1).build().unwrap();
+        assert_eq!(entity.passive_skill, passives[..unlocked], "rank {rank}");
+    }
+}
+
+#[test]
 fn catalog_attached_builder_matches_the_legacy_entry_point() {
     crate::test_support::init_config();
     let hero = HeroBuildInput {
