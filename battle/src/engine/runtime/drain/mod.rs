@@ -39,6 +39,7 @@ mod model;
 mod overflow_frame;
 mod paid_ultimate;
 mod reactions;
+mod round_start_loss;
 mod shield_counter;
 mod skill_dispatch;
 mod state;

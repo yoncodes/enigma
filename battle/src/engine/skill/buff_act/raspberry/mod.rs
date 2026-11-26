@@ -17,13 +17,19 @@ use crate::engine::{
         },
     },
     skill::rule::{
-        CommandOrigin,
+        CommandOrigin, RuleDomain,
         output::{BattleCommand, RuleOp},
     },
     skill::subscriber::BuffActSubscriber,
 };
 
 use super::{is_kind, registry::BuffActKind, subscriber_is_kind};
+
+pub(crate) fn owns_loss(origin: CommandOrigin) -> bool {
+    origin.domain == RuleDomain::BuffAct
+        && super::registry::kind(origin.key.opcode, origin.key.type_name)
+            == Some(BuffActKind::Raspberry)
+}
 
 pub fn attribute_delta(buffs: &BuffManager, owner_uid: i64, attr_id: AttrId) -> i32 {
     let Some(catalog) = buffs.try_catalog().or_else(BattleCatalog::try_global) else {

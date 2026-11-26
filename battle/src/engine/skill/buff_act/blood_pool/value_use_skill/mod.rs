@@ -68,6 +68,7 @@ pub fn rule_ops(
             key: subscriber.key.definition,
             threshold: threshold.saturating_mul(1000),
             delta: progress_delta,
+            cause: change.origin,
             invocation,
         },
     ))])

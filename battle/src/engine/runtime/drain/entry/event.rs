@@ -246,6 +246,17 @@ fn drain_group_event_lane(
     )?;
     reactions.assign_subscriber_death_groups(None);
     let mut queue = reactions.into_ordered().into();
+    if matches!(event, BattleEvent::RoundStart) && lane == ReactionLane::BuffActsBeforeSettlement {
+        return super::super::round_start_loss::run(
+            managers,
+            pool,
+            catalog,
+            determinism,
+            context,
+            &mut queue,
+            frames,
+        );
+    }
     drain_queue_with_frames(
         managers,
         pool,

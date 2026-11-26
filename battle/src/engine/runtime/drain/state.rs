@@ -1,6 +1,6 @@
 use std::{
     cell::RefCell,
-    collections::{HashMap, HashSet},
+    collections::{HashMap, HashSet, VecDeque},
     rc::Rc,
 };
 
@@ -41,6 +41,7 @@ pub(super) struct DrainState {
     after_action: HashMap<FramePath, Vec<QueuedOp>>,
     // Casts held until their action completes, with the step that cast them.
     after_action_casts: HashMap<FramePath, Vec<DeferredCast>>,
+    pub(super) round_start_loss_casts: Option<VecDeque<QueuedOp>>,
     // Actions that will publish ActionCompleted and have not yet done so.
     open_actions: HashSet<FramePath>,
     completed_actions: HashSet<FramePath>,

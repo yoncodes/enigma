@@ -1625,10 +1625,7 @@ fn record_raspberry_loss(
     changes: &crate::engine::manager::hp::HpChanges,
     losses: &mut std::collections::HashMap<(i64, i64), i32>,
 ) {
-    if changes.origin.domain != RuleDomain::BuffAct
-        || buff_act::registry::kind(changes.origin.key.opcode, changes.origin.key.type_name)
-            != Some(buff_act::registry::BuffActKind::Raspberry)
-    {
+    if !buff_act::raspberry::owns_loss(changes.origin) {
         return;
     }
     let Some(hp) = changes.hp.filter(|hp| hp.delta < 0) else {
