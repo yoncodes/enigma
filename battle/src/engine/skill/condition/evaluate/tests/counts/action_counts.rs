@@ -512,17 +512,20 @@ fn per_buff_type_layer_preserves_its_stack_count() {
         raw_args: vec!["1".into(), "20".into(), "31340002".into()],
     };
 
-    assert_eq!(
-        conditions_fire_count(
-            &[condition],
-            10,
-            &[10],
-            Some(&managers),
-            &TargetPool::from_fight(&fight),
-            TargetContext::default(),
-        ),
-        7
-    );
+    let pool = TargetPool::from_fight(&fight);
+    for (targets, count) in [(&[10][..], 7), (&[10, 11][..], 0)] {
+        assert_eq!(
+            conditions_fire_count(
+                std::slice::from_ref(&condition),
+                10,
+                targets,
+                Some(&managers),
+                &pool,
+                TargetContext::default(),
+            ),
+            count
+        );
+    }
 }
 
 #[test]

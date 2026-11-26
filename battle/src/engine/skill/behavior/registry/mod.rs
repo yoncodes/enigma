@@ -10,6 +10,7 @@ use crate::engine::skill::{
 
 pub type BehaviorPhase = SkillPhase;
 pub(crate) const ADD_BUFF_KEY: DefinitionKey = DefinitionKey::new(1, "AddBuff");
+pub(crate) const ATTR_FIX_KEY: DefinitionKey = DefinitionKey::new(10004, "AttrFix");
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FireCountMode {

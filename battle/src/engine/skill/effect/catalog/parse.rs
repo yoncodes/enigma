@@ -223,6 +223,18 @@ pub(super) fn parse_slot(db: &GameDB, raw: RawSlot<'_>) -> Result<SkillEffectSlo
         return Err(target_error(condition_target));
     }
     let parsed_target = parse_target(target).ok_or_else(|| target_error(target))?;
+    if crate::engine::skill::condition::buff::reads_one_holder(&conditions) {
+        let self_only = parsed_condition_target.code
+            == crate::engine::skill::target::request::SOURCE_TARGET_CODE;
+        let hit_recipient = parsed_condition_target.code == 0
+            && parsed_target.code == 999
+            && parsed_target.raw.is_empty()
+            && definition.key == crate::engine::skill::behavior::registry::ATTR_FIX_KEY
+            && crate::engine::skill::condition::buff::reads_hit_recipient_layers(&conditions);
+        if !parsed_condition_target.raw.is_empty() || !(self_only || hit_recipient) {
+            return Err(target_error(condition_target));
+        }
+    }
     if let [condition] = conditions.as_slice()
         && let ParsedConditionKind::AccTeamEnemyBuffLayers { type_id, .. } = condition.kind
     {

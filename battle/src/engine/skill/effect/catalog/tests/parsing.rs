@@ -8,6 +8,29 @@ fn parses_hash_cells_as_opcode_and_args() {
 }
 
 #[test]
+fn hit_recipient_layer_count_requires_the_predicate_route() {
+    init_config();
+    for (condition, supported) in [
+        ("518203#1#30#4150001", true),
+        ("518210#1#30#4150001", false),
+    ] {
+        let result = parse_slot(
+            config::configs::get(),
+            RawSlot {
+                behavior: "10004#203#200",
+                target: "999",
+                condition,
+                condition_target: "0",
+                logic_target: "202",
+                limit: 0,
+                round_limit: 0,
+            },
+        );
+        assert_eq!(result.is_ok(), supported, "{condition}: {result:?}");
+    }
+}
+
+#[test]
 fn burn_return_keeps_exact_argument_arity() {
     init_config();
     let parse = |behavior| {

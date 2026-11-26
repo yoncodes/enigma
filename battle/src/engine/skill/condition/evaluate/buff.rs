@@ -219,15 +219,11 @@ pub(super) fn per_buff_type_layer(
     condition_targets: &[i64],
     managers: Option<&BattleManagers>,
 ) -> bool {
-    managers.is_some_and(|managers| {
-        condition_targets.iter().any(|uid| {
-            type_ids
-                .iter()
-                .map(|type_id| managers.buff.buff_type_amount(*uid, *type_id))
-                .sum::<i32>()
-                >= *layers_per_repeat
+    managers
+        .and_then(|managers| {
+            super::super::buff::holder_layers(type_ids, condition_targets, managers)
         })
-    })
+        .is_some_and(|count| count >= *layers_per_repeat)
 }
 
 pub(super) fn buff_status_count(

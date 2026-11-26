@@ -637,21 +637,52 @@ pub fn per_type_layer_count(
                 layers_per_repeat,
                 max_repeats,
             } => {
-                let count = targets
-                    .iter()
-                    .map(|uid| {
-                        type_ids
-                            .iter()
-                            .map(|type_id| managers.buff.buff_type_amount(*uid, *type_id))
-                            .sum::<i32>()
-                    })
-                    .sum::<i32>();
+                let count = holder_layers(type_ids, targets, managers).unwrap_or_default();
                 Some((count / layers_per_repeat).min(*max_repeats))
             }
             _ => None,
         })
         .min()
         .unwrap_or(1)
+}
+
+pub(super) fn holder_layers(
+    type_ids: &[i32],
+    targets: &[i64],
+    managers: &BattleManagers,
+) -> Option<i32> {
+    let [holder] = targets else {
+        return None;
+    };
+    Some(
+        type_ids
+            .iter()
+            .map(|id| managers.buff.buff_type_amount(*holder, *id))
+            .sum(),
+    )
+}
+
+pub(crate) fn reads_one_holder(conditions: &[ParsedCondition]) -> bool {
+    fn reads(kind: &ParsedConditionKind) -> bool {
+        match kind {
+            ParsedConditionKind::PerBuffTypeLayer { .. } => true,
+            ParsedConditionKind::Not(condition) => reads(condition),
+            ParsedConditionKind::Any(branches) => {
+                branches.iter().any(|branch| reads_one_holder(branch))
+            }
+            _ => false,
+        }
+    }
+    conditions.iter().any(|condition| reads(&condition.kind))
+}
+
+pub(crate) fn reads_hit_recipient_layers(conditions: &[ParsedCondition]) -> bool {
+    let [condition] = conditions else {
+        return false;
+    };
+    matches!(condition.kind, ParsedConditionKind::PerBuffTypeLayer { .. })
+        && super::registry::find_key(condition.opcode, &condition.type_name)
+            .is_some_and(|definition| definition.role == super::registry::ConditionRole::Predicate)
 }
 
 fn parse_buff_ids(raw_args: &[String]) -> Option<Vec<i32>> {
