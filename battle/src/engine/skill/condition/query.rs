@@ -7,6 +7,16 @@ pub fn is_random(condition: &ParsedCondition) -> bool {
     )
 }
 
+pub(crate) fn uses_event_payload_only(conditions: &[ParsedCondition]) -> bool {
+    !conditions.is_empty()
+        && conditions.iter().all(|condition| {
+            matches!(
+                condition.kind,
+                ParsedConditionKind::AccTeamEnemyBuffLayers { .. }
+            )
+        })
+}
+
 pub fn find<'a>(
     conditions: &'a [ParsedCondition],
     predicate: &impl Fn(&ParsedCondition) -> bool,

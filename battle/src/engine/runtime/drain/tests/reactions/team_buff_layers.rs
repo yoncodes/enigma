@@ -96,6 +96,7 @@ fn team_buff_layers_pay_accepted_enemy_grants_at_settlement() {
     let pool = TargetPool::from_fight(&fight);
     let mut managers = BattleManagers::seeded(&fight);
     let mut determinism = RoundDeterminism::default();
+    let mut untouched_rng = RoundDeterminism::default();
     let grant = |source_uid, target_uid, buff_id, layer| {
         BuffCommand::Grant(BuffGrant {
             origin: CommandOrigin {
@@ -179,4 +180,10 @@ fn team_buff_layers_pay_accepted_enemy_grants_at_settlement() {
         .collect::<Vec<_>>();
     assert_eq!(children, vec![GRANTER, PASSIVE]);
     assert_eq!(managers.buff.max_id_or_type_layer(10, CONVERSION), 12);
+    for _ in 0..4 {
+        assert_eq!(
+            determinism.lua_random_index(1000),
+            untouched_rng.lua_random_index(1000),
+        );
+    }
 }
