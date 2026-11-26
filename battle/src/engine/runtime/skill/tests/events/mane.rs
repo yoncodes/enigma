@@ -198,6 +198,14 @@ fn broken_guard_reaction_requires_surviving_the_triggering_hit() {
     crate::test_support::init_config();
     let skill_id = 109350304;
     let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                current_hp: Some(1_000),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
         defender: Some(FightTeam {
             entitys: vec![FightEntityInfo {
                 uid: Some(-1),
@@ -206,6 +214,7 @@ fn broken_guard_reaction_requires_surviving_the_triggering_hit() {
                     hp: Some(1_000),
                     ..Default::default()
                 }),
+                passive_skill: vec![skill_id],
                 toughness_value: Some(100),
                 toughness_point: Some(1),
                 ..Default::default()
@@ -268,12 +277,31 @@ fn broken_guard_reaction_requires_surviving_the_triggering_hit() {
             &catalog,
             &mut RoundDeterminism::default(),
             TargetContext::default(),
-            &SkillOpTrigger::Event(event),
+            &SkillOpTrigger::Event(event.clone()),
         )
         .unwrap();
         if expected_hp == 0 {
             assert!(ops.is_empty());
         } else {
+            let reaction = crate::engine::runtime::drain::run_event(
+                &mut managers.clone(),
+                &pool,
+                &catalog,
+                &mut RoundDeterminism::default(),
+                TargetContext::default(),
+                event,
+            )
+            .unwrap();
+            assert!(reaction.frames.iter().any(|frame| matches!(
+                frame.owner,
+                crate::engine::runtime::record::FrameOwner::Skill {
+                    source_uid: -1,
+                    skill_id: passive,
+                    target_uid: Some(10),
+                    ..
+                } if passive == skill_id
+            )));
+
             let [
                 RuleOp::Command(BattleCommand::Hp(HpCommand::Lose(loss))),
                 RuleOp::Command(BattleCommand::ToughnessRecover(recover)),
