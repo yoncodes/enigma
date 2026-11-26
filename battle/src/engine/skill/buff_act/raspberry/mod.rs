@@ -464,7 +464,7 @@ pub fn capacity_rule_op(
     cap: i32,
     delta: i32,
 ) -> Option<RuleOp> {
-    (delta != 0).then_some({
+    (delta != 0 || cap > 0 && current == cap).then_some({
         RuleOp::Command(BattleCommand::RaspberryCapacity(CapacityCommand {
             origin,
             source_uid,
@@ -476,6 +476,32 @@ pub fn capacity_rule_op(
             delta,
         }))
     })
+}
+
+pub(crate) fn settle_capacity(
+    managers: &mut BattleManagers,
+    command: CapacityCommand,
+) -> Result<CapacityResult, CapacityError> {
+    if command.delta != 0 {
+        return execute_capacity(managers, command)
+            .map(|changes| CapacityResult::Applied(Box::new(changes)));
+    }
+    if command.source_uid == 0
+        || command.target_uid == 0
+        || command.buff_uid == 0
+        || command.cap <= 0
+        || command.current != command.cap
+    {
+        return Err(CapacityError::InvalidCommand);
+    }
+    Ok(CapacityResult::AtCap(CapacityAtCap {
+        target_uid: command.target_uid,
+        buff_uid: command.buff_uid,
+        buff_act_id: command.buff_act_id,
+        current: command.current,
+        cap: command.cap,
+        max_hp: managers.hp.max(command.target_uid),
+    }))
 }
 
 pub(crate) fn execute_capacity(

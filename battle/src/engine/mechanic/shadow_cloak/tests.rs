@@ -3,8 +3,13 @@ use std::collections::HashMap;
 use sonettobuf::{BuffInfo, Fight, FightEntityInfo, FightTeam, HeroAttribute};
 
 use crate::engine::{
+    event::bus::EventBus,
     manager::{BattleManagers, buff::ActiveBuffFeature},
-    skill::rule::output::{BattleCommand, RuleOp},
+    runtime::executor::{RuleOutcome, execute_rule_op},
+    skill::{
+        buff_act::raspberry::CapacityResult,
+        rule::output::{BattleCommand, RuleOp},
+    },
 };
 
 use super::{ShadowCloak, capacity_rule_groups};
@@ -42,7 +47,9 @@ fn capacity_rules_keep_each_owners_operations_together() {
                         uid: Some(20 + index as i64),
                         buff_id: Some(31250151),
                         from_uid: Some(10),
-                        act_common_params: Some("0#1500".to_owned()),
+                        act_common_params: Some(
+                            if index == 0 { "1500#1500" } else { "0#1500" }.to_owned(),
+                        ),
                         ..Default::default()
                     }],
                     ..Default::default()
@@ -52,7 +59,7 @@ fn capacity_rules_keep_each_owners_operations_together() {
         }),
         ..Default::default()
     };
-    let managers = BattleManagers::seeded(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
     let groups = capacity_rule_groups(
         &managers,
         &[raspberry_feature(11, 21), raspberry_feature(10, 20)],
@@ -74,6 +81,18 @@ fn capacity_rules_keep_each_owners_operations_together() {
                 if command.target_uid == group.owner_uid
         )
     }));
+    let capped = groups.into_iter().last().unwrap().operations.pop().unwrap();
+    let mut events = EventBus::default();
+    let max_hp = managers.hp.max(10);
+    let outcome = execute_rule_op(&mut managers, &mut events, capped).unwrap();
+    assert!(matches!(
+        outcome,
+        RuleOutcome::RaspberryCapacity(result)
+            if matches!(*result, CapacityResult::AtCap(cap)
+                if cap.target_uid == 10 && cap.current == 1500 && cap.cap == 1500 && cap.max_hp == max_hp)
+    ));
+    assert_eq!(managers.hp.max(10), max_hp);
+    assert!(events.is_empty());
 }
 
 #[test]

@@ -1203,17 +1203,17 @@ pub(crate) fn execute_rule_op_with(
             Ok(RuleOutcome::Shell(Box::new(changes)))
         }
         RuleOp::Command(BattleCommand::RaspberryCapacity(command)) => {
-            let changes =
-                crate::engine::skill::buff_act::raspberry::execute_capacity(managers, command)?;
-            for event in changes.buff.events() {
-                events.push(event);
+            let result =
+                crate::engine::skill::buff_act::raspberry::settle_capacity(managers, command)?;
+            if let CapacityResult::Applied(changes) = &result {
+                for event in changes.buff.events() {
+                    events.push(event);
+                }
+                for event in changes.hp.events() {
+                    events.push(event);
+                }
             }
-            for event in changes.hp.events() {
-                events.push(event);
-            }
-            Ok(RuleOutcome::RaspberryCapacity(Box::new(
-                CapacityResult::Applied(Box::new(changes)),
-            )))
+            Ok(RuleOutcome::RaspberryCapacity(Box::new(result)))
         }
         RuleOp::Command(BattleCommand::RaspberryAddCount(command)) => {
             let Some(changes) =
