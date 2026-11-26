@@ -105,6 +105,9 @@ pub(super) fn project_hp(
         ));
         effects.extend(EffectPacket::recorded_buff_changes(&removed.carrier));
     }
+    if let Some(expired) = &changes.post_damage_expiry {
+        effects.extend(EffectPacket::recorded_buff_changes(expired));
+    }
     if let Some(max_hp) = changes.max_hp {
         let wire = (changes.origin.domain == crate::engine::skill::rule::RuleDomain::BuffAct)
             .then(|| {

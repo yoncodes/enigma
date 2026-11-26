@@ -20,6 +20,7 @@ fn attr_max_hp_change(
         team_shared_shield_absorbed: None,
         team_shared_shield_removed: None,
         shield_broken: None,
+        post_damage_expiry: None,
         shared_hurt: None,
         shield_absorbed: None,
         shield_granted: None,

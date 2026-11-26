@@ -55,6 +55,7 @@ impl HpManager {
             shared_hurt: None,
             shield_absorbed: None,
             shield_broken: None,
+            post_damage_expiry: None,
             shield_granted: None,
             max_hp: None,
             hp: None,

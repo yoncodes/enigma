@@ -299,6 +299,7 @@ pub struct HpChanges {
     pub shared_hurt: Option<Box<SharedHurt>>,
     pub shield_absorbed: Option<ShieldChange>,
     pub(crate) shield_broken: Option<Box<super::shield::ShieldBreak>>,
+    pub(crate) post_damage_expiry: Option<Box<super::buff::BuffChanges>>,
     pub shield_granted: Option<ShieldGain>,
     pub max_hp: Option<MaxHpChange>,
     pub hp: Option<HpChange>,
@@ -478,6 +479,9 @@ impl HpChanges {
         if let Some(removed) = &self.shield_broken {
             events.extend(removed.carrier.events());
         }
+        if let Some(expired) = &self.post_damage_expiry {
+            events.extend(expired.events());
+        }
         if let Some(death) = self.death {
             let death = death.transition();
             events.push(BattleEvent::EntityDied(EntityDiedEvent {
@@ -494,6 +498,8 @@ pub enum HpCommandError {
     InvalidCommand,
     InvalidFoundationCounterState,
     InvalidFoundationState,
+    InvalidRippleBalance,
+    UnsupportedRippleInteraction(i64),
     UnsupportedFoundationInteraction,
     MissingTarget(i64),
     InvalidTeamSharedState,

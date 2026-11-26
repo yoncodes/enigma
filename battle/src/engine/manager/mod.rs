@@ -21,6 +21,7 @@ pub mod indicator;
 pub mod injury;
 pub mod player;
 pub mod revive;
+mod ripple;
 pub mod shield;
 pub mod summon;
 pub mod toughness;
@@ -103,6 +104,7 @@ struct HpPlan {
     shield_break: Option<BuffPlan>,
     share: Option<ShareHurtPlan>,
     foundation_counter: Option<FoundationCounterPlan>,
+    ripple: Option<ripple::BalancePlan>,
     hp_loss_state: Vec<HpLossStatePlan>,
     shield_counter_credits: Vec<crate::engine::skill::buff_act::shield_counter::Credit>,
 }
@@ -587,6 +589,14 @@ impl BattleManagers {
         shared_values: &mut HashMap<i64, i32>,
         share_spent: &mut HashMap<i64, i32>,
     ) -> Result<HpPlan, hp::HpCommandError> {
+        let ripple = ripple::prepare(
+            self,
+            hp,
+            target_count,
+            shared_values,
+            share_spent,
+            &mut command,
+        )?;
         let share = if let hp::HpCommand::Damage(damage)
         | hp::HpCommand::SettleAccumulatedDamage(damage) = &mut command
             && let Some(split) = crate::engine::skill::buff_act::share_hurt::plan(
@@ -618,14 +628,7 @@ impl BattleManagers {
         let damage_cap = if let hp::HpCommand::Damage(damage)
         | hp::HpCommand::SettleAccumulatedDamage(damage) = &mut command
         {
-            self.buff
-                .active_features(hp)
-                .into_iter()
-                .filter(|feature| feature.owner_uid == damage.target_uid)
-                .filter_map(|feature| {
-                    crate::engine::skill::buff_act::damage_not_more_than::cap(&feature, hp)
-                })
-                .min()
+            self.damage_cap(hp, damage.target_uid)
         } else {
             None
         };
@@ -709,11 +712,9 @@ impl BattleManagers {
             hp::HpCommand::Damage(damage) | hp::HpCommand::SettleAccumulatedDamage(damage)
                 if damage.amount > 0 =>
             {
-                self.team_shared_shield_plans(hp, damage.target_uid, target_count)
-                    .into_iter()
-                    .find_map(|mut plan| {
-                        plan.current = *shared_values.entry(plan.buff_uid).or_insert(plan.current);
-                        (plan.current > 0).then_some(plan)
+                self.team_shared_shield_for_hit(hp, damage.target_uid, target_count, shared_values)
+                    .inspect(|plan| {
+                        shared_values.entry(plan.buff_uid).or_insert(plan.current);
                     })
             }
             _ => None,
@@ -749,6 +750,7 @@ impl BattleManagers {
             shield_break: None,
             share,
             foundation_counter,
+            ripple,
             hp_loss_state: Vec::new(),
             shield_counter_credits: Vec::new(),
         })
@@ -794,6 +796,9 @@ impl BattleManagers {
         if let Some(state) = &plan.foundation_counter {
             self.commit_buff(state.buff.clone());
         }
+        if let Some(ripple) = &plan.ripple {
+            self.commit_buff(ripple.reset.clone());
+        }
         for share in plan.share.iter().flat_map(|share| &share.shares) {
             self.hp.commit_validated_command(*share, None, None);
         }
@@ -801,10 +806,18 @@ impl BattleManagers {
         if let Some(shield_break) = &plan.shield_break {
             self.commit_buff(shield_break.clone());
         }
+        if let Some(ripple) = &plan.ripple {
+            self.commit_buff(ripple.remove.clone());
+        }
     }
 
     fn commit_hp(&mut self, plan: HpPlan) -> HpCommit {
         let mut before_hp_markers = Vec::new();
+        let ripple_expiry = plan.ripple.map(|ripple| {
+            self.commit_buff(ripple.reset);
+            before_hp_markers.push(ripple.marker);
+            ripple.remove
+        });
         if let Some(state) = plan.foundation_counter {
             self.commit_buff(state.buff);
             before_hp_markers.push(state.marker);
@@ -873,6 +886,7 @@ impl BattleManagers {
         {
             changes.shield_broken = shield::commit_break(self, shield_break, absorption);
         }
+        changes.post_damage_expiry = ripple_expiry.map(|remove| Box::new(self.commit_buff(remove)));
         crate::engine::damage::export::settlement(command, &changes, &self.hp, loss_limit);
         HpCommit {
             changes,
@@ -880,6 +894,34 @@ impl BattleManagers {
             before_hp_markers,
             after_hp_markers,
         }
+    }
+
+    fn damage_cap(&self, hp: &HpManager, target_uid: i64) -> Option<i32> {
+        self.buff
+            .active_features(hp)
+            .iter()
+            .filter(|feature| feature.owner_uid == target_uid)
+            .filter_map(|feature| {
+                crate::engine::skill::buff_act::damage_not_more_than::cap(feature, hp)
+            })
+            .min()
+    }
+
+    fn team_shared_shield_for_hit(
+        &self,
+        hp: &HpManager,
+        target_uid: i64,
+        target_count: usize,
+        shared_values: &HashMap<i64, i32>,
+    ) -> Option<hp::TeamSharedShieldPlan> {
+        self.team_shared_shield_plans(hp, target_uid, target_count)
+            .into_iter()
+            .find_map(|mut plan| {
+                if let Some(balance) = shared_values.get(&plan.buff_uid) {
+                    plan.current = *balance;
+                }
+                (plan.current > 0).then_some(plan)
+            })
     }
 
     fn team_shared_shield_plans(

@@ -4,6 +4,12 @@ use super::super::*;
 use crate::engine::skill::buff_act;
 
 buff_act_definitions! {
+    (1153, "NarcissusCounterDamageImmune") => RippleBalance,
+        effect_time_subscription: false, supports: buff_act::ripple_balance::supports,
+        state_consumer: true, initial_state: ZeroInteger,
+        wire: (buff_act::wire::BuffActWireDefinition::add(
+            DefinitionKey::new(1153, "NarcissusCounterDamageImmune"), &[EffectType::None as i32])
+            .without_initial_state_marker());
     (1156, "NarcissusPassionOriginHurt") => TidalTempoSettlement,
         source: Applier, runtime_marker: BeforeChanges(Owner),
         runtime: buff_act::tidal_tempo_settlement::rule_ops,
