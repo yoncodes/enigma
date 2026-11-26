@@ -2,7 +2,7 @@ use crate::engine::{
     event::payload::BattleEvent,
     manager::{
         BattleManagers,
-        buff::{BuffAmount, BuffCommand, BuffSetAmount},
+        buff::{BuffCommand, BuffConsume, BuffSelector, DepletedBuff},
         ex_point::{ExPointChange, ExPointCommand},
     },
     skill::{
@@ -36,11 +36,12 @@ pub fn rule_ops(
     let origin = super::command_origin(subscriber)?;
     let delta = subscriber.args.first().copied().unwrap_or(1);
     Some(vec![
-        RuleOp::Command(BattleCommand::Buff(BuffCommand::SetAmount(BuffSetAmount {
+        RuleOp::Command(BattleCommand::Buff(BuffCommand::Consume(BuffConsume {
             origin,
             target_uid: subscriber.owner_uid,
-            buff_uid: subscriber.buff_uid,
-            amount: BuffAmount::Layer(layer - 1),
+            selector: BuffSelector::Uid(subscriber.buff_uid),
+            amount: 1,
+            depleted: DepletedBuff::Remove,
         }))),
         RuleOp::Command(BattleCommand::ExPoint(ExPointCommand::Change(
             ExPointChange {

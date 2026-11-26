@@ -11,6 +11,7 @@ use super::*;
 
 #[test]
 fn hit_event_emits_manager_commands_with_exact_origin() {
+    crate::test_support::init_config();
     let fight = Fight {
         attacker: Some(FightTeam {
             entitys: vec![FightEntityInfo {
@@ -88,6 +89,13 @@ fn hit_event_emits_manager_commands_with_exact_origin() {
 
     assert_eq!(managers.buff.snapshot(-1, 20).unwrap().layer, Some(1));
     assert_eq!(managers.ex_point.get(10), 1);
+    let mut finished = managers.clone();
+    for op in rule_ops(&finished, &subscriber, &event).unwrap() {
+        execute_rule_op(&mut finished, &mut events, op).unwrap();
+    }
+    assert!(finished.buff.snapshot(-1, 20).is_none());
+    assert_eq!(finished.ex_point.get(10), 2);
+
     managers.hp.lose(-1, 100, 0);
     let dead_holder =
         crate::engine::skill::subscriber::for_active_buffs(&managers, EventKind::BeAttacked)

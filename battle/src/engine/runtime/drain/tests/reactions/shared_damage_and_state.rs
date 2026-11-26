@@ -824,7 +824,7 @@ fn target_attacked_passive_and_be_attacked_buff_act_share_one_hit_payload() {
     .unwrap();
 
     assert!(!managers.buff.has_buff_id(-1, 530000111));
-    assert_eq!(managers.buff.snapshot(-1, 21).unwrap().layer, Some(0));
+    assert!(managers.buff.snapshot(-1, 21).is_none());
     assert_eq!(managers.ex_point.get(10), 1);
     let steps = crate::engine::packet::timeline::project(&result.frames).unwrap();
     assert!(steps.iter().any(|step| step.act_id == Some(530000151)));
