@@ -56,16 +56,19 @@ pub fn group_red_dots(records: Vec<RedDotRecord>) -> Vec<RedDotGroup> {
         .collect()
 }
 
-#[allow(clippy::too_many_arguments)]
+pub struct RedDotValue {
+    pub value: i32,
+    pub time: i64,
+    pub ext: String,
+    pub replace_all: bool,
+}
+
 pub async fn upsert_red_dot(
     pool: &SqlitePool,
     player_id: i64,
     define_id: i32,
     info_id: i32,
-    value: i32,
-    time: i64,
-    ext: String,
-    replace_all: bool,
+    dot: RedDotValue,
 ) -> Result<()> {
     let now = common::time::ServerTime::now_ms();
 
@@ -84,10 +87,10 @@ pub async fn upsert_red_dot(
     .bind(player_id)
     .bind(define_id)
     .bind(info_id)
-    .bind(value)
-    .bind(time)
-    .bind(ext)
-    .bind(replace_all)
+    .bind(dot.value)
+    .bind(dot.time)
+    .bind(dot.ext)
+    .bind(dot.replace_all)
     .bind(now)
     .bind(now)
     .execute(pool)

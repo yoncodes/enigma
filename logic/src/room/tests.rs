@@ -534,9 +534,20 @@ async fn room_reddot_commands_hide_owned_entries() {
         (RedDotId::RoomBlockPackage.id(), 6),
         (RedDotId::RoomBuildingPlace.id(), 5001),
     ] {
-        red_dots::upsert_red_dot(&pool, 13, define_id, info_id, 1, 0, String::new(), false)
-            .await
-            .unwrap();
+        red_dots::upsert_red_dot(
+            &pool,
+            13,
+            define_id,
+            info_id,
+            red_dots::RedDotValue {
+                value: 1,
+                time: 0,
+                ext: String::new(),
+                replace_all: false,
+            },
+        )
+        .await
+        .unwrap();
     }
 
     let rooms = RoomManager::new(13);
