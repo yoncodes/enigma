@@ -363,6 +363,50 @@ fn completed_active_use_skill_requires_an_active_execution_mode_and_real_source(
 }
 
 #[test]
+fn hurt_skill_reads_the_resolved_hit_before_its_triggering_skill() {
+    init_config();
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                current_hp: Some(100),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let condition = exact_condition(501203, "UseHurtSkill", &[]);
+    let emitter = crate::engine::manager::emitter::UID;
+    assert!(pool.entity(emitter).is_some());
+    for (hit_source_uid, hit_skill_is_attack, expected) in [
+        (10, Some(true), true),
+        (10, Some(false), false),
+        (10, None, false),
+        (emitter, Some(true), false),
+    ] {
+        assert_eq!(
+            condition_matches(
+                &condition,
+                10,
+                &[10],
+                None,
+                &pool,
+                TargetContext {
+                    active_skill_is_attack: false,
+                    active_skill_source_uid: 10,
+                    hit_source_uid,
+                    hit_skill_is_attack,
+                    ..Default::default()
+                },
+            ),
+            expected
+        );
+    }
+}
+
+#[test]
 fn hero_round_interval_alternates_from_its_configured_start_round() {
     init_config();
     let matches = |opcode, kind, current_round| {

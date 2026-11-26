@@ -498,9 +498,15 @@ pub(super) fn condition_kind_matches(
         ParsedConditionKind::UseSkillRank(ranks) => {
             actions::use_skill_rank(ranks, source_uid, context)
         }
-        ParsedConditionKind::UseHurtSkill => {
-            context.active_skill_is_attack && active_skill_has_real_source(pool, context)
-        }
+        ParsedConditionKind::UseHurtSkill => match context.hit_skill_is_attack {
+            Some(is_attack) => {
+                is_attack
+                    && pool
+                        .entities()
+                        .any(|entity| entity.uid == context.hit_source_uid)
+            }
+            None => context.active_skill_is_attack && active_skill_has_real_source(pool, context),
+        },
         ParsedConditionKind::UseDeviceSkill => actions::use_device_skill(pool, context),
         ParsedConditionKind::SpecificSkill { group, rank } => {
             actions::specific_skill(group, rank, source_uid, pool, context)

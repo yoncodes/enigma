@@ -797,6 +797,7 @@ pub(super) fn damage_ops(
         let mut target_modifiers = execution.modifiers.clone();
         let mut target_context = execution.context;
         target_context.hit_source_uid = source_uid;
+        target_context.hit_skill_is_attack = Some(catalog.is_attack(effect_skill_id));
         target_context.hit_target_uid = target_uid;
         target_context.runtime_target_uid = target_uid;
         rate::emit_active_target_attack_attributes(

@@ -110,6 +110,7 @@ pub struct TargetContext {
     pub lost_power_id: i32,
     pub lost_power_amount: i32,
     pub hit_source_uid: i64,
+    pub hit_skill_is_attack: Option<bool>,
     pub hit_target_uid: i64,
     pub hit_resolved_damage: i32,
     pub hit_career_restraint: Option<bool>,
