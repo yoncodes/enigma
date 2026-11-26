@@ -51,7 +51,7 @@ pub(super) async fn run_command(
         "players" | "list" | "listplayers" | "list_players" => return Ok(list_players(state)),
         "help" | "?" => {
             return Ok(GmResponse::ok(
-                "commands: help, status, players, achievement unlock all, background unlock all, bgm unlock all, garment unlock all, guide complete all, hero level <hero id> <level>, hero resonance <hero id> <level>, hero portrait <hero id> <1-5>, hero portrait all, hero upgrade materials <hero id> <1-180> <resonance 1-15> [destiny rank] [destiny stone id], psychube max <uid>, dungeon unlock <stage|chapter> <id>, material <type> <id> <amount>",
+                "commands: help, status, players, achievement unlock all, background unlock all, bgm unlock all, garment unlock all, guide complete all, hero level <hero id> <level>, hero resonance <hero id> <level>, hero destiny <hero id> <stone id or 0>, hero portrait <hero id> <1-5>, hero portrait all, hero upgrade materials <hero id> <1-180> <resonance 1-15> [destiny rank] [destiny stone id], psychube max <uid>, dungeon unlock <stage|chapter> <id>, material <type> <id> <amount>",
             ));
         }
         _ => anyhow::bail!("unknown command '{}'", first),
