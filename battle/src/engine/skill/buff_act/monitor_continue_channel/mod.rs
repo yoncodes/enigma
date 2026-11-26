@@ -30,7 +30,9 @@ pub fn rule_ops(
         {
             Some(action.source_uid)
         }
-        BattleEvent::Kind(crate::engine::event::kind::EventKind::RoundEndFinalSettlement) => None,
+        BattleEvent::BuffsSettled(_) if !pool.field_enemies(subscriber.owner_uid).is_empty() => {
+            None
+        }
         _ => return Some(Vec::new()),
     };
     let casts = if action_target.is_some() {

@@ -106,3 +106,93 @@ fn channel_cast_owns_only_the_linked_skill_frame() {
     assert!(scoped[1].group_with_siblings);
     assert_eq!(scoped[1].source, super::super::BuffActFrameSource::Owner);
 }
+
+#[test]
+fn final_settlement_casts_for_each_remaining_lock() {
+    crate::test_support::init_config();
+    let owner_uid = 10;
+    let lock = 31260141;
+    let cast = 31260171;
+    let subscriber = BuffActSubscriber {
+        owner_uid,
+        source_uid: owner_uid,
+        buff_uid: 2,
+        buff_id: 31260131,
+        team_type: 1,
+        owner_alive: true,
+        amount: 1,
+        key: SubscriptionKey::new(
+            EventKind::RoundEndFinalSettlement,
+            crate::engine::skill::rule::DefinitionKey::new(1024, "MonitorContinueChannel"),
+        ),
+        act_type: "MonitorContinueChannel".to_owned(),
+        effect_time: 307,
+        effect_condition: 0,
+        args: vec![lock, cast, 31260151, 31260161],
+        raw: String::new(),
+    };
+    let mut fight = sonettobuf::Fight {
+        attacker: Some(sonettobuf::FightTeam {
+            entitys: vec![sonettobuf::FightEntityInfo {
+                uid: Some(owner_uid),
+                current_hp: Some(100),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        defender: Some(sonettobuf::FightTeam {
+            entitys: vec![sonettobuf::FightEntityInfo {
+                uid: Some(-1),
+                current_hp: Some(100),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let mut managers = BattleManagers::seeded(&fight);
+    managers
+        .execute_buff(BuffCommand::Grant(BuffGrant {
+            origin: super::super::command_origin(&subscriber).unwrap(),
+            source_uid: owner_uid,
+            target_uid: owner_uid,
+            buff_id: lock,
+            amount: Some(3),
+            occurrences: 1,
+            child_uid_reservations: 0,
+        }))
+        .unwrap();
+    assert_eq!(managers.buff.buff_id_or_type_amount(owner_uid, lock), 3);
+
+    let event = BattleEvent::BuffsSettled(Vec::new());
+    let ops = rule_ops(
+        &managers,
+        &TargetPool::from_fight(&fight),
+        &subscriber,
+        &event,
+    )
+    .unwrap();
+
+    assert_eq!(ops.len(), 12);
+    for batch in ops.chunks_exact(4) {
+        assert!(matches!(&batch[1], RuleOp::Skill(invocation) if invocation.plan.skill_id == cast));
+        assert!(matches!(
+            &batch[2],
+            RuleOp::Command(BattleCommand::Buff(BuffCommand::Consume(BuffConsume {
+                target_uid,
+                selector: BuffSelector::IdOrType(id),
+                amount: 1,
+                ..
+            }))) if *target_uid == owner_uid && *id == lock
+        ));
+    }
+
+    let defender = fight.defender.as_mut().unwrap();
+    defender.sub_entitys = std::mem::take(&mut defender.entitys);
+    let pool = TargetPool::from_fight(&fight);
+    assert!(
+        rule_ops(&managers, &pool, &subscriber, &event)
+            .unwrap()
+            .is_empty()
+    );
+}
