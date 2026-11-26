@@ -1,3 +1,5 @@
+mod moxie_payment;
+
 use crate::engine::{
     event::{bus::EventBus, payload::BattleEvent},
     manager::{
@@ -774,6 +776,10 @@ pub(crate) fn execute_rule_op_with(
             }
             Ok(RuleOutcome::BuffBatch(batch))
         }
+        RuleOp::Command(BattleCommand::MoxieFieldCredit(command)) => {
+            managers.moxie_field.credit(command);
+            Ok(RuleOutcome::StateChanged)
+        }
         RuleOp::Command(BattleCommand::RippleAccrual(command)) => {
             let changes = command.commit(managers)?;
             for change in &changes {
@@ -1277,20 +1283,16 @@ pub(crate) fn execute_rule_op_with(
         }
         RuleOp::Skill(_) => Err(RuleExecutionError::UnexpectedSkill),
         RuleOp::DebitUltimate { action, cost } => {
-            let changes = managers.pay_skill_moxie(action.source_uid, action.skill_id, cost)?;
-            for event in changes.events() {
-                events.push(event);
-            }
+            let changes =
+                moxie_payment::pay(managers, events, action.source_uid, action.skill_id, cost)?;
             Ok(RuleOutcome::ExPoint(changes))
         }
         RuleOp::PaySkillAction { action, cost } => {
-            let changes = managers.pay_skill_moxie(action.source_uid, action.skill_id, cost)?;
+            let changes =
+                moxie_payment::pay(managers, events, action.source_uid, action.skill_id, cost)?;
             managers
                 .hp
                 .capture_action_start(action.source_uid, action.skill_id);
-            for event in changes.events() {
-                events.push(event);
-            }
             Ok(RuleOutcome::ActionCostPaid(changes))
         }
         RuleOp::PaidSkillStarted(lifecycle) => {
@@ -1308,10 +1310,8 @@ pub(crate) fn execute_rule_op_with(
             else {
                 return Err(RuleExecutionError::UnexpectedSkill);
             };
-            let changes = managers.pay_skill_moxie(action.source_uid, action.skill_id, cost)?;
-            for event in changes.events() {
-                events.push(event);
-            }
+            let changes =
+                moxie_payment::pay(managers, events, action.source_uid, action.skill_id, cost)?;
             managers
                 .hp
                 .capture_action_start(action.source_uid, action.skill_id);

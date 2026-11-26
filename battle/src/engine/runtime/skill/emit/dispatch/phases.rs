@@ -71,9 +71,11 @@ pub(super) fn finish(
                         })
                 }),
         );
-        let prepared = catalog
-            .has_preparation_observers()
-            .then(|| effects_prepared_op(invocation, managers, catalog, pool, execution));
+        let prepared = (catalog.has_preparation_observers()
+            || managers
+                .buff
+                .observes(crate::engine::event::kind::EventKind::SkillEffectsPrepared))
+        .then(|| effects_prepared_op(invocation, managers, catalog, pool, execution));
         let phase_completed = phase_completed_op(
             invocation,
             managers,

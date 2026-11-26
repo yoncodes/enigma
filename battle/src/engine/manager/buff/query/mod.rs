@@ -179,6 +179,27 @@ impl BuffManager {
             .collect()
     }
 
+    pub(crate) fn observes(&self, event: crate::engine::event::kind::EventKind) -> bool {
+        self.buffs
+            .iter()
+            .filter(|active| active.effective)
+            .any(|active| {
+                active.definition.as_ref().is_some_and(|definition| {
+                    definition.features().iter().any(|feature| {
+                        feature.arguments_supported
+                            && feature.values.first().is_some_and(|act_id| {
+                                crate::engine::skill::buff_act::registry::subscribes_to_event(
+                                    *act_id,
+                                    &feature.act_type,
+                                    feature.effect_time,
+                                    event,
+                                )
+                            })
+                    })
+                })
+            })
+    }
+
     pub fn buff_act_carrier(&self, owner_uid: i64, kind: BuffActKind) -> Option<(i64, i32, i32)> {
         self.buffs
             .iter()

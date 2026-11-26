@@ -134,6 +134,13 @@ pub(crate) fn is_force_field(catalog: crate::catalog::BattleCatalog, buff_id: i3
                 .map(|definition| definition.kind);
             match kind {
                 Some(BuffActKind::LayerMasterHalo) => true,
+                Some(BuffActKind::MoxieMightField) => {
+                    crate::engine::skill::buff_act::registry::resolve_feature(
+                        Some(catalog.game_data()),
+                        &token,
+                    )
+                    .is_some_and(|feature| feature.arguments_supported)
+                }
                 Some(BuffActKind::MasterHalo) => matches!(
                     (args.next(), args.next(), args.next(), args.next(), args.next()),
                     (Some("1"), Some(linked), Some("1"), Some("0"), None)

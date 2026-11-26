@@ -1,5 +1,5 @@
 use super::{ExPointChanges, ExPointCommand, ExPointCommandError, ExPointKind, ExPointManager};
-use crate::engine::manager::BattleManagers;
+use crate::engine::{event::payload::UltimateMoxiePaidEvent, manager::BattleManagers};
 
 impl BattleManagers {
     pub(crate) fn pay_skill_moxie(
@@ -7,19 +7,26 @@ impl BattleManagers {
         payer: i64,
         skill_id: i32,
         command: ExPointCommand,
-    ) -> Result<ExPointChanges, ExPointCommandError> {
+    ) -> Result<(ExPointChanges, Option<UltimateMoxiePaidEvent>), ExPointCommandError> {
         let changes = self.execute_ex_point(command)?;
-        if let ExPointChanges::Value { change, .. } = &changes
+        let paid = if let ExPointChanges::Value { change, .. } = &changes
             && change.kind == ExPointKind::Common
             && change.target_uid == payer
             && change.applied_delta < 0
             && self.catalog().skill_is_big(skill_id)
             && let Some(team) = self.entity.team_type(payer)
         {
-            self.ex_point
-                .record_ultimate_spend(team, change.applied_delta.saturating_neg());
-        }
-        Ok(changes)
+            let amount = change.applied_delta.saturating_neg();
+            self.ex_point.record_ultimate_spend(team, amount);
+            Some(UltimateMoxiePaidEvent {
+                source_uid: payer,
+                team,
+                amount,
+            })
+        } else {
+            None
+        };
+        Ok((changes, paid))
     }
 }
 

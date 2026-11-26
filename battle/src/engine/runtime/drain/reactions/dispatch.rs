@@ -3,7 +3,10 @@ use super::{
     *,
 };
 use crate::engine::{
-    event::subscription::{PublicationPhase, ReactionTiming},
+    event::{
+        kind::EventKind,
+        subscription::{PublicationPhase, ReactionTiming},
+    },
     skill::buff_act::registry::RuntimeFrameScope,
 };
 
@@ -108,7 +111,9 @@ pub(in crate::engine::runtime::drain) fn dispatch_reactions(
         owner_uids.or_else(|| lifecycle_owner.as_ref().map(|owners| owners.as_slice()));
     let scoped_owner_uids = terminal_owner_scope(pool, managers, requested_owner_uids);
     let owner_uids = scoped_owner_uids.as_deref();
-    if let BattleEvent::SkillEffectsPrepared(action) = event {
+    if let BattleEvent::SkillEffectsPrepared(action) = event
+        && !managers.buff.observes(EventKind::SkillEffectsPrepared)
+    {
         if publication_phase != Some(PublicationPhase::BeforePublish)
             && matches!(lane, None | Some(ReactionLane::Skills))
             && owner_uids.is_none_or(|owners| owners.contains(&action.source_uid))

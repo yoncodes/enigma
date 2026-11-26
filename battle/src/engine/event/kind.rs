@@ -24,6 +24,7 @@ pub enum EventKind {
     ToughnessBroken,
     TargetAttacked,
     ExPointChanged,
+    UltimateMoxiePaid,
     EurekaChanged,
     ConduitActivated,
     BloodtitheChanged,

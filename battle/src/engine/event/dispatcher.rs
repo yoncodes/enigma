@@ -277,16 +277,28 @@ pub(crate) fn discover_selected_event(
     owner_uids: Option<&[i64]>,
 ) -> Result<subscriber::EventSubscribers, SubscriberError> {
     if let BattleEvent::SkillEffectsPrepared(action) = event {
-        if owner_uids.is_some_and(|owners| !owners.contains(&action.source_uid)) {
-            return Ok(subscriber::EventSubscribers::default());
+        let mut subscribers = if owner_uids.is_none_or(|owners| owners.contains(&action.source_uid))
+        {
+            subscriber::for_compiled_owner_skill_event(
+                pool,
+                managers,
+                catalog,
+                EventKind::SkillEffectsPrepared,
+                action.source_uid,
+            )?
+        } else {
+            subscriber::EventSubscribers::default()
+        };
+        if managers.buff.observes(EventKind::SkillEffectsPrepared) {
+            subscribers.buff_acts =
+                subscriber::for_active_buffs(managers, EventKind::SkillEffectsPrepared);
+            if let Some(owners) = owner_uids {
+                subscribers
+                    .buff_acts
+                    .retain(|subscriber| owners.contains(&subscriber.owner_uid));
+            }
         }
-        subscriber::for_compiled_owner_skill_event(
-            pool,
-            managers,
-            catalog,
-            EventKind::SkillEffectsPrepared,
-            action.source_uid,
-        )
+        Ok(subscribers)
     } else if let Some(owner_uids) = owner_uids {
         subscriber::for_compiled_owner_events(
             pool,

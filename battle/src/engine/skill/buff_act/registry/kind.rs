@@ -101,6 +101,7 @@ pub enum BuffActKind {
     Cure,
     AdvancedCure,
     UltimateMoxieHeal,
+    MoxieMightField,
     RippleAccrual,
     RippleBalance,
     TidalTempoSettlement,

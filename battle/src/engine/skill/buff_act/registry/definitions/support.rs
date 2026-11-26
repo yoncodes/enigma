@@ -4,6 +4,14 @@ use super::super::*;
 use crate::engine::skill::buff_act;
 
 buff_act_definitions! {
+    (1157, "NarcissusAddAttrByPassionEx") => MoxieMightField,
+        effect_time_subscription: false, events: [EventKind::UltimateMoxiePaid, EventKind::SkillEffectsPrepared],
+        source: Owner, actor: Team,
+        scoped_runtime: buff_act::moxie_might_field::rule_ops,
+        supports: buff_act::moxie_might_field::supports, state_consumer: true, initial_state: ZeroInteger,
+        wire: (buff_act::wire::BuffActWireDefinition::add(
+            DefinitionKey::new(1157, "NarcissusAddAttrByPassionEx"), &[EffectType::None as i32])
+            .without_initial_state_marker());
     (1154, "NarcissusHealToCounter") => RippleAccrual,
         effect_time_subscription: false, events: [EventKind::HealResolved], source: Owner,
         scoped_runtime: buff_act::ripple_accrual::rule_ops,

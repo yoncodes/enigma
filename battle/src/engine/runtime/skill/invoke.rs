@@ -287,6 +287,7 @@ pub(super) fn apply_event_context(
         | BattleEvent::ActionQueueCommitted { .. }
         | BattleEvent::PlayerActionsResolved { .. }
         | BattleEvent::HealResolved(_)
+        | BattleEvent::UltimateMoxiePaid(_)
         | BattleEvent::BuffsSettled(_)
         | BattleEvent::AfterSideFinalExpiry(_)
         | BattleEvent::CardChanged(_)

@@ -149,6 +149,13 @@ impl HealCast {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct UltimateMoxiePaidEvent {
+    pub source_uid: i64,
+    pub team: i32,
+    pub amount: i32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ExPointChangeEvent {
     pub origin: CommandOrigin,
     pub spent: bool,
@@ -352,6 +359,7 @@ pub enum BattleEvent {
         winning_team: i32,
     },
     ExPointChanged(ExPointChangeEvent),
+    UltimateMoxiePaid(UltimateMoxiePaidEvent),
     ExPointOverflow(ExPointChangeEvent),
     EurekaChanged(EurekaChangeEvent),
     ConduitActivated(ConduitActivatedEvent),
@@ -408,6 +416,7 @@ impl BattleEvent {
             Self::Hit(hit) => Some(hit.source_uid),
             Self::EntityDied(death) => Some(death.source_uid),
             Self::ExPointChanged(change) | Self::ExPointOverflow(change) => Some(change.source_uid),
+            Self::UltimateMoxiePaid(payment) => Some(payment.source_uid),
             Self::EurekaChanged(change) => Some(change.source_uid),
             Self::ConduitActivated(change) => Some(change.source_uid),
             Self::GaugeChanged(change) => Some(change.source_uid),
@@ -452,6 +461,7 @@ impl BattleEvent {
             Self::Hit(hit) => Some(hit.target_uid),
             Self::EntityDied(death) => Some(death.target_uid),
             Self::ExPointChanged(change) | Self::ExPointOverflow(change) => Some(change.target_uid),
+            Self::UltimateMoxiePaid(payment) => Some(payment.source_uid),
             Self::EurekaChanged(change) => Some(change.target_uid),
             Self::ConduitActivated(change) => Some(change.source_uid),
             Self::SummonChanged(change) => Some(change.owner_uid),
@@ -508,6 +518,7 @@ impl BattleEvent {
             Self::EntityDied(_) => EventKind::EntityDied,
             Self::BattleTerminalCommitted { .. } => EventKind::BattleTerminalCommitted,
             Self::ExPointChanged(_) => EventKind::ExPointChanged,
+            Self::UltimateMoxiePaid(_) => EventKind::UltimateMoxiePaid,
             Self::ExPointOverflow(_) => EventKind::ExPointOverflow,
             Self::EurekaChanged(_) => EventKind::EurekaChanged,
             Self::ConduitActivated(_) => EventKind::ConduitActivated,

@@ -120,6 +120,7 @@ pub mod lost_hp_count_add_buff;
 pub mod lost_hp_to_fake_hp;
 pub mod modify_attr_by_buff_layer;
 pub mod monitor_continue_channel;
+pub(crate) mod moxie_might_field;
 pub mod must_crit_and_fix_temp_attr;
 pub mod nuo_di_ka_cast_channel;
 pub mod paper_circle_continue_channel;
