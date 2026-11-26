@@ -481,10 +481,14 @@ impl TargetPool {
     pub fn first_boss_enemy(&self, source_uid: i64) -> Vec<i64> {
         self.field_enemies(source_uid)
             .iter()
-            .find(|entity| self.boss_model_ids.contains(&entity.model_id))
+            .find(|entity| self.is_boss_model(entity.model_id))
             .map(|entity| entity.uid)
             .into_iter()
             .collect()
+    }
+
+    pub(super) fn is_boss_model(&self, model_id: i32) -> bool {
+        self.boss_model_ids.contains(&model_id)
     }
 
     pub fn assist_boss(&self, source_uid: i64) -> Vec<i64> {

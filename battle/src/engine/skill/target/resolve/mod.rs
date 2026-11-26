@@ -57,7 +57,7 @@ enum TargetRule {
     BurnPriorityEnemy,
     RandomEnemy,
     EnemyWithSourceModelLabel,
-    EnemyWithConfiguredBuffType,
+    PriorityEnemyWithBuffType,
     Enemies,
     EnemyWithBuffAct,
     EnemiesWithMonsterLabel(i32),
@@ -405,12 +405,10 @@ impl TargetResolver {
                 &pool.field_enemies(source_uid),
                 pool.entity(source_uid),
             ),
-            TargetRule::EnemyWithConfiguredBuffType => request
-                .raw
-                .first()
-                .copied()
-                .map(|type_id| enemy_with_buff_type(&pool.field_enemies(source_uid), type_id))
-                .unwrap_or_default(),
+            TargetRule::PriorityEnemyWithBuffType => match request.raw.as_slice() {
+                [buff_type] => priority_enemy_with_buff_type(pool, source_uid, *buff_type),
+                _ => Vec::new(),
+            },
             TargetRule::Enemies => uids(&pool.field_enemies(source_uid)),
             TargetRule::EnemyWithBuffAct => enemy_with_buff_act_kind(
                 &pool.field_enemies(source_uid),
@@ -637,17 +635,22 @@ pub fn is_mapped_target_code(code: i32) -> bool {
 
 pub fn is_supported_target(request: &TargetRequest) -> bool {
     target_rule(request.code).is_some_and(|rule| match rule {
-        TargetRule::AlliesWithBuff => matches!(request.raw.as_slice(), [buff] if *buff > 0),
+        TargetRule::AlliesWithBuff | TargetRule::PriorityEnemyWithBuffType => {
+            matches!(request.raw.as_slice(), [buff] if *buff > 0)
+        }
         TargetRule::HighestExPointAlly => request.raw.is_empty(),
         _ => true,
     })
 }
 
 pub(crate) fn compile_logic_target(mut request: TargetRequest) -> Option<TargetRequest> {
-    if target_rule(request.code)? == TargetRule::HighestExPointAlly {
-        return highest_moxie::supports(&request.raw).then_some(request);
+    match target_rule(request.code)? {
+        TargetRule::HighestExPointAlly => {
+            return highest_moxie::supports(&request.raw).then_some(request);
+        }
+        TargetRule::PriorityEnemyWithBuffType => {}
+        _ => request.raw.clear(),
     }
-    request.raw.clear();
     is_supported_target(&request).then_some(request)
 }
 
@@ -716,7 +719,7 @@ pub fn targets_enemy(code: i32) -> Option<bool> {
         | TargetRule::BurnPriorityEnemy
         | TargetRule::RandomEnemy
         | TargetRule::EnemyWithSourceModelLabel
-        | TargetRule::EnemyWithConfiguredBuffType
+        | TargetRule::PriorityEnemyWithBuffType
         | TargetRule::Enemies
         | TargetRule::EnemyWithBuffAct
         | TargetRule::PriorityEnemyWithMonsterLabel(_)
@@ -807,7 +810,7 @@ fn target_rule(code: i32) -> Option<TargetRule> {
         234 => TargetRule::AssistBoss,
         236 => TargetRule::RandomEnemy,
         245 => TargetRule::EnemyWithSourceModelLabel,
-        247 => TargetRule::EnemyWithConfiguredBuffType,
+        247 => TargetRule::PriorityEnemyWithBuffType,
         249 => TargetRule::AlliesWithStatus,
         250 => TargetRule::AlliesWithoutStatus,
         301 => TargetRule::AllActiveEntities,
@@ -1203,10 +1206,16 @@ fn enemy_with_source_model_label(
         .unwrap_or_default()
 }
 
-fn enemy_with_buff_type(entities: &[TargetEntity], type_id: i32) -> Vec<i64> {
-    entities
-        .iter()
+fn priority_enemy_with_buff_type(pool: &TargetPool, source_uid: i64, type_id: i32) -> Vec<i64> {
+    let living = || {
+        pool.enemies(source_uid, true)
+            .iter()
+            .filter(|entity| entity.current_hp > 0)
+    };
+    living()
         .find(|entity| entity.has_buff_type(type_id))
+        .or_else(|| living().find(|entity| pool.is_boss_model(entity.model_id)))
+        .or_else(|| living().min_by_key(|entity| entity.current_hp))
         .map(|entity| vec![entity.uid])
         .unwrap_or_default()
 }

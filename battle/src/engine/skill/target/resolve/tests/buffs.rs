@@ -61,6 +61,49 @@ fn resolves_buff_type_feature_and_monster_label_targets() {
 }
 
 #[test]
+fn compiled_buff_type_priority_picks_mark_then_boss_then_lowest_hp() {
+    init_config();
+    let request = compile_logic_target(TargetRequest {
+        code: 247,
+        raw: vec![31350161],
+    })
+    .unwrap();
+    let mut fight = Fight {
+        battle_id: Some(103370111),
+        attacker: Some(FightTeam {
+            entitys: vec![entity_at(10, 1)],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![
+                entity_stats(-10, 1, 50, 500, 0),
+                FightEntityInfo {
+                    model_id: Some(103370111),
+                    ..entity_stats(-11, 2, 100, 100, 0)
+                },
+                enemy_with_buff(-12, 3, 40, buff(31350162, 31350161)),
+            ],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let select = |fight: &Fight| {
+        TargetResolver::resolve(
+            &request,
+            31350143,
+            10,
+            &TargetPool::from_fight(fight),
+            &mut RoundDeterminism::default(),
+        )
+    };
+    assert_eq!(select(&fight), [-12]);
+    fight.defender.as_mut().unwrap().entitys[2].buffs.clear();
+    assert_eq!(select(&fight), [-11]);
+    fight.battle_id = None;
+    assert_eq!(select(&fight), [-12]);
+}
+
+#[test]
 fn role_targets_select_allies_by_monster_label() {
     init_config();
     let monster = |uid, model_id, position| FightEntityInfo {
