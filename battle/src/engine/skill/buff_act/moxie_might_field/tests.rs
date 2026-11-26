@@ -118,7 +118,13 @@ fn moxie_field_samples_only_its_lifetime_payments_at_ally_preparation() {
 
     run(&mut managers, pay(-1, 5));
     run(&mut managers, pay(10, 5));
-    assert_eq!(managers.moxie_field.amount(10, uid), Some(5));
+    let state = managers.buff.moxie_field(10, uid).unwrap();
+    assert_eq!((state.credited, state.sampled), (5, 0));
+    assert_eq!(managers.origin_attribute(11, AttrId::UltimateMight), 400);
+    let mut observed = managers.buff.snapshot(10, uid).unwrap();
+    observed.duration = Some(1);
+    assert!(managers.buff.resync_observed_present(10, observed).unwrap());
+    assert_eq!(managers.buff.moxie_field(10, uid), Some(state));
     run(&mut managers, grant());
     assert_eq!(managers.buff.buff_id_uid(10, 31571007), Some(uid));
     assert_eq!(value(&managers), 0);
@@ -151,6 +157,6 @@ fn moxie_field_samples_only_its_lifetime_payments_at_ally_preparation() {
             },
         ))),
     );
-    assert_eq!(managers.moxie_field.amount(10, uid), None);
+    assert_eq!(managers.buff.moxie_field(10, uid), None);
     assert_eq!(managers.origin_attribute(11, AttrId::UltimateMight), 0);
 }

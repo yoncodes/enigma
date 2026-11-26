@@ -785,9 +785,13 @@ pub(crate) fn execute_rule_op_with(
             Ok(RuleOutcome::BuffBatch(batch))
         }
         RuleOp::Command(BattleCommand::MoxieFieldCredit(command)) => {
-            managers.moxie_field.credit(command);
+            managers.buff.credit_moxie_field(command);
             Ok(RuleOutcome::StateChanged)
         }
+        RuleOp::Command(BattleCommand::MoxieFieldSample(command)) => Ok(managers
+            .buff
+            .sample_moxie_field(command)
+            .map_or(RuleOutcome::StateChanged, RuleOutcome::BuffActInfoMarker)),
         RuleOp::Command(BattleCommand::RippleAccrual(command)) => {
             let changes = command.commit(managers)?;
             for change in &changes {

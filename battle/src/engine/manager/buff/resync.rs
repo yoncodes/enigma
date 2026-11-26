@@ -84,6 +84,15 @@ impl BuffManager {
                 self.buffs[index].effective = true;
                 self.commit_grant_values(buff_uid, &grant_values);
             }
+            let active = &mut self.buffs[index];
+            let observed = moxie_field::MoxieField::from_buff(&buff, active.definition.as_ref());
+            if !semantic_identity_changed && let Some(field) = &mut active.moxie_field {
+                if let Some(observed) = observed {
+                    field.observe(observed);
+                }
+            } else {
+                active.moxie_field = observed;
+            }
             self.buffs[index].buff = buff;
             return Ok(true);
         }
@@ -106,6 +115,7 @@ impl BuffManager {
             owner_uid: target_uid,
             team_type,
             type_id,
+            moxie_field: moxie_field::MoxieField::from_buff(&buff, definition.as_ref()),
             definition,
             fanout_emitter_uid: None,
             fanout_carrier_uid: None,

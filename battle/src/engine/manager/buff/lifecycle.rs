@@ -720,6 +720,7 @@ impl BuffManager {
                 owner_uid: uid,
                 team_type,
                 type_id,
+                moxie_field: moxie_field::MoxieField::from_buff(&buff, definition.as_ref()),
                 definition,
                 fanout_emitter_uid: None,
                 fanout_carrier_uid: None,

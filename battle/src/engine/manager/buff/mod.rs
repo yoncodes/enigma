@@ -17,6 +17,7 @@ mod grant_plan;
 mod layer_halo_allies;
 mod layer_settlement;
 mod lifecycle;
+pub(crate) mod moxie_field;
 mod query;
 mod result;
 mod resync;
@@ -239,6 +240,7 @@ struct ActiveBuff {
     fanout_carrier_uid: Option<i64>,
     array_owner: Option<array::ArrayBuffOwner>,
     effective: bool,
+    moxie_field: Option<moxie_field::MoxieField>,
     buff: BuffInfo,
 }
 

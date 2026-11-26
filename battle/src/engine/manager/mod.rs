@@ -19,7 +19,6 @@ pub mod hp;
 mod hp_batch;
 pub mod indicator;
 pub mod injury;
-pub(crate) mod moxie_field;
 pub mod player;
 pub mod revive;
 mod ripple;
@@ -77,7 +76,6 @@ pub struct BattleManagers {
     pub hp: HpManager,
     pub indicator: indicator::IndicatorManager,
     pub injury: injury::InjuryManager,
-    pub(crate) moxie_field: moxie_field::MoxieFields,
     pub player: player::BattlePlayerManager,
     pub ex_point: ExPointManager,
     pub eureka: EurekaManager,
@@ -486,11 +484,6 @@ impl BattleManagers {
 
     pub(crate) fn commit_buff(&mut self, plan: BuffPlan) -> BuffChanges {
         let mut changes = self.buff.commit(&self.hp, plan);
-        for removed in &changes.change.removed {
-            if let Some(uid) = removed.buff.uid {
-                self.moxie_field.remove(removed.target_uid, uid);
-            }
-        }
         for target_uid in changes
             .change
             .removed

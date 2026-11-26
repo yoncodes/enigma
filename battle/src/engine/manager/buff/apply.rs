@@ -185,6 +185,7 @@ impl BuffManager {
             fanout_carrier_uid: None,
             array_owner: None,
             effective,
+            moxie_field: moxie_field::MoxieField::from_buff(&buff, Some(definition)),
             buff: buff.clone(),
         });
         let added_type_total = if effective {
