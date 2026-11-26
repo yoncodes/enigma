@@ -108,31 +108,31 @@ pub(super) fn extend_active_features(
         return;
     };
     let buff_id = buff.buff_id.unwrap_or_default();
-    let mut visited = Vec::new();
-    active_features_for_definition(
+    let mut traversal = ActiveFeatureTraversal {
         owner,
         buff,
-        buff_id,
-        definition,
         game,
-        &mut visited,
-        accepts,
-        output,
-    );
+        visited: Vec::new(),
+    };
+    active_features_for_definition(&mut traversal, buff_id, definition, accepts, output);
 }
 
-#[allow(clippy::too_many_arguments)]
-fn active_features_for_definition(
+struct ActiveFeatureTraversal<'a> {
     owner: (i64, i32, bool),
-    buff: &BuffInfo,
+    buff: &'a BuffInfo,
+    game: Option<&'a config::GameDB>,
+    visited: Vec<i32>,
+}
+
+fn active_features_for_definition(
+    traversal: &mut ActiveFeatureTraversal<'_>,
     feature_buff_id: i32,
     definition: &BuffDefinition,
-    game: Option<&config::GameDB>,
-    visited: &mut Vec<i32>,
     accepts: &impl Fn(i32, &ResolvedBuffFeature) -> bool,
     output: &mut Vec<ActiveBuffFeature>,
 ) {
-    let (owner_uid, team_type, owner_alive) = owner;
+    let (owner_uid, team_type, owner_alive) = traversal.owner;
+    let buff = traversal.buff;
     if definition.has_effect_count() && buff.count.unwrap_or_default() <= 0 {
         return;
     }
@@ -162,28 +162,21 @@ fn active_features_for_definition(
         let Some(&child_buff_id) = feature.values.get(1) else {
             continue;
         };
-        if visited.is_empty() {
-            visited.push(feature_buff_id);
+        if traversal.visited.is_empty() {
+            traversal.visited.push(feature_buff_id);
         }
-        if visited.contains(&child_buff_id) {
+        if traversal.visited.contains(&child_buff_id) {
             continue;
         }
-        let Some(child) = game.and_then(|game| BuffDefinition::configured(game, child_buff_id))
+        let Some(child) = traversal
+            .game
+            .and_then(|game| BuffDefinition::configured(game, child_buff_id))
         else {
             continue;
         };
-        visited.push(child_buff_id);
-        active_features_for_definition(
-            owner,
-            buff,
-            child_buff_id,
-            &child,
-            game,
-            visited,
-            accepts,
-            output,
-        );
-        visited.pop();
+        traversal.visited.push(child_buff_id);
+        active_features_for_definition(traversal, child_buff_id, &child, accepts, output);
+        traversal.visited.pop();
     }
 }
 

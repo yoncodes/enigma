@@ -11,6 +11,16 @@ struct BuffInsertion {
     effective: bool,
 }
 
+pub(super) struct GrantActionPlan<'a> {
+    pub(super) action: GrantAction,
+    pub(super) repeat: i32,
+    pub(super) uid: Option<uid_policy::UidAllocationPlan>,
+    pub(super) refresh_uids: &'a [uid_policy::UidAllocationPlan],
+    pub(super) layer_refresh: Option<LayerRefreshPlan>,
+    pub(super) layer_refresh_uid: Option<i64>,
+    pub(super) fanout: &'a [PlannedFanout],
+}
+
 impl BuffManager {
     #[cfg(test)]
     pub(crate) fn add(
@@ -256,22 +266,24 @@ impl BuffManager {
         Some(applied)
     }
 
-    #[allow(clippy::too_many_arguments)]
     pub(super) fn commit_grant_action(
         &mut self,
         hp: &HpManager,
         route: BuffRoute,
         definition: &BuffDefinition,
         args: BuffAddArgs,
-        repeat: i32,
-        action: GrantAction,
+        plan: GrantActionPlan<'_>,
         removed: Vec<BuffRemoveResult>,
-        uid: Option<uid_policy::UidAllocationPlan>,
-        refresh_uids: &[uid_policy::UidAllocationPlan],
-        layer_refresh: Option<LayerRefreshPlan>,
-        layer_refresh_uid: Option<i64>,
-        fanout: &[PlannedFanout],
     ) -> BuffReplaceResult {
+        let GrantActionPlan {
+            action,
+            repeat,
+            uid,
+            refresh_uids,
+            layer_refresh,
+            layer_refresh_uid,
+            fanout,
+        } = plan;
         let mut result = BuffReplaceResult::default();
         match action {
             GrantAction::Reject(blocker) => {

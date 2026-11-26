@@ -2,7 +2,10 @@ use std::collections::HashMap;
 
 use sonettobuf::{Fight, FightEntityInfo, HeroExAttribute, HeroSpAttribute};
 
-use crate::engine::{entity::attr::AttrId, skill::target::TargetPool};
+use crate::engine::{
+    entity::attr::AttrId,
+    skill::target::{TargetEntity, TargetPool},
+};
 
 #[derive(Debug, Clone, Default)]
 pub struct AttributeManager {
@@ -17,19 +20,7 @@ impl AttributeManager {
         let pool = TargetPool::from_fight_with_catalog(catalog, fight);
         let emitter = pool.entity(crate::engine::manager::emitter::UID);
         for target in pool.entities().chain(emitter) {
-            self.register_values(
-                target.uid,
-                target.attack,
-                target.defense,
-                target.mdefense,
-                target.technic,
-                target.crit_rate,
-                target.crit_resist,
-                target.crit_dmg,
-                target.crit_def,
-                target.add_dmg,
-                target.drop_dmg,
-            );
+            self.register_values(target);
             self.set(
                 target.uid,
                 AttrId::PoisonDmgBonus,
@@ -62,26 +53,10 @@ impl AttributeManager {
         catalog: crate::catalog::BattleCatalog,
         entity: &FightEntityInfo,
     ) {
-        let Some(target) =
-            crate::engine::skill::target::TargetEntity::from_fight_entity_with_catalog(
-                catalog, entity,
-            )
-        else {
+        let Some(target) = TargetEntity::from_fight_entity_with_catalog(catalog, entity) else {
             return;
         };
-        self.register_values(
-            target.uid,
-            target.attack,
-            target.defense,
-            target.mdefense,
-            target.technic,
-            target.crit_rate,
-            target.crit_resist,
-            target.crit_dmg,
-            target.crit_def,
-            target.add_dmg,
-            target.drop_dmg,
-        );
+        self.register_values(&target);
     }
 
     #[cfg(test)]
@@ -92,35 +67,22 @@ impl AttributeManager {
         );
     }
 
-    #[allow(clippy::too_many_arguments)]
-    fn register_values(
-        &mut self,
-        uid: i64,
-        attack: i32,
-        defense: i32,
-        mdefense: i32,
-        technic: i32,
-        crit_rate: i32,
-        crit_resist: i32,
-        crit_dmg: i32,
-        crit_def: i32,
-        add_dmg: i32,
-        drop_dmg: i32,
-    ) {
+    fn register_values(&mut self, target: &TargetEntity) {
+        let uid = target.uid;
         for (id, value) in [
-            (AttrId::Attack, attack),
-            (AttrId::RealityDef, defense),
-            (AttrId::MentalDef, mdefense),
-            (AttrId::CriticalTechnique, technic),
+            (AttrId::Attack, target.attack),
+            (AttrId::RealityDef, target.defense),
+            (AttrId::MentalDef, target.mdefense),
+            (AttrId::CriticalTechnique, target.technic),
         ] {
             self.base_values.insert((uid, id), value);
         }
-        self.set(uid, AttrId::CriticalRate, crit_rate);
-        self.set(uid, AttrId::CriticalResistRate, crit_resist);
-        self.set(uid, AttrId::CriticalDmg, crit_dmg);
-        self.set(uid, AttrId::CriticalDef, crit_def);
-        self.set(uid, AttrId::DmgBonus, add_dmg);
-        self.set(uid, AttrId::DmgTakenReduction, drop_dmg);
+        self.set(uid, AttrId::CriticalRate, target.crit_rate);
+        self.set(uid, AttrId::CriticalResistRate, target.crit_resist);
+        self.set(uid, AttrId::CriticalDmg, target.crit_dmg);
+        self.set(uid, AttrId::CriticalDef, target.crit_def);
+        self.set(uid, AttrId::DmgBonus, target.add_dmg);
+        self.set(uid, AttrId::DmgTakenReduction, target.drop_dmg);
     }
 
     pub fn override_ex(&mut self, uid: i64, attributes: &HeroExAttribute) {

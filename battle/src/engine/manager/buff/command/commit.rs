@@ -487,14 +487,16 @@ impl BuffManager {
             plan.route,
             &plan.definition,
             plan.args,
-            plan.repeat,
-            plan.action,
+            super::super::apply::GrantActionPlan {
+                action: plan.action,
+                repeat: plan.repeat,
+                uid: plan.uid,
+                refresh_uids: &plan.refresh_uids,
+                layer_refresh: plan.layer_refresh,
+                layer_refresh_uid,
+                fanout: &fanout,
+            },
             planned_removed,
-            plan.uid,
-            &plan.refresh_uids,
-            plan.layer_refresh,
-            layer_refresh_uid,
-            &fanout,
         );
         if let Some(progress) = plan.transition_progress {
             self.transition_progress

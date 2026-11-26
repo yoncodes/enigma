@@ -244,11 +244,13 @@ pub fn start_decks_from_fight(
 ) -> (Vec<CardInfo>, Vec<CardInfo>) {
     let decks = start_decks_from(
         fight,
-        ex_point,
-        eureka,
-        extra_ai_actions,
+        AiDeckSetup {
+            ex_point,
+            eureka,
+            extra_actions: extra_ai_actions,
+            prepared: &[],
+        },
         seed_value,
-        &[],
         captured.map(|(ai, player)| CapturedDeckSeed::Opening {
             ai,
             player,
@@ -300,11 +302,13 @@ pub(crate) fn configured_start_decks(
     let prepared = super::prepared::cards(&pool, managers.card.prepared_ai_skills())?;
     let mut decks = start_decks_from(
         fight,
-        &managers.ex_point,
-        &managers.eureka,
-        extra_ai_actions,
+        AiDeckSetup {
+            ex_point: &managers.ex_point,
+            eureka: &managers.eureka,
+            extra_actions: extra_ai_actions,
+            prepared: &prepared,
+        },
         seed_value,
-        &prepared,
         captured,
         |allow_ex_skill| {
             crate::engine::manager::card::pool::player_candidate_pool_from(
@@ -320,17 +324,26 @@ pub(crate) fn configured_start_decks(
     Ok(decks)
 }
 
-#[allow(clippy::too_many_arguments)]
+struct AiDeckSetup<'a> {
+    ex_point: &'a crate::engine::manager::ex_point::ExPointManager,
+    eureka: &'a crate::engine::manager::eureka::EurekaManager,
+    extra_actions: i32,
+    prepared: &'a [CardInfo],
+}
+
 fn start_decks_from(
     fight: &Fight,
-    ex_point: &crate::engine::manager::ex_point::ExPointManager,
-    eureka: &crate::engine::manager::eureka::EurekaManager,
-    extra_ai_actions: i32,
+    ai_setup: AiDeckSetup<'_>,
     seed_value: i32,
-    prepared: &[CardInfo],
     captured: Option<CapturedDeckSeed>,
     mut player_candidates: impl FnMut(bool) -> Vec<CardInfo>,
 ) -> ConfiguredStartDecks {
+    let AiDeckSetup {
+        ex_point,
+        eureka,
+        extra_actions: extra_ai_actions,
+        prepared,
+    } = ai_setup;
     let required_uids = active_player_uids(fight);
     let valid_target_uids = fight
         .attacker
