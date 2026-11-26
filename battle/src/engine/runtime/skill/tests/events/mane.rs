@@ -287,7 +287,14 @@ fn broken_guard_reaction_requires_surviving_the_triggering_hit() {
                     .unwrap()
                     .caused_death()
             );
-            assert!(managers.toughness.recover(*recover).is_some());
+            assert_eq!(
+                recover.origin.key,
+                DefinitionKey::new(60287, "ToughnessRecover")
+            );
+            assert_eq!(
+                managers.toughness.recover(*recover).unwrap().config_effect,
+                0
+            );
         }
     }
 }
