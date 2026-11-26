@@ -75,7 +75,10 @@ fn scope_rule_ops(ops: Vec<RuleOp>) -> Vec<BuffActRuleOp> {
             if matches!(op, RuleOp::Skill(_)) {
                 BuffActRuleOp::subscriber_from_owner(op)
             } else {
-                BuffActRuleOp::causing(op)
+                BuffActRuleOp {
+                    group_with_siblings: false,
+                    ..BuffActRuleOp::causing(op)
+                }
             }
         })
         .collect()

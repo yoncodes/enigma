@@ -98,9 +98,11 @@ fn channel_cast_owns_only_the_linked_skill_frame() {
         scoped[0].scope,
         super::super::BuffActFrameScope::CausingFrame
     );
+    assert!(!scoped[0].group_with_siblings);
     assert_eq!(
         scoped[1].scope,
         super::super::BuffActFrameScope::SubscriberFrame
     );
+    assert!(scoped[1].group_with_siblings);
     assert_eq!(scoped[1].source, super::super::BuffActFrameSource::Owner);
 }
