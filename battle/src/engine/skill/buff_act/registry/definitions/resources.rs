@@ -43,7 +43,7 @@ buff_act_definitions! {
         transactions: [EventKind::SkillAction],
         setup: [RoundStart(4)],
         side_subscriber_setup: [RoundStart(4)],
-        timing: AfterAction, runtime_marker: BeforeChanges(Owner),
+        timing: AfterAction,
         transaction: buff_act::blood_pool::count_add_ex_point::event_rule_ops,
         setup_handler: |context| buff_act::blood_pool::count_add_ex_point::setup_rule_ops(context.managers, &context.subscriber.feature),
         supports: |args| matches!(args, [threshold, amount] if *threshold > 0 && *amount > 0), wire: (buff_act::wire::BuffActWireDefinition::all(DefinitionKey::new(1021, "BloodPoolCountAddExPoint"), &[EffectType::None as i32]));

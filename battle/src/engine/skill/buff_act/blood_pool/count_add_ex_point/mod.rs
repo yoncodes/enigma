@@ -2,13 +2,13 @@ use crate::engine::{
     event::payload::BattleEvent,
     manager::{
         BattleManagers,
-        buff::ActiveBuffFeature,
+        buff::{ActiveBuffFeature, BuffMarkerResult},
         ex_point::{ExPointChange, ExPointChanges, ExPointCommand, ExPointCommandError},
         gauge::GaugeKey,
     },
     skill::{
         action::SkillPhase,
-        buff_act::{self, is_kind, registry::BuffActKind},
+        buff_act::{self, is_kind, registry::BuffActKind, wire},
         rule::{
             CommandOrigin,
             output::{BattleCommand, RuleOp},
@@ -53,6 +53,7 @@ pub struct BloodPoolCountAddExPointCommand {
     pub key: GaugeKey,
     pub listener_uid: i64,
     pub listener_opcode: i32,
+    pub buff_id: i32,
     pub source_uid: i64,
     pub target_uid: i64,
     pub threshold: i32,
@@ -70,6 +71,7 @@ fn command(
             key,
             listener_uid: feature.buff_uid,
             listener_opcode: feature.act_id,
+            buff_id: feature.buff_id,
             source_uid: feature.owner_uid,
             target_uid: feature.owner_uid,
             threshold: feature.threshold,
@@ -124,21 +126,18 @@ pub fn setup_rule_ops(
     {
         return Some(Vec::new());
     }
-    Some(
-        super::super::with_feature_runtime_markers(vec![(
-            active.clone(),
-            command(active, feature, key)?,
-        )])
-        .into_iter()
-        .map(|(_, op)| op)
-        .collect(),
-    )
+    Some(vec![command(active, feature, key)?])
 }
 
-pub fn execute(
+pub(crate) struct Settlement {
+    pub change: ExPointChanges,
+    pub marker: Option<BuffMarkerResult>,
+}
+
+pub(crate) fn execute(
     managers: &mut BattleManagers,
     command: BloodPoolCountAddExPointCommand,
-) -> Result<Option<ExPointChanges>, ExPointCommandError> {
+) -> Result<Option<Settlement>, ExPointCommandError> {
     let delta = managers.gauge.settle_positive_threshold(
         command.key,
         command.listener_uid,
@@ -149,16 +148,29 @@ pub fn execute(
     if delta <= 0 {
         return Ok(None);
     }
-    managers
-        .execute_ex_point(ExPointCommand::Change(ExPointChange {
-            origin: command.origin,
-            source_uid: command.source_uid,
-            target_uid: command.target_uid,
-            delta,
-            config_effect: 0,
-            effect_type: 0,
-        }))
-        .map(Some)
+    let change = managers.execute_ex_point(ExPointCommand::Change(ExPointChange {
+        origin: command.origin,
+        source_uid: command.source_uid,
+        target_uid: command.target_uid,
+        delta,
+        config_effect: 0,
+        effect_type: 0,
+    }))?;
+    let marker = if matches!(change, ExPointChanges::Value { change, .. } if change.applied_delta > 0)
+    {
+        let key = command.origin.key;
+        wire::find(key.opcode, key.type_name)
+            .and_then(|definition| definition.markers(wire::WirePhase::Static).first())
+            .map(|&effect_type| BuffMarkerResult {
+                target_uid: command.target_uid,
+                effect_type,
+                effect_num: command.buff_id,
+                buff_act_id: key.opcode,
+            })
+    } else {
+        None
+    };
+    Ok(Some(Settlement { change, marker }))
 }
 
 #[cfg(test)]

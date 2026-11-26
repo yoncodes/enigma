@@ -32,7 +32,10 @@ use crate::engine::{
     runtime::change::BattleChange,
     skill::{
         behavior::registry::OutputOwner,
-        buff_act::raspberry::{CapacityError, CapacityResult},
+        buff_act::{
+            blood_pool::count_add_ex_point::{self, Settlement as BloodPoolMoxieSettlement},
+            raspberry::{CapacityError, CapacityResult},
+        },
         rule::output::{BattleCommand, RuleOp},
     },
 };
@@ -73,6 +76,7 @@ pub(crate) enum RuleOutcome {
     Revive(Box<crate::engine::manager::revive::ReviveChanges>),
     Shield(Box<ShieldChanges>),
     ExPoint(ExPointChanges),
+    BloodPoolMoxie(BloodPoolMoxieSettlement),
     Eureka(EurekaChanges),
     Gauge(GaugeChange),
     RawGaugeContribution,
@@ -359,6 +363,12 @@ impl RuleOutcome {
                 .collect(),
             Self::Shield(changes) => vec![BattleChange::Shield(changes.clone())],
             Self::ExPoint(change) => vec![BattleChange::ExPoint(*change)],
+            Self::BloodPoolMoxie(settlement) => settlement
+                .marker
+                .into_iter()
+                .map(BattleChange::BuffFeatureMarker)
+                .chain(std::iter::once(BattleChange::ExPoint(settlement.change)))
+                .collect(),
             Self::Eureka(change) => vec![BattleChange::Eureka(change.clone())],
             Self::Gauge(change) => vec![BattleChange::Gauge(*change)],
             Self::RawGaugeContribution => Vec::new(),
@@ -909,17 +919,13 @@ pub(crate) fn execute_rule_op_with(
             Ok(RuleOutcome::ExPoint(changes))
         }
         RuleOp::Command(BattleCommand::BloodPoolCountAddExPoint(command)) => {
-            let Some(changes) =
-                crate::engine::skill::buff_act::blood_pool::count_add_ex_point::execute(
-                    managers, command,
-                )?
-            else {
+            let Some(settlement) = count_add_ex_point::execute(managers, command)? else {
                 return Ok(RuleOutcome::StateChanged);
             };
-            for event in changes.events() {
+            for event in settlement.change.events() {
                 events.push(event);
             }
-            Ok(RuleOutcome::ExPoint(changes))
+            Ok(RuleOutcome::BloodPoolMoxie(settlement))
         }
         RuleOp::Command(BattleCommand::Eureka(command)) => {
             let changes = managers.execute_eureka(command)?;

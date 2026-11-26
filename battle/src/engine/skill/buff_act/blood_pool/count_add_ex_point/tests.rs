@@ -4,18 +4,21 @@ use crate::engine::{
         buff::BuffGrant,
         gauge::{GaugeCommand, GaugeOperation},
     },
+    runtime::{change::BattleChange, executor::execute_rule_op},
     skill::rule::{DefinitionKey, RuleDomain},
 };
 use sonettobuf::{Fight, FightEntityInfo, FightTeam, HeroAttribute};
 
 #[test]
-fn round_start_setup_queues_the_configured_threshold_rule() {
+fn setup_reports_only_applied_threshold_rewards() {
     crate::test_support::init_config();
     let fight = Fight {
         attacker: Some(FightTeam {
             entitys: vec![FightEntityInfo {
                 uid: Some(20),
                 current_hp: Some(100),
+                ex_point: Some(5),
+                ex_point_max: Some(5),
                 attr: Some(HeroAttribute {
                     hp: Some(100),
                     ..Default::default()
@@ -62,25 +65,47 @@ fn round_start_setup_queues_the_configured_threshold_rule() {
         .into_iter()
         .find(|feature| feature.buff_id == 308802111)
         .unwrap();
-    let ops = setup_rule_ops(&managers, &active).unwrap();
+    let settle = |managers: &mut BattleManagers| {
+        let mut events = crate::engine::event::bus::EventBus::default();
+        setup_rule_ops(managers, &active)
+            .unwrap()
+            .into_iter()
+            .flat_map(|op| {
+                execute_rule_op(managers, &mut events, op)
+                    .unwrap()
+                    .changes()
+            })
+            .collect::<Vec<_>>()
+    };
+
+    assert_eq!(managers.ex_point.get(20), 5);
+    assert!(
+        !settle(&mut managers)
+            .iter()
+            .any(|change| matches!(change, BattleChange::BuffFeatureMarker(_)))
+    );
+    assert_eq!(managers.ex_point.get(20), 5);
+    managers.ex_point.set(20, 20, 4, 0);
+    assert!(settle(&mut managers).is_empty());
+    managers
+        .execute_gauge(GaugeCommand::new(
+            origin(),
+            key,
+            GaugeOperation::ChangeValue { delta: 16 },
+        ))
+        .unwrap();
 
     assert!(matches!(
-        ops.as_slice(),
+        settle(&mut managers).as_slice(),
         [
-            RuleOp::BuffFeatureMarker {
-                effect_num: 308802111,
-                buff_act_id: 1021,
-                ..
-            },
-            RuleOp::Command(BattleCommand::BloodPoolCountAddExPoint(
-                BloodPoolCountAddExPointCommand {
-                    threshold: 8,
-                    amount: 1,
-                    ..
-                }
-            ))
-        ]
+            BattleChange::BuffFeatureMarker(marker),
+            BattleChange::ExPoint(ExPointChanges::Value { change, .. }),
+        ] if marker.target_uid == 20
+            && marker.effect_num == 308802111
+            && marker.buff_act_id == 1021
+            && change.applied_delta == 1
     ));
+    assert_eq!(managers.ex_point.get(20), 5);
 }
 
 #[test]
@@ -186,6 +211,7 @@ fn execution_uses_cumulative_positive_gain_after_the_gauge_is_consumed() {
         key,
         listener_uid: 1,
         listener_opcode: 1021,
+        buff_id: 308802111,
         source_uid: 20,
         target_uid: 20,
         threshold: 8,
