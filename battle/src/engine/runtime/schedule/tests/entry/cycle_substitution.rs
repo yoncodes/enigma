@@ -174,7 +174,7 @@ fn a_cycle_reserve_enters_after_the_action_without_promoting_ordinary_deaths() {
     let effects = crate::engine::packet::timeline::project(&result.frames).unwrap();
     assert_eq!(managers.hp.current(-2), 0);
     assert_eq!(managers.entity.roster_lane(-1), Some(RosterLane::Main));
-    assert_eq!(managers.entity.roster_lane(-2), Some(RosterLane::Replaced));
+    assert_eq!(managers.entity.roster_lane(-2), Some(RosterLane::Inactive));
     assert_eq!(managers.entity.roster_lane(-5), Some(RosterLane::Main));
     assert_eq!(managers.entity_snapshot(-5).unwrap().position, Some(2));
     assert_eq!(managers.entity.roster_lane(-6), Some(RosterLane::Reserve));
@@ -333,9 +333,15 @@ fn reaction_cycle_only_promotes_defeats_from_its_group() {
     )
     .unwrap();
 
+    let resources = managers.ex_point_info(&fight);
+    assert!(
+        resources
+            .iter()
+            .all(|entry| !matches!(entry.uid, Some(-3 | -4)))
+    );
     assert_eq!(managers.entity.roster_lane(-2), Some(RosterLane::Main));
-    assert_eq!(managers.entity.roster_lane(-3), Some(RosterLane::Replaced));
-    assert_eq!(managers.entity.roster_lane(-4), Some(RosterLane::Replaced));
+    assert_eq!(managers.entity.roster_lane(-3), Some(RosterLane::Inactive));
+    assert_eq!(managers.entity.roster_lane(-4), Some(RosterLane::Inactive));
     assert_eq!(managers.entity_snapshot(-5).unwrap().position, Some(2));
     assert_eq!(managers.entity_snapshot(-6).unwrap().position, Some(3));
     assert!(matches!(
@@ -444,7 +450,7 @@ fn cycle_to_sub_repeats_through_entering_reserves_in_capture_order() {
         for promotion in promotions.promotions() {
             assert_eq!(
                 managers.entity.roster_lane(promotion.defeated_uid),
-                Some(RosterLane::Replaced)
+                Some(RosterLane::Inactive)
             );
         }
         frames.append(&mut result.frames);

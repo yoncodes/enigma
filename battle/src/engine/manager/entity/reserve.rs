@@ -134,7 +134,7 @@ impl EntityManager {
         if *lane != RosterLane::RetiringReserve {
             return Err(EntityCommandError::InvalidCommand);
         }
-        *lane = RosterLane::Replaced;
+        *lane = RosterLane::Inactive;
         Ok(ReserveRetired { uid, team_type })
     }
 

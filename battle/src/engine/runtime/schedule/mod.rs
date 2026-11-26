@@ -412,8 +412,11 @@ pub fn run_ai_actions(
                 .find(|promotion| promotion.defeated_uid == choice.source_uid)
                 .map(|promotion| promotion.entering_uid)
                 .or_else(|| {
-                    (managers.entity.roster_lane(choice.source_uid) != Some(RosterLane::Replaced))
-                        .then_some(choice.source_uid)
+                    (!matches!(
+                        managers.entity.roster_lane(choice.source_uid),
+                        Some(RosterLane::Replaced | RosterLane::Inactive)
+                    ))
+                    .then_some(choice.source_uid)
                 });
             push_attributed_cue(
                 &mut result.frames,

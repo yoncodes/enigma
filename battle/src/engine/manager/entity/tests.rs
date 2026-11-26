@@ -486,7 +486,7 @@ fn cycle_substitution_queues_a_fresh_copy_of_the_entrant() {
     assert_eq!(manager.snapshot(-3).unwrap().position, Some(-1));
     assert_eq!(manager.roster_lane(-1), Some(RosterLane::RetiringReserve));
     assert_eq!(manager.retire_reserve(-1).unwrap().uid, -1);
-    assert_eq!(manager.roster_lane(-1), Some(RosterLane::Replaced));
+    assert_eq!(manager.roster_lane(-1), Some(RosterLane::Inactive));
     assert_eq!(
         manager.retire_reserve(-1),
         Err(EntityCommandError::InvalidCommand)
