@@ -399,14 +399,14 @@ fn limited_attack_target_grant_consumes_one_configured_use() {
 
     assert!(matches!(
         ops.last(),
-        Some(RuleOp::Command(BattleCommand::Buff(BuffCommand::Consume(
-            BuffConsume {
+        Some(RuleOp::Command(BattleCommand::Buff(
+            BuffCommand::ConsumeAttackCharge(BuffConsume {
                 target_uid: 99_998,
                 selector: BuffSelector::Uid(20),
                 amount: 1,
                 depleted: DepletedBuff::Remove,
                 ..
-            }
-        ))))
+            })
+        )))
     ));
 }

@@ -412,6 +412,7 @@ pub enum BuffCommand {
     GrantInternalChild(BuffGrantChild),
     RenewTimedChild(BuffGrantChild),
     Consume(BuffConsume),
+    ConsumeAttackCharge(BuffConsume),
     ConsumeCount(BuffConsume),
     ConsumeEffectCount(BuffConsume),
     ConsumeCoalesced(BuffConsume),

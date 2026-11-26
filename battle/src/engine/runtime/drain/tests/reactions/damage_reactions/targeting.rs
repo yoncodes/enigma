@@ -215,7 +215,7 @@ fn attack_consumption_waits_for_hit_reactions() {
     );
     assert!(matches!(
         reactions.before_after_hit_observers[0].op,
-        RuleOp::Command(BattleCommand::Buff(BuffCommand::Consume(_)))
+        RuleOp::Command(BattleCommand::Buff(BuffCommand::ConsumeAttackCharge(_)))
     ));
     assert!(matches!(
         reactions

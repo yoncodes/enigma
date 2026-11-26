@@ -98,15 +98,15 @@ pub fn rule_ops(
         return Some(Vec::new());
     }
     if consumes_effect_count(managers, subscriber) {
-        ops.push(RuleOp::Command(BattleCommand::Buff(BuffCommand::Consume(
-            BuffConsume {
+        ops.push(RuleOp::Command(BattleCommand::Buff(
+            BuffCommand::ConsumeAttackCharge(BuffConsume {
                 origin: super::command_origin(subscriber)?,
                 target_uid: subscriber.owner_uid,
                 selector: BuffSelector::Uid(subscriber.buff_uid),
                 amount: 1,
                 depleted: DepletedBuff::Remove,
-            },
-        ))));
+            }),
+        )));
     }
     Some(ops)
 }

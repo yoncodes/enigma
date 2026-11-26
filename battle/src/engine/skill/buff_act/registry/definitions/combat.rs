@@ -338,6 +338,10 @@ buff_act_definitions! {
         ).with_initial_state_refresh_projection());
     (822, "LayerMasterHalo") => LayerMasterHalo, state_consumer: true, wire: (buff_act::wire::BuffActWireDefinition::add_refresh(DefinitionKey::new(822, "LayerMasterHalo"), &[EffectType::Layermasterhalo as i32]));
     (825, "ConsumeBuffContinueChannel") => ConsumeBuffContinueChannel, references: references_for_feature, wire: (buff_act::wire::BuffActWireDefinition::all(DefinitionKey::new(825, "ConsumeBuffContinueChannel"), &[EffectType::None as i32]));
+    (826, "LockBulletCountDecr") => LockBulletCountDecr,
+        effect_time_subscription: false,
+        supports: |args| args.is_empty(), state_consumer: true,
+        wire: (buff_act::wire::BuffActWireDefinition::add(DefinitionKey::new(826, "LockBulletCountDecr"), &[EffectType::Lockbulletcountdecr as i32]));
     (827, "Bullet") => Bullet,
         source: Applier,
         timing: AfterSkill,

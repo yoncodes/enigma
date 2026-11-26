@@ -172,7 +172,7 @@ fn consume_command(managers: &BattleManagers, feature: &ActiveBuffFeature) -> Op
     managers
         .buff
         .snapshot(feature.owner_uid, feature.buff_uid)?;
-    Some(BuffCommand::Consume(BuffConsume {
+    Some(BuffCommand::ConsumeAttackCharge(BuffConsume {
         origin: super::feature_command_origin(feature)?,
         target_uid: feature.owner_uid,
         selector: BuffSelector::Uid(feature.buff_uid),

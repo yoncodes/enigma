@@ -238,6 +238,10 @@ impl BuffManager {
                 consume.origin,
                 BuffPlanAction::Consume(self.plan_consume(consume, false, ConsumeField::Count)?),
             ),
+            BuffCommand::ConsumeAttackCharge(consume) => (
+                consume.origin,
+                BuffPlanAction::Consume(self.plan_attack_charge(consume)?),
+            ),
             BuffCommand::ConsumeEffectCount(consume) => (
                 consume.origin,
                 BuffPlanAction::ConsumeEffectCount(self.plan_consume(
@@ -1381,6 +1385,23 @@ impl BuffManager {
             grant,
             expire_removed: false,
         })
+    }
+
+    fn plan_attack_charge(&self, consume: BuffConsume) -> Result<ConsumePlan, BuffCommandError> {
+        if let BuffSelector::Uid(buff_uid) = consume.selector
+            && consume.amount == 1
+            && crate::engine::skill::buff_act::bullet::retains_final_charge(
+                self,
+                consume.target_uid,
+                buff_uid,
+            )
+        {
+            return Ok(ConsumePlan {
+                target_uid: consume.target_uid,
+                actions: Vec::new(),
+            });
+        }
+        self.plan_consume(consume, false, ConsumeField::Configured)
     }
 
     fn plan_consume(

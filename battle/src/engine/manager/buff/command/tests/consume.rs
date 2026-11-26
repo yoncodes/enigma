@@ -1,6 +1,56 @@
 use super::*;
 
 #[test]
+fn attack_spends_bullets_until_the_final_charge_is_protected() {
+    crate::test_support::init_config();
+    let mut manager = BuffManager::default();
+    manager.seed(&Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                buffs: vec![
+                    BuffInfo {
+                        buff_id: Some(30920156),
+                        uid: Some(2),
+                        count: Some(2),
+                        ..Default::default()
+                    },
+                    BuffInfo {
+                        buff_id: Some(31020117),
+                        uid: Some(3),
+                        ..Default::default()
+                    },
+                ],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    });
+    let hp = HpManager::default();
+    let consume = BuffCommand::ConsumeAttackCharge(BuffConsume {
+        origin: CommandOrigin {
+            domain: RuleDomain::BuffAct,
+            key: DefinitionKey::new(503, "AddToTarget"),
+        },
+        target_uid: 10,
+        selector: BuffSelector::Uid(2),
+        amount: 1,
+        depleted: DepletedBuff::Remove,
+    });
+
+    manager.execute(&hp, consume.clone()).unwrap();
+    assert_eq!(manager.snapshot(10, 2).unwrap().count, Some(1));
+    let protected = manager.execute(&hp, consume.clone()).unwrap();
+    assert!(protected.events().is_empty());
+    assert_eq!(manager.snapshot(10, 2).unwrap().count, Some(1));
+
+    manager.delete(10, 3);
+    manager.execute(&hp, consume).unwrap();
+    assert!(manager.snapshot(10, 2).is_none());
+}
+
+#[test]
 fn id_or_type_consume_plans_update_then_depletion_removal() {
     crate::test_support::init_config();
     let mut manager = BuffManager::default();

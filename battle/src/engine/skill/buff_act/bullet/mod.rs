@@ -1,7 +1,18 @@
 use crate::engine::{
     event::payload::{BattleEvent, BuffFeatureTriggeredEvent},
+    manager::buff::BuffManager,
     skill::{rule::output::RuleOp, subscriber::BuffActSubscriber},
 };
+
+use super::registry::BuffActKind;
+
+pub(crate) fn retains_final_charge(buffs: &BuffManager, owner_uid: i64, buff_uid: i64) -> bool {
+    buffs.has_buff_act_kind(owner_uid, BuffActKind::LockBulletCountDecr)
+        && buffs.buff_has_act(owner_uid, buff_uid, BuffActKind::Bullet)
+        && buffs
+            .snapshot(owner_uid, buff_uid)
+            .is_some_and(|buff| buff.count == Some(1))
+}
 
 pub fn rule_ops(subscriber: &BuffActSubscriber, event: &BattleEvent) -> Option<Vec<RuleOp>> {
     if !subscriber.owner_alive {

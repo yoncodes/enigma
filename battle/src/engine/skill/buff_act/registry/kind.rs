@@ -66,6 +66,7 @@ pub enum BuffActKind {
     SkillNoUseActPoint,
     BanLostLife,
     Bullet,
+    LockBulletCountDecr,
     Burn,
     BurnRealHurtFix,
     CardLimitAdd,
