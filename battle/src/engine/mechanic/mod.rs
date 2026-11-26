@@ -1,3 +1,4 @@
+pub(crate) mod array_lifetime;
 pub mod bloodtithe;
 pub mod buff_precast;
 pub mod card;

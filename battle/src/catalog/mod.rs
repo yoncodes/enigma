@@ -214,6 +214,16 @@ impl BattleCatalog {
         self.game_data.fight_dnsz.get(circle_id).is_some()
     }
 
+    pub(crate) fn uses_array_duration(self, circle_id: i32) -> bool {
+        !self.is_electric_field(circle_id)
+            && self.game_data.magic_wqsz.get(circle_id).is_none()
+            && self
+                .game_data
+                .magic_circle
+                .get(circle_id)
+                .is_some_and(|row| row.round > 0 && row.end_skills.is_empty())
+    }
+
     pub(crate) fn next_magic_circle_level(self, circle_id: i32) -> Option<MagicCircleLevel> {
         let current = self.game_data.magic_wqsz.get(circle_id)?;
         let next = self

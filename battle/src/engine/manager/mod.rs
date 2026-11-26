@@ -394,6 +394,7 @@ impl BattleManagers {
             }),
             BuffCommand::GrantStateful(grant)
             | BuffCommand::GrantChild(grant)
+            | BuffCommand::GrantArray { grant, .. }
             | BuffCommand::GrantInternalChild(grant) => Some(if grant.source_uid != 0 {
                 grant.source_uid
             } else {

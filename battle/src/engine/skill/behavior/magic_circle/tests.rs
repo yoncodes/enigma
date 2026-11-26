@@ -170,12 +170,17 @@ fn blood_domain_deployment_grants_its_configured_ally_buff() {
     assert_eq!(ops.len(), 3);
     assert!(ops[..2].iter().all(|op| matches!(
         op,
-        RuleOp::Command(BattleCommand::Buff(BuffCommand::GrantChild(
-            BuffGrantChild {
+        RuleOp::Command(BattleCommand::Buff(BuffCommand::GrantArray {
+            grant: BuffGrantChild {
                 buff_id: 308801312,
                 ..
-            }
-        )))
+            },
+            owner: ArrayBuffOwner {
+                team: 1,
+                field_id: 100051,
+                caster_uid: 10,
+            },
+        }))
     )));
     assert!(matches!(ops[2], RuleOp::Command(BattleCommand::Field(_))));
 }

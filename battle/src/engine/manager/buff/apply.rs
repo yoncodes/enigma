@@ -183,6 +183,7 @@ impl BuffManager {
             definition: Some(definition.clone()),
             fanout_emitter_uid: None,
             fanout_carrier_uid: None,
+            array_owner: None,
             effective,
             buff: buff.clone(),
         });

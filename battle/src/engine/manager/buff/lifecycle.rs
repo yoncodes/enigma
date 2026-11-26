@@ -723,6 +723,7 @@ impl BuffManager {
                 definition,
                 fanout_emitter_uid: None,
                 fanout_carrier_uid: None,
+                array_owner: None,
                 effective: true,
                 buff,
             });

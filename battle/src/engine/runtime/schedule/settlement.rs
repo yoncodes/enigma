@@ -637,6 +637,23 @@ pub fn run_round_end_final_settlement(
             )?,
         );
     }
+    for team in [1, 2] {
+        let ops = crate::engine::mechanic::array_lifetime::advance(managers, team);
+        if !ops.is_empty() {
+            append_round_phase(
+                &mut result,
+                drain::run_command_group_as(
+                    managers,
+                    pool,
+                    catalog,
+                    determinism,
+                    context,
+                    FrameOwner::ArrayDuration,
+                    ops,
+                )?,
+            );
+        }
+    }
     let take_stage = effect_time::ROUND_END_FINAL_SETTLEMENT;
     let expiring = managers
         .buff

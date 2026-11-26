@@ -223,9 +223,9 @@ fn project_frame(
                 step
             }))
         }
-        FrameOwner::BuffDuration { .. } | FrameOwner::ElectricFieldDuration => {
-            Ok(StepPacket::effect(effects))
-        }
+        FrameOwner::BuffDuration { .. }
+        | FrameOwner::ElectricFieldDuration
+        | FrameOwner::ArrayDuration => Ok(StepPacket::effect(effects)),
         FrameOwner::SetupSide(_)
         | FrameOwner::SetupEntity { .. }
         | FrameOwner::StageWave { .. }

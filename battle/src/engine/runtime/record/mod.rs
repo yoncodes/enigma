@@ -61,6 +61,7 @@ pub enum FrameOwner {
         take_stage: i32,
     },
     ElectricFieldDuration,
+    ArrayDuration,
     StageWave {
         wave: i32,
     },

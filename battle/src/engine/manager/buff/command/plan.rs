@@ -20,6 +20,10 @@ impl BuffManager {
         command: BuffCommand,
         inputs: GrantInputs,
     ) -> Result<BuffPlan, BuffCommandError> {
+        let array_owner = match &command {
+            BuffCommand::GrantArray { owner, .. } => Some(*owner),
+            _ => None,
+        };
         let (origin, action) = match command {
             BuffCommand::Grant(grant) => (
                 grant.origin,
@@ -159,12 +163,14 @@ impl BuffManager {
                 )?)),
             ),
             command @ (BuffCommand::GrantChild(_)
+            | BuffCommand::GrantArray { .. }
             | BuffCommand::GrantInternalChild(_)
             | BuffCommand::RenewTimedChild(_)) => {
                 let internal = matches!(&command, BuffCommand::GrantInternalChild(_));
                 let renew = matches!(&command, BuffCommand::RenewTimedChild(_));
                 let grant = match command {
                     BuffCommand::GrantChild(grant)
+                    | BuffCommand::GrantArray { grant, .. }
                     | BuffCommand::GrantInternalChild(grant)
                     | BuffCommand::RenewTimedChild(grant) => grant,
                     _ => unreachable!(),
@@ -332,6 +338,15 @@ impl BuffManager {
                     0,
                     false,
                     RemoveSnapshot::Preserve,
+                )?),
+            ),
+            BuffCommand::ExpireArrayBuff(remove) => (
+                remove.origin,
+                BuffPlanAction::Remove(self.plan_remove(
+                    remove,
+                    0,
+                    true,
+                    RemoveSnapshot::ClearDuration,
                 )?),
             ),
             BuffCommand::BreakShield(remove) => (
@@ -606,7 +621,11 @@ impl BuffManager {
                 )
             }
         };
-        Ok(BuffPlan { origin, action })
+        Ok(BuffPlan {
+            origin,
+            action,
+            array_owner,
+        })
     }
 
     #[cfg(test)]

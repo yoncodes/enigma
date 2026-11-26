@@ -409,6 +409,10 @@ pub enum BuffCommand {
     GrantUsingChildUid(BuffGrant),
     GrantUsingNormalUid(BuffGrant),
     GrantChild(BuffGrantChild),
+    GrantArray {
+        grant: BuffGrantChild,
+        owner: super::array::ArrayBuffOwner,
+    },
     GrantInternalChild(BuffGrantChild),
     RenewTimedChild(BuffGrantChild),
     Consume(BuffConsume),
@@ -422,6 +426,7 @@ pub enum BuffCommand {
     ForceExpire(BuffRemove),
     BreakShield(BuffRemove),
     RemoveAfterTrigger(BuffRemove),
+    ExpireArrayBuff(BuffRemove),
     LoseStack(BuffRemove),
     EndChannel(BuffRemove),
     CompleteSelection(BuffRemove),
@@ -451,6 +456,7 @@ pub enum BuffCommand {
 pub(crate) struct BuffPlan {
     pub origin: CommandOrigin,
     action: BuffPlanAction,
+    array_owner: Option<super::array::ArrayBuffOwner>,
 }
 
 impl BuffPlan {

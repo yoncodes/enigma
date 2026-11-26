@@ -2,7 +2,7 @@ use crate::engine::{
     entity::attr::AttrId,
     manager::{
         BattleManagers,
-        buff::{BuffCommand, BuffGrantChild},
+        buff::{BuffCommand, BuffGrantChild, array::ArrayBuffOwner},
         emitter,
         field::{FieldCommand, FieldDefinition, FieldOperation, FieldThreshold},
     },
@@ -53,6 +53,30 @@ pub fn deploy_rule_ops(
     if managers.field.get(team).is_some() {
         return Some(vec![field]);
     }
+    let array_owner = managers
+        .catalog()
+        .uses_array_duration(circle_id)
+        .then_some(ArrayBuffOwner {
+            team,
+            field_id: circle_id,
+            caster_uid: source_uid,
+        });
+    let grant = |target_uid, buff_id| {
+        let grant = BuffGrantChild {
+            origin,
+            source_uid,
+            target_uid,
+            buff_id,
+            amount: None,
+            params: None,
+            act_info: None,
+        };
+        let command = match array_owner {
+            Some(owner) => BuffCommand::GrantArray { grant, owner },
+            None => BuffCommand::GrantChild(grant),
+        };
+        RuleOp::Command(BattleCommand::Buff(command))
+    };
     let grants = pool
         .allies(source_uid)
         .iter()
@@ -69,34 +93,15 @@ pub fn deploy_rule_ops(
                 .map(move |buff_id| (entity.uid, *buff_id))
         }));
     let mut ops = grants
-        .map(|(target_uid, buff_id)| {
-            RuleOp::Command(BattleCommand::Buff(BuffCommand::GrantChild(
-                BuffGrantChild {
-                    origin,
-                    source_uid,
-                    target_uid,
-                    buff_id,
-                    amount: None,
-                    params: None,
-                    act_info: None,
-                },
-            )))
-        })
+        .map(|(target_uid, buff_id)| grant(target_uid, buff_id))
         .collect::<Vec<_>>();
     ops.push(field);
-    ops.extend(definition.linked_buffs.into_iter().map(|buff_id| {
-        RuleOp::Command(BattleCommand::Buff(BuffCommand::GrantChild(
-            BuffGrantChild {
-                origin,
-                source_uid,
-                target_uid: emitter::UID,
-                buff_id,
-                amount: None,
-                params: None,
-                act_info: None,
-            },
-        )))
-    }));
+    ops.extend(
+        definition
+            .linked_buffs
+            .into_iter()
+            .map(|buff_id| grant(emitter::UID, buff_id)),
+    );
     Some(ops)
 }
 
@@ -238,7 +243,10 @@ impl BehaviorHandler for Handler {
     }
 
     fn output_owner(behavior: &ParsedBehavior, op: &RuleOp, _: usize) -> Option<OutputOwner> {
-        let RuleOp::Command(BattleCommand::Buff(BuffCommand::GrantChild(grant))) = op else {
+        let RuleOp::Command(BattleCommand::Buff(
+            BuffCommand::GrantChild(grant) | BuffCommand::GrantArray { grant, .. },
+        )) = op
+        else {
             return None;
         };
         let linked = behavior

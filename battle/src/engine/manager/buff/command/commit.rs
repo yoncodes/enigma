@@ -367,6 +367,11 @@ impl BuffManager {
                 },
             ),
         };
+        if let Some(owner) = plan.array_owner
+            && let Some(added) = changes.change.added.as_ref()
+        {
+            self.attach_array_owner(added, owner);
+        }
         self.reconcile_transition_progress();
         changes.with_pre_add_refreshes(pre_add_refreshes)
     }

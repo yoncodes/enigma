@@ -8,6 +8,7 @@ use crate::engine::manager::hp::HpManager;
 
 mod ally_action_grant;
 mod apply;
+pub(crate) mod array;
 mod command;
 mod definition;
 mod family_priority;
@@ -236,6 +237,7 @@ struct ActiveBuff {
     definition: Option<BuffDefinition>,
     fanout_emitter_uid: Option<i64>,
     fanout_carrier_uid: Option<i64>,
+    array_owner: Option<array::ArrayBuffOwner>,
     effective: bool,
     buff: BuffInfo,
 }

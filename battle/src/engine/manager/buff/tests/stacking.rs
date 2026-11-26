@@ -529,6 +529,7 @@ fn value_bearing_type_seven_evicts_the_oldest_same_type_instance() {
         definition: Some(definition),
         fanout_emitter_uid: None,
         fanout_carrier_uid: None,
+        array_owner: None,
         effective: true,
         buff: BuffInfo {
             buff_id: Some(6200599),
