@@ -108,6 +108,107 @@ fn channel_cast_owns_only_the_linked_skill_frame() {
 }
 
 #[test]
+fn channel_spends_locks_after_played_action_and_at_settlement() {
+    use crate::engine::{
+        runtime::{determinism::RoundDeterminism, drain::run_event},
+        skill::{
+            action::{ActionEvent, SkillExecutionMode},
+            effect::SkillEffectCatalog,
+            target::TargetContext,
+        },
+    };
+    use sonettobuf::{BuffInfo, Fight, FightEntityInfo, FightTeam};
+
+    crate::test_support::init_config();
+    let owner_uid = 10;
+    let enemy_uid = -1;
+    let lock_id = 31260141;
+    let cast_id = 31260171;
+    let buff = |uid, buff_id, layer| BuffInfo {
+        uid: Some(uid),
+        buff_id: Some(buff_id),
+        from_uid: Some(owner_uid),
+        layer: Some(layer),
+        ..Default::default()
+    };
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(owner_uid),
+                model_id: Some(3126),
+                team_type: Some(1),
+                current_hp: Some(1_000_000),
+                buffs: vec![buff(1, 31260131, 0), buff(2, lock_id, 3)],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(enemy_uid),
+                team_type: Some(2),
+                current_hp: Some(1_000_000),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let catalog = SkillEffectCatalog::from_fight(config::configs::get(), &fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    let mut determinism = RoundDeterminism::default();
+    let context = TargetContext {
+        current_round: 1,
+        ..Default::default()
+    };
+    let riposte = ActionEvent {
+        source_uid: enemy_uid,
+        extra_skill_kind: ExtraSkillKind::Riposte.id(),
+        mode: SkillExecutionMode::Active,
+        ..Default::default()
+    };
+    let played = ActionEvent {
+        card_index: 1,
+        extra_skill_kind: 0,
+        ..riposte.clone()
+    };
+    let phases = [
+        (BattleEvent::AllyAction(riposte), 3, 0),
+        (BattleEvent::AllyAction(played), 2, 1),
+        (BattleEvent::BuffsSettled(Vec::new()), 0, 2),
+    ];
+    for (event, remaining, expected_casts) in phases {
+        let result = run_event(
+            &mut managers,
+            &pool,
+            &catalog,
+            &mut determinism,
+            context,
+            event,
+        )
+        .unwrap();
+        let casts: Vec<_> = result
+            .events
+            .iter()
+            .filter_map(|event| match event {
+                BattleEvent::AllyAction(action)
+                    if action.source_uid == owner_uid && action.skill_id == cast_id =>
+                {
+                    Some(action.target_uid)
+                }
+                _ => None,
+            })
+            .collect();
+        assert_eq!(casts, vec![enemy_uid; expected_casts]);
+        assert_eq!(
+            managers.buff.buff_id_or_type_amount(owner_uid, lock_id),
+            remaining
+        );
+    }
+}
+
+#[test]
 fn final_settlement_casts_for_each_remaining_lock() {
     crate::test_support::init_config();
     let owner_uid = 10;

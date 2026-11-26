@@ -8,6 +8,7 @@ use crate::engine::{
     skill::{
         action::{SkillInvocation, SkillTarget},
         buff_act::BuffActRuleOp,
+        condition::extra::ExtraSkillKind,
         rule::output::{BattleCommand, RuleOp},
         subscriber::BuffActSubscriber,
         target::TargetPool,
@@ -25,8 +26,9 @@ pub fn rule_ops(
     }
     let action_target = match event {
         BattleEvent::AllyAction(action)
-            if pool.source_is_attacker(action.source_uid)
-                != pool.source_is_attacker(subscriber.owner_uid) =>
+            if action.extra_skill_kind != ExtraSkillKind::Riposte.id()
+                && pool.source_is_attacker(action.source_uid)
+                    != pool.source_is_attacker(subscriber.owner_uid) =>
         {
             Some(action.source_uid)
         }
