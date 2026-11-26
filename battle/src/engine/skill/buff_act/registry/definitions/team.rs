@@ -143,7 +143,7 @@ buff_act_definitions! {
         supports: buff_act::add_card_cast_channel::supports, references: references_for_feature, wire: (buff_act::wire::BuffActWireDefinition::all(DefinitionKey::new(923, "AddCardCastChannel"), &[]));
     (924, "EmitterRendTarget") => EmitterRendTarget, effect_time_subscription: false,
         supports: buff_act::emitter_rend_target::supports, state_consumer: true, wire: (buff_act::wire::BuffActWireDefinition::all(DefinitionKey::new(924, "EmitterRendTarget"), &[]));
-    (926, "ExPointAddByHit") => ExPointAddByHit, runtime_marker: AfterFirstChange(Source),
+    (926, "ExPointAddByHit") => ExPointAddByHit, source: Applier, runtime_marker: AfterFirstChange(EventSource),
         runtime: |context| buff_act::ex_point_add_by_hit::rule_ops(context.managers, context.subscriber, context.event?),
         supports: |_| true, wire: (buff_act::wire::BuffActWireDefinition::all(DefinitionKey::new(926, "ExPointAddByHit"), &[EffectType::None as i32]));
     (927, "AddBuffByOtherExSkill") => AddBuffByOtherExSkill,

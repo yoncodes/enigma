@@ -4,7 +4,10 @@ use crate::engine::{
     event::{bus::EventBus, kind::EventKind, payload::HitEvent, subscription::SubscriptionKey},
     manager::BattleManagers,
     runtime::executor::execute_rule_op,
-    skill::rule::{CommandOrigin, DefinitionKey, RuleDomain},
+    skill::{
+        effect::SkillEffectCatalog,
+        rule::{CommandOrigin, DefinitionKey, RuleDomain},
+    },
 };
 
 use super::*;
@@ -14,11 +17,13 @@ fn hit_event_emits_manager_commands_with_exact_origin() {
     crate::test_support::init_config();
     let fight = Fight {
         attacker: Some(FightTeam {
-            entitys: vec![FightEntityInfo {
-                uid: Some(10),
-                current_hp: Some(100),
-                ..Default::default()
-            }],
+            entitys: [10, 11]
+                .map(|uid| FightEntityInfo {
+                    uid: Some(uid),
+                    current_hp: Some(100),
+                    ..Default::default()
+                })
+                .to_vec(),
             ..Default::default()
         }),
         defender: Some(FightTeam {
@@ -62,7 +67,7 @@ fn hit_event_emits_manager_commands_with_exact_origin() {
             domain: RuleDomain::Behavior,
             key: DefinitionKey::new(1, "Damage"),
         },
-        source_uid: 10,
+        source_uid: 11,
         target_uid: -1,
         skill_id: 100,
         amount: 50,
@@ -80,6 +85,28 @@ fn hit_event_emits_manager_commands_with_exact_origin() {
         "ExPointAddByHit",
         &[1]
     ));
+    let scoped = super::super::rule_ops(
+        &managers,
+        &crate::engine::skill::target::TargetPool::from_fight(&fight),
+        &SkillEffectCatalog::default(),
+        &mut crate::engine::runtime::determinism::RoundDeterminism::default(),
+        &subscriber,
+        Some(&event),
+    )
+    .unwrap();
+    assert!(
+        scoped
+            .iter()
+            .all(|entry| { entry.source == super::super::BuffActFrameSource::Applier })
+    );
+    assert!(matches!(
+        scoped[1].op,
+        RuleOp::BuffFeatureMarker {
+            target_uid: 11,
+            buff_act_id: 926,
+            ..
+        }
+    ));
     let ops = rule_ops(&managers, &subscriber, &event).unwrap();
     assert_eq!(ops.len(), 2);
     let mut events = EventBus::default();
@@ -88,13 +115,14 @@ fn hit_event_emits_manager_commands_with_exact_origin() {
     }
 
     assert_eq!(managers.buff.snapshot(-1, 20).unwrap().layer, Some(1));
-    assert_eq!(managers.ex_point.get(10), 1);
+    assert_eq!(managers.ex_point.get(10), 0);
+    assert_eq!(managers.ex_point.get(11), 1);
     let mut finished = managers.clone();
     for op in rule_ops(&finished, &subscriber, &event).unwrap() {
         execute_rule_op(&mut finished, &mut events, op).unwrap();
     }
     assert!(finished.buff.snapshot(-1, 20).is_none());
-    assert_eq!(finished.ex_point.get(10), 2);
+    assert_eq!(finished.ex_point.get(11), 2);
 
     managers.hp.lose(-1, 100, 0);
     let dead_holder =
@@ -109,5 +137,5 @@ fn hit_event_emits_manager_commands_with_exact_origin() {
             .is_empty()
     );
     assert_eq!(managers.buff.snapshot(-1, 20).unwrap().layer, Some(1));
-    assert_eq!(managers.ex_point.get(10), 1);
+    assert_eq!(managers.ex_point.get(11), 1);
 }
