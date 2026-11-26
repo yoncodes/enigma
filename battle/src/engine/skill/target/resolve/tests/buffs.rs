@@ -76,7 +76,7 @@ fn compiled_buff_type_priority_picks_mark_then_boss_then_lowest_hp() {
         }),
         defender: Some(FightTeam {
             entitys: vec![
-                entity_stats(-10, 1, 50, 500, 0),
+                enemy_with_buff(-10, 1, 50, buff(31350161, 500)),
                 FightEntityInfo {
                     model_id: Some(103370111),
                     ..entity_stats(-11, 2, 100, 100, 0)

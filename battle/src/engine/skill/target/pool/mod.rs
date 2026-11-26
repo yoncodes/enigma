@@ -724,9 +724,7 @@ impl TargetEntity {
     }
 
     pub(super) fn has_buff_type(&self, type_id: i32) -> bool {
-        self.buffs
-            .iter()
-            .any(|buff| buff.id == type_id || buff.type_id == type_id)
+        self.buffs.iter().any(|buff| buff.type_id == type_id)
     }
 
     pub(super) fn has_buff_status(&self, status: crate::engine::manager::buff::BuffStatus) -> bool {
