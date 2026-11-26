@@ -150,6 +150,7 @@ mod toughness_recover;
 pub mod transfer_energy_buff;
 pub(crate) mod ultimate_attribute;
 mod ultimate_cost;
+pub mod ultimate_moxie_heal;
 pub mod unlock_sovereign_card;
 pub mod use_damage_skill_add_to_target;
 pub mod use_skill;

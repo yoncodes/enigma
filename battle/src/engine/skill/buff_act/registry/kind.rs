@@ -100,6 +100,7 @@ pub enum BuffActKind {
     CrystalAddBuff,
     Cure,
     AdvancedCure,
+    UltimateMoxieHeal,
     CureUpByLostHp,
     DamageNotMoreThan,
     DeviceCostReduce,

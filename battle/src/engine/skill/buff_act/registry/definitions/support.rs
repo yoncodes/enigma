@@ -4,6 +4,12 @@ use super::super::*;
 use crate::engine::skill::buff_act;
 
 buff_act_definitions! {
+    (1155, "NarcissusRitualHealByPassion") => UltimateMoxieHeal,
+        event: EventKind::AllyAction, source: Owner, timing: AfterAction,
+        runtime: |context| buff_act::ultimate_moxie_heal::rule_ops(context.managers, context.pool, context.catalog, context.subscriber, context.event?),
+        supports: buff_act::ultimate_moxie_heal::supports,
+        wire: (buff_act::wire::BuffActWireDefinition::add(
+            DefinitionKey::new(1155, "NarcissusRitualHealByPassion"), &[EffectType::None as i32]));
     (502, "Immunity") => Immunity,
         effect_time_subscription: false,
         supports: |args| args.is_empty(), state_consumer: true,
