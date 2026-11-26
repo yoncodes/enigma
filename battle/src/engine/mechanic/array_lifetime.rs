@@ -69,6 +69,18 @@ fn grants_to_remove(
         })
 }
 
+pub(crate) fn withdraw(
+    managers: &BattleManagers,
+    field: FieldState,
+    origin: CommandOrigin,
+) -> Vec<RuleOp> {
+    let mut ops = grants_to_remove(managers, field, origin)
+        .map(|remove| RuleOp::Command(BattleCommand::Buff(BuffCommand::RemoveAfterTrigger(remove))))
+        .collect::<Vec<_>>();
+    ops.push(remove_field(field.team, origin));
+    ops
+}
+
 fn remove_field(team: i32, origin: CommandOrigin) -> RuleOp {
     RuleOp::Command(BattleCommand::Field(FieldCommand {
         origin,

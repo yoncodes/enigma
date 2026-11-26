@@ -2,18 +2,17 @@ use super::*;
 use crate::engine::{
     manager::{
         buff::{BuffCommand, BuffGrantChild},
+        field::FieldChangeKind,
         hp::{HpCommand, HpLoss},
     },
     skill::{
-        action::SkillTarget,
+        action::{SkillInvocation, SkillRequest, SkillTarget},
         rule::{CommandOrigin, DefinitionKey, RuleDomain},
     },
 };
 
-#[test]
-fn timed_array_advances_on_the_cast_round_and_removes_its_buffs() {
-    init_config();
-    let fight = Fight {
+fn fight() -> Fight {
+    Fight {
         version: Some(7),
         attacker: Some(FightTeam {
             entitys: vec![
@@ -43,28 +42,42 @@ fn timed_array_advances_on_the_cast_round_and_removes_its_buffs() {
             ..Default::default()
         }),
         ..Default::default()
-    };
+    }
+}
+
+fn cast(
+    managers: &mut BattleManagers,
+    pool: &TargetPool,
+    catalog: &SkillEffectCatalog,
+) -> DrainResult {
+    drain::run_action(
+        managers,
+        pool,
+        catalog,
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+        [],
+        SkillInvocation {
+            target: SkillTarget::Explicit(10),
+            ..SkillRequest {
+                source_uid: 10,
+                skill_id: 31020131,
+            }
+            .into()
+        },
+    )
+    .unwrap()
+}
+
+#[test]
+fn timed_array_advances_on_the_cast_round_and_removes_its_buffs() {
+    init_config();
+    let fight = fight();
     let pool = TargetPool::from_fight(&fight);
     let catalog = SkillEffectCatalog::from_fight(config::configs::get(), &fight);
     let mut managers = BattleManagers::seeded(&fight);
     let mut determinism = RoundDeterminism::default();
-    let mut cast: crate::engine::skill::action::SkillInvocation =
-        crate::engine::skill::action::SkillRequest {
-            source_uid: 10,
-            skill_id: 31020131,
-        }
-        .into();
-    cast.target = SkillTarget::Explicit(10);
-    drain::run_action(
-        &mut managers,
-        &pool,
-        &catalog,
-        &mut determinism,
-        TargetContext::default(),
-        [],
-        cast,
-    )
-    .unwrap();
+    cast(&mut managers, &pool, &catalog);
     assert_eq!(managers.field.get(1).unwrap().definition.duration, 3);
 
     let array_buff = managers.buff.buff_id_uid(11, 31020117).unwrap();
@@ -131,4 +144,41 @@ fn timed_array_advances_on_the_cast_round_and_removes_its_buffs() {
         }
         managers.field.begin_round();
     }
+}
+
+#[test]
+fn recasting_a_timed_array_replaces_the_active_copy() {
+    init_config();
+    let fight = fight();
+    let pool = TargetPool::from_fight(&fight);
+    let catalog = SkillEffectCatalog::from_fight(config::configs::get(), &fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    cast(&mut managers, &pool, &catalog);
+    let old = managers.buff.buff_id_uid(10, 31020117).unwrap();
+    run_round_end_final_settlement(
+        &mut managers,
+        &pool,
+        &catalog,
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+        Vec::new(),
+    )
+    .unwrap();
+    assert_eq!(managers.field.get(1).unwrap().definition.duration, 2);
+
+    let result = cast(&mut managers, &pool, &catalog);
+    assert_eq!(managers.field.get(1).unwrap().definition.duration, 3);
+    assert_ne!(managers.buff.buff_id_uid(10, 31020117), Some(old));
+    assert!(managers.buff.snapshot(10, old).is_none());
+    assert_eq!(
+        result
+            .events
+            .iter()
+            .filter_map(|event| match event {
+                BattleEvent::FieldChanged(change) => Some(change.kind),
+                _ => None,
+            })
+            .collect::<Vec<_>>(),
+        [FieldChangeKind::Removed, FieldChangeKind::Deployed],
+    );
 }

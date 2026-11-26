@@ -6,7 +6,7 @@ use crate::engine::{
         emitter,
         field::{FieldCommand, FieldDefinition, FieldOperation, FieldThreshold},
     },
-    mechanic::magic_circle_level::MagicCircleLevelCommand,
+    mechanic::{array_lifetime, magic_circle_level::MagicCircleLevelCommand},
     runtime::determinism::RoundDeterminism,
     skill::{
         behavior::{
@@ -50,9 +50,16 @@ pub fn deploy_rule_ops(
             thresholds: field_thresholds(circle_id, team, managers),
         },
     }));
-    if managers.field.get(team).is_some() {
-        return Some(vec![field]);
-    }
+    let mut ops = match managers.field.get(team) {
+        Some(current)
+            if current.definition.field_id == circle_id
+                && array_lifetime::is_timed(current, managers.catalog()) =>
+        {
+            array_lifetime::withdraw(managers, current, origin)
+        }
+        Some(_) => return Some(vec![field]),
+        None => Vec::new(),
+    };
     let array_owner = managers
         .catalog()
         .uses_array_duration(circle_id)
@@ -92,9 +99,7 @@ pub fn deploy_rule_ops(
                 .iter()
                 .map(move |buff_id| (entity.uid, *buff_id))
         }));
-    let mut ops = grants
-        .map(|(target_uid, buff_id)| grant(target_uid, buff_id))
-        .collect::<Vec<_>>();
+    ops.extend(grants.map(|(target_uid, buff_id)| grant(target_uid, buff_id)));
     ops.push(field);
     ops.extend(
         definition
