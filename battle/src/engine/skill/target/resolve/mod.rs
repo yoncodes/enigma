@@ -326,9 +326,7 @@ impl TargetResolver {
             TargetRule::HighestAttackAlly => {
                 highest_attack(&pool.field_allies(source_uid), managers)
             }
-            TargetRule::LowestExPointAlly => {
-                lowest_ex_point(&pool.field_allies(source_uid), source_uid)
-            }
+            TargetRule::LowestExPointAlly => lowest_ex_point(&pool.field_allies(source_uid)),
             TargetRule::HighestExPointAlly if !action && !request.raw.is_empty() => Vec::new(),
             TargetRule::HighestExPointAlly => highest_moxie::select(
                 &request.raw,
@@ -1074,13 +1072,14 @@ fn enemy_with_most_shell(
         .unwrap_or_default()
 }
 
-fn lowest_ex_point(entities: &[TargetEntity], fallback_uid: i64) -> Vec<i64> {
-    let uid = entities
+fn lowest_ex_point(entities: &[TargetEntity]) -> Vec<i64> {
+    entities
         .iter()
+        .filter(|entity| entity.current_hp > 0)
         .min_by_key(|entity| (entity.ex_point, entity.position, entity.uid))
         .map(|entity| entity.uid)
-        .unwrap_or(fallback_uid);
-    vec![uid]
+        .into_iter()
+        .collect()
 }
 
 fn highest_hp(source_uid: i64, pool: &TargetPool, managers: Option<&BattleManagers>) -> Vec<i64> {

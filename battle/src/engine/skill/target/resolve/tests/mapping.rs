@@ -528,3 +528,29 @@ fn ally_pickers_skip_waiting_reserves() {
     assert_eq!(select(107), vec![10]);
     assert_eq!(select(111), vec![20]);
 }
+
+#[test]
+fn lowest_moxie_ignores_a_defeated_source_kept_for_attribution() {
+    init_config();
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![
+                entity_stats(10, 1, 100, 100, 0),
+                entity_stats(20, 2, 100, 100, 2),
+            ],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    let select = |managers: &BattleManagers| {
+        let current = pool.runtime_view_including(managers, Some(10));
+        resolve_code(111, 10, &current, &mut RoundDeterminism::default())
+    };
+    assert_eq!(select(&managers), vec![10]);
+    managers.hp.lose(10, 100, 0);
+    assert_eq!(select(&managers), vec![20]);
+    managers.hp.lose(20, 100, 0);
+    assert!(select(&managers).is_empty());
+}
