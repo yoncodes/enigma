@@ -186,6 +186,65 @@ fn blood_domain_deployment_grants_its_configured_ally_buff() {
 }
 
 #[test]
+fn removing_blood_domain_withdraws_its_linked_grants() {
+    use crate::engine::{runtime::drain, skill::effect::SkillEffectCatalog};
+    use sonettobuf::{Fight, FightEntityInfo, FightTeam};
+
+    crate::test_support::init_config();
+    let fight = Fight {
+        version: Some(7),
+        attacker: Some(FightTeam {
+            entitys: [10, 11, 12, 13]
+                .map(|uid| FightEntityInfo {
+                    uid: Some(uid),
+                    team_type: Some(1),
+                    current_hp: Some(100),
+                    ..Default::default()
+                })
+                .to_vec(),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let catalog = SkillEffectCatalog::from_roots(config::configs::get(), [308801821], []);
+    let mut managers = BattleManagers::seeded(&fight);
+    let mut determinism = RoundDeterminism::default();
+    let deploy = ParsedBehavior::new(50019, "AddMagicCircle", vec![100051]);
+    let remove = ParsedBehavior::new(50021, "RemoveMagicCircleById", vec![100051]);
+    assert!(super::Handler::supports(&remove));
+    let ops = deploy_rule_ops(&deploy, 10, 1, &managers, &pool).unwrap();
+    drain::run(
+        &mut managers,
+        &pool,
+        &catalog,
+        &mut determinism,
+        TargetContext::default(),
+        ops,
+    )
+    .unwrap();
+
+    assert!(managers.field.get(1).is_some());
+    let grants =
+        [10, 11, 12, 13].map(|uid| (uid, managers.buff.buff_id_uid(uid, 308801312).unwrap()));
+    let ops = remove_rule_ops(&remove, 1, &managers).unwrap();
+    drain::run(
+        &mut managers,
+        &pool,
+        &catalog,
+        &mut determinism,
+        TargetContext::default(),
+        ops,
+    )
+    .unwrap();
+
+    assert!(managers.field.get(1).is_none());
+    for (uid, buff_uid) in grants {
+        assert!(managers.buff.snapshot(uid, buff_uid).is_none());
+    }
+}
+
+#[test]
 fn qi_panorama_deployment_grants_its_linked_emitter_buffs_after_the_field() {
     crate::test_support::init_config();
     let fight = sonettobuf::Fight {

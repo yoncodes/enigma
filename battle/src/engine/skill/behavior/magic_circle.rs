@@ -125,11 +125,11 @@ fn remove_rule_ops(
     if field.definition.field_id != circle_id {
         return Some(Vec::new());
     }
-    Some(vec![RuleOp::Command(BattleCommand::Field(FieldCommand {
-        origin: super::command_origin(behavior)?,
-        team,
-        operation: FieldOperation::Remove,
-    }))])
+    Some(array_lifetime::withdraw(
+        managers,
+        field,
+        super::command_origin(behavior)?,
+    ))
 }
 
 fn update_wangqi_rule_ops(
