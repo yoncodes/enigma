@@ -721,15 +721,15 @@ impl BuffManager {
         spec: &FanoutSpec,
         uid: uid_policy::UidAllocationPlan,
     ) -> Option<BuffApplyResult> {
-        let effective =
-            crate::engine::skill::buff_act::registry::kind(spec.rule.opcode, spec.rule.type_name)
-                == Some(BuffActKind::LayerMasterHalo)
-                || !self.buffs.iter().any(|active| {
-                    active.effective
-                        && active.owner_uid == spec.route.target_uid
-                        && active.buff.buff_id == Some(spec.route.buff_id)
-                        && active.buff.from_uid == Some(spec.route.source_uid)
-                });
+        let kind =
+            crate::engine::skill::buff_act::registry::kind(spec.rule.opcode, spec.rule.type_name);
+        let effective = kind == Some(BuffActKind::LayerMasterHalo)
+            || !self.buffs.iter().any(|active| {
+                active.effective
+                    && active.owner_uid == spec.route.target_uid
+                    && active.buff.buff_id == Some(spec.route.buff_id)
+                    && active.buff.from_uid == Some(spec.route.source_uid)
+            });
         let grant_values = self.plan_grant_values(&spec.definition, spec.route.source_uid);
         let mut initial_act_info = spec
             .definition
@@ -778,11 +778,20 @@ impl BuffManager {
                     }));
             }
         }
-        child.buff.duration = Some(spec.duration);
+        let untimed_slave = spec.definition.duration == 0
+            && spec.definition.features().iter().any(|feature| {
+                feature.arguments_supported && feature.kind == Some(BuffActKind::SlaveHalo)
+            });
+        let duration = if kind == Some(BuffActKind::MasterHalo) && untimed_slave {
+            0
+        } else {
+            spec.duration
+        };
+        child.buff.duration = Some(duration);
         if let Some(active) = self.buffs.iter_mut().find(|active| {
             active.owner_uid == child.target_uid && active.buff.uid == child.buff.uid
         }) {
-            active.buff.duration = Some(spec.duration);
+            active.buff.duration = Some(duration);
         }
         if effective {
             child.markers = halo::fanout_markers(self.catalog(), spec.route.buff_id)

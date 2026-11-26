@@ -231,6 +231,9 @@ fn master_halo_fans_linked_buff_to_allies_with_child_uids() {
     assert_eq!(added.fanout.len(), 1);
     assert_eq!(added.fanout[0].buff.buff_id, Some(30860162));
     assert_eq!(added.fanout[0].buff.uid, Some(3));
+    assert_eq!(added.buff.duration, Some(3));
+    assert_eq!(added.fanout[0].buff.duration, Some(0));
+    assert_eq!(manager.snapshot(11, 3).unwrap().duration, Some(0));
     assert_eq!(added.fanout[0].markers[0].effect_type, 173);
 
     let removed = manager.remove_by_id(10, 30860153);
