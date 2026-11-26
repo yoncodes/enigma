@@ -74,10 +74,10 @@ fn auto_round_distinguishes_an_invalid_choice_from_missing_skill_data() {
 }
 
 #[test]
-fn auto_round_rejects_a_loaded_choice_from_another_card_rank() {
+fn both_round_routes_reject_a_loaded_choice_from_another_card_rank() {
     let mut hero = team_hero(10, 3120, 1_000, [31200111, 312001215]);
     hero.skill_group2.push(312001225);
-    let runtime = team_runtime(vec![hero], vec![hand_card(10, 312001215, false)]);
+    let mut runtime = team_runtime(vec![hero], vec![hand_card(10, 312001215, false)]);
     assert!(runtime.catalog.get(31200165).is_some());
 
     let planner = runtime.auto_round_planner();
@@ -92,12 +92,28 @@ fn auto_round_rejects_a_loaded_choice_from_another_card_rank() {
         ..Default::default()
     };
     assert!(planner.plan(&request).is_ok());
+    runtime
+        .clone()
+        .advance_round(BeginRoundRequest {
+            opers: request.opers.clone(),
+            ..Default::default()
+        })
+        .unwrap();
 
     request.opers[0].param3 = Some(31200165);
     assert!(matches!(
         planner.plan(&request),
         Err(AutoRoundError::InvalidRequest)
     ));
+    let prior_hand = runtime.managers.card.hand().to_vec();
+    let error = runtime
+        .advance_round(BeginRoundRequest {
+            opers: request.opers,
+            ..Default::default()
+        })
+        .unwrap_err();
+    assert!(error.contains("InvalidPlaySkill"), "{error}");
+    assert_eq!(runtime.managers.card.hand(), prior_hand);
 }
 
 #[test]

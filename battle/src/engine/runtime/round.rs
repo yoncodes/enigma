@@ -139,12 +139,7 @@ impl BattleRuntime {
             .collect::<Vec<_>>();
         battle_catalog.extend_skill_roots(
             &mut self.catalog,
-            request
-                .opers
-                .iter()
-                .filter_map(|oper| oper.param3)
-                .filter(|skill_id| *skill_id > 0)
-                .chain(current_card_skills),
+            current_card_skills,
             std::iter::empty(),
         );
         let captured_ai_choices = self.determinism.take_ai_skills();

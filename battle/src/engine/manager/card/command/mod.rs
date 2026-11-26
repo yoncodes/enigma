@@ -194,6 +194,26 @@ pub struct CardPlay {
 }
 
 impl CardPlay {
+    pub(crate) fn check_choice(
+        card: &CardInfo,
+        chosen: Option<i32>,
+        catalog: crate::catalog::BattleCatalog,
+    ) -> Result<(), CardCommandError> {
+        let Some(chosen) = chosen else {
+            return Ok(());
+        };
+        let allowed = card.skill_id.is_some_and(|skill_id| {
+            skill_id == chosen
+                || crate::catalog::configured_card_choices(catalog.game_data(), skill_id)
+                    .any(|choice| choice == chosen)
+        });
+        if allowed {
+            Ok(())
+        } else {
+            Err(CardCommandError::InvalidPlaySkill)
+        }
+    }
+
     pub(crate) fn planned_skill(&self, visible: Option<&CardInfo>) -> Option<(i64, i32)> {
         let source = self
             .choice

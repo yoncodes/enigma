@@ -533,12 +533,8 @@ fn apply_prefix(
                 let Some((source_uid, skill_id)) = card_identity(card, chosen_skill_id) else {
                     return Ok(false);
                 };
-                if chosen_skill_id.is_some()
-                    && card.skill_id != Some(skill_id)
-                    && !card_choice_options(card, managers).contains(&skill_id)
-                {
-                    return Err(AutoBattleError::InvalidChoice);
-                }
+                CardPlay::check_choice(card, chosen_skill_id, managers.catalog())
+                    .map_err(|_| AutoBattleError::InvalidChoice)?;
                 if catalog.get(skill_id).is_none() {
                     return Err(AutoBattleError::MissingSkill(skill_id));
                 }

@@ -654,10 +654,16 @@ fn run_player_card_ops(
             PlayerCardOp::Move { .. } | PlayerCardOp::UseUniversal { .. } | PlayerCardOp::Play(_)
         );
         if let PlayerCardOp::Play(play) = &op {
-            managers
+            let card = managers
                 .card
                 .check_play_permission(play.hand_index, play.choice.as_ref())
                 .map_err(|error| DrainError::Command(error.into()))?;
+            crate::engine::manager::card::CardPlay::check_choice(
+                card,
+                play.chosen_skill_id,
+                managers.catalog(),
+            )
+            .map_err(|error| DrainError::Command(error.into()))?;
         }
         let blocked_card_index = match &op {
             PlayerCardOp::Play(play)

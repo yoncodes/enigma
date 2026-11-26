@@ -30,7 +30,7 @@ impl CardManager {
         &self,
         index: usize,
         choice: Option<&CardPlayChoice>,
-    ) -> Result<(), CardCommandError> {
+    ) -> Result<&CardInfo, CardCommandError> {
         let source = self
             .resolve_play_source(index, choice)
             .ok_or(if choice.is_none() {
@@ -38,10 +38,11 @@ impl CardManager {
             } else {
                 CardCommandError::PlayedCardNotFound
             })?;
-        if !self.can_use_card(self.play_source_card(source)) {
+        let card = self.play_source_card(source);
+        if !self.can_use_card(card) {
             return Err(CardCommandError::PlayForbidden);
         }
-        Ok(())
+        Ok(card)
     }
 
     pub(super) fn unlock_hedone(
