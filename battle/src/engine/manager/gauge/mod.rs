@@ -249,7 +249,7 @@ pub struct GaugeManager {
     consumed_raw_progress: HashMap<(GaugeKey, i64, i32), i32>,
     pending_raw_batches: HashMap<GaugeBatchId, PendingRawGaugeBatch>,
     positive_gain_round_start: HashMap<GaugeKey, i32>,
-    positive_threshold_crossings_paid_this_round: HashMap<(GaugeKey, i64, i32), i32>,
+    positive_threshold_crossings_claimed: HashMap<(GaugeKey, i64, i32), i32>,
 }
 
 mod positive_gains;
@@ -389,7 +389,6 @@ impl GaugeManager {
 
     pub fn begin_combat_round(&mut self) {
         self.positive_gain_round_start = self.positive_gains.clone();
-        self.positive_threshold_crossings_paid_this_round.clear();
     }
 
     pub fn positive_gain_since_round_start(&self, key: GaugeKey) -> i32 {
@@ -420,7 +419,7 @@ impl GaugeManager {
             self.preview_positive_threshold(key, listener_uid, listener_opcode, threshold, amount);
         if delta > 0 {
             *self
-                .positive_threshold_crossings_paid_this_round
+                .positive_threshold_crossings_claimed
                 .entry((key, listener_uid, listener_opcode))
                 .or_default() += delta / amount;
         }
@@ -439,18 +438,13 @@ impl GaugeManager {
             return 0;
         }
         let total = self.positive_gains.get(&key).copied().unwrap_or_default();
-        let round_start = self
-            .positive_gain_round_start
-            .get(&key)
-            .copied()
-            .unwrap_or_default();
-        let eligible_crossings = total.saturating_sub(round_start).max(0) / threshold;
-        let paid_crossings = self
-            .positive_threshold_crossings_paid_this_round
+        let eligible_crossings = total / threshold;
+        let claimed_crossings = self
+            .positive_threshold_crossings_claimed
             .get(&(key, listener_uid, listener_opcode))
             .copied()
             .unwrap_or_default();
-        eligible_crossings.saturating_sub(paid_crossings) * amount
+        eligible_crossings.saturating_sub(claimed_crossings) * amount
     }
 
     pub(crate) fn execute_command(
@@ -694,7 +688,7 @@ impl GaugeManager {
                 self.consumed_raw_progress
                     .retain(|(key, _, _), _| *key != command.key);
                 self.positive_gain_round_start.remove(&command.key);
-                self.positive_threshold_crossings_paid_this_round
+                self.positive_threshold_crossings_claimed
                     .retain(|(key, _, _), _| *key != command.key);
                 let before = self
                     .states

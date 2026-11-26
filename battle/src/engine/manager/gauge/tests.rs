@@ -519,7 +519,7 @@ fn positive_threshold_listener_can_settle_each_new_crossing_in_one_round() {
 }
 
 #[test]
-fn positive_threshold_listener_does_not_carry_partial_round_progress() {
+fn positive_threshold_listener_carries_partial_round_progress() {
     let mut manager = GaugeManager::default();
     manager
         .execute_command(GaugeCommand::new(
@@ -544,13 +544,15 @@ fn positive_threshold_listener_does_not_carry_partial_round_progress() {
             GaugeOperation::ChangeValue { delta: 1 },
         ))
         .unwrap();
+    assert_eq!(manager.settle_positive_threshold(KEY, 20, 1021, 8, 1), 1);
+    manager.begin_combat_round();
     assert_eq!(manager.preview_positive_threshold(KEY, 20, 1021, 8, 1), 0);
 
     manager
         .execute_command(GaugeCommand::new(
             ORIGIN,
             KEY,
-            GaugeOperation::ChangeValue { delta: 7 },
+            GaugeOperation::ChangeValue { delta: 15 },
         ))
         .unwrap();
     assert_eq!(manager.settle_positive_threshold(KEY, 20, 1021, 8, 1), 1);
