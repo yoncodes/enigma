@@ -69,7 +69,7 @@ pub mod scan {
             behavior::registry::CardPlayRole, condition::none::NoneMode, rule::SetupStage,
         };
 
-        pub use crate::engine::skill::behavior::buff::random_buff_pool;
+        pub use crate::engine::skill::behavior::buff::{random_arsenal_pool, random_buff_pool};
         pub use crate::engine::skill::behavior::{
             has_destination, is_slot_supported, is_supported,
         };

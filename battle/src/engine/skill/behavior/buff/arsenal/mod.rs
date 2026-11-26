@@ -3,7 +3,7 @@ use crate::{
     engine::{
         manager::buff::{BuffCommand, BuffGrant},
         skill::{
-            behavior::BehaviorOpContext,
+            behavior::{BehaviorOpContext, classify::BehaviorKind},
             buff_act::registry::{self, BuffActKind},
             effect::ParsedBehavior,
             rule::{
@@ -46,6 +46,25 @@ fn configured(catalog: BattleCatalog, pool_id: i32) -> Option<Vec<Bullet>> {
         .collect()
 }
 
+pub fn random_arsenal_pool(behavior: &ParsedBehavior) -> Option<Vec<(i32, u32)>> {
+    let definition = super::registry::find(behavior)?;
+    if definition.kind != BehaviorKind::AddBuffRanTypeId {
+        return None;
+    }
+    let [pool_id, count] = behavior.args.as_slice() else {
+        return None;
+    };
+    if *count <= 0 {
+        return None;
+    }
+    Some(
+        configured(BattleCatalog::try_global()?, *pool_id)?
+            .into_iter()
+            .map(|bullet| (bullet.id, bullet.stacks))
+            .collect(),
+    )
+}
+
 pub(super) fn grants(
     context: &mut BehaviorOpContext<'_>,
     behavior: &ParsedBehavior,
@@ -77,6 +96,14 @@ pub(super) fn grants(
             count,
             &ids,
         )
+        .filter(|observed| {
+            let (new, existing) = observed.split_at(count.min(unheld.len()));
+            new.iter()
+                .all(|id| unheld.iter().any(|bullet| bullet.id == *id))
+                && existing
+                    .iter()
+                    .all(|id| held.iter().any(|bullet| bullet.id == *id))
+        })
         .unwrap_or_default()
         .into_iter();
     let mut ops = Vec::with_capacity(count);
@@ -86,17 +113,20 @@ pub(super) fn grants(
         } else {
             &mut unheld
         };
-        let candidate_ids = candidates
-            .iter()
-            .map(|bullet| bullet.id)
-            .collect::<Vec<_>>();
-        let selected = observed
-            .next()
-            .filter(|id| candidate_ids.contains(id))
-            .or_else(|| context.determinism.take_random_buff(&candidate_ids));
-        let index = selected
-            .and_then(|id| candidate_ids.iter().position(|candidate| *candidate == id))
-            .or_else(|| context.determinism.lua_random_index(candidates.len()))?;
+        let index = if let Some(id) = observed.next() {
+            context.determinism.lua_random_index(candidates.len())?;
+            candidates.iter().position(|bullet| bullet.id == id)?
+        } else {
+            let ids = candidates
+                .iter()
+                .map(|bullet| bullet.id)
+                .collect::<Vec<_>>();
+            context
+                .determinism
+                .take_random_buff(&ids)
+                .and_then(|id| ids.iter().position(|candidate| *candidate == id))
+                .or_else(|| context.determinism.lua_random_index(candidates.len()))?
+        };
         let bullet = candidates.remove(index);
         ops.push(RuleOp::Command(BattleCommand::Buff(BuffCommand::Grant(
             BuffGrant {

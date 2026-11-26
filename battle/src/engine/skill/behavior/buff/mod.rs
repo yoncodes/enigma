@@ -48,6 +48,7 @@ pub(super) use return_layers::supports as supports_burn_return;
 
 pub(super) use super::{command_origin, registry};
 use application::*;
+pub use arsenal::random_arsenal_pool;
 use copy::copy_status_ops;
 pub(super) use copy::supports_status_copy;
 use dispel::{

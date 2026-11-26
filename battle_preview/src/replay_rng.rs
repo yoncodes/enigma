@@ -11,6 +11,7 @@ use sonettobuf::{CardInfo, Fight, FightRound, FightStep};
 
 mod conduit_ex_point_rolls;
 mod periodic_origin_crit;
+mod random_arsenal;
 mod random_buff;
 
 /// Imports observed random choices while leaving card construction and validation to the engine.
@@ -22,7 +23,11 @@ pub fn opening_determinism(
     let mut determinism =
         RoundDeterminism::with_seed(fight.battle_id.unwrap_or_default().max(0) as u64);
     let catalog = SkillEffectCatalog::from_fight(game_data, fight);
-    determinism.replace_random_buff_pools(random_buff::choices(&catalog, round));
+    determinism.replace_random_buff_pools(
+        random_buff::choices(&catalog, round)
+            .into_iter()
+            .chain(random_arsenal::choices(&catalog, round)),
+    );
     determinism
         .enqueue_condition_random_choices(conduit_ex_point_rolls::choices(&catalog, round, true));
     determinism.enqueue_hand_rank_choices(opening_hand_rank_choices(game_data, fight, round));
@@ -106,7 +111,11 @@ pub fn seed_action_determinism(
     catalog: &SkillEffectCatalog,
     round: &FightRound,
 ) {
-    runtime.seed_random_buff_pools(random_buff::choices(catalog, round));
+    runtime.seed_random_buff_pools(
+        random_buff::choices(catalog, round)
+            .into_iter()
+            .chain(random_arsenal::choices(catalog, round)),
+    );
     runtime.seed_hand_rank_choices(card_level_add_choices(round));
     runtime.seed_skill_targets(skill_target_choices(catalog, round));
     runtime.seed_random_skills(random_skill_choices(catalog, round));
