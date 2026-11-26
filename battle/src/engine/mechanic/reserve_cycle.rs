@@ -34,12 +34,13 @@ pub(crate) fn promote(managers: &mut BattleManagers, window: Window<'_>) -> Prom
             break;
         }
         for mut promotion in batch {
-            let plan = managers
+            let route = managers
                 .buff
                 .active_act_definitions(promotion.defeated_uid)
                 .find_map(|definition| definition.state.reserve_promotion);
-            if let Some(plan) = plan {
-                promotion.queued_reserve = Some(managers.queue_reserve_cycle(plan(&promotion)));
+            if let Some(route) = route {
+                promotion.queued_reserve =
+                    Some(managers.queue_reserve_cycle((route.plan)(&promotion)));
             }
             managers.buff.sync_promotion(&promotion);
             if let Some(entering) = managers.entity_snapshot(promotion.entering_uid) {

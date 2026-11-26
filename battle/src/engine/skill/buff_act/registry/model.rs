@@ -48,8 +48,13 @@ pub(crate) struct ShieldHitRoute {
     pub(crate) admits_cast: fn(&BattleManagers, i64) -> bool,
 }
 
-pub(crate) type ReservePromotionHandler =
-    fn(&crate::engine::fight::reserve::Promotion) -> crate::engine::fight::reserve::CycleCommand;
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct ReservePromotionRoute {
+    pub(crate) event: buff_act::effect_time::BuffActEvent,
+    pub(crate) plan: fn(
+        &crate::engine::fight::reserve::Promotion,
+    ) -> crate::engine::fight::reserve::CycleCommand,
+}
 
 pub struct SetupContext<'a> {
     pub pool: &'a crate::engine::skill::target::TargetPool,
@@ -224,7 +229,7 @@ pub struct BuffActStateDefinition {
     pub hp_loss: Option<HpLossStateHandler>,
     pub(crate) shield_hit: Option<ShieldHitRoute>,
     pub(crate) riposte_damage: Option<(i32, i32)>,
-    pub(crate) reserve_promotion: Option<ReservePromotionHandler>,
+    pub(crate) reserve_promotion: Option<ReservePromotionRoute>,
     pub consumer: bool,
     pub initial: Option<BuffActInitialStateRule>,
 }
@@ -287,6 +292,10 @@ impl BuffActDefinition {
                 .state
                 .riposte_damage
                 .is_none_or(|route| route == (effect_time, effect_condition))
+            && self
+                .state
+                .reserve_promotion
+                .is_none_or(|route| buff_act::effect_time::classify(effect_time) == route.event)
     }
 
     pub fn validate_arguments(

@@ -1,6 +1,22 @@
 use super::*;
 
 #[test]
+fn reserve_cycle_accepts_only_the_configured_substitution_route() {
+    crate::test_support::init_config();
+    let game = config::configs::get();
+    let mut feature = resolve_feature(Some(game), "931").unwrap();
+    assert_eq!(
+        destination_for_feature(Some(game), &feature),
+        Some(BuffActDestination::StateConsumer)
+    );
+    assert!(feature.wire().is_some());
+
+    feature.effect_time = 0;
+    assert_eq!(destination_for_feature(Some(game), &feature), None);
+    assert!(feature.wire().is_none());
+}
+
+#[test]
 fn field_replacement_record_keeps_its_round_end_runtime_and_add_only_wire_contract() {
     use super::super::super::wire::WirePhase;
     use sonettobuf::effect_type_enum::EffectType;

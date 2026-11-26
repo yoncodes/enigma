@@ -21,7 +21,13 @@ pub(super) struct ResolvedBuffFeature {
 impl ResolvedBuffFeature {
     pub(super) fn wire_markers(&self, phase: WirePhase) -> &'static [i32] {
         self.wire
-            .filter(|wire| wire.applies_to_feature(self.effect_time, self.arguments_supported))
+            .filter(|wire| {
+                wire.applies_to_feature(
+                    self.arguments_supported,
+                    self.effect_time,
+                    self.effect_condition,
+                )
+            })
             .map_or(&[], |wire| wire.markers(phase))
     }
 }

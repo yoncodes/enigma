@@ -35,10 +35,13 @@ impl ParsedBuffAct {
     }
 
     pub fn wire(&self) -> Option<&'static buff_act::wire::BuffActWireDefinition> {
-        self.definition?
-            .wire
-            .as_ref()
-            .filter(|wire| wire.applies_to_feature(self.effect_time, self.arguments_supported))
+        self.definition?.wire.as_ref().filter(|wire| {
+            wire.applies_to_feature(
+                self.arguments_supported,
+                self.effect_time,
+                self.effect_condition,
+            )
+        })
     }
 
     pub fn references(&self, game: Option<&config::GameDB>) -> RuleReferences {

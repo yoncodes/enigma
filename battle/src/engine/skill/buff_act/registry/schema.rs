@@ -43,7 +43,7 @@ macro_rules! buff_act_definitions {
             $(, hp_loss_state: $hp_loss_state:expr)?
             $(, shield_hit: $shield_time:path => ($shield_hit:expr, $shield_cast_admission:expr))?
             $(, riposte_damage: ($riposte_time:expr, $riposte_condition:expr))?
-            $(, reserve_promotion: $reserve_promotion:expr)?
+            $(, reserve_promotion: $reserve_event:path => $reserve_promotion:expr)?
             $(, state_consumer: $state_consumer:expr)?
             $(, initial_state: $initial_state:ident)?
             $(, description_required: $description_required:expr)?
@@ -100,7 +100,7 @@ macro_rules! buff_act_definitions {
                     hp_loss: buff_act_definitions!(@hp_loss_state $($hp_loss_state)?),
                     shield_hit: buff_act_definitions!(@shield_hit $($shield_time => ($shield_hit, $shield_cast_admission))?),
                     riposte_damage: buff_act_definitions!(@riposte_damage $(($riposte_time, $riposte_condition))?),
-                    reserve_promotion: buff_act_definitions!(@reserve_promotion $($reserve_promotion)?),
+                    reserve_promotion: buff_act_definitions!(@reserve_promotion $($reserve_event => $reserve_promotion)?),
                     consumer: buff_act_definitions!(@state_consumer $($state_consumer)?),
                     initial: buff_act_definitions!(@initial_state $($initial_state)?),
                 },
@@ -191,7 +191,7 @@ macro_rules! buff_act_definitions {
     (@shield_hit) => { None };
     (@riposte_damage ($time:expr, $condition:expr)) => { Some(($time, $condition)) };
     (@riposte_damage) => { None };
-    (@reserve_promotion $handler:expr) => { Some($handler) };
+    (@reserve_promotion $event:path => $plan:expr) => { Some(ReservePromotionRoute { event: $event, plan: $plan }) };
     (@reserve_promotion) => { None };
     (@state_consumer $value:expr) => { $value };
     (@state_consumer) => { false };

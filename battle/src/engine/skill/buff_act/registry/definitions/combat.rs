@@ -85,9 +85,10 @@ buff_act_definitions! {
     (720, "MonsterLabel") => MonsterLabel,
         effect_time_subscription: false, supports: |_| true, state_consumer: true, wire: (buff_act::wire::BuffActWireDefinition::all(DefinitionKey::new(720, "MonsterLabel"), &[EffectType::Monsterlabelbuff as i32]));
     (931, "CycleToSub") => CycleToSub,
-        effect_time_subscription: false, supports: buff_act::cycle_to_sub::supports, reserve_promotion: buff_act::cycle_to_sub::plan,
+        effect_time_subscription: false, supports: buff_act::cycle_to_sub::supports,
+        reserve_promotion: buff_act::effect_time::BuffActEvent::CycleSubstitution => buff_act::cycle_to_sub::plan,
         wire: (buff_act::wire::BuffActWireDefinition::add(DefinitionKey::new(931, "CycleToSub"), &[EffectType::None as i32])
-            .with_untagged_grant_event(buff_act::effect_time::BuffActEvent::CycleSubstitution));
+            .with_untagged_grant_marker());
     (721, "DotNoLimit") => DotNoLimit,
         scoped_runtime: |context| buff_act::dot_no_limit::rule_ops(context.managers, context.subscriber, context.event?),
         supports: |_| true, wire: (buff_act::wire::BuffActWireDefinition::all(DefinitionKey::new(721, "DotNoLimit"), &[EffectType::Dot as i32]));
