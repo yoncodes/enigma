@@ -170,12 +170,13 @@ fn skill_might_uses_classification_and_cross_attributes() {
     let pool = TargetPool::from_fight(&fight);
     let managers = BattleManagers::seeded(&fight);
     let cross = AttrId::from_raw(232).expect("configured ultimate incantation might multiplier");
-    for (skill_id, incantation_might, conversion, expected) in [
-        (30230134, 0, 0, 1_180),
-        (30230134, 333, 500, 1_346),
-        (31472131, 333, 1_000, 1_513),
-        (31470112, 333, 0, 1_513),
-        (31470112, 333, 1_000, 1_513),
+    for (skill_id, incantation_might, conversion, effectiveness, expected) in [
+        (30230134, 0, 0, 0, 11_800),
+        (30230134, 333, 500, 0, 13_460),
+        (30230134, 333, 500, 80, 13_604),
+        (31472131, 333, 1_000, 0, 15_130),
+        (31470112, 333, 0, 0, 15_130),
+        (31470112, 333, 1_000, 0, 15_130),
     ] {
         for fight_version in [6, 7] {
             let command = resolve_attack_command(
@@ -183,11 +184,12 @@ fn skill_might_uses_classification_and_cross_attributes() {
                     source_uid: 10,
                     target_uid: -1,
                     skill_id,
-                    rate: 1_000,
+                    rate: 10_000,
                     rate_terms: Vec::new(),
                     attack_bonus: 0,
                     attack_attributes: vec![
                         (AttrId::UltimateMight, 180),
+                        (AttrId::UltimateMightMultiplier, effectiveness),
                         (AttrId::IncantationMight, incantation_might),
                         (AttrId::IncantationSkillUltMightMultiplier, 1_000),
                         (cross, conversion),

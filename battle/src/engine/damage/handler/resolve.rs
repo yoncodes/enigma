@@ -997,38 +997,12 @@ fn direct_damage_trace(
             .filter_map(|(actual, delta)| (*actual == attr_id).then_some(*delta))
             .sum::<i32>()
     };
-    let ultimate_might = attributes.get(source.uid, AttrId::UltimateMight)
-        + attribute_delta(source, AttrId::UltimateMight)
-        + attack_attr(AttrId::UltimateMight)
-        + attack_local_attribute(AttrId::UltimateMight);
-    let conduit_might = if is_conduit {
-        attributes.get(source.uid, AttrId::ConduitMight)
-            + attribute_delta(source, AttrId::ConduitMight)
-            + attack_attr(AttrId::ConduitMight)
-            + attack_local_attribute(AttrId::ConduitMight)
-    } else {
-        0
-    };
-    let incantation_might = attributes.get(source.uid, AttrId::IncantationMight)
-        + attribute_delta(source, AttrId::IncantationMight)
-        + attack_attr(AttrId::IncantationMight)
-        + attack_local_attribute(AttrId::IncantationMight);
-    let might = conduit_might
-        + if is_ultimate {
-            let cross_multiplier = attributes
-                .get(source.uid, AttrId::UltimateIncantationMightMultiplier)
-                + attribute_delta(source, AttrId::UltimateIncantationMightMultiplier)
-                + attack_attr(AttrId::UltimateIncantationMightMultiplier)
-                + attack_local_attribute(AttrId::UltimateIncantationMightMultiplier);
-            1000 + ultimate_might + incantation_might * cross_multiplier / 1000
-        } else {
-            let cross_multiplier = attributes
-                .get(source.uid, AttrId::IncantationSkillUltMightMultiplier)
-                + attribute_delta(source, AttrId::IncantationSkillUltMightMultiplier)
-                + attack_attr(AttrId::IncantationSkillUltMightMultiplier)
-                + attack_local_attribute(AttrId::IncantationSkillUltMightMultiplier);
-            1000 + incantation_might + ultimate_might * cross_multiplier / 1000
-        };
+    let (might, might_remainder) = super::might::resolve(is_ultimate, is_conduit, |attr_id| {
+        attributes.get(source.uid, attr_id)
+            + attribute_delta(source, attr_id)
+            + attack_attr(attr_id)
+            + attack_local_attribute(attr_id)
+    });
     let extra_kind =
         crate::engine::skill::condition::extra::skill_kind_from_is_extra(extra_skill_kind);
     let specific_action_attr = match extra_kind {
@@ -1151,10 +1125,13 @@ fn direct_damage_trace(
         );
     }
     let damage_trace =
-        crate::engine::damage::pipeline::calculate_with_trace_for_formula_and_remainder(
+        crate::engine::damage::pipeline::calculate_with_trace_for_formula_and_remainders(
             inputs,
             runtime.fight_version,
-            critical_multiplier_remainder,
+            crate::engine::damage::pipeline::DamageRemainders {
+                critical: critical_multiplier_remainder,
+                might: might_remainder,
+            },
             formula,
         );
     crate::engine::damage::trace::HitTrace {

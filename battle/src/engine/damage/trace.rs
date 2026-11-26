@@ -53,22 +53,15 @@ pub struct DamageMultipliers {
     pub regular: i32,
     pub attack_local: i32,
     pub might: i32,
+    #[serde(skip_serializing_if = "is_zero")]
+    pub might_remainder: i32,
     pub action: i32,
     pub genesis: i32,
     pub final_rate: i32,
 }
 
-impl DamageMultipliers {
-    pub(super) fn values(self) -> [i32; 6] {
-        [
-            self.regular,
-            self.attack_local,
-            self.might,
-            self.action,
-            self.genesis,
-            self.final_rate,
-        ]
-    }
+fn is_zero(value: &i32) -> bool {
+    *value == 0
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]

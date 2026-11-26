@@ -366,10 +366,10 @@ fn version_seven_defense_attribute_rate_truncates_the_signed_delta() {
         };
 
         for (version, expected) in [(6, legacy), (7, current)] {
-            let trace = pipeline::calculate_with_trace_for_formula_and_remainder(
+            let trace = pipeline::calculate_with_trace_for_formula_and_remainders(
                 input,
                 version,
-                0,
+                pipeline::DamageRemainders::default(),
                 DamageFormula::StandardSkill,
             );
             assert!(matches!(
@@ -407,10 +407,10 @@ fn version_seven_non_standard_damage_keeps_nearest_defense_rate_rounding() {
         is_crit: false,
     };
 
-    let trace = pipeline::calculate_with_trace_for_formula_and_remainder(
+    let trace = pipeline::calculate_with_trace_for_formula_and_remainders(
         input,
         7,
-        0,
+        pipeline::DamageRemainders::default(),
         DamageFormula::AdditionalDamage,
     );
     assert_eq!(trace.amount, 1_812);

@@ -21,6 +21,7 @@ mod affinity;
 mod critical;
 mod heal;
 pub(crate) mod loss;
+mod might;
 mod origin;
 mod resolve;
 

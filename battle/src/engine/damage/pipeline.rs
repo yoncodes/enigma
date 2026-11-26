@@ -80,6 +80,28 @@ pub fn calculate(input: DamageFormulaInput) -> i32 {
     calculate_with_trace(input).amount
 }
 
+impl DamageMultipliers {
+    fn factors(self) -> [(i128, i128); 6] {
+        let integral = |value: i32| (i128::from(value.max(0)), 1000);
+        let might = if self.might_remainder == 0 {
+            integral(self.might)
+        } else {
+            (
+                (i128::from(self.might) * 1000 + i128::from(self.might_remainder)).max(0),
+                1_000_000,
+            )
+        };
+        [
+            integral(self.regular),
+            integral(self.attack_local),
+            might,
+            integral(self.action),
+            integral(self.genesis),
+            integral(self.final_rate),
+        ]
+    }
+}
+
 fn greatest_common_divisor(mut left: i128, mut right: i128) -> i128 {
     while right != 0 {
         (left, right) = (right, left % right);
@@ -122,21 +144,30 @@ pub(crate) fn calculate_with_trace_for_version_and_remainder(
     calculate_with_trace_for_policy_and_remainder(
         input,
         fight_version,
-        critical_multiplier_remainder,
+        DamageRemainders {
+            critical: critical_multiplier_remainder,
+            might: 0,
+        },
         false,
     )
 }
 
-pub(crate) fn calculate_with_trace_for_formula_and_remainder(
+#[derive(Default)]
+pub(crate) struct DamageRemainders {
+    pub critical: i32,
+    pub might: i32,
+}
+
+pub(crate) fn calculate_with_trace_for_formula_and_remainders(
     input: DamageFormulaInput,
     fight_version: i32,
-    critical_multiplier_remainder: i32,
+    remainders: DamageRemainders,
     formula: super::DamageFormula,
 ) -> DamageTrace {
     calculate_with_trace_for_policy_and_remainder(
         input,
         fight_version,
-        critical_multiplier_remainder,
+        remainders,
         formula.rules().truncates_signed_defense_rate_delta,
     )
 }
@@ -144,7 +175,7 @@ pub(crate) fn calculate_with_trace_for_formula_and_remainder(
 fn calculate_with_trace_for_policy_and_remainder(
     input: DamageFormulaInput,
     fight_version: i32,
-    critical_multiplier_remainder: i32,
+    remainders: DamageRemainders,
     truncates_signed_defense_rate_delta: bool,
 ) -> DamageTrace {
     let preserve_effective_defense = fight_version == 7;
@@ -217,16 +248,21 @@ fn calculate_with_trace_for_policy_and_remainder(
         regular: input.regular,
         attack_local: input.attack_local,
         might: input.might,
+        might_remainder: remainders.might,
         action: input.action,
         genesis: input.genesis,
         final_rate: input.final_rate,
     };
-    let chained = multipliers
-        .values()
-        .into_iter()
-        .fold(skill_fraction, |(amount, divisor), multiplier| {
-            (amount * multiplier.max(0) as i128, divisor * 1000)
-        });
+    let chained = multipliers.factors().into_iter().fold(
+        skill_fraction,
+        |(amount, divisor), (numerator, denominator)| {
+            if denominator == 1000 {
+                (amount * numerator, divisor * denominator)
+            } else {
+                multiply_reduced_fraction((amount, divisor), (numerator, denominator))
+            }
+        },
+    );
     let result = (chained.0 / chained.1) as i32;
     let poison_multiplier = input.poison_multiplier.map(|multiplier| {
         let multiplier = multiplier.max(0);
@@ -250,7 +286,7 @@ fn calculate_with_trace_for_policy_and_remainder(
     };
     let critical_multiplier_remainder =
         if input.is_crit && input.crit_multiplier >= MIN_CRITICAL_DAMAGE_MULTIPLIER {
-            critical_multiplier_remainder
+            remainders.critical
         } else {
             0
         };
