@@ -162,10 +162,18 @@ pub fn self_buff_type_target_buff_types(
 }
 
 pub fn per_type_layer(_: i32, _: &str, raw_args: &[String]) -> Option<ParsedConditionKind> {
+    let [layers_per_repeat, max_repeats, type_ids] = raw_args else {
+        return None;
+    };
+    let layers_per_repeat = layers_per_repeat.parse().ok()?;
+    let max_repeats = max_repeats.parse().ok()?;
+    if layers_per_repeat <= 0 || max_repeats <= 0 {
+        return None;
+    }
     Some(ParsedConditionKind::PerBuffTypeLayer {
-        min: raw_args.first()?.parse().ok()?,
-        max: raw_args.get(1)?.parse().ok()?,
-        type_ids: parse_buff_ids(raw_args.get(2..3)?)?,
+        layers_per_repeat,
+        max_repeats,
+        type_ids: parse_buff_ids(std::slice::from_ref(type_ids))?,
     })
 }
 
@@ -624,7 +632,11 @@ pub fn per_type_layer_count(
     conditions
         .iter()
         .filter_map(|condition| match &condition.kind {
-            ParsedConditionKind::PerBuffTypeLayer { type_ids, min, max } => {
+            ParsedConditionKind::PerBuffTypeLayer {
+                type_ids,
+                layers_per_repeat,
+                max_repeats,
+            } => {
                 let count = targets
                     .iter()
                     .map(|uid| {
@@ -634,12 +646,7 @@ pub fn per_type_layer_count(
                             .sum::<i32>()
                     })
                     .sum::<i32>();
-                let min = (*min).max(0);
-                Some(if count < min {
-                    0
-                } else {
-                    count.min((*max).max(min))
-                })
+                Some((count / layers_per_repeat).min(*max_repeats))
             }
             _ => None,
         })

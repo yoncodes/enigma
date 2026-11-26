@@ -107,8 +107,8 @@ pub enum ParsedConditionKind {
     BurnOverflow,
     PerBuffTypeLayer {
         type_ids: Vec<i32>,
-        min: i32,
-        max: i32,
+        layers_per_repeat: i32,
+        max_repeats: i32,
     },
     BuffStatusCount {
         status_ids: Vec<i32>,

@@ -98,7 +98,7 @@ fn from_and_to_buff_keeps_both_configured_identities() {
 }
 
 #[test]
-fn per_buff_type_layer_returns_the_capped_stack_count() {
+fn per_buff_type_layer_counts_complete_groups_up_to_the_repeat_cap() {
     crate::test_support::init_config();
     let mut managers = BattleManagers::default();
     managers.buff.seed(&Fight {
@@ -106,8 +106,8 @@ fn per_buff_type_layer_returns_the_capped_stack_count() {
             entitys: vec![FightEntityInfo {
                 uid: Some(10),
                 buffs: vec![BuffInfo {
-                    buff_id: Some(31340002),
-                    layer: Some(7),
+                    buff_id: Some(31210125),
+                    layer: Some(22),
                     ..Default::default()
                 }],
                 ..Default::default()
@@ -116,28 +116,18 @@ fn per_buff_type_layer_returns_the_capped_stack_count() {
         }),
         ..Default::default()
     });
-    let condition = ParsedCondition {
-        opcode: 518203,
-        type_name: String::new(),
-        kind: ParsedConditionKind::PerBuffTypeLayer {
-            type_ids: vec![31340002],
-            min: 1,
-            max: 20,
-        },
-        raw_args: Vec::new(),
+    let count = |layers: &str, cap: &str| {
+        let raw_args = vec![layers.into(), cap.into(), "31210125".into()];
+        let kind = per_type_layer(518210, "PerHasBuffTypeLayer", &raw_args).unwrap();
+        let condition = ParsedCondition {
+            opcode: 518210,
+            type_name: "PerHasBuffTypeLayer".into(),
+            kind,
+            raw_args,
+        };
+        per_type_layer_count(&[condition], &[10], &managers)
     };
-
-    assert_eq!(
-        per_type_layer_count(std::slice::from_ref(&condition), &[10], &managers),
-        7
-    );
-    let below_minimum = ParsedCondition {
-        kind: ParsedConditionKind::PerBuffTypeLayer {
-            type_ids: vec![31340002],
-            min: 8,
-            max: 20,
-        },
-        ..condition
-    };
-    assert_eq!(per_type_layer_count(&[below_minimum], &[10], &managers), 0);
+    assert_eq!(count("4", "100"), 5);
+    assert_eq!(count("4", "3"), 3);
+    assert_eq!(count("23", "100"), 0);
 }

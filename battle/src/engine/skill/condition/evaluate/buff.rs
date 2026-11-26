@@ -215,7 +215,7 @@ pub(super) fn enemy_highest_buff_type_count(
 
 pub(super) fn per_buff_type_layer(
     type_ids: &[i32],
-    min: &i32,
+    layers_per_repeat: &i32,
     condition_targets: &[i64],
     managers: Option<&BattleManagers>,
 ) -> bool {
@@ -225,7 +225,7 @@ pub(super) fn per_buff_type_layer(
                 .iter()
                 .map(|type_id| managers.buff.buff_type_amount(*uid, *type_id))
                 .sum::<i32>()
-                >= *min
+                >= *layers_per_repeat
         })
     })
 }

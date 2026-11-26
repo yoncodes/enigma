@@ -141,9 +141,11 @@ pub(super) fn condition_kind_matches(
             buff::enemy_highest_buff_type_count(type_id, threshold, source_uid, managers, pool)
         }
         ParsedConditionKind::BurnOverflow => context.buff_overflow_amount > 0,
-        ParsedConditionKind::PerBuffTypeLayer { type_ids, min, .. } => {
-            buff::per_buff_type_layer(type_ids, min, condition_targets, managers)
-        }
+        ParsedConditionKind::PerBuffTypeLayer {
+            type_ids,
+            layers_per_repeat,
+            ..
+        } => buff::per_buff_type_layer(type_ids, layers_per_repeat, condition_targets, managers),
         ParsedConditionKind::BuffStatusCount {
             status_ids,
             compare,

@@ -506,8 +506,8 @@ fn per_buff_type_layer_preserves_its_stack_count() {
         type_name: "PerHasBuffTypeLayer".into(),
         kind: ParsedConditionKind::PerBuffTypeLayer {
             type_ids: vec![31340002],
-            min: 1,
-            max: 20,
+            layers_per_repeat: 1,
+            max_repeats: 20,
         },
         raw_args: vec!["1".into(), "20".into(), "31340002".into()],
     };

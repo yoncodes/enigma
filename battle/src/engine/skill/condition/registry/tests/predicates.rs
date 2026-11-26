@@ -1015,8 +1015,8 @@ fn per_buff_type_layer_is_an_exact_static_multiplier() {
         ),
         Some(ParsedConditionKind::PerBuffTypeLayer {
             type_ids: vec![31280114],
-            min: 1,
-            max: 100,
+            layers_per_repeat: 1,
+            max_repeats: 100,
         })
     );
     assert_eq!(
@@ -1036,8 +1036,8 @@ fn post_hit_buff_layer_conversion_keeps_its_repeat_cap() {
         ),
         Some(ParsedConditionKind::PerBuffTypeLayer {
             type_ids: vec![31100147],
-            min: 1,
-            max: 3,
+            layers_per_repeat: 1,
+            max_repeats: 3,
         })
     );
     assert_eq!(
