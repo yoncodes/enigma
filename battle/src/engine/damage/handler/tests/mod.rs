@@ -43,3 +43,4 @@ mod formula;
 mod lost_life;
 mod origin_rules;
 mod skill_might;
+mod ultimate_bonus;
