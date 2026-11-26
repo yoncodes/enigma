@@ -915,6 +915,7 @@ condition_definitions! {
     [51301] "HasTypeIdBuffMoreThan" => buff::buff_type_at_least, event_trigger(EventKind::SmallRoundEnd, None);
     [51302] "HasTypeIdBuffMoreThan" => buff::buff_type_at_least, event_trigger(EventKind::RoundEnd, None);
     [51303] "HasTypeIdBuffMoreThan" => buff::buff_type_at_least, event_trigger(EventKind::RoundEndEntitySettlement, None);
+    [51307] "HasTypeIdBuffMoreThan" => buff::buff_type_at_least, reaction_targets_owner(event_trigger(EventKind::RoundEndFinalSettlement, None));
     [535208] "TypeIdBuffCountMoreThan" => buff::buff_type_at_least, event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterDamage));
     [535201] "TypeIdBuffCountMoreThan" => buff::buff_type_at_least, event_trigger(EventKind::SkillAction, Some(SkillPhase::Immediate));
     [535210] "TypeIdBuffCountMoreThan" => buff::buff_type_at_least, event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterHit));
