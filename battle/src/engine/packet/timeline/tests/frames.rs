@@ -34,6 +34,7 @@ fn attr_max_hp_change(
             replaced_removal: false,
         }),
         hp: None,
+        requested_loss: None,
         toughness: None,
         kill: None,
         death: None,

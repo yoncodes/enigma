@@ -325,6 +325,7 @@ pub enum BattleEvent {
         skill_id: i32,
         target_uid: i64,
         amount: i32,
+        requested_loss: Option<i32>,
         damage_from: crate::engine::manager::hp::HurtDamageFromType,
         buff_uid: Option<i64>,
     },

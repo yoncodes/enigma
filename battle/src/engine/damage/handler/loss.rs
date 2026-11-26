@@ -41,23 +41,24 @@ impl BehaviorHandler for GuardHandler {
             return emit(&context, behavior, amount, context.target.active_skill_id);
         }
         let loss = Loss::read(&context, behavior)?;
-        let own_break = matches!(
-            context.event,
-            Some(BattleEvent::ToughnessBroken { target_uid, .. }) if *target_uid == context.target_uid
-        );
-        let amount = if own_break && loss.max_hp_basis && loss.floor == 0 && loss.current > 0 {
-            loss.requested
-        } else {
-            loss.limited()
-        };
-        emit(&context, behavior, amount, breaking_skill(&context))
+        emit(
+            &context,
+            behavior,
+            loss.on_break(&context),
+            breaking_skill(&context),
+        )
     }
 }
 
 impl BehaviorHandler for OverflowHandler {
     fn emit_ops(context: BehaviorOpContext<'_>, behavior: &ParsedBehavior) -> Option<Vec<RuleOp>> {
         let loss = Loss::read(&context, behavior)?;
-        emit(&context, behavior, loss.limited(), breaking_skill(&context))
+        emit(
+            &context,
+            behavior,
+            loss.on_break(&context),
+            breaking_skill(&context),
+        )
     }
 }
 
@@ -106,6 +107,18 @@ impl Loss {
             floor: scale_permille(hp.max, managers.buff.lost_life_floor_permille(target)),
             max_hp_basis: *mode == 0 && attr == AttrId::Hp,
         })
+    }
+
+    fn on_break(&self, context: &BehaviorOpContext<'_>) -> i32 {
+        let own_break = matches!(
+            context.event,
+            Some(BattleEvent::ToughnessBroken { target_uid, .. }) if *target_uid == context.target_uid
+        );
+        if own_break && self.max_hp_basis && self.floor == 0 && self.current > 0 {
+            self.requested
+        } else {
+            self.limited()
+        }
     }
 
     fn limited(&self) -> i32 {

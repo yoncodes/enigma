@@ -37,7 +37,8 @@ fn hp_lost(key: DefinitionKey) -> BattleEvent {
         source_uid: -1,
         skill_id: 116_362_200,
         target_uid: -1,
-        amount: 203_000,
+        amount: 150_000,
+        requested_loss: Some(203_000),
         damage_from: crate::engine::manager::hp::HurtDamageFromType::SkillEffect,
         buff_uid: None,
     }

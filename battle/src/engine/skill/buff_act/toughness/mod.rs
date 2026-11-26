@@ -23,6 +23,7 @@ pub fn transaction_rule_ops(
         origin,
         target_uid,
         amount,
+        requested_loss,
         ..
     } = event
     else {
@@ -50,7 +51,7 @@ pub fn transaction_rule_ops(
                 feature,
                 RuleOp::Command(BattleCommand::ToughnessRecord(ToughnessRecord {
                     target_uid: *target_uid,
-                    damage: *amount,
+                    damage: requested_loss.unwrap_or(*amount),
                     rate_permille: STANDARD_DAMAGE_RATE_PERMILLE,
                 })),
             )

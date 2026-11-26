@@ -305,6 +305,7 @@ pub struct HpChanges {
     pub shield_granted: Option<ShieldGain>,
     pub max_hp: Option<MaxHpChange>,
     pub hp: Option<HpChange>,
+    pub(crate) requested_loss: Option<i32>,
     pub toughness: Option<super::toughness::ToughnessChange>,
     pub kill: Option<i32>,
     pub death: Option<PendingDeath>,
@@ -415,6 +416,7 @@ impl HpChanges {
                 skill_id: change.hurt.map(|hurt| hurt.skill_id).unwrap_or_default(),
                 target_uid: self.target_uid,
                 amount: change.delta.saturating_abs(),
+                requested_loss: self.requested_loss,
                 damage_from: change
                     .hurt
                     .map_or(HurtDamageFromType::None, |hurt| hurt.damage_from),

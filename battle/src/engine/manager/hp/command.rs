@@ -59,6 +59,7 @@ impl HpManager {
             shield_granted: None,
             max_hp: None,
             hp: None,
+            requested_loss: None,
             toughness: None,
             kill: None,
             death: None,
@@ -106,6 +107,7 @@ impl HpManager {
             }
             HpCommand::Lose(value) => {
                 if before > 0 {
+                    changes.requested_loss = Some(value.amount);
                     changes.hp = self.lose_with_hurt(
                         target_uid,
                         value.amount,

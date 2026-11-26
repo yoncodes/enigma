@@ -316,7 +316,7 @@ fn guard_break_loss_preserves_amount_and_credit_through_settlement() {
     };
     for (opcode, rate, event, skill_id, requested, applied) in [
         (30005, 100, Some(&broken), 10, 100, 50),
-        (60310, 100, Some(&broken), 10, 50, 50),
+        (60310, 100, Some(&broken), 10, 100, 50),
         (30006, 100, Some(&broken), 20, 50, 50),
         (30005, 100, None, 20, 50, 50),
     ] {
@@ -328,11 +328,16 @@ fn guard_break_loss_preserves_amount_and_credit_through_settlement() {
         );
         let command = loss_command(&managers, &pool, -1, &behavior, event);
         assert_eq!(command.amount, requested);
-        let hp = managers
-            .execute_hp(HpCommand::Lose(command))
-            .unwrap()
-            .hp
-            .unwrap();
+        let result = managers.execute_hp(HpCommand::Lose(command)).unwrap();
+        assert!(matches!(
+            result.events().first(),
+            Some(BattleEvent::HpLost {
+                amount,
+                requested_loss: Some(request),
+                ..
+            }) if *amount == applied && *request == requested
+        ));
+        let hp = result.hp.unwrap();
         let hurt = hp.hurt.unwrap();
         assert_eq!(managers.hp.current(-1), 50 - applied);
         assert_eq!((hp.delta, hurt.reduce_hp), (-applied, -applied));

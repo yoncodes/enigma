@@ -423,6 +423,7 @@ fn round_start_capacity_uses_only_exact_raspberry_loss_instances() {
                     effect_type: 0,
                     display_amount: None,
                 }),
+                requested_loss: None,
                 toughness: None,
                 kill: None,
                 death: None,
