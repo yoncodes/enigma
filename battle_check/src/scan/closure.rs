@@ -298,10 +298,7 @@ pub(super) fn enqueue_summoned_skills(
 }
 
 fn enqueue_choice_skills(db: &config::GameDB, pending: &Pending, skills: &mut VecDeque<Pending>) {
-    let Some(choice) = db.fight_card_choice.get(pending.id) else {
-        return;
-    };
-    for choice_skill_id in split_ids(&choice.choice_sk_ills) {
+    for choice_skill_id in battle::catalog::configured_card_choices(db, pending.id) {
         enqueue(
             skills,
             choice_skill_id,

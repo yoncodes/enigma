@@ -1190,7 +1190,7 @@ fn parse_integers(raw: &str) -> Vec<i32> {
         .collect()
 }
 
-pub(crate) fn configured_card_choices(
+pub fn configured_card_choices(
     game_data: &config::GameDB,
     skill_id: i32,
 ) -> impl Iterator<Item = i32> + '_ {
