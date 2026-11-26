@@ -12,7 +12,7 @@ use crate::engine::{
         entity::position::{MoveFrontChanges, MoveFrontError},
         entity::{EntityChanges, EntityCommandError},
         eureka::{EurekaChanges, EurekaCommandError},
-        ex_point::{ExPointChanges, ExPointCommandError},
+        ex_point::{ExPointChanges, ExPointCommand, ExPointCommandError},
         field::{FieldChange, FieldCommandError},
         fight_progress::{FightProgressChange, FightProgressError, FightProgressValueChange},
         gauge::{GaugeBatchChanges, GaugeChange, GaugeCommandError},
@@ -1307,6 +1307,16 @@ pub(crate) fn execute_rule_op_with(
         RuleOp::DebitUltimate { action, cost } => {
             let changes =
                 moxie_payment::pay(managers, events, action.source_uid, action.skill_id, cost)?;
+            Ok(RuleOutcome::ExPoint(changes))
+        }
+        RuleOp::PayDelegatedUltimate { action, cost, .. } => {
+            let changes = moxie_payment::pay(
+                managers,
+                events,
+                action.source_uid,
+                action.skill_id,
+                ExPointCommand::Change(cost),
+            )?;
             Ok(RuleOutcome::ExPoint(changes))
         }
         RuleOp::PaySkillAction { action, cost } => {

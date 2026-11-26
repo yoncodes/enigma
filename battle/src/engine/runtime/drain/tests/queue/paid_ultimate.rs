@@ -1,6 +1,127 @@
 use super::*;
 
 #[test]
+fn delegated_ultimate_uses_the_debit_that_actually_committed() {
+    use crate::engine::manager::ex_point::ExPointKind;
+
+    crate::test_support::init_config();
+    let action = SkillRequest {
+        source_uid: 10,
+        skill_id: 30020131,
+    };
+    let delegating_skill = 311401511;
+    let fixed_recipient_delegation = 100;
+    let mut catalog = SkillEffectCatalog::from_roots(
+        config::configs::get(),
+        [action.skill_id, delegating_skill],
+        [],
+    );
+    catalog.insert(ParsedSkillEffect {
+        skill_id: fixed_recipient_delegation,
+        slots: vec![SkillEffectSlot::new(
+            ParsedBehavior::new(60175, "DirectUseBigSkill", Vec::new()),
+            TargetRequest::self_only(),
+        )],
+    });
+    for (kind, blocked) in [
+        (ExPointKind::Common, false),
+        (ExPointKind::Common, true),
+        (ExPointKind::Faith, false),
+    ] {
+        let fight = Fight {
+            version: Some(7),
+            attacker: Some(FightTeam {
+                entitys: vec![
+                    FightEntityInfo {
+                        uid: Some(10),
+                        team_type: Some(1),
+                        current_hp: Some(10_000),
+                        ex_skill: Some(action.skill_id),
+                        ex_point: Some(7),
+                        ex_point_max: Some(12),
+                        ex_point_type: Some(kind.as_wire()),
+                        buffs: blocked
+                            .then_some(BuffInfo {
+                                uid: Some(100),
+                                buff_id: Some(5081),
+                                from_uid: Some(10),
+                                ..Default::default()
+                            })
+                            .into_iter()
+                            .collect(),
+                        ..Default::default()
+                    },
+                    FightEntityInfo {
+                        uid: Some(11),
+                        team_type: Some(1),
+                        current_hp: Some(10_000),
+                        ex_point: Some(0),
+                        ..Default::default()
+                    },
+                ],
+                ..Default::default()
+            }),
+            defender: Some(FightTeam {
+                entitys: vec![FightEntityInfo {
+                    uid: Some(-1),
+                    team_type: Some(2),
+                    current_hp: Some(10_000),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let mut managers = BattleManagers::seeded(&fight);
+        let delegation = if kind == ExPointKind::Common {
+            SkillRequest {
+                source_uid: 11,
+                skill_id: delegating_skill,
+            }
+        } else {
+            SkillRequest {
+                source_uid: 10,
+                skill_id: fixed_recipient_delegation,
+            }
+        };
+        let result = run(
+            &mut managers,
+            &TargetPool::from_fight(&fight),
+            &catalog,
+            &mut RoundDeterminism::default(),
+            TargetContext::default(),
+            [RuleOp::Skill(delegation.into())],
+        )
+        .unwrap();
+        let paid = if !blocked && kind == ExPointKind::Common {
+            7
+        } else {
+            0
+        };
+        assert_eq!(managers.ex_point.get(10), if blocked { 7 } else { 5 });
+        assert_eq!(managers.ex_point.round_ultimate_spend(1), paid);
+        let order = result
+            .events
+            .iter()
+            .filter_map(|event| match event {
+                BattleEvent::AllyAction(cast) if cast.skill_id == action.skill_id => {
+                    assert_eq!(cast.moxie_spent, paid);
+                    assert_eq!(cast.additional_moxie, if paid == 0 { 0 } else { 2 });
+                    Some(0)
+                }
+                BattleEvent::ExPointChanged(change)
+                    if change.target_uid == 10 && change.applied_delta != 0 =>
+                {
+                    Some(change.applied_delta)
+                }
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(order, if blocked { vec![0] } else { vec![-7, 0, 5] });
+    }
+}
+
+#[test]
 fn round_end_paid_ultimate_spends_before_hitting_the_marked_enemy() {
     use crate::engine::{event::kind::EventKind, runtime::record::FrameItem};
 

@@ -691,45 +691,36 @@ fn direct_big_skill_rule_ops(
         .entity(context.target_uid)
         .and_then(|entity| (entity.ex_skill > 0).then_some(entity.ex_skill))?;
     let consumed = context.managers.ex_point.get(context.target_uid).max(0);
-    let refund = consumed.min(
-        context
-            .pool
-            .catalog()
-            .skill_big_skill_point(skill_id)
-            .max(0),
-    );
+    let refund_cap = context
+        .pool
+        .catalog()
+        .skill_big_skill_point(skill_id)
+        .max(0);
     let origin = super::command_origin(behavior)?;
-    let ex_point = |delta| {
-        ExPointCommand::Change(ExPointChange {
-            origin,
-            source_uid: context.target_uid,
-            target_uid: context.target_uid,
-            delta,
-            config_effect: 0,
-            effect_type: sonettobuf::effect_type_enum::EffectType::Expointchange as i32,
-        })
-    };
     let action = crate::engine::skill::action::SkillRequest {
         source_uid: context.target_uid,
         skill_id,
     };
-    let mut ops = Vec::with_capacity(3);
+    let mut ops = Vec::with_capacity(2);
     if consumed > 0 {
-        ops.push(RuleOp::DebitUltimate {
+        ops.push(RuleOp::PayDelegatedUltimate {
             action,
-            cost: ex_point(-consumed),
+            cost: ExPointChange {
+                origin,
+                source_uid: action.source_uid,
+                target_uid: action.source_uid,
+                delta: -consumed,
+                config_effect: 0,
+                effect_type: sonettobuf::effect_type_enum::EffectType::Expointchange as i32,
+            },
+            refund_cap,
         });
     }
     let mut invocation: crate::engine::skill::action::SkillInvocation = action.into();
     invocation.mode = crate::engine::skill::action::SkillExecutionMode::DirectBig;
-    invocation.additional_moxie = consumed.saturating_sub(refund);
-    invocation.moxie_spent = consumed;
     invocation.trigger =
         crate::engine::skill::action::SkillTrigger::Explicit(context.active_skill_id);
     ops.push(RuleOp::Skill(invocation));
-    if refund > 0 {
-        ops.push(RuleOp::Command(BattleCommand::ExPoint(ex_point(refund))));
-    }
     Some(ops)
 }
 

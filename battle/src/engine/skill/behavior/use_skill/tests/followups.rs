@@ -816,7 +816,7 @@ fn drive_without_an_attack_candidate_is_a_no_op() {
 }
 
 #[test]
-fn direct_big_skill_refunds_only_the_configured_ultimate_cost() {
+fn direct_big_skill_requests_a_payment_bound_to_its_cast() {
     crate::test_support::init_config();
     let fight = Fight {
         attacker: Some(FightTeam {
@@ -859,20 +859,17 @@ fn direct_big_skill_refunds_only_the_configured_ultimate_cost() {
     assert!(matches!(
         ops.as_slice(),
         [
-            RuleOp::DebitUltimate {
-                cost: ExPointCommand::Change(ExPointChange { delta: -5, .. }),
-                ..
+            RuleOp::PayDelegatedUltimate {
+                action,
+                cost: ExPointChange { delta: -5, .. },
+                refund_cap: 5,
             },
-            RuleOp::Skill(invocation),
-            RuleOp::Command(BattleCommand::ExPoint(ExPointCommand::Change(ExPointChange {
-                delta: 5,
-                ..
-            })))
-        ] if invocation.plan.source_uid == 10
+            RuleOp::Skill(invocation)
+        ] if *action == invocation.plan && invocation.plan.source_uid == 10
             && invocation.plan.skill_id == 30020131
             && invocation.mode == crate::engine::skill::action::SkillExecutionMode::DirectBig
             && invocation.additional_moxie == 0
-            && invocation.moxie_spent == 5
+            && invocation.moxie_spent == 0
             && invocation.trigger
                 == crate::engine::skill::action::SkillTrigger::Explicit(311401511)
     ));

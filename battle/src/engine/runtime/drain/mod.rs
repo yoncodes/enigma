@@ -569,6 +569,7 @@ fn drain_queue_with_deferred(
             | RuleOp::BeginSkillAction { .. }
             | RuleOp::PaySkillAction { .. }
             | RuleOp::DebitUltimate { .. }
+            | RuleOp::PayDelegatedUltimate { .. }
             | RuleOp::PaidSkillStarted(_)
             | RuleOp::BuffFeatureMarker { .. }
             | RuleOp::EffectMarker { .. }

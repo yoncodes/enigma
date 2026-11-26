@@ -28,6 +28,7 @@ pub enum DrainError {
     RecursionLimitExceeded,
     MissingActiveSkillContext,
     MissingRoundEndPaymentFrame,
+    MissingDelegatedPaymentCast,
     MissingReactionSide(i64),
     MissingCardStateTeam(i64),
 }

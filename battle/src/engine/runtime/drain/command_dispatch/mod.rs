@@ -11,6 +11,7 @@ use super::{command_prepare::prepare_command, *};
 
 mod commit;
 mod death;
+mod delegated_payment;
 mod heal_attribution;
 mod payment_critical;
 mod publication;
@@ -150,6 +151,7 @@ pub(super) fn drain_command(
         }
     }
     let paying_attack = payment_critical::payer(&command, catalog);
+    let delegated_payment = delegated_payment::Payment::from_op(&command);
     let commit::Committed {
         mut outcome,
         followups,
@@ -174,6 +176,9 @@ pub(super) fn drain_command(
         bus,
         command,
     )?;
+    if let Some(payment) = delegated_payment {
+        payment.settle(&outcome, queue, &frame_path, &trigger, subscriber.as_ref())?;
+    }
     let event_scope = event_scope_path(&result.frames, &frame_path);
     let entry_halo_scope = entity_entry_halo_scope_path(&result.frames, &frame_path);
     let fanout = match &outcome {

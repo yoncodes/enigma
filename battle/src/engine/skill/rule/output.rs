@@ -158,6 +158,11 @@ pub enum RuleOp {
         action: SkillRequest,
         cost: ExPointCommand,
     },
+    PayDelegatedUltimate {
+        action: SkillRequest,
+        cost: crate::engine::manager::ex_point::ExPointChange,
+        refund_cap: i32,
+    },
     PaidSkillStarted(SkillLifecycle),
     BuffFeatureMarker {
         target_uid: i64,
