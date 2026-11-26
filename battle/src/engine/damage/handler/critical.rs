@@ -189,6 +189,9 @@ fn raw_chance(
     };
     managers.attribute.get(source_uid, AttrId::CriticalRate)
         + critical_technique_bonus(managers.catalog(), source, target.level, 11)
+        + managers
+            .field
+            .attribute_delta(managers.catalog(), source_uid, AttrId::CriticalRate, pool)
         + modifiers::dynamic_attribute_delta(
             &managers.buff,
             &managers.hp,

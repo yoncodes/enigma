@@ -129,6 +129,62 @@ fn excess_crit_conversion_uses_the_same_attack_local_rate_as_the_crit_roll() {
 }
 
 #[test]
+fn active_field_critical_rate_feeds_the_roll_and_overflow() {
+    use crate::engine::{
+        manager::field::{FieldCommand, FieldDefinition, FieldOperation},
+        skill::rule::{CommandOrigin, DefinitionKey, RuleDomain},
+    };
+
+    init_config();
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![entity(10, 1, 1, 1000, 100), entity(11, 1, 2, 1000, 100)],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![entity(-1, 2, 1, 0, 100)],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    managers.attribute.override_ex(
+        11,
+        &HeroExAttribute {
+            cri: Some(730),
+            ..Default::default()
+        },
+    );
+    assert_eq!(crit_chance(11, -1, &pool, &managers), 730);
+    assert_eq!(excess_crit_rate(11, -1, &pool, &managers, &[]), 0);
+
+    managers
+        .field
+        .execute_command(FieldCommand {
+            origin: CommandOrigin {
+                domain: RuleDomain::Behavior,
+                key: DefinitionKey::new(50019, "AddMagicCircle"),
+            },
+            team: 1,
+            operation: FieldOperation::DeployReplacement {
+                definition: FieldDefinition {
+                    field_id: 100071,
+                    duration: 3,
+                },
+                owner_uid: 10,
+                create_uid: 10,
+                level: 1,
+            },
+        })
+        .unwrap();
+
+    assert_eq!(crit_chance(11, -1, &pool, &managers), 1000);
+    assert_eq!(excess_crit_rate(11, -1, &pool, &managers, &[]), 230);
+    assert_eq!(crit_chance(-1, 11, &pool, &managers), 0);
+}
+
+#[test]
 fn attack_local_critical_resist_opposes_critical_rate() {
     let fight = Fight {
         attacker: Some(FightTeam {
