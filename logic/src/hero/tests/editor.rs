@@ -64,6 +64,49 @@ async fn hero_editor_sets_configured_rank_and_level() {
 }
 
 #[tokio::test]
+async fn failed_template_switch_preserves_the_active_cube_layout() {
+    let data_dir = format!("{}/../data/excel2json", env!("CARGO_MANIFEST_DIR"));
+    let _ = config::init(&data_dir);
+    let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+    database::run_migrations(&pool).await.unwrap();
+    sqlx::query(
+        "INSERT INTO users (id, username, created_at, updated_at)
+         VALUES (46, 'template-switch', 0, 0)",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+    let heroes = UserHeroModel::new(46, pool.clone());
+    heroes.create_hero(3003).await.unwrap();
+    heroes
+        .replace_talent_cubes(3003, 1, vec![(100, 0, 0, 0)])
+        .await
+        .unwrap();
+    sqlx::query(
+        "CREATE TRIGGER reject_template_switch
+         BEFORE UPDATE OF use_talent_template_id ON heroes
+         BEGIN
+             SELECT RAISE(ABORT, 'template switch rejected');
+         END",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    assert!(heroes.switch_talent_template(3003, 2).await.is_err());
+    let after = heroes.get_hero(3003).await.unwrap();
+    assert_eq!(after.record.use_talent_template_id, 1);
+    let active_layout: Vec<(i32, i32, i32, i32)> = sqlx::query_as(
+        "SELECT cube_id, direction, pos_x, pos_y FROM hero_talent_cubes WHERE hero_uid = ?",
+    )
+    .bind(after.record.uid)
+    .fetch_all(&pool)
+    .await
+    .unwrap();
+    assert_eq!(active_layout, [(100, 0, 0, 0)]);
+}
+
+#[tokio::test]
 async fn hero_editor_sets_configured_resonance_and_the_active_layout() {
     let data_dir = format!("{}/../data/excel2json", env!("CARGO_MANIFEST_DIR"));
     let _ = config::init(&data_dir);

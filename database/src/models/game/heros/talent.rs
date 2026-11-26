@@ -546,14 +546,17 @@ impl UserHeroModel {
         hero_id: i32,
         template_id: i32,
     ) -> Result<sonettobuf::TalentTemplateInfo> {
-        let hero_data = self.get(hero_id).await?;
-
-        let template_row_id: i64 = sqlx::query_scalar(
-            "SELECT id FROM hero_talent_templates WHERE hero_uid = ? AND template_id = ?",
+        let mut tx = self.pool.begin_with("BEGIN IMMEDIATE").await?;
+        let (hero_uid, template_row_id, name, style): (i64, i64, String, i32) = sqlx::query_as(
+            "SELECT heroes.uid, templates.id, templates.name, templates.style
+                 FROM heroes
+                 JOIN hero_talent_templates AS templates ON templates.hero_uid = heroes.uid
+                 WHERE heroes.user_id = ? AND heroes.hero_id = ? AND templates.template_id = ?",
         )
-        .bind(hero_data.record.uid)
+        .bind(self.user_id)
+        .bind(hero_id)
         .bind(template_id)
-        .fetch_one(&self.pool)
+        .fetch_one(&mut *tx)
         .await?;
 
         let cubes: Vec<(i32, i32, i32, i32)> = sqlx::query_as(
@@ -562,18 +565,12 @@ impl UserHeroModel {
              WHERE template_row_id = ?",
         )
         .bind(template_row_id)
-        .fetch_all(&self.pool)
+        .fetch_all(&mut *tx)
         .await?;
 
-        let template_data: (String, i32) =
-            sqlx::query_as("SELECT name, style FROM hero_talent_templates WHERE id = ?")
-                .bind(template_row_id)
-                .fetch_one(&self.pool)
-                .await?;
-
         sqlx::query("DELETE FROM hero_talent_cubes WHERE hero_uid = ?")
-            .bind(hero_data.record.uid)
-            .execute(&self.pool)
+            .bind(hero_uid)
+            .execute(&mut *tx)
             .await?;
 
         for (cube_id, direction, pos_x, pos_y) in &cubes {
@@ -582,21 +579,22 @@ impl UserHeroModel {
                  (hero_uid, cube_id, direction, pos_x, pos_y)
                  VALUES (?, ?, ?, ?, ?)",
             )
-            .bind(hero_data.record.uid)
+            .bind(hero_uid)
             .bind(cube_id)
             .bind(direction)
             .bind(pos_x)
             .bind(pos_y)
-            .execute(&self.pool)
+            .execute(&mut *tx)
             .await?;
         }
 
         sqlx::query("UPDATE heroes SET use_talent_template_id = ? WHERE uid = ? AND user_id = ?")
             .bind(template_id)
-            .bind(hero_data.record.uid)
+            .bind(hero_uid)
             .bind(self.user_id)
-            .execute(&self.pool)
+            .execute(&mut *tx)
             .await?;
+        tx.commit().await?;
 
         tracing::info!(
             "User {} switched to talent template {} for hero {}",
@@ -620,8 +618,8 @@ impl UserHeroModel {
         Ok(sonettobuf::TalentTemplateInfo {
             id: Some(template_id),
             talent_cube_infos,
-            name: Some(template_data.0),
-            style: Some(template_data.1),
+            name: Some(name),
+            style: Some(style),
         })
     }
 }
