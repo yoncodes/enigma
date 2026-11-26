@@ -379,7 +379,6 @@ fn exact_target_model_round_start_key_keeps_its_own_route() {
             value: 3102,
         })
     ));
-    assert!(find_key(595203, "TargetIncludeHero").is_none());
     assert_eq!(
         find_key(595210, "TargetIncludeHero").map(|definition| definition.role),
         Some(ConditionRole::Predicate)
@@ -388,6 +387,34 @@ fn exact_target_model_round_start_key_keeps_its_own_route() {
         parse(595210, "TargetIncludeHero", &["3102".into()]),
         Some(ParsedConditionKind::TargetIdentity {
             mode: super::super::super::parse::TargetIdentityMode::ActiveSkillSourceModelId,
+            value: 3102,
+        })
+    ));
+}
+
+#[test]
+fn target_model_reacts_to_the_owners_attack_before_damage() {
+    use crate::engine::skill::condition::registry::{
+        SkillActionObserver, SkillActionTriggerPolicy,
+    };
+
+    let definition = find_key(595203, "TargetIncludeHero").unwrap();
+    assert_eq!(
+        definition.role,
+        ConditionRole::Trigger {
+            event: EventKind::SkillEffectsPrepared,
+            phase: Some(SkillPhase::Immediate),
+        }
+    );
+    assert_eq!(definition.skill_action_observer, SkillActionObserver::Actor);
+    assert_eq!(
+        definition.skill_action_trigger,
+        SkillActionTriggerPolicy::AttackOnly
+    );
+    assert!(matches!(
+        parse(595203, "TargetIncludeHero", &["3102".into()]),
+        Some(ParsedConditionKind::TargetIdentity {
+            mode: super::super::super::parse::TargetIdentityMode::ConditionTargetModelId,
             value: 3102,
         })
     ));

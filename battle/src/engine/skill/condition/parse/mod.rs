@@ -443,6 +443,7 @@ pub enum TargetIdentityMode {
     TargetIsSelf,
     TargetIsAllyNotSelf,
     TargetModelId,
+    ConditionTargetModelId,
     ActiveSkillSourceModelId,
     TargetPosition,
 }

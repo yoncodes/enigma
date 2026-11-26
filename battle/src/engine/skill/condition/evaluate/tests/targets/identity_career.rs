@@ -46,6 +46,53 @@ fn exact_target_include_hero_matches_only_the_configured_model() {
 }
 
 #[test]
+fn before_attack_identity_uses_the_condition_target_when_the_attack_targets_an_enemy() {
+    let pool = TargetPool::from_fight(&Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![
+                FightEntityInfo {
+                    uid: Some(10),
+                    model_id: Some(3102),
+                    ..Default::default()
+                },
+                FightEntityInfo {
+                    uid: Some(11),
+                    model_id: Some(3121),
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(-1),
+                model_id: Some(1083030051),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    });
+    let condition = exact_condition(595203, "TargetIncludeHero", &["3102"]);
+    let matches = |condition_targets: &[i64]| {
+        condition_matches(
+            &condition,
+            10,
+            condition_targets,
+            None,
+            &pool,
+            TargetContext {
+                runtime_target_uid: -1,
+                ..Default::default()
+            },
+        )
+    };
+    assert!(matches(&[10]));
+    assert!(!matches(&[11]));
+    assert!(!matches(&[]));
+}
+
+#[test]
 fn exact_after_hit_target_include_hero_matches_the_active_source_not_the_target() {
     let pool = TargetPool::from_fight(&Fight {
         attacker: Some(FightTeam {

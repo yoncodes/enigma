@@ -39,12 +39,14 @@ pub fn target_model(_: i32, _: &str, args: &[String]) -> Option<ParsedConditionK
 }
 
 pub fn positive_target_model(_: i32, _: &str, args: &[String]) -> Option<ParsedConditionKind> {
-    let [model_id] = args else {
-        return None;
-    };
-    let model_id = parse_i32(model_id)?;
-    (model_id > 0).then_some(())?;
-    identity(TargetIdentityMode::TargetModelId, model_id)
+    identity(TargetIdentityMode::TargetModelId, positive_model_id(args)?)
+}
+
+pub fn condition_target_model(_: i32, _: &str, args: &[String]) -> Option<ParsedConditionKind> {
+    identity(
+        TargetIdentityMode::ConditionTargetModelId,
+        positive_model_id(args)?,
+    )
 }
 
 pub fn positive_active_skill_source_model(
@@ -52,12 +54,18 @@ pub fn positive_active_skill_source_model(
     _: &str,
     args: &[String],
 ) -> Option<ParsedConditionKind> {
+    identity(
+        TargetIdentityMode::ActiveSkillSourceModelId,
+        positive_model_id(args)?,
+    )
+}
+
+fn positive_model_id(args: &[String]) -> Option<i32> {
     let [model_id] = args else {
         return None;
     };
     let model_id = parse_i32(model_id)?;
-    (model_id > 0).then_some(())?;
-    identity(TargetIdentityMode::ActiveSkillSourceModelId, model_id)
+    (model_id > 0).then_some(model_id)
 }
 
 pub fn team_contains_model(_: i32, _: &str, args: &[String]) -> Option<ParsedConditionKind> {

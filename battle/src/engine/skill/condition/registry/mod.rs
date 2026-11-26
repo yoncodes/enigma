@@ -1048,6 +1048,7 @@ condition_definitions! {
     [74210] "MonsterAliveNumMoreThan" => entity_count::alive_allied_model_at_least, event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterHit));
     [595002] "TargetIncludeHero" => target_identity::target_model, setup_route(SetupStage::EnterFight, 0, &[]);
     [595101] "TargetIncludeHero" => target_identity::positive_target_model, setup_route(SetupStage::RoundStartCondition, 101, &[]);
+    [595203] "TargetIncludeHero" => target_identity::condition_target_model, attack_only(event_trigger(EventKind::SkillEffectsPrepared, Some(SkillPhase::Immediate)));
     [595210] "TargetIncludeHero" => target_identity::positive_active_skill_source_model, predicate(&[]);
     [1000212] "TeamContainHero" => target_identity::team_contains_model, predicate(&[]);
     [643004] "HasConditionTarget" => target_identity::team_model_presence, predicate(&[]);
