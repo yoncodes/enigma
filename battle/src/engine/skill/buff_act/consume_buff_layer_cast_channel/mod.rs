@@ -85,7 +85,7 @@ pub fn rule_ops(
         .iter()
         .rev()
         .find(|tier| tier.threshold <= available)?;
-    let consumed = available.min(spec.tiers.last()?.threshold);
+    let consumed = tier.threshold;
     let origin = super::command_origin(subscriber)?;
     let mut ops = Vec::with_capacity(tier.skills.len() + 2);
     if consumed > 0 {

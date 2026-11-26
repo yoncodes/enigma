@@ -20,7 +20,7 @@ fn structured_tiers_preserve_thresholds_and_skill_lists() {
 }
 
 #[test]
-fn round_end_consumes_available_resource_casts_the_selected_tier_and_ends_channel() {
+fn round_end_spends_the_selected_tier_and_ends_channel() {
     crate::test_support::init_config();
     let fight = sonettobuf::Fight {
         attacker: Some(sonettobuf::FightTeam {
@@ -71,7 +71,7 @@ fn round_end_consumes_available_resource_casts_the_selected_tier_and_ends_channe
         ops.as_slice(),
         [
             RuleOp::Command(BattleCommand::Buff(BuffCommand::Consume(BuffConsume {
-                amount: 35,
+                amount: 30,
                 ..
             }))),
             RuleOp::Skill(SkillInvocation {
