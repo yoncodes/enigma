@@ -168,11 +168,12 @@ impl UserHeroModel {
         template_id: i32,
         cubes: Vec<(i32, i32, i32, i32)>,
     ) -> Result<sonettobuf::TalentTemplateInfo> {
-        let mut tx = self.pool.begin().await?;
-        self.replace_talent_cubes_in_transaction(&mut tx, hero_id, Some(template_id), &cubes)
+        let mut tx = self.pool.begin_with("BEGIN IMMEDIATE").await?;
+        let info = self
+            .replace_talent_cubes_in_transaction(&mut tx, hero_id, Some(template_id), &cubes)
             .await?;
         tx.commit().await?;
-        self.get_template_info_impl(hero_id, template_id).await
+        Ok(info)
     }
 
     pub async fn replace_talent_cubes_in_transaction(
@@ -181,9 +182,10 @@ impl UserHeroModel {
         hero_id: i32,
         template_id: Option<i32>,
         cubes: &[(i32, i32, i32, i32)],
-    ) -> Result<()> {
-        let (hero_uid, template_row_id, active): (i64, i64, bool) = sqlx::query_as(
-            "SELECT heroes.uid, templates.id, templates.template_id = heroes.use_talent_template_id
+    ) -> Result<sonettobuf::TalentTemplateInfo> {
+        let (hero_uid, template_row_id, id, active, name, style): (i64, i64, i32, bool, String, i32) = sqlx::query_as(
+            "SELECT heroes.uid, templates.id, templates.template_id,
+                    templates.template_id = heroes.use_talent_template_id, templates.name, templates.style
              FROM heroes
              JOIN hero_talent_templates AS templates ON templates.hero_uid = heroes.uid
              WHERE heroes.user_id = ? AND heroes.hero_id = ?
@@ -237,7 +239,7 @@ impl UserHeroModel {
             }
         }
 
-        Ok(())
+        Ok(template_info(id, name, style, cubes))
     }
 
     pub(super) async fn get_template_info_impl(
@@ -270,24 +272,12 @@ impl UserHeroModel {
         .fetch_all(&self.pool)
         .await?;
 
-        let talent_cube_infos: Vec<sonettobuf::TalentCubeInfo> = cubes
-            .into_iter()
-            .map(
-                |(cube_id, direction, pos_x, pos_y)| sonettobuf::TalentCubeInfo {
-                    cube_id: Some(cube_id),
-                    direction: Some(direction),
-                    pos_x: Some(pos_x),
-                    pos_y: Some(pos_y),
-                },
-            )
-            .collect();
-
-        Ok(sonettobuf::TalentTemplateInfo {
-            id: Some(template_id),
-            talent_cube_infos,
-            name: Some(template_data.0),
-            style: Some(template_data.1),
-        })
+        Ok(template_info(
+            template_id,
+            template_data.0,
+            template_data.1,
+            &cubes,
+        ))
     }
 
     pub(super) async fn rename_talent_template_impl(
@@ -319,124 +309,14 @@ impl UserHeroModel {
         talent_mould: i32,
         template_id: i32,
     ) -> Result<sonettobuf::TalentTemplateInfo> {
-        let hero_data = self.get(hero_id).await?;
-        let game_data = config::configs::get();
-
-        let talent_scheme = game_data
+        let scheme = config::configs::get()
             .talent_scheme(talent_id, talent_mould)
-            .ok_or_else(|| {
-                tracing::error!(
-                    "Talent scheme not found for talent {} mould {}",
-                    talent_id,
-                    talent_mould
-                );
-                anyhow::anyhow!("Talent scheme not found")
-            })?;
-
-        let template_row_id: i64 = sqlx::query_scalar(
-            "SELECT id FROM hero_talent_templates WHERE hero_uid = ? AND template_id = ?",
-        )
-        .bind(hero_data.record.uid)
-        .bind(template_id)
-        .fetch_one(&self.pool)
-        .await?;
-
-        let cubes: Vec<(i32, i32, i32, i32)> = talent_scheme
-            .talen_scheme
-            .split('#')
-            .filter_map(|cube_str| {
-                let parts: Vec<&str> = cube_str.split(',').collect();
-                if parts.len() == 4 {
-                    let cube_id = parts[0].parse::<i32>().ok()?;
-                    let direction = parts[1].parse::<i32>().ok()?;
-                    let pos_x = parts[2].parse::<i32>().ok()?;
-                    let pos_y = parts[3].parse::<i32>().ok()?;
-                    Some((cube_id, direction, pos_x, pos_y))
-                } else {
-                    None
-                }
-            })
-            .collect();
-
-        sqlx::query("DELETE FROM hero_talent_template_cubes WHERE template_row_id = ?")
-            .bind(template_row_id)
-            .execute(&self.pool)
-            .await?;
-
-        for (cube_id, direction, pos_x, pos_y) in &cubes {
-            sqlx::query(
-                "INSERT INTO hero_talent_template_cubes
-                 (template_row_id, cube_id, direction, pos_x, pos_y)
-                 VALUES (?, ?, ?, ?, ?)",
-            )
-            .bind(template_row_id)
-            .bind(cube_id)
-            .bind(direction)
-            .bind(pos_x)
-            .bind(pos_y)
-            .execute(&self.pool)
-            .await?;
-        }
-
-        tracing::info!(
-            "Loaded {} cubes from talent scheme {} into template {}",
-            cubes.len(),
-            talent_id,
-            template_id
-        );
-
-        if template_id == hero_data.record.use_talent_template_id {
-            sqlx::query("DELETE FROM hero_talent_cubes WHERE hero_uid = ?")
-                .bind(hero_data.record.uid)
-                .execute(&self.pool)
-                .await?;
-
-            for (cube_id, direction, pos_x, pos_y) in &cubes {
-                sqlx::query(
-                    "INSERT INTO hero_talent_cubes
-                     (hero_uid, cube_id, direction, pos_x, pos_y)
-                     VALUES (?, ?, ?, ?, ?)",
-                )
-                .bind(hero_data.record.uid)
-                .bind(cube_id)
-                .bind(direction)
-                .bind(pos_x)
-                .bind(pos_y)
-                .execute(&self.pool)
-                .await?;
-            }
-
-            tracing::info!(
-                "Updated active talent cubes for hero {} (template {})",
-                hero_id,
-                template_id
-            );
-        }
-
-        let template_data: (String, i32) =
-            sqlx::query_as("SELECT name, style FROM hero_talent_templates WHERE id = ?")
-                .bind(template_row_id)
-                .fetch_one(&self.pool)
-                .await?;
-
-        let talent_cube_infos: Vec<sonettobuf::TalentCubeInfo> = cubes
-            .into_iter()
-            .map(
-                |(cube_id, direction, pos_x, pos_y)| sonettobuf::TalentCubeInfo {
-                    cube_id: Some(cube_id),
-                    direction: Some(direction),
-                    pos_x: Some(pos_x),
-                    pos_y: Some(pos_y),
-                },
-            )
-            .collect();
-
-        Ok(sonettobuf::TalentTemplateInfo {
-            id: Some(template_id),
-            talent_cube_infos,
-            name: Some(template_data.0),
-            style: Some(template_data.1),
-        })
+            .ok_or_else(|| anyhow!("Talent scheme {talent_id}/{talent_mould} not found"))?;
+        let cubes = scheme.placements().ok_or_else(|| {
+            anyhow!("Invalid placements in talent scheme {talent_id}/{talent_mould}")
+        })?;
+        self.replace_talent_cubes_impl(hero_id, template_id, cubes)
+            .await
     }
 
     pub(super) async fn has_talent_style_impl(&self, hero_id: i32, style: i32) -> Result<bool> {
@@ -603,23 +483,31 @@ impl UserHeroModel {
             hero_id
         );
 
-        let talent_cube_infos = cubes
-            .into_iter()
-            .map(
-                |(cube_id, direction, pos_x, pos_y)| sonettobuf::TalentCubeInfo {
-                    cube_id: Some(cube_id),
-                    direction: Some(direction),
-                    pos_x: Some(pos_x),
-                    pos_y: Some(pos_y),
-                },
-            )
-            .collect();
+        Ok(template_info(template_id, name, style, &cubes))
+    }
+}
 
-        Ok(sonettobuf::TalentTemplateInfo {
-            id: Some(template_id),
-            talent_cube_infos,
-            name: Some(name),
-            style: Some(style),
-        })
+fn template_info(
+    id: i32,
+    name: String,
+    style: i32,
+    cubes: &[(i32, i32, i32, i32)],
+) -> sonettobuf::TalentTemplateInfo {
+    let talent_cube_infos = cubes
+        .iter()
+        .map(
+            |&(cube_id, direction, pos_x, pos_y)| sonettobuf::TalentCubeInfo {
+                cube_id: Some(cube_id),
+                direction: Some(direction),
+                pos_x: Some(pos_x),
+                pos_y: Some(pos_y),
+            },
+        )
+        .collect();
+    sonettobuf::TalentTemplateInfo {
+        id: Some(id),
+        talent_cube_infos,
+        name: Some(name),
+        style: Some(style),
     }
 }

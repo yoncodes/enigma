@@ -135,11 +135,9 @@ async fn hero_editor_sets_configured_resonance_and_the_active_layout() {
         .max_by_key(|talent| talent.talent_id)
         .unwrap();
     let target = talent.talent_id;
-    let mut expected = tables
-        .default_talent_scheme(talent)
-        .unwrap()
-        .placements()
-        .unwrap();
+    let scheme = tables.default_talent_scheme(talent).unwrap();
+    let authored = scheme.placements().unwrap();
+    let mut expected = authored.clone();
     assert!(!expected.is_empty());
     expected.sort_unstable();
 
@@ -152,7 +150,7 @@ async fn hero_editor_sets_configured_resonance_and_the_active_layout() {
         assert_eq!(update.talent, Some(target));
         assert_eq!(update.use_talent_template_id, Some(2));
         let layout = |cubes: Vec<_>| {
-            let mut placed: Vec<_> = cubes
+            cubes
                 .into_iter()
                 .map(|cube: sonettobuf::TalentCubeInfo| {
                     (
@@ -162,13 +160,27 @@ async fn hero_editor_sets_configured_resonance_and_the_active_layout() {
                         cube.pos_y.unwrap(),
                     )
                 })
-                .collect();
+                .collect::<Vec<_>>()
+        };
+        let sorted = |cubes| {
+            let mut placed = layout(cubes);
             placed.sort_unstable();
             placed
         };
-        assert_eq!(layout(update.talent_cube_infos), expected);
+        assert_eq!(sorted(update.talent_cube_infos), expected);
         let saved = heroes.get_template_info(3003, 2).await.unwrap();
-        assert_eq!(layout(saved.talent_cube_infos), expected);
+        assert_eq!(sorted(saved.talent_cube_infos), expected);
+
+        heroes.replace_talent_cubes(3003, 2, vec![]).await.unwrap();
+        let loaded = heroes
+            .load_talent_scheme(3003, scheme.talent_id, scheme.talent_mould, 2)
+            .await
+            .unwrap();
+        assert_eq!(layout(loaded.talent_cube_infos), authored);
+        let snapshot = super::super::snapshot(&pool, heroes.get_hero(3003).await.unwrap())
+            .await
+            .unwrap();
+        assert_eq!(sorted(snapshot.talent_cube_infos), expected);
     }
 }
 
