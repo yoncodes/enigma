@@ -3,7 +3,7 @@ use crate::{
     engine::{
         manager::buff::{BuffCommand, BuffGrant},
         skill::{
-            behavior::{BehaviorOpContext, classify::BehaviorKind},
+            behavior::BehaviorOpContext,
             buff_act::registry::{self, BuffActKind},
             effect::ParsedBehavior,
             rule::{
@@ -14,66 +14,49 @@ use crate::{
     },
 };
 
-struct Bullet {
-    id: i32,
+use super::grant::PoolEntry;
+
+pub(super) struct Bullet {
+    pub(super) entry: PoolEntry,
     type_id: i32,
-    stacks: u32,
 }
 
-fn configured(catalog: BattleCatalog, pool_id: i32) -> Option<Vec<Bullet>> {
-    let rows = catalog.buff_feature_rows(pool_id);
-    let [pool] = rows.as_slice() else {
-        return None;
-    };
-    let mut types = std::collections::HashSet::new();
-    pool.split('#')
-        .map(|entry| {
-            let (id, stacks) = entry.split_once(',')?;
-            let id = id.parse().ok()?;
-            let stacks = stacks.parse().ok().filter(|stacks| *stacks > 1)?;
-            let type_id = catalog.buff_type_id(id);
-            let bullet = catalog.buff_features(id).iter().any(|feature| {
-                feature.values.first().is_some_and(|act| {
-                    registry::kind(*act, &feature.act_type) == Some(BuffActKind::Bullet)
-                })
-            });
-            (bullet && type_id > 0 && types.insert(type_id)).then_some(Bullet {
-                id,
-                type_id,
-                stacks,
+pub(super) fn select(
+    catalog: BattleCatalog,
+    entries: &[PoolEntry],
+) -> Result<Option<Vec<Bullet>>, ()> {
+    if entries.iter().all(|entry| entry.stacks == 1) {
+        return Ok(None);
+    }
+    let mut bullets = Vec::with_capacity(entries.len());
+    for &entry in entries {
+        if !catalog.buff_features(entry.id).iter().any(|feature| {
+            feature.values.first().is_some_and(|act| {
+                registry::kind(*act, &feature.act_type) == Some(BuffActKind::Bullet)
             })
-        })
-        .collect()
-}
-
-pub fn random_arsenal_pool(behavior: &ParsedBehavior) -> Option<Vec<(i32, u32)>> {
-    let definition = super::registry::find(behavior)?;
-    if definition.kind != BehaviorKind::AddBuffRanTypeId {
-        return None;
+        }) {
+            return Ok(None);
+        }
+        bullets.push(Bullet {
+            entry,
+            type_id: catalog.buff_type_id(entry.id),
+        });
     }
-    let [pool_id, count] = behavior.args.as_slice() else {
-        return None;
-    };
-    if *count <= 0 {
-        return None;
+    let mut types = std::collections::HashSet::new();
+    if bullets.iter().any(|bullet| {
+        bullet.entry.stacks <= 1 || bullet.type_id <= 0 || !types.insert(bullet.type_id)
+    }) {
+        return Err(());
     }
-    Some(
-        configured(BattleCatalog::try_global()?, *pool_id)?
-            .into_iter()
-            .map(|bullet| (bullet.id, bullet.stacks))
-            .collect(),
-    )
+    Ok(Some(bullets))
 }
 
 pub(super) fn grants(
     context: &mut BehaviorOpContext<'_>,
     behavior: &ParsedBehavior,
+    count: usize,
+    bullets: Vec<Bullet>,
 ) -> Option<Vec<RuleOp>> {
-    let [pool_id, count] = behavior.args.as_slice() else {
-        return None;
-    };
-    let bullets = configured(context.managers.catalog(), *pool_id)?;
-    let count = usize::try_from(*count).ok()?.min(bullets.len());
     let origin = super::command_origin(behavior)?;
     let (mut unheld, mut held): (Vec<_>, Vec<_>) = bullets.into_iter().partition(|bullet| {
         context
@@ -85,7 +68,7 @@ pub(super) fn grants(
     let ids = unheld
         .iter()
         .chain(&held)
-        .map(|bullet| bullet.id)
+        .map(|bullet| bullet.entry.id)
         .collect::<Vec<_>>();
     let mut observed = context
         .determinism
@@ -99,10 +82,10 @@ pub(super) fn grants(
         .filter(|observed| {
             let (new, existing) = observed.split_at(count.min(unheld.len()));
             new.iter()
-                .all(|id| unheld.iter().any(|bullet| bullet.id == *id))
+                .all(|id| unheld.iter().any(|bullet| bullet.entry.id == *id))
                 && existing
                     .iter()
-                    .all(|id| held.iter().any(|bullet| bullet.id == *id))
+                    .all(|id| held.iter().any(|bullet| bullet.entry.id == *id))
         })
         .unwrap_or_default()
         .into_iter();
@@ -115,11 +98,11 @@ pub(super) fn grants(
         };
         let index = if let Some(id) = observed.next() {
             context.determinism.lua_random_index(candidates.len())?;
-            candidates.iter().position(|bullet| bullet.id == id)?
+            candidates.iter().position(|bullet| bullet.entry.id == id)?
         } else {
             let ids = candidates
                 .iter()
-                .map(|bullet| bullet.id)
+                .map(|bullet| bullet.entry.id)
                 .collect::<Vec<_>>();
             context
                 .determinism
@@ -133,9 +116,9 @@ pub(super) fn grants(
                 origin,
                 source_uid: context.source_uid,
                 target_uid: context.target_uid,
-                buff_id: bullet.id,
+                buff_id: bullet.entry.id,
                 amount: None,
-                occurrences: bullet.stacks,
+                occurrences: bullet.entry.stacks,
                 child_uid_reservations: 0,
             },
         ))));

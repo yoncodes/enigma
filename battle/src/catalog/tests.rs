@@ -439,18 +439,6 @@ fn resolves_exact_buff_act_command_origins() {
 }
 
 #[test]
-fn normalizes_random_buff_pools_in_order() {
-    crate::test_support::init_config();
-    let catalog = BattleCatalog::new(crate::test_support::game_data());
-
-    assert_eq!(
-        catalog.buff_pool(30830151),
-        Some(vec![308301511, 308301512, 308301513, 308301514])
-    );
-    assert!(catalog.buff_pool(-1).is_none());
-}
-
-#[test]
 fn normalizes_card_skill_metadata() {
     crate::test_support::init_config();
     let catalog = BattleCatalog::new(crate::test_support::game_data());

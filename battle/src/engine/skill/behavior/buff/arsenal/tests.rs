@@ -4,8 +4,7 @@ use crate::engine::{
     runtime::{determinism::RoundDeterminism, drain},
     skill::{
         action::SkillModifiers,
-        behavior::classify::BehaviorSpec,
-        effect::SkillEffectCatalog,
+        effect::{ParsedBehavior, SkillEffectCatalog},
         target::{TargetContext, TargetPool},
     },
 };
@@ -15,13 +14,15 @@ use sonettobuf::{BuffInfo, Fight, FightEntityInfo, FightTeam};
 fn arsenal_grants_the_configured_stacks_and_draws_unheld_types_first() {
     crate::test_support::init_config();
     let data = config::configs::get();
-    let catalog = BattleCatalog::new(data);
-    assert!(configured(catalog, 31030121).is_none());
-    assert!(configured(catalog, 91130030).is_none());
+    let make = |id| ParsedBehavior::new(20022, "AddBuffRanTypeId", vec![id, 2]);
+    let configured = super::super::random_arsenal_pool;
+    assert!(configured(&make(31030121)).is_none());
+    assert!(configured(&make(91130030)).is_none());
     let source_uid = 10;
-    let mut drafts = configured(catalog, 30920142).unwrap();
-    let unheld = drafts.remove(2);
-    let held = drafts[0].id;
+    let behavior = make(30920142);
+    let mut drafts = configured(&behavior).unwrap();
+    let (unheld, _) = drafts.remove(2);
+    let held = drafts[0].0;
     let fight = Fight {
         version: Some(7),
         attacker: Some(FightTeam {
@@ -33,9 +34,9 @@ fn arsenal_grants_the_configured_stacks_and_draws_unheld_types_first() {
                 buffs: drafts
                     .iter()
                     .enumerate()
-                    .map(|(index, bullet)| BuffInfo {
+                    .map(|(index, &(id, _))| BuffInfo {
                         uid: Some(100 + index as i64),
-                        buff_id: Some(bullet.id),
+                        buff_id: Some(id),
                         from_uid: Some(source_uid),
                         count: Some(2),
                         ..Default::default()
@@ -52,11 +53,6 @@ fn arsenal_grants_the_configured_stacks_and_draws_unheld_types_first() {
     let effects = SkillEffectCatalog::from_fight(data, &fight);
     let mut determinism = RoundDeterminism::default();
     determinism.enqueue_random_buffs([held]);
-    let behavior = ParsedBehavior::from_spec(
-        BehaviorSpec::new(20022, "AddBuffRanTypeId"),
-        vec![30920142, 2],
-        Vec::new(),
-    );
     let emit = |determinism: &mut RoundDeterminism| {
         crate::engine::skill::behavior::rule_ops(
             BehaviorOpContext {
@@ -103,21 +99,21 @@ fn arsenal_grants_the_configured_stacks_and_draws_unheld_types_first() {
         (draws, rng.condition_random_roll(1, source_uid, 1))
     };
     assert_eq!(
-        observe(vec![unheld.id, held]),
-        (vec![(unheld.id, 5), (held, 5)], natural_roll)
+        observe(vec![unheld, held]),
+        (vec![(unheld, 5), (held, 5)], natural_roll)
     );
     let wrong_second = drafts
         .iter()
-        .find(|bullet| bullet.id != held && bullet.id != natural_draws[1].0)
+        .find(|(id, _)| *id != held && *id != natural_draws[1].0)
         .unwrap()
-        .id;
+        .0;
     assert_eq!(
         observe(vec![held, wrong_second]),
         (natural_draws, natural_roll),
     );
 
     let ops = emit(&mut determinism);
-    assert_eq!(chosen(&ops), [(unheld.id, 5), (held, 5)]);
+    assert_eq!(chosen(&ops), [(unheld, 5), (held, 5)]);
     drain::run_command_group(
         &mut managers,
         &pool,
@@ -127,6 +123,6 @@ fn arsenal_grants_the_configured_stacks_and_draws_unheld_types_first() {
         ops,
     )
     .unwrap();
-    assert_eq!(managers.buff.buff_id_amount(source_uid, unheld.id), 5);
+    assert_eq!(managers.buff.buff_id_amount(source_uid, unheld), 5);
     assert_eq!(managers.buff.buff_id_amount(source_uid, held), 7);
 }

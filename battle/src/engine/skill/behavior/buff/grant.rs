@@ -79,22 +79,69 @@ pub(super) fn stacks_as_copies(command: BuffCommand) -> BattleCommand {
     )
 }
 
+#[derive(Clone, Copy)]
+pub(super) struct PoolEntry {
+    pub(super) id: i32,
+    pub(super) stacks: u32,
+}
+
+enum RandomPool {
+    Ordinary(Vec<PoolEntry>),
+    Arsenal(Vec<super::arsenal::Bullet>),
+}
+
+fn pool_entries(catalog: crate::catalog::BattleCatalog, raw: &str) -> Option<Vec<PoolEntry>> {
+    raw.split('#')
+        .map(|entry| {
+            let (id, stacks) = entry.split_once(',').unwrap_or((entry, "1"));
+            let id = id.trim().parse().ok().filter(|id| *id > 0)?;
+            catalog.game_data().skill_buff.get(id)?;
+            let stacks = stacks.trim().parse().ok().filter(|stacks| *stacks > 0)?;
+            Some(PoolEntry { id, stacks })
+        })
+        .collect()
+}
+
+fn random_pool(
+    catalog: crate::catalog::BattleCatalog,
+    behavior: &ParsedBehavior,
+) -> Option<(usize, RandomPool)> {
+    let [pool_id, count] = behavior.args.as_slice() else {
+        return None;
+    };
+    let count = usize::try_from(*count).ok().filter(|count| *count > 0)?;
+    let rows = catalog.buff_feature_rows(*pool_id);
+    let [raw] = rows.as_slice() else {
+        return None;
+    };
+    let entries = pool_entries(catalog, raw)?;
+    let count_from_pool = count.min(entries.len());
+    let pool = match super::registry::find(behavior)?.kind {
+        BehaviorKind::AddBuffRanId if count <= entries.len() => RandomPool::Ordinary(entries),
+        BehaviorKind::AddBuffRanTypeId => match super::arsenal::select(catalog, &entries).ok()? {
+            Some(bullets) => RandomPool::Arsenal(bullets),
+            None => RandomPool::Ordinary(entries),
+        },
+        _ => return None,
+    };
+    Some((count_from_pool, pool))
+}
+
 pub(super) fn random_pool_grant_commands(
     context: &mut BehaviorOpContext<'_>,
     behavior: &ParsedBehavior,
 ) -> Option<Vec<RuleOp>> {
     let definition = super::registry::find(behavior)?;
-    if !matches!(
-        definition.kind,
-        BehaviorKind::AddBuffRanId | BehaviorKind::AddBuffRanTypeId
-    ) {
-        return None;
-    }
-    let [_, count] = behavior.args.as_slice() else {
-        return None;
+    let (count, pool) = random_pool(context.managers.catalog(), behavior)?;
+    let entries = match pool {
+        RandomPool::Ordinary(entries) => entries,
+        RandomPool::Arsenal(bullets) => {
+            return super::arsenal::grants(context, behavior, count, bullets);
+        }
     };
-    let mut candidates = resolve_random_buff_pool(context.managers.catalog(), behavior)?
+    let mut candidates = entries
         .into_iter()
+        .map(|entry| entry.id)
         .filter(|buff_id| match definition.kind {
             BehaviorKind::AddBuffRanId => !context
                 .managers
@@ -105,7 +152,7 @@ pub(super) fn random_pool_grant_commands(
         })
         .collect::<Vec<_>>();
     let mut ops = Vec::new();
-    let count = ((*count).max(0) as usize).min(candidates.len());
+    let count = count.min(candidates.len());
     let mut observed = context
         .determinism
         .take_random_buff_pool(
@@ -151,35 +198,30 @@ pub(super) fn random_pool_grant_commands(
 }
 
 pub(super) fn supports_random_pool(behavior: &ParsedBehavior) -> bool {
-    let [pool_buff_id, count] = behavior.args.as_slice() else {
-        return false;
-    };
-    let Some(definition) = super::registry::find(behavior) else {
-        return false;
-    };
-    *pool_buff_id > 0
-        && *count > 0
-        && random_buff_pool(behavior).is_some_and(|pool| {
-            !pool.is_empty()
-                && (definition.kind == BehaviorKind::AddBuffRanTypeId
-                    || *count as usize <= pool.len())
-        })
+    crate::catalog::BattleCatalog::try_global()
+        .is_some_and(|catalog| random_pool(catalog, behavior).is_some())
 }
 
 pub fn random_buff_pool(behavior: &ParsedBehavior) -> Option<Vec<i32>> {
-    resolve_random_buff_pool(crate::catalog::BattleCatalog::try_global()?, behavior)
+    let (_, pool) = random_pool(crate::catalog::BattleCatalog::try_global()?, behavior)?;
+    Some(match pool {
+        RandomPool::Ordinary(entries) => entries.into_iter().map(|entry| entry.id).collect(),
+        RandomPool::Arsenal(bullets) => bullets.into_iter().map(|bullet| bullet.entry.id).collect(),
+    })
 }
 
-fn resolve_random_buff_pool(
-    catalog: crate::catalog::BattleCatalog,
-    behavior: &ParsedBehavior,
-) -> Option<Vec<i32>> {
-    let definition = super::registry::find(behavior)?;
-    if !matches!(
-        definition.kind,
-        BehaviorKind::AddBuffRanId | BehaviorKind::AddBuffRanTypeId
-    ) {
+pub fn random_arsenal_pool(behavior: &ParsedBehavior) -> Option<Vec<(i32, u32)>> {
+    let (_, pool) = random_pool(crate::catalog::BattleCatalog::try_global()?, behavior)?;
+    let RandomPool::Arsenal(bullets) = pool else {
         return None;
-    }
-    catalog.buff_pool(behavior.arg(0)?)
+    };
+    Some(
+        bullets
+            .into_iter()
+            .map(|bullet| (bullet.entry.id, bullet.entry.stacks))
+            .collect(),
+    )
 }
+
+#[cfg(test)]
+mod tests;

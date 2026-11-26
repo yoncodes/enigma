@@ -328,16 +328,6 @@ impl BattleCatalog {
             .collect()
     }
 
-    pub(crate) fn buff_pool(self, buff_id: i32) -> Option<Vec<i32>> {
-        self.game_data.skill_buff.get(buff_id).map(|row| {
-            row.features
-                .split('#')
-                .filter_map(|entry| entry.split(',').next()?.trim().parse().ok())
-                .filter(|buff_id| *buff_id > 0)
-                .collect()
-        })
-    }
-
     pub(crate) fn buff_type_id(self, buff_id: i32) -> i32 {
         self.game_data
             .skill_buff

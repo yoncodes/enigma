@@ -48,7 +48,6 @@ pub(super) use return_layers::supports as supports_burn_return;
 
 pub(super) use super::{command_origin, registry};
 use application::*;
-pub use arsenal::random_arsenal_pool;
 use copy::copy_status_ops;
 pub(super) use copy::supports_status_copy;
 use dispel::{
@@ -60,10 +59,10 @@ pub(super) use dispel::{
     supports_excluded_dispel, supports_status_dispel, supports_type_family_dispel,
 };
 use distribute::*;
-pub use grant::random_buff_pool;
 use grant::{
     grant_command, random_pool_grant_commands, snapshot_shared_attribute, stacks_as_copies,
 };
+pub use grant::{random_arsenal_pool, random_buff_pool};
 pub(super) use layer::supports_team_layer;
 use layer::{
     add_buff_by_layer_ops, add_buff_by_layer_range_ops, add_buff_by_team_layer_ops,
@@ -172,9 +171,9 @@ impl BehaviorHandler for Handler {
             BehaviorKind::AddTargetBuffByPoison => {
                 add_target_buff_by_poison_ops(&context, behavior)
             }
-            BehaviorKind::AddBuffRanId => random_pool_grant_commands(&mut context, behavior),
-            BehaviorKind::AddBuffRanTypeId => arsenal::grants(&mut context, behavior)
-                .or_else(|| random_pool_grant_commands(&mut context, behavior)),
+            BehaviorKind::AddBuffRanId | BehaviorKind::AddBuffRanTypeId => {
+                random_pool_grant_commands(&mut context, behavior)
+            }
             BehaviorKind::AddBuffByHeroId => hero_grant_command(&context, behavior)
                 .map(|command| vec![RuleOp::Command(BattleCommand::Buff(command))]),
             BehaviorKind::DisperseForce2 => damage_window_remove_ops(&context, behavior),
