@@ -880,10 +880,25 @@ fn direct_damage_trace(
             })
             .sum::<i32>()
     };
+    let attack_only_rate = source_active_features
+        .iter()
+        .filter(|feature| {
+            feature.owner_uid == source.uid
+                && is_kind(feature, BuffActKind::AttrOnlyCalDamageAttack)
+        })
+        .map(|feature| {
+            crate::engine::skill::buff_act::attr_only_cal_damage_attack::attribute_delta(
+                feature,
+                AttrId::Attack,
+            )
+        })
+        .sum::<i32>();
+    let base_attack = attributes.base(source.uid, AttrId::Attack);
     let flat_attack =
         crate::engine::manager::snapshotted_attribute_delta(buffs, hp, source.uid, AttrId::Attack)
             .saturating_add(buffs.fixed_attribute_delta(source.uid, AttrId::Attack))
             .saturating_add(attack_bonus)
+            .saturating_add(base_attack * attack_only_rate / 1000)
             .saturating_add(if source.uid == crate::engine::manager::emitter::UID {
                 runtime.emitter.map_or(0, |emitter| {
                     crate::engine::manager::emitter::average_ally_fixed_attribute(
@@ -895,12 +910,12 @@ fn direct_damage_trace(
             } else {
                 0
             });
-    let base_attack = attributes.base(source.uid, AttrId::Attack);
     let attack_rate = 1000
         + attributes.get(source.uid, AttrId::Attack)
         + attribute_delta(source, AttrId::Attack)
         + attack_attribute_delta(AttrId::Attack)
-        + attack_local_attribute(AttrId::Attack);
+        + attack_local_attribute(AttrId::Attack)
+        - attack_only_rate;
     let attack_input_replacement = attack_replacement.map(|replacement| replacement.amount);
     let final_atk =
         attack_input_replacement.unwrap_or_else(|| base_attack * attack_rate / 1000 + flat_attack);
