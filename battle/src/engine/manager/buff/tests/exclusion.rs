@@ -190,7 +190,12 @@ fn a_refusing_buff_type_rejects_its_described_types_only_while_held() {
         attacker: Some(FightTeam {
             // J's ultimate marker (type 30940191), Refuse Absolute Defense (type 8092),
             // Refuse Chorus (type 8304).
-            entitys: vec![holder(10, 30940191), holder(11, 22341), holder(12, 30485)],
+            entitys: vec![
+                holder(10, 30940191),
+                holder(11, 22341),
+                holder(12, 30485),
+                holder(13, 31210132),
+            ],
             ..Default::default()
         }),
         ..Default::default()
@@ -217,6 +222,13 @@ fn a_refusing_buff_type_rejects_its_described_types_only_while_held() {
         .rejected
         .unwrap();
     assert_eq!(rejected.blocker_buff_id, 30485);
+
+    let rejected = manager
+        .add_replacing_excluded(&hp, 13, 13, 31210131, 1)
+        .rejected
+        .unwrap();
+    assert_eq!(rejected.blocker_buff_id, 31210132);
+    assert!(!manager.has_buff_id(13, 31210131));
 
     // Types the rule does not name still land.
     assert!(

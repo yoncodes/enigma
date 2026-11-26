@@ -27,6 +27,7 @@ buff_type_rules! {
     8092 => BuffTypeRule::Refuse(&[1026, 1027]);
     /// Refuse Chorus.
     8304 => BuffTypeRule::Refuse(&[8111]);
+    31210132 => BuffTypeRule::Refuse(&[31210131]);
     /// Rhiannon Babble-Gabble: ATK +12/13/14% for 3 rounds, one copy across ranks.
     31460111 => BuffTypeRule::ReplaceRank;
     /// Rhiannon Sneaky-Peeky: Max HP +12/13/14% for 3 rounds, one copy across ranks.
