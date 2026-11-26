@@ -375,3 +375,82 @@ fn conduit_might_only_scales_conduit_skills() {
         ));
     }
 }
+
+#[test]
+fn direct_ultimate_uses_the_team_moxie_field_snapshot() {
+    init_config();
+    let mut holder = entity(11, 1, 1, 0, 0);
+    holder.buffs.push(BuffInfo {
+        uid: Some(1),
+        buff_id: Some(31571007),
+        from_uid: Some(11),
+        act_info: vec![sonettobuf::BuffActInfo {
+            act_id: Some(1157),
+            param: vec![18],
+            ..Default::default()
+        }],
+        ..Default::default()
+    });
+    let fight = Fight {
+        version: Some(7),
+        attacker: Some(FightTeam {
+            entitys: vec![entity(10, 1, 1, 1_000, 0), holder],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![entity(-1, 2, 1, 0, 0)],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let managers = BattleManagers::seeded(&fight);
+
+    for (skill_id, expected) in [(31570114, 1_760), (31570111, 1_000)] {
+        let command = resolve_attack_command(
+            &AttackPlan {
+                source_uid: 10,
+                target_uid: -1,
+                skill_id,
+                rate: 1_000,
+                rate_terms: Vec::new(),
+                attack_bonus: 0,
+                attack_attributes: Vec::new(),
+                career_ratio_bonus: 0,
+                attack_career: None,
+                additional_attack_career: None,
+                force_career_restraint: false,
+                critical_multiplier_remainder: 0,
+                is_conduit: false,
+                is_crit: false,
+                assassinate: false,
+                main_target: true,
+                extra_skill_kind: 0,
+                performs_extra_action: false,
+                additional_enabled: false,
+                additional_is_crit: None,
+            },
+            DamageRuntime {
+                fight_version: 7,
+                pool: &pool,
+                attributes: &managers.attribute,
+                buffs: &managers.buff,
+                target_buffs: &managers.buff,
+                hp: &managers.hp,
+                fields: None,
+                emitter: None,
+                team_inspiration: 0,
+            },
+            CommandOrigin {
+                domain: crate::engine::skill::rule::RuleDomain::Skill,
+                key: crate::engine::skill::rule::DefinitionKey::new(skill_id, "SkillDamage"),
+            },
+        )
+        .unwrap();
+
+        assert!(matches!(
+            command,
+            HpCommand::Damage(HpDamage { amount, .. }) if amount == expected
+        ));
+    }
+}

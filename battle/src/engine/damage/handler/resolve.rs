@@ -815,6 +815,16 @@ fn direct_damage_trace(
                     .sum::<i32>(),
             ),
             (
+                "moxie_might_field",
+                crate::engine::skill::buff_act::moxie_might_field::team_might(
+                    entity_buffs,
+                    hp,
+                    active_features,
+                    entity.uid,
+                    attr_id,
+                ),
+            ),
+            (
                 "raspberry",
                 crate::engine::skill::buff_act::raspberry::attribute_delta(
                     entity_buffs,
