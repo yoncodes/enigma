@@ -87,18 +87,12 @@ pub fn normalize_live_json(value: &mut serde_json::Value) {
             {
                 map.insert("status".to_owned(), (status as i32).into());
             }
-            if let Some(act_type) = map.get("actType").and_then(|value| value.as_str()) {
-                let value = match act_type {
-                    "SKILL" => Some(1),
-                    "BUFF" => Some(2),
-                    "EFFECT" => Some(3),
-                    "CHANGEHERO" => Some(4),
-                    "CHANGEWAVE" => Some(5),
-                    _ => None,
-                };
-                if let Some(value) = value {
-                    map.insert("actType".to_owned(), value.into());
-                }
+            if let Some(act_type) = map
+                .get("actType")
+                .and_then(|value| value.as_str())
+                .and_then(crate::fight_step::ActType::from_str_name)
+            {
+                map.insert("actType".to_owned(), (act_type as i32).into());
             }
             if let Some(damage_from_type) =
                 map.get("damageFromType").and_then(|value| value.as_str())
