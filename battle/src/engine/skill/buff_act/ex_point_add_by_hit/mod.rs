@@ -2,14 +2,30 @@ use crate::engine::{
     event::payload::BattleEvent,
     manager::{
         BattleManagers,
-        buff::{BuffCommand, BuffConsume, BuffSelector, DepletedBuff},
-        ex_point::{ExPointChange, ExPointCommand},
+        buff::{BuffCommand, BuffConsume, BuffMarkerResult, BuffSelector, DepletedBuff},
+        ex_point::{ExPointChange, ExPointChanges, ExPointCommand, ExPointCommandError},
     },
     skill::{
-        rule::output::{BattleCommand, RuleOp},
+        rule::{
+            CommandOrigin,
+            output::{BattleCommand, RuleOp},
+        },
         subscriber::BuffActSubscriber,
     },
 };
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct HitMoxieAward {
+    origin: CommandOrigin,
+    buff_id: i32,
+    recipient_uid: i64,
+    delta: i32,
+}
+
+pub(crate) struct Settlement {
+    pub change: ExPointChanges,
+    pub marker: Option<BuffMarkerResult>,
+}
 
 pub fn rule_ops(
     managers: &BattleManagers,
@@ -43,17 +59,42 @@ pub fn rule_ops(
             amount: 1,
             depleted: DepletedBuff::Remove,
         }))),
-        RuleOp::Command(BattleCommand::ExPoint(ExPointCommand::Change(
-            ExPointChange {
-                origin,
-                source_uid: hit.source_uid,
-                target_uid: hit.source_uid,
-                delta,
-                config_effect: 0,
-                effect_type: sonettobuf::effect_type_enum::EffectType::Expointchange as i32,
-            },
-        ))),
+        RuleOp::Command(BattleCommand::HitMoxieAward(HitMoxieAward {
+            origin,
+            buff_id: subscriber.buff_id,
+            recipient_uid: hit.source_uid,
+            delta,
+        })),
     ])
+}
+
+pub(crate) fn execute(
+    managers: &mut BattleManagers,
+    award: HitMoxieAward,
+) -> Result<Settlement, ExPointCommandError> {
+    let change = managers.execute_ex_point(ExPointCommand::Change(ExPointChange {
+        origin: award.origin,
+        source_uid: award.recipient_uid,
+        target_uid: award.recipient_uid,
+        delta: award.delta,
+        config_effect: 0,
+        effect_type: sonettobuf::effect_type_enum::EffectType::Expointchange as i32,
+    }))?;
+    let marker = if matches!(change, ExPointChanges::Value { change, .. } if change.applied_delta > 0)
+    {
+        let key = award.origin.key;
+        super::wire::find(key.opcode, key.type_name)
+            .and_then(|definition| definition.markers(super::wire::WirePhase::Static).first())
+            .map(|&effect_type| BuffMarkerResult {
+                target_uid: award.recipient_uid,
+                effect_type,
+                effect_num: award.buff_id,
+                buff_act_id: key.opcode,
+            })
+    } else {
+        None
+    };
+    Ok(Settlement { change, marker })
 }
 
 #[cfg(test)]

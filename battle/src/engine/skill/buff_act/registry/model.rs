@@ -83,7 +83,6 @@ pub enum StatReadTiming {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RuntimeMarkerPosition {
     BeforeChanges,
-    AfterFirstChange,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

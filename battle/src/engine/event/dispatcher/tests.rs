@@ -949,15 +949,8 @@ fn committed_hit_discovers_target_attacked_skill_and_be_attacked_buff_act() {
                         ..
                     },
                     buff_act::BuffActRuleOp {
-                        op: RuleOp::BuffFeatureMarker {
-                            buff_act_id: 926,
-                            ..
-                        },
-                        ..
-                    },
-                    buff_act::BuffActRuleOp {
                         op: RuleOp::Command(
-                            crate::engine::skill::rule::output::BattleCommand::ExPoint(_)
+                            crate::engine::skill::rule::output::BattleCommand::HitMoxieAward(_)
                         ),
                         ..
                     }

@@ -559,11 +559,6 @@ fn with_feature_runtime_markers(
                 decorated.push((feature.clone(), marker));
                 decorated.push((feature, op));
             }
-            Some((registry::RuntimeMarkerPosition::AfterFirstChange, marker)) => {
-                marked.push(feature.clone());
-                decorated.push((feature.clone(), op));
-                decorated.push((feature, marker));
-            }
             None => decorated.push((feature, op)),
         }
     }
@@ -938,7 +933,6 @@ fn with_runtime_marker(
     };
     let index = match position {
         registry::RuntimeMarkerPosition::BeforeChanges => 0,
-        registry::RuntimeMarkerPosition::AfterFirstChange => 1,
     };
     ops.insert(index.min(ops.len()), marker_op);
     ops

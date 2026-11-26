@@ -36,6 +36,7 @@ use crate::engine::{
         behavior::registry::OutputOwner,
         buff_act::{
             blood_pool::count_add_ex_point::{self, Settlement as BloodPoolMoxieSettlement},
+            ex_point_add_by_hit::{self, Settlement as HitMoxieSettlement},
             raspberry::{CapacityError, CapacityResult},
         },
         rule::output::{BattleCommand, RuleOp},
@@ -79,6 +80,7 @@ pub(crate) enum RuleOutcome {
     Shield(Box<ShieldChanges>),
     ExPoint(ExPointChanges),
     BloodPoolMoxie(BloodPoolMoxieSettlement),
+    HitMoxieAward(HitMoxieSettlement),
     Eureka(EurekaChanges),
     Gauge(GaugeChange),
     RawGaugeContribution,
@@ -365,6 +367,12 @@ impl RuleOutcome {
                 .collect(),
             Self::Shield(changes) => vec![BattleChange::Shield(changes.clone())],
             Self::ExPoint(change) => vec![BattleChange::ExPoint(*change)],
+            Self::HitMoxieAward(settlement) => settlement
+                .marker
+                .into_iter()
+                .map(BattleChange::BuffFeatureMarker)
+                .chain(std::iter::once(BattleChange::ExPoint(settlement.change)))
+                .collect(),
             Self::BloodPoolMoxie(settlement) => settlement
                 .marker
                 .into_iter()
@@ -932,6 +940,13 @@ pub(crate) fn execute_rule_op_with(
                 events.push(event);
             }
             Ok(RuleOutcome::ExPoint(changes))
+        }
+        RuleOp::Command(BattleCommand::HitMoxieAward(award)) => {
+            let settlement = ex_point_add_by_hit::execute(managers, award)?;
+            for event in settlement.change.events() {
+                events.push(event);
+            }
+            Ok(RuleOutcome::HitMoxieAward(settlement))
         }
         RuleOp::Command(BattleCommand::BloodPoolCountAddExPoint(command)) => {
             let Some(settlement) = count_add_ex_point::execute(managers, command)? else {

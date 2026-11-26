@@ -3,7 +3,7 @@ use sonettobuf::{BuffInfo, Fight, FightEntityInfo, FightTeam};
 use crate::engine::{
     event::{bus::EventBus, kind::EventKind, payload::HitEvent, subscription::SubscriptionKey},
     manager::BattleManagers,
-    runtime::executor::execute_rule_op,
+    runtime::{change::BattleChange, executor::execute_rule_op},
     skill::{
         effect::SkillEffectCatalog,
         rule::{CommandOrigin, DefinitionKey, RuleDomain},
@@ -99,20 +99,24 @@ fn hit_event_emits_manager_commands_with_exact_origin() {
             .iter()
             .all(|entry| { entry.source == super::super::BuffActFrameSource::Applier })
     );
-    assert!(matches!(
-        scoped[1].op,
-        RuleOp::BuffFeatureMarker {
-            target_uid: 11,
-            buff_act_id: 926,
-            ..
-        }
-    ));
-    let ops = rule_ops(&managers, &subscriber, &event).unwrap();
-    assert_eq!(ops.len(), 2);
     let mut events = EventBus::default();
-    for op in ops {
-        execute_rule_op(&mut managers, &mut events, op).unwrap();
-    }
+    let settle = |managers: &mut BattleManagers, events: &mut EventBus| {
+        rule_ops(managers, &subscriber, &event)
+            .unwrap()
+            .into_iter()
+            .flat_map(|op| execute_rule_op(managers, events, op).unwrap().changes())
+            .collect::<Vec<_>>()
+    };
+    let changes = settle(&mut managers, &mut events);
+    assert!(matches!(
+        changes.as_slice(),
+        [
+            BattleChange::Buff(_),
+            BattleChange::BuffFeatureMarker(marker),
+            BattleChange::ExPoint(ExPointChanges::Value { change, .. }),
+        ] if marker.target_uid == 11 && marker.buff_act_id == 926
+            && change.applied_delta == 1
+    ));
 
     assert_eq!(managers.buff.snapshot(-1, 20).unwrap().layer, Some(1));
     assert_eq!(managers.ex_point.get(10), 0);
@@ -123,6 +127,21 @@ fn hit_event_emits_manager_commands_with_exact_origin() {
     }
     assert!(finished.buff.snapshot(-1, 20).is_none());
     assert_eq!(finished.ex_point.get(11), 2);
+
+    let mut capped = managers.clone();
+    capped.ex_point.set(11, 11, 5, 0);
+    let changes = settle(&mut capped, &mut events);
+    assert!(
+        !changes
+            .iter()
+            .any(|change| matches!(change, BattleChange::BuffFeatureMarker(_)))
+    );
+    assert!(capped.buff.snapshot(-1, 20).is_none());
+    assert_eq!(capped.ex_point.get(11), 5);
+    assert!(matches!(
+        events.drain_kind(EventKind::ExPointOverflow).as_slice(),
+        [BattleEvent::ExPointOverflow(change)] if change.target_uid == 11 && change.overflow == 1
+    ));
 
     managers.hp.lose(-1, 100, 0);
     let dead_holder =

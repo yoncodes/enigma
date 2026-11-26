@@ -37,6 +37,7 @@ use crate::engine::{
     skill::action::{SkillInvocation, SkillLifecycle, SkillRequest},
     skill::buff_act::{
         blood_pool::count_add_ex_point::BloodPoolCountAddExPointCommand,
+        ex_point_add_by_hit::HitMoxieAward,
         raspberry::{AddCountCommand, CapacityCommand},
     },
 };
@@ -121,6 +122,7 @@ pub enum BattleCommand {
     RaspberryCapacity(CapacityCommand),
     RaspberryAddCount(AddCountCommand),
     BloodPoolCountAddExPoint(BloodPoolCountAddExPointCommand),
+    HitMoxieAward(HitMoxieAward),
     Summon(SummonCommand),
     Upgrade(UpgradeCommand),
     ToughnessRecover(ToughnessRecover),
