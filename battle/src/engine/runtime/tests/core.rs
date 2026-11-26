@@ -128,6 +128,69 @@ fn third_wave_entity_info_uses_the_latest_authoritative_roster() {
 }
 
 #[test]
+fn wave_replacement_keeps_waiting_reserves_out_of_halo_fanout() {
+    use crate::engine::{
+        fight::rules::ATTACKER_SIDE_UID,
+        manager::buff::{BuffCommand, BuffGrant},
+        skill::rule::{CommandOrigin, DefinitionKey, RuleDomain},
+    };
+
+    crate::test_support::init_config();
+    let mut runtime = runtime(Fight {
+        battle_id: Some(120384600),
+        episode_id: Some(2600101),
+        version: Some(7),
+        cur_wave: Some(1),
+        attacker: Some(FightTeam::default()),
+        defender: Some(FightTeam::default()),
+        ..Default::default()
+    });
+    let change = runtime
+        .managers
+        .advance_wave(&mut runtime.fight, 3)
+        .unwrap()
+        .unwrap();
+    let defenders = change.fight.defender.unwrap();
+    assert_eq!(
+        (defenders.entitys.len(), defenders.sub_entitys.len()),
+        (4, 2)
+    );
+
+    runtime
+        .managers
+        .execute_buff(BuffCommand::Grant(BuffGrant {
+            origin: CommandOrigin {
+                domain: RuleDomain::Behavior,
+                key: DefinitionKey::new(1, "AddBuff"),
+            },
+            source_uid: ATTACKER_SIDE_UID,
+            target_uid: ATTACKER_SIDE_UID,
+            buff_id: 9260101,
+            amount: None,
+            occurrences: 1,
+            child_uid_reservations: 0,
+        }))
+        .unwrap();
+
+    for defender in defenders.entitys {
+        assert!(
+            runtime
+                .managers
+                .buff
+                .has_buff_id(defender.uid.unwrap(), 9260103)
+        );
+    }
+    for reserve in defenders.sub_entitys {
+        assert!(
+            !runtime
+                .managers
+                .buff
+                .has_buff_id(reserve.uid.unwrap(), 9260103)
+        );
+    }
+}
+
+#[test]
 fn refill_and_all_compositions_grant_cloth_power() {
     crate::test_support::init_config();
     let fight = Fight {

@@ -1485,6 +1485,7 @@ impl BattleManagers {
         fight.cur_round = Some(round);
         fight.is_record = Some(false);
         self.sync_entities(fight);
+        self.sync_roster(fight);
         Ok(Some(wave::WaveAdvanced {
             wave: roster.wave,
             entering_uids: roster.entering_uids,
