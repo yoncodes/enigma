@@ -12,6 +12,7 @@ use super::{command_prepare::prepare_command, *};
 mod commit;
 mod death;
 mod heal_attribution;
+mod payment_critical;
 mod publication;
 mod team_buff_layers;
 
@@ -159,6 +160,7 @@ pub(super) fn drain_command(
             _ => {}
         }
     }
+    let paying_attack = payment_critical::payer(&command, catalog);
     let commit::Committed {
         mut outcome,
         followups,
@@ -359,6 +361,7 @@ pub(super) fn drain_command(
     let publication::before::PreparedEvents {
         replacement,
         event_groups,
+        payment_critical_damage,
         started_after_reactions,
         released_hit_events,
         releases_pending_hits,
@@ -379,7 +382,18 @@ pub(super) fn drain_command(
         &fanout,
         &events,
         event_groups,
+        paying_attack,
     )?;
+    if payment_critical_damage != 0
+        && let Some(execution) = queue.iter_mut().find_map(|queued| {
+            (matches!(queued.trigger, SkillOpTrigger::Active)
+                && queued.frame_path.as_ref() == Some(&frame_path))
+            .then_some(queued.skill_execution.as_mut())
+            .flatten()
+        })
+    {
+        execution.payment_critical_damage = payment_critical_damage;
+    }
 
     // Once pre-publication work is complete, record the authoritative
     // outcome and any buff fanout beneath their semantic owners.

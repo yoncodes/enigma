@@ -48,6 +48,7 @@ pub(in crate::engine::runtime) struct SkillExecution {
     pending_after_damage_frame_owner: Option<crate::engine::runtime::record::FrameOwner>,
     payment: Option<crate::engine::skill::action::ActionPayment>,
     pub(super) moxie_spent: i32,
+    pub(in crate::engine::runtime) payment_critical_damage: i32,
     // The next slot to run when a phase continues after an earlier slot's changes commit.
     pub(super) resume_slot: usize,
     // The next target in a slot whose prior target must settle first.
@@ -141,6 +142,7 @@ impl SkillExecution {
             pending_after_damage_frame_owner: None,
             payment: None,
             moxie_spent: 0,
+            payment_critical_damage: 0,
             resume_slot: 0,
             resume_target: 0,
             effect_started: false,
@@ -181,6 +183,7 @@ impl SkillExecution {
             pending_after_damage_frame_owner: None,
             payment: None,
             moxie_spent: 0,
+            payment_critical_damage: 0,
             resume_slot: 0,
             resume_target: 0,
             effect_started: false,
@@ -862,6 +865,12 @@ pub(super) fn damage_ops(
                 &managers.hp,
             );
         let mut attack_attributes = target_modifiers.primary_attack_attributes();
+        if execution.payment_critical_damage != 0 {
+            attack_attributes.push((
+                crate::engine::entity::attr::AttrId::CriticalDmg,
+                execution.payment_critical_damage.saturating_neg(),
+            ));
+        }
         attack_attributes.extend(
             crate::engine::skill::buff_act::ultimate_attribute::attributes(
                 managers,

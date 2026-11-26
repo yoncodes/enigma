@@ -3,6 +3,7 @@ use super::*;
 pub(in super::super) struct PreparedEvents {
     pub(in super::super) replacement: Option<BuffReplacementParts>,
     pub(in super::super) event_groups: Vec<Vec<BattleEvent>>,
+    pub(in super::super) payment_critical_damage: i32,
     pub(in super::super) started_after_reactions: Option<ReactionBatch>,
     pub(in super::super) released_hit_events: Option<Vec<Vec<BattleEvent>>>,
     pub(in super::super) releases_pending_hits: bool,
@@ -10,6 +11,7 @@ pub(in super::super) struct PreparedEvents {
     pub(in super::super) releases_after_hit_skills: bool,
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(in super::super) fn prepare(
     access: DrainAccess<'_>,
     scope: Scope<'_>,
@@ -18,6 +20,7 @@ pub(in super::super) fn prepare(
     fanout: &[BuffFanoutResult],
     events: &[BattleEvent],
     mut event_groups: Vec<Vec<BattleEvent>>,
+    paying_attack: Option<i64>,
 ) -> Result<PreparedEvents, DrainError> {
     let DrainAccess {
         managers,
@@ -258,17 +261,18 @@ pub(in super::super) fn prepare(
             state,
         )?;
     }
-    if !before_reactions.before_publish.is_empty() {
-        drain_nested_queue(
+    let payment_critical_damage = super::super::payment_critical::settle(
+        DrainAccess {
             managers,
             pool,
             catalog,
             determinism,
-            before_reactions.before_publish.into(),
             result,
             state,
-        )?;
-    }
+        },
+        paying_attack,
+        before_reactions.before_publish.into(),
+    )?;
     if !pending_hit_skills.after_publish.is_empty()
         || !pending_hit_skills.shared_hit_skills.is_empty()
     {
@@ -280,6 +284,7 @@ pub(in super::super) fn prepare(
     Ok(PreparedEvents {
         replacement,
         event_groups,
+        payment_critical_damage,
         started_after_reactions,
         released_hit_events,
         releases_pending_hits,

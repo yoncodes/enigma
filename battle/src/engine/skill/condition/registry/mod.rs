@@ -26,6 +26,8 @@ mod channel_timing;
 pub(crate) const AFTER_HIT_MASTER_HALO_KEY: DefinitionKey =
     DefinitionKey::new(701210, "HasMasterHalo");
 pub(crate) const ADD_MAGIC_CIRCLE_KEY: DefinitionKey = DefinitionKey::new(711039, "AddMagicCircle");
+pub(crate) const PER_DECR_EX_POINT_KEY: DefinitionKey =
+    DefinitionKey::new(660008, "PerDecrExPoint");
 
 pub type Parser = fn(i32, &str, &[String]) -> Option<ParsedConditionKind>;
 
