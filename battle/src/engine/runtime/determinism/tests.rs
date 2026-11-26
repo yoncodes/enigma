@@ -13,6 +13,22 @@ fn crit_roll_respects_impossible_and_guaranteed_chances() {
 }
 
 #[test]
+fn periodic_origin_witness_preserves_the_next_natural_crit_roll() {
+    let mut observed = RoundDeterminism::default();
+    let mut natural = observed.clone();
+    observed.replace_periodic_origin_crits([((100, 1, -1), true)]);
+
+    assert!(observed.roll_periodic_origin_crit(100, 1, -1, 0));
+    assert!(!natural.roll_periodic_origin_crit(100, 1, -1, 0));
+    for skill_id in 200..208 {
+        assert_eq!(
+            observed.roll_crit(skill_id, 2, -3, 500),
+            natural.roll_crit(skill_id, 2, -3, 500)
+        );
+    }
+}
+
+#[test]
 fn ai_skill_choices_are_separate_from_the_card_envelope() {
     let mut determinism = RoundDeterminism::default();
     let choice = AiSkillChoice {

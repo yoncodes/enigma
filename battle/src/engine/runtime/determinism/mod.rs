@@ -75,6 +75,7 @@ pub struct RoundDeterminism {
     condition_random_choices: Vec<ConditionRandomChoice>,
     hidden_crit_choices: HashMap<(i32, i64), VecDeque<bool>>,
     indirect_heal_crit_choices: HashMap<(i32, i64, i64), VecDeque<bool>>,
+    periodic_origin_crits: HashMap<(i32, i64, i64), bool>,
     shell_moxie_choices: VecDeque<bool>,
     crystal_reuse_choices: VecDeque<CrystalReuseChoice>,
     moxie_reduction_resistance_choices: VecDeque<MoxieReductionResistanceChoice>,
@@ -236,7 +237,15 @@ impl RoundDeterminism {
     pub fn clear_crit_choices(&mut self) {
         self.hidden_crit_choices.clear();
         self.indirect_heal_crit_choices.clear();
+        self.periodic_origin_crits.clear();
         self.additional_crit_choices.clear();
+    }
+
+    pub(crate) fn replace_periodic_origin_crits(
+        &mut self,
+        choices: impl IntoIterator<Item = ((i32, i64, i64), bool)>,
+    ) {
+        self.periodic_origin_crits = choices.into_iter().collect();
     }
 
     pub fn replace_shell_moxie_choices(&mut self, choices: impl IntoIterator<Item = bool>) {
@@ -284,6 +293,19 @@ impl RoundDeterminism {
             .get_mut(&(skill_id, source_uid))
             .and_then(VecDeque::pop_front)
             .unwrap_or_else(|| self.roll_crit(skill_id, source_uid, target_uid, chance))
+    }
+
+    pub(crate) fn roll_periodic_origin_crit(
+        &mut self,
+        carrier_id: i32,
+        source_uid: i64,
+        target_uid: i64,
+        chance: i32,
+    ) -> bool {
+        let natural = self.roll_crit(carrier_id, source_uid, target_uid, chance);
+        self.periodic_origin_crits
+            .remove(&(carrier_id, source_uid, target_uid))
+            .unwrap_or(natural)
     }
 
     pub fn roll_additional_crit(

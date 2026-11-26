@@ -284,6 +284,13 @@ impl BattleRuntime {
         self.determinism.enqueue_indirect_heal_crits(indirect_heals);
     }
 
+    pub fn seed_periodic_origin_crits(
+        &mut self,
+        choices: impl IntoIterator<Item = ((i32, i64, i64), bool)>,
+    ) {
+        self.determinism.replace_periodic_origin_crits(choices);
+    }
+
     /// Seeds observed hands after weighted card-energy allocations; each round replaces the last.
     pub fn seed_card_energy_allocations(&mut self, hands: impl IntoIterator<Item = Vec<CardInfo>>) {
         self.determinism.replace_card_energy_allocations(hands);

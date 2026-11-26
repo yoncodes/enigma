@@ -117,8 +117,8 @@ pub mod scan {
 
         pub mod registry {
             pub use crate::engine::skill::buff_act::registry::{
-                BuffActDestination, ParsedBuffAct, destination, destination_for_feature, find,
-                owns_duration, resolve_feature, runtime_event,
+                BuffActDestination, BuffActKind, ParsedBuffAct, destination,
+                destination_for_feature, find, owns_duration, resolve_feature, runtime_event,
             };
         }
 

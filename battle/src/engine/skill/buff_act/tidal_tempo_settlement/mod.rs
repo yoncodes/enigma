@@ -53,7 +53,7 @@ pub fn rule_ops(context: &mut RuntimeContext<'_>) -> Option<Vec<RuleOp>> {
     );
     formula.might =
         1_000i32.saturating_add(managers.origin_attribute(source_uid, AttrId::UltimateMight));
-    formula.is_crit = context.determinism.roll_hidden_crit(
+    formula.is_crit = context.determinism.roll_periodic_origin_crit(
         subscriber.buff_id,
         source_uid,
         target_uid,

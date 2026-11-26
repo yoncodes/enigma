@@ -10,6 +10,7 @@ use battle::tooling::{
 use sonettobuf::{CardInfo, Fight, FightRound, FightStep};
 
 mod conduit_ex_point_rolls;
+mod periodic_origin_crit;
 mod random_buff;
 
 /// Imports observed random choices while leaving card construction and validation to the engine.
@@ -116,6 +117,8 @@ pub fn seed_action_determinism(
     ));
     let (hidden, additional, indirect_heals) = crit_choices(config::configs::get(), round);
     runtime.seed_crits(hidden, additional, indirect_heals);
+    runtime
+        .seed_periodic_origin_crits(periodic_origin_crit::choices(config::configs::get(), round));
 }
 
 fn card_energy_allocations(round: &FightRound) -> Vec<Vec<CardInfo>> {
