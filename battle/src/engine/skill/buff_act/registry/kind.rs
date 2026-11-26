@@ -249,5 +249,6 @@ pub enum BuffActKind {
     UseSkillLoseHpNotFixed,
     UseCardFixExPoint,
     UseDamageSkillAddToTarget,
+    UseSkillByElectricLvContinueChannel,
     UseSkillToEnemy,
 }

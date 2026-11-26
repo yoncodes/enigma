@@ -210,6 +210,10 @@ impl BattleCatalog {
             .any(|field| field.id == circle_id && field.level == level && field.progress == 0)
     }
 
+    pub(crate) fn is_electric_field(self, circle_id: i32) -> bool {
+        self.game_data.fight_dnsz.get(circle_id).is_some()
+    }
+
     pub(crate) fn next_magic_circle_level(self, circle_id: i32) -> Option<MagicCircleLevel> {
         let current = self.game_data.magic_wqsz.get(circle_id)?;
         let next = self

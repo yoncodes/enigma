@@ -164,6 +164,10 @@ buff_act_definitions! {
         effect_time_subscription: false,
         supports: buff_act::add_attr_by_other_buff_layer::supports, state_consumer: true,
         wire: (buff_act::wire::BuffActWireDefinition::all(DefinitionKey::new(1036, "AddAttrByOtherBuffLayer"), &[EffectType::None as i32, EffectType::Attr as i32]));
+    (1039, "UseSkillByElectricLvContinueChannel") => UseSkillByElectricLvContinueChannel,
+        runtime: |context| buff_act::electric_channel::rule_ops(context.managers, context.catalog, context.subscriber, context.event?),
+        supports: buff_act::electric_channel::supports, references: references_for_feature,
+        wire: (buff_act::wire::BuffActWireDefinition::add(DefinitionKey::new(1039, "UseSkillByElectricLvContinueChannel"), &[EffectType::None as i32]));
     (1141, "AddAttrByOtherBuffLayer") => AddAttrBySourceBuffLayer,
         effect_time_subscription: false,
         supports: buff_act::add_attr_by_other_buff_layer::supports, state_consumer: true,

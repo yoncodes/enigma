@@ -76,6 +76,7 @@ pub mod each_change_attr;
 pub mod each_change_attr_one_way;
 pub mod each_change_attr_one_way_after_add;
 pub mod effect_time;
+pub mod electric_channel;
 pub mod electric_transform;
 pub mod emitter_card_allocate_change;
 pub mod emitter_card_energy_limit;

@@ -180,6 +180,14 @@ pub(super) fn references_for_feature(
                     &feature.raw,
                 ))
         }
+        Some(BuffActKind::UseSkillByElectricLvContinueChannel) => {
+            references.skills.extend(
+                buff_act::electric_channel::skills(&feature.args)
+                    .into_iter()
+                    .flatten()
+                    .copied(),
+            );
+        }
         Some(BuffActKind::PaperCircleContinueChannel) => add_skill(
             &mut references,
             buff_act::paper_circle_continue_channel::referenced_skill(&feature.raw),
