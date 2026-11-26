@@ -154,6 +154,32 @@ pub(super) fn duration_snapshot(managers: &BattleManagers, owner_uids: &[i64]) -
         .collect()
 }
 
+pub(super) fn granted_timers(
+    managers: &BattleManagers,
+    owner_uids: &[i64],
+    before: &[(i64, i64)],
+) -> Vec<(i64, i64)> {
+    duration_snapshot(managers, owner_uids)
+        .into_iter()
+        .filter(|timer| !before.contains(timer))
+        .collect()
+}
+
+pub(super) fn settlement_timers(
+    managers: &BattleManagers,
+    owner_uids: &[i64],
+    original: &[(i64, i64)],
+    grants: &[(i64, i64)],
+) -> Vec<(i64, i64)> {
+    if grants.is_empty() {
+        return original.to_vec();
+    }
+    duration_snapshot(managers, owner_uids)
+        .into_iter()
+        .filter(|timer| original.contains(timer) || grants.contains(timer))
+        .collect()
+}
+
 #[allow(clippy::too_many_arguments)]
 pub(super) fn run_owned_duration_advances(
     managers: &mut BattleManagers,

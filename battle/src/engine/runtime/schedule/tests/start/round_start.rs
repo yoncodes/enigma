@@ -1,6 +1,109 @@
 use super::*;
 
 #[test]
+fn version_seven_advances_round_start_condition_grants_at_the_same_settlement() {
+    init_config();
+    let fight = Fight {
+        version: Some(7),
+        attacker: Some(FightTeam {
+            entitys: vec![
+                FightEntityInfo {
+                    uid: Some(10),
+                    model_id: Some(3092),
+                    team_type: Some(1),
+                    current_hp: Some(100),
+                    passive_skill: vec![30920103],
+                    ..Default::default()
+                },
+                FightEntityInfo {
+                    uid: Some(11),
+                    model_id: Some(3121),
+                    team_type: Some(1),
+                    current_hp: Some(100),
+                    passive_skill: vec![40],
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut catalog = SkillEffectCatalog::from_fight(config::configs::get(), &fight);
+    let mut later_grant = SkillEffectSlot::new(
+        ParsedBehavior::new(1, "AddBuff", vec![30920107]),
+        TargetRequest::self_only(),
+    );
+    later_grant.conditions = vec![ParsedCondition {
+        opcode: 102,
+        type_name: "None".to_owned(),
+        kind: ParsedConditionKind::None(NoneMode::RoundStart),
+        raw_args: Vec::new(),
+    }];
+    later_grant.compiled_route = ConditionRoute::compile(&later_grant.conditions);
+    catalog.insert(ParsedSkillEffect {
+        skill_id: 40,
+        slots: vec![later_grant],
+    });
+    let mut managers = BattleManagers::seeded(&fight);
+    let mut determinism = RoundDeterminism::default();
+    let marker = |managers: &BattleManagers| {
+        managers
+            .buff
+            .active_for(10)
+            .find(|buff| buff.buff_id == Some(30920104))
+            .map(|buff| (buff.uid.unwrap(), buff.duration.unwrap()))
+            .unwrap()
+    };
+    let later_duration = |managers: &BattleManagers| {
+        managers
+            .buff
+            .active_for(11)
+            .find(|buff| buff.buff_id == Some(30920107))
+            .and_then(|buff| buff.duration)
+    };
+
+    run_start(
+        managers.catalog(),
+        &mut managers,
+        &pool,
+        &catalog,
+        &mut determinism,
+        TargetContext {
+            current_round: 1,
+            ..Default::default()
+        },
+        CardSetup {
+            hand: Vec::new(),
+            draw_pile: Vec::new(),
+            deck_num: 0,
+        },
+        0,
+    )
+    .unwrap();
+    let (opening_uid, duration) = marker(&managers);
+    assert_eq!(duration, 1);
+    assert_eq!(later_duration(&managers), Some(2));
+
+    settle_round_start(
+        &mut managers,
+        &pool,
+        &catalog,
+        &mut determinism,
+        TargetContext {
+            current_round: 2,
+            ..Default::default()
+        },
+        &[],
+    )
+    .unwrap();
+    let (renewed_uid, duration) = marker(&managers);
+    assert_ne!(opening_uid, renewed_uid);
+    assert_eq!(duration, 1);
+    assert_eq!(later_duration(&managers), Some(2));
+}
+
+#[test]
 fn opening_round_start_conditions_only_run_for_the_player_side() {
     init_config();
     let entity = |uid, team_type| FightEntityInfo {

@@ -6,6 +6,11 @@ pub(super) struct RoundStartSettlementPlan {
     pub(super) buff_owner_uids: Vec<i64>,
 }
 
+struct RoundStartConditions {
+    result: DrainResult,
+    granted_timers: Vec<(i64, i64)>,
+}
+
 impl RoundStartSettlementPlan {
     pub(super) fn new(
         capacity_groups: Vec<crate::engine::mechanic::shadow_cloak::CapacityRuleGroup>,
@@ -116,7 +121,7 @@ pub fn run_before_ai_round_start(
     owner_uids.extend(pool.assist_boss(crate::engine::fight::rules::DEFENDER_SIDE_UID));
     let round_start_duration_snapshot = duration_snapshot(managers, &owner_uids);
     let setup_owner_uids = round_start_setup_owner_uids(&owner_uids, 2);
-    let (before, pending_settlement, split_losses) = run_round_start_before_duration(
+    let (conditions, pending_settlement, split_losses) = run_round_start_before_duration(
         managers,
         pool,
         catalog,
@@ -129,7 +134,7 @@ pub fn run_before_ai_round_start(
         action_phase_team.is_some(),
         &[],
     )?;
-    append(&mut result, before);
+    append(&mut result, conditions.result);
     debug_assert!(pending_settlement.capacity_groups.is_empty());
     debug_assert!(split_losses.frames.is_empty());
     if let Some(team) = action_phase_team {
@@ -275,7 +280,7 @@ pub(crate) fn settle_round_start(
     } else {
         Vec::new()
     };
-    let (before_duration, settlement_plan, mut split_losses) = run_round_start_before_duration(
+    let (conditions, settlement_plan, mut split_losses) = run_round_start_before_duration(
         managers,
         pool,
         catalog,
@@ -298,7 +303,7 @@ pub(crate) fn settle_round_start(
             &mut split_losses,
         )?;
     }
-    append(&mut fight_steps, before_duration);
+    append(&mut fight_steps, conditions.result);
     append(&mut fight_steps, split_losses);
     let damage_heal_settlement =
         run_round_start_damage_heal_settlement(managers, pool, catalog, determinism, context)?;
@@ -330,16 +335,15 @@ pub(crate) fn settle_round_start(
         )?,
     );
     if version_seven {
+        let timers = settlement_timers(
+            managers,
+            &owner_uids,
+            &round_start_duration_snapshot,
+            &conditions.granted_timers,
+        );
         append_round_phase(
             &mut settlement,
-            run_round_start_duration(
-                managers,
-                pool,
-                catalog,
-                determinism,
-                context,
-                &round_start_duration_snapshot,
-            )?,
+            run_round_start_duration(managers, pool, catalog, determinism, context, &timers)?,
         );
     } else {
         let duration = run_round_start_durations(
@@ -756,6 +760,7 @@ pub fn run_start(
     let setup_owner_uids = round_start_setup_owner_uids(&owner_uids, 1);
     let existing_duration_snapshot = duration_snapshot(managers, &owner_uids);
     let mut opening_duration_snapshot = None;
+    let mut opening_condition_timers = Vec::new();
     let mut opening_duration_captured = false;
     let mut opening_settlement = None;
     let mut opening_late_ran = false;
@@ -1099,6 +1104,13 @@ pub fn run_start(
             });
             push_cues(&mut result.frames, deck_counts);
         }
+        let before_conditions = (version7_opening
+            && (stage, priority)
+                == (
+                    SetupStage::RoundStartCondition,
+                    effect_time::ROUND_START_ACTOR_DURATION,
+                ))
+            .then(|| duration_snapshot(managers, &owner_uids));
         let stage_result = if matches!(
             stage,
             SetupStage::RoundStartCondition | SetupStage::RoundStartLate
@@ -1146,6 +1158,9 @@ pub fn run_start(
                 priority,
             )?
         };
+        if let Some(before) = before_conditions {
+            opening_condition_timers = granted_timers(managers, &owner_uids, &before);
+        }
         if stage == SetupStage::RoundStart && priority == 2 {
             let settlement = opening_settlement
                 .get_or_insert_with(|| begin_round_phase(RoundPhase::RoundStartSettlement));
@@ -1195,16 +1210,21 @@ pub fn run_start(
         }
         if stage == SetupStage::RoundStart && priority == 2 {
             if version7_opening {
-                let duration_snapshot = opening_duration_snapshot
-                    .as_deref()
-                    .expect("Version7 captures duration before the opening setup lanes");
+                let timers = settlement_timers(
+                    managers,
+                    &owner_uids,
+                    opening_duration_snapshot
+                        .as_deref()
+                        .expect("Version7 captures duration before the opening setup lanes"),
+                    &opening_condition_timers,
+                );
                 let duration = run_round_start_duration(
                     managers,
                     pool,
                     catalog,
                     determinism,
                     context,
-                    duration_snapshot,
+                    &timers,
                 )?;
                 append_opening_round_phase(
                     opening_settlement
@@ -1412,7 +1432,7 @@ fn run_round_start_before_duration(
     wave_entry_condition_uids: &[i64],
     defer_round_start_duration: bool,
     opposing_round_start_owner_uids: &[i64],
-) -> Result<(DrainResult, RoundStartSettlementPlan, DrainResult), DrainError> {
+) -> Result<(RoundStartConditions, RoundStartSettlementPlan, DrainResult), DrainError> {
     let actor_timers = duration_snapshot(managers, owner_uids);
     let setup_owner_uids = round_start_setup_owner_uids(owner_uids, team);
     let field_ops = managers
@@ -1445,6 +1465,7 @@ fn run_round_start_before_duration(
     } else {
         ROUND_START_BEFORE_DURATION_SETUP
     };
+    let mut condition_timers = Vec::new();
     for &(stage, priority) in setup {
         if stage == SetupStage::RoundStartCondition
             && effect_time::ROUND_START_CONDITION_DURATION_STAGES.contains(&priority)
@@ -1490,6 +1511,14 @@ fn run_round_start_before_duration(
             );
             continue;
         }
+        let before_conditions = (version_seven
+            && split_settlement
+            && (stage, priority)
+                == (
+                    SetupStage::RoundStartCondition,
+                    effect_time::ROUND_START_ACTOR_DURATION,
+                ))
+            .then(|| duration_snapshot(managers, owner_uids));
         append(
             &mut result,
             drain::run_setup_stage_for_owners(
@@ -1503,6 +1532,9 @@ fn run_round_start_before_duration(
                 &pending_owner_uids,
             )?,
         );
+        if let Some(before) = before_conditions {
+            condition_timers = granted_timers(managers, owner_uids, &before);
+        }
     }
     append(
         &mut result,
@@ -1526,7 +1558,14 @@ fn run_round_start_before_duration(
         Some(owner_uids),
     )?;
     if split_settlement {
-        return Ok((result, settlement_plan, losses));
+        return Ok((
+            RoundStartConditions {
+                result,
+                granted_timers: condition_timers,
+            },
+            settlement_plan,
+            losses,
+        ));
     }
     let mut round_start_event = begin_round_start_event();
     append_round_phase(&mut round_start_event, losses);
@@ -1569,7 +1608,10 @@ fn run_round_start_before_duration(
     );
     append(&mut result, round_start_event);
     Ok((
-        result,
+        RoundStartConditions {
+            result,
+            granted_timers: condition_timers,
+        },
         RoundStartSettlementPlan::default(),
         DrainResult::default(),
     ))
