@@ -181,5 +181,7 @@ fn consume_command(managers: &BattleManagers, feature: &ActiveBuffFeature) -> Op
     }))
 }
 
+pub(super) mod ultimate;
+
 #[cfg(test)]
 mod tests;

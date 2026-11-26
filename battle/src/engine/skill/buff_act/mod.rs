@@ -617,7 +617,7 @@ pub fn attack_consumption_rule_ops(
                     attr_only_cal_damage_attack::consume_rule_op(managers, &feature)?
                 }
                 registry::BuffActKind::AttrOnlyCalDamageAttackBigSkill if is_big_skill => {
-                    attr_only_cal_damage_attack::consume_rule_op(managers, &feature)?
+                    attr_only_cal_damage_attack::ultimate::consume(managers, &feature)?
                 }
                 _ => return None,
             };

@@ -313,7 +313,7 @@ fn ultimate_only_attribute_waits_for_an_ultimate_before_consumption() {
                     buff_id: Some(228101),
                     from_uid: Some(1),
                     count: Some(1),
-                    layer: Some(1),
+                    layer: Some(8),
                     ..Default::default()
                 }],
                 ..Default::default()
@@ -322,7 +322,7 @@ fn ultimate_only_attribute_waits_for_an_ultimate_before_consumption() {
         }),
         ..Default::default()
     };
-    let managers = BattleManagers::seeded(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
     let feature = managers
         .buff
         .active_features(&managers.hp)
@@ -355,11 +355,14 @@ fn ultimate_only_attribute_waits_for_an_ultimate_before_consumption() {
             true,
             false,
         ),
-        30
+        240
     );
     assert!(super::super::attack_consumption_rule_ops(&managers, 1, false).is_empty());
-    assert_eq!(
-        super::super::attack_consumption_rule_ops(&managers, 1, true).len(),
-        1
-    );
+    let [(consumed, op)] = super::super::attack_consumption_rule_ops(&managers, 1, true)
+        .try_into()
+        .expect("the damaging Ultimate triggers one carrier");
+    assert_eq!(consumed.buff_uid, 3);
+    let mut events = crate::engine::event::bus::EventBus::default();
+    crate::engine::runtime::executor::execute_rule_op(&mut managers, &mut events, op).unwrap();
+    assert!(managers.buff.snapshot(1, 3).is_none());
 }
