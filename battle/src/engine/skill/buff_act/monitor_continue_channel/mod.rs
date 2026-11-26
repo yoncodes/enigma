@@ -57,7 +57,7 @@ pub fn rule_ops(
         invocation.extra_skill_kind =
             Some(crate::engine::skill::condition::extra::ExtraSkillKind::FollowUp);
         invocation.mode = crate::engine::skill::action::SkillExecutionMode::Active;
-        invocation.rate_modifier = rate_modifier(subscriber, &managers.buff);
+        invocation.channel_rate_buff = subscriber.args.get(3).copied();
         ops.push(RuleOp::Skill(invocation));
         ops.extend(after_skill(subscriber));
     }
@@ -108,40 +108,6 @@ pub fn can_run(subscriber: &BuffActSubscriber, buffs: &BuffManager) -> bool {
         .args
         .first()
         .is_some_and(|lock_buff_id| buffs.has_buff_id_or_type(subscriber.owner_uid, *lock_buff_id))
-}
-
-pub fn rate_bonus(subscriber: &BuffActSubscriber, buffs: &BuffManager) -> i32 {
-    rate_modifier(subscriber, buffs)
-        .and_then(|modifier| modifier.fixed_value())
-        .unwrap_or_default()
-}
-
-fn rate_modifier(
-    subscriber: &BuffActSubscriber,
-    buffs: &BuffManager,
-) -> Option<crate::engine::skill::action::SkillRateModifier> {
-    if !super::subscriber_is_kind(
-        subscriber,
-        super::registry::BuffActKind::MonitorContinueChannel,
-    ) {
-        return None;
-    }
-    let buff_id = subscriber.args.get(3).copied()?;
-    if buffs.has_buff_id(subscriber.owner_uid, buff_id) {
-        return None;
-    }
-    buffs
-        .definition_features(buff_id)
-        .into_iter()
-        .find_map(|feature| {
-            let delta = super::skill_rate_bonus(&feature);
-            (delta != 0).then(|| {
-                crate::engine::skill::action::SkillRateModifier::retribution_lane(
-                    feature.values[0],
-                    delta,
-                )
-            })
-        })
 }
 
 pub fn after_skill(subscriber: &BuffActSubscriber) -> Vec<RuleOp> {

@@ -78,12 +78,48 @@ fn configured_additional_damage_source_supplies_its_rate_multiplier() {
     });
 
     assert_eq!(
-        active_damage_rate_terms(1, &managers.buff, &managers.hp),
+        active_damage_rate_terms(1, &managers.buff, &managers.hp, None),
         vec![DamageRateTerm {
             opcode: 1025,
             rate: 100,
             career_scaled: true,
             composition: DamageRateComposition::ProducerMultiplier,
         }]
+    );
+}
+
+#[test]
+fn channel_uses_one_retribution_term_across_the_reward_grant() {
+    crate::test_support::init_config();
+    let held = |buffs| Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                current_hp: Some(1_000),
+                buffs,
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let reward = 31260161;
+    let read = |fight: Fight| {
+        let managers = crate::engine::manager::BattleManagers::seeded(&fight);
+        active_damage_rate_terms(10, &managers.buff, &managers.hp, Some(reward))
+    };
+    let before = read(held(Vec::new()));
+    assert!(matches!(
+        before.as_slice(),
+        [DamageRateTerm { rate: 100, .. }]
+    ));
+    assert_eq!(
+        read(held(vec![BuffInfo {
+            buff_id: Some(reward),
+            uid: Some(12),
+            from_uid: Some(10),
+            ..Default::default()
+        }])),
+        before
     );
 }

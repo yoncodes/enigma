@@ -23,6 +23,7 @@ fn invocation_keeps_runtime_target_and_action_kind() {
         extra_skill_kind: Some(ExtraSkillKind::FollowUp),
         target_observed_extra_action: None,
         rate_modifier: None,
+        channel_rate_buff: None,
         trigger: SkillTrigger::Explicit(30),
         mode: SkillExecutionMode::Nested,
         start: SkillStart::Immediate,

@@ -319,6 +319,7 @@ fn damage_rule_ops(
                 context.source_uid,
                 &context.managers.buff,
                 &context.managers.hp,
+                None,
             ),
         )
         .collect::<Vec<_>>();

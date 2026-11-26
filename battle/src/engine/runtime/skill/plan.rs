@@ -758,6 +758,7 @@ pub(super) fn damage_ops(
             source_uid,
             &managers.buff,
             &managers.hp,
+            invocation.channel_rate_buff,
         );
     let target_count_damage_bonus =
         crate::engine::skill::buff_act::attr_by_skill_target_count::owner_attribute_delta(

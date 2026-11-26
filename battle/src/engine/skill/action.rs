@@ -231,6 +231,7 @@ pub struct SkillInvocation {
     /// Defaults to the configured extra-skill kind when the producer does not override it.
     pub target_observed_extra_action: Option<bool>,
     pub rate_modifier: Option<SkillRateModifier>,
+    pub(crate) channel_rate_buff: Option<i32>,
     pub trigger: SkillTrigger,
     pub mode: SkillExecutionMode,
     pub start: SkillStart,
@@ -270,6 +271,7 @@ impl From<SkillRequest> for SkillInvocation {
             extra_skill_kind: None,
             target_observed_extra_action: None,
             rate_modifier: None,
+            channel_rate_buff: None,
             trigger: SkillTrigger::None,
             mode: SkillExecutionMode::Nested,
             start: SkillStart::Immediate,
@@ -378,16 +380,6 @@ impl SkillRateModifier {
             amount,
             career_scaled,
             composition: DamageRateComposition::Additive,
-        }
-    }
-
-    pub const fn retribution_lane(opcode: i32, delta: i32) -> Self {
-        Self {
-            target_uid: 0,
-            opcode,
-            amount: SkillRateAmount::Fixed(delta),
-            career_scaled: true,
-            composition: DamageRateComposition::RetributionLane,
         }
     }
 }
