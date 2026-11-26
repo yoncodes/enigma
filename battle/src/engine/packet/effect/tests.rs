@@ -272,6 +272,7 @@ fn version7_damage_projects_committed_toughness_delta() {
         Some(ToughnessChange {
             target_uid: -1,
             before,
+            reduction: 30,
             value_delta: -70,
             point_delta: 1,
             after,

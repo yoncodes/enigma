@@ -4,6 +4,10 @@ use sonettobuf::{Fight, FightEntityInfo};
 
 use super::entities;
 
+mod overflow;
+
+use overflow::OverflowRecord;
+
 pub const STANDARD_DAMAGE_RATE_PERMILLE: i32 = 200;
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -20,6 +24,7 @@ pub struct ToughnessState {
 pub struct ToughnessChange {
     pub target_uid: i64,
     pub before: ToughnessState,
+    pub reduction: i32,
     pub value_delta: i32,
     pub point_delta: i32,
     pub after: ToughnessState,
@@ -60,6 +65,7 @@ pub struct ToughnessReset {
 pub struct ToughnessManager {
     states: HashMap<i64, ToughnessState>,
     recovery_penalties: HashMap<i64, i32>,
+    overflow: OverflowRecord,
 }
 
 impl ToughnessManager {
@@ -94,6 +100,7 @@ impl ToughnessManager {
     ) {
         self.states.clear();
         self.recovery_penalties.clear();
+        self.overflow = OverflowRecord::default();
         for entity in entities(fight) {
             let values = configured(entity);
             self.register_from(entity, values);
@@ -195,11 +202,16 @@ impl ToughnessManager {
         Some(ToughnessChange {
             target_uid,
             before,
+            reduction,
             value_delta: before.value - state.value,
             point_delta: before.point - state.point,
             after: *state,
             broke: !before.broken && state.broken,
         })
+    }
+
+    pub(crate) fn record_crossing(&mut self, change: ToughnessChange) {
+        self.overflow.record(change);
     }
 
     pub fn is_broken(&self, target_uid: i64) -> bool {
@@ -228,13 +240,15 @@ impl ToughnessManager {
             return None;
         }
         let max_total = i64::from(state.max_point) * i64::from(state.segment_value);
-        let after_total = (max_total
-            - i64::from(
-                self.recovery_penalties
-                    .remove(&command.target_uid)
-                    .unwrap_or_default(),
-            ))
-        .max(0);
+        let penalty = self.recovery_penalties.remove(&command.target_uid);
+        let overflow = self
+            .overflow
+            .settle(command.target_uid, state.segment_value, penalty);
+        let minimum = i64::from(overflow > 0 && max_total > 0);
+        let after_total = max_total
+            .saturating_sub(i64::from(penalty.unwrap_or_default()))
+            .saturating_sub(overflow)
+            .max(minimum);
         state.point = if after_total == 0 {
             0
         } else {
@@ -269,6 +283,7 @@ impl ToughnessManager {
         before: Option<ToughnessState>,
     ) -> ToughnessReset {
         self.recovery_penalties.remove(&target_uid);
+        self.overflow.clear(target_uid);
         ToughnessReset {
             target_uid,
             before,

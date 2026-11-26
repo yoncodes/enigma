@@ -874,6 +874,15 @@ impl BattleManagers {
             }
             _ => None,
         };
+        if let Some(crossing) = toughness
+            && crossing.point_delta > 0
+            && self.buff.has_buff_act_kind(
+                crossing.target_uid,
+                crate::engine::skill::buff_act::registry::BuffActKind::ToughnessOverflowRecord,
+            )
+        {
+            self.toughness.record_crossing(crossing);
+        }
         let team_shared_shield_removed = plan.team_shared_buff.map(|plan| self.commit_buff(plan));
         let mut command = plan.command;
         if plan.fake_hp.is_none()
