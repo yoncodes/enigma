@@ -65,6 +65,7 @@ fn before_ap_resolution_owns_action_queue_duration() {
 fn duration_support_accepts_non_advancing_and_scheduled_policies() {
     assert!(supports_duration_policy(-1));
     assert!(supports_duration_policy(ROUND_START_INITIAL_DURATION));
+    assert!(supports_duration_policy(ROUND_START_ACTOR_DURATION));
     assert!(supports_duration_policy(
         ROUND_START_BEFORE_CONDITION_DURATION
     ));
@@ -81,7 +82,6 @@ fn duration_support_accepts_non_advancing_and_scheduled_policies() {
     assert!(supports_duration_policy(ROUND_END_FINAL_SETTLEMENT));
     assert!(!supports_duration_policy(209));
     assert!(!supports_duration_policy(205));
-    assert!(!supports_duration_policy(101));
 }
 
 #[test]

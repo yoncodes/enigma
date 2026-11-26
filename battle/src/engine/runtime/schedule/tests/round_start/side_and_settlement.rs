@@ -423,6 +423,59 @@ fn defender_action_phase_runs_progress_reactions_before_ai() {
 }
 
 #[test]
+fn defender_round_start_ticks_the_configured_actor_duration() {
+    init_config();
+    let marker_id = 9260104;
+    let entity = |uid, team| FightEntityInfo {
+        uid: Some(uid),
+        team_type: Some(team),
+        current_hp: Some(100),
+        buffs: vec![BuffInfo {
+            uid: Some(100 + uid),
+            buff_id: Some(marker_id),
+            duration: Some(3),
+            ..Default::default()
+        }],
+        ..Default::default()
+    };
+    let fight = Fight {
+        version: Some(7),
+        attacker: Some(FightTeam {
+            entitys: vec![entity(10, 1)],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![entity(-7, 2)],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+
+    run_before_ai_round_start(
+        &mut managers,
+        &pool,
+        &SkillEffectCatalog::default(),
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+        1,
+        &[],
+        Some(2),
+    )
+    .unwrap();
+
+    for (owner, duration) in [(10, 3), (-7, 2)] {
+        let buff = managers
+            .buff
+            .active_for(owner)
+            .find(|buff| buff.buff_id == Some(marker_id))
+            .unwrap();
+        assert_eq!(buff.duration, Some(duration));
+    }
+}
+
+#[test]
 fn defender_round_start_late_applies_configured_buffs_before_ai_and_filters_owners() {
     init_config();
     let entity = |uid, current_hp| FightEntityInfo {

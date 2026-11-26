@@ -6,9 +6,11 @@ pub const ROUND_END_ENTITY_SETTLEMENT: i32 = 303;
 pub const ROUND_END_AFTER_SETTLEMENT: i32 = 304;
 pub const ROUND_END_FINAL_SETTLEMENT: i32 = 307;
 pub const ROUND_START_INITIAL_DURATION: i32 = 100;
+pub const ROUND_START_ACTOR_DURATION: i32 = 101;
 pub const ROUND_START_BEFORE_CONDITION_DURATION: i32 = 102;
-pub const ROUND_START_CONDITION_DURATION_STAGES: [i32; 2] = [
+pub const ROUND_START_CONDITION_DURATION_STAGES: [i32; 3] = [
     ROUND_START_INITIAL_DURATION,
+    ROUND_START_ACTOR_DURATION,
     ROUND_START_BEFORE_CONDITION_DURATION,
 ];
 pub const ROUND_START_DURATION: i32 = 103;
@@ -65,7 +67,7 @@ effect_time_definitions! {
     0 => BuffActEvent::StaticRead,
     12 => BuffActEvent::Runtime(EventKind::EntityDied),
     ROUND_START_INITIAL_DURATION => BuffActEvent::Runtime(EventKind::RoundStart),
-    101 => BuffActEvent::Runtime(EventKind::RoundStart),
+    ROUND_START_ACTOR_DURATION => BuffActEvent::Runtime(EventKind::RoundStart),
     102 => BuffActEvent::Runtime(EventKind::RoundStart),
     103 => BuffActEvent::Runtime(EventKind::RoundStart),
     104 => BuffActEvent::Runtime(EventKind::RoundStart),
