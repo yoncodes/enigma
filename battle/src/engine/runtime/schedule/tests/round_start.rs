@@ -3,6 +3,7 @@ use crate::engine::runtime::record::SetupSide;
 
 mod bullet_types;
 mod channels_and_fields;
+mod riposte;
 mod side_and_settlement;
 mod stat_share;
 mod toughness;

@@ -11,6 +11,9 @@ use crate::engine::{
     },
 };
 
+mod setup;
+pub(crate) use setup::place_grant;
+
 pub fn rule_ops(
     pool: &TargetPool,
     subscriber: &BuffActSubscriber,
