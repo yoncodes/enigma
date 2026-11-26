@@ -155,6 +155,7 @@ impl SkillEffectCatalog {
                 if !seen_skills.insert(skill_id) {
                     continue;
                 }
+                skills.extend(crate::catalog::configured_card_choices(db, skill_id));
                 if let Some(reinforced) = db
                     .hero_upgrade_breaklevel
                     .iter()

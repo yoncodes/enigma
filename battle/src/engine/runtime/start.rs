@@ -52,7 +52,7 @@ fn run_start_schedule(
 
 impl BattleRuntime {
     pub(super) fn extend_current_card_skill_roots(&mut self) {
-        let card_skills = self
+        let skill_ids = self
             .managers
             .card
             .hand()
@@ -63,15 +63,7 @@ impl BattleRuntime {
             .filter_map(|card| card.skill_id)
             .filter(|skill_id| *skill_id > 0)
             .collect::<Vec<_>>();
-        let skill_ids = card_skills
-            .iter()
-            .copied()
-            .chain(
-                card_skills
-                    .iter()
-                    .flat_map(|skill_id| self.managers.catalog().card_choice_skills(*skill_id)),
-            )
-            .collect::<Vec<_>>();
+
         self.catalog_data
             .expect("battle runtime was not constructed with a catalog")
             .extend_skill_roots(&mut self.catalog, skill_ids, std::iter::empty());

@@ -74,6 +74,33 @@ fn auto_round_distinguishes_an_invalid_choice_from_missing_skill_data() {
 }
 
 #[test]
+fn auto_round_rejects_a_loaded_choice_from_another_card_rank() {
+    let mut hero = team_hero(10, 3120, 1_000, [31200111, 312001215]);
+    hero.skill_group2.push(312001225);
+    let runtime = team_runtime(vec![hero], vec![hand_card(10, 312001215, false)]);
+    assert!(runtime.catalog.get(31200165).is_some());
+
+    let planner = runtime.auto_round_planner();
+    let mut request = AutoRoundRequest {
+        opers: vec![BeginRoundOper {
+            oper_type: Some(CardOpType::PlayCard.id()),
+            param1: Some(1),
+            param3: Some(31200164),
+            to_id: Some(-1),
+            ..Default::default()
+        }],
+        ..Default::default()
+    };
+    assert!(planner.plan(&request).is_ok());
+
+    request.opers[0].param3 = Some(31200165);
+    assert!(matches!(
+        planner.plan(&request),
+        Err(AutoRoundError::InvalidRequest)
+    ));
+}
+
+#[test]
 fn auto_round_indices_replay_through_the_real_round_after_merges() {
     let mut runtime = team_runtime(
         vec![team_hero(10, 3023, 1_000, [30230111, 30230121])],

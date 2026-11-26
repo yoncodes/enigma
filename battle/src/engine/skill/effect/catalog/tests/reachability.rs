@@ -362,3 +362,20 @@ fn scoped_catalog_follows_configured_hero_upgrade_outcomes() {
     assert!(catalog.compiled_subscription_lanes(30861171).is_ok());
     assert!(catalog.reachable_buffs.contains(&30860173));
 }
+
+#[test]
+fn extended_card_root_loads_its_configured_choices() {
+    init_config();
+    let db = config::configs::get();
+    let mut catalog = SkillEffectCatalog::from_roots(db, [312001215, 31200164, 31200231], []);
+
+    assert!(catalog.get(31200165).is_none());
+    assert!(catalog.get(31200232).is_none());
+
+    catalog.extend_roots(db, [312001225], []);
+
+    assert!(catalog.get(312001225).is_some());
+    assert!(catalog.get(31200165).is_some());
+    assert!(catalog.get(31200232).is_some());
+    assert!(catalog.get(31430141).is_none());
+}

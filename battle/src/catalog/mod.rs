@@ -625,13 +625,7 @@ impl BattleCatalog {
     }
 
     pub(crate) fn card_choice_skills(self, skill_id: i32) -> Vec<i32> {
-        self.game_data
-            .fight_card_choice
-            .get(skill_id)
-            .into_iter()
-            .flat_map(|row| row.choice_sk_ills.split('#'))
-            .filter_map(|skill_id| skill_id.trim().parse().ok())
-            .collect()
+        configured_card_choices(self.game_data, skill_id).collect()
     }
 
     pub(crate) fn skill_is_ultimate_for_model(self, skill_id: i32, model_id: i32) -> bool {
@@ -1190,6 +1184,18 @@ fn parse_integers(raw: &str) -> Vec<i32> {
     raw.split(['|', '#'])
         .filter_map(|value| value.trim().parse().ok())
         .collect()
+}
+
+pub(crate) fn configured_card_choices(
+    game_data: &config::GameDB,
+    skill_id: i32,
+) -> impl Iterator<Item = i32> + '_ {
+    game_data
+        .fight_card_choice
+        .get(skill_id)
+        .into_iter()
+        .flat_map(|row| row.choice_sk_ills.split('#'))
+        .filter_map(|skill_id| skill_id.trim().parse().ok())
 }
 
 pub(crate) fn target_count(game_data: &config::GameDB, code: i32) -> i32 {

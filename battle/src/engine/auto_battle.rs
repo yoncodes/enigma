@@ -533,15 +533,14 @@ fn apply_prefix(
                 let Some((source_uid, skill_id)) = card_identity(card, chosen_skill_id) else {
                     return Ok(false);
                 };
+                if chosen_skill_id.is_some()
+                    && card.skill_id != Some(skill_id)
+                    && !card_choice_options(card, managers).contains(&skill_id)
+                {
+                    return Err(AutoBattleError::InvalidChoice);
+                }
                 if catalog.get(skill_id).is_none() {
-                    let configured = chosen_skill_id.is_none()
-                        || card.skill_id == Some(skill_id)
-                        || card_choice_options(card, managers).contains(&skill_id);
-                    return Err(if configured {
-                        AutoBattleError::MissingSkill(skill_id)
-                    } else {
-                        AutoBattleError::InvalidChoice
-                    });
+                    return Err(AutoBattleError::MissingSkill(skill_id));
                 }
                 let setup_aim = preparation_aim
                     && dynamo_opening::allows_aim(
