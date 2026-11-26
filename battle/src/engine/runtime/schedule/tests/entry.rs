@@ -1,6 +1,7 @@
 use super::*;
 
 mod cycle_substitution;
+mod stage_halo;
 
 #[test]
 fn player_and_marked_monster_reserves_promote_after_the_action() {

@@ -1,5 +1,6 @@
 use crate::engine::{
     buff::halo::{self, HaloKind, HaloScope},
+    fight::rules::is_side_uid,
     manager::hp::HpManager,
 };
 
@@ -90,16 +91,24 @@ impl BuffManager {
             .iter()
             .filter(|active| {
                 active.fanout_emitter_uid.is_none()
-                    && self
-                        .entities
-                        .iter()
-                        .any(|entity| entity.uid == active.owner_uid && entity.active)
-                    && hp.current(active.owner_uid) > 0
                     && active.definition.as_ref().is_none_or(|definition| {
                         definition.duration <= 0 || active.buff.duration.unwrap_or_default() > 0
                     })
             })
-            .flat_map(|active| {
+            .filter_map(|active| {
+                let side_owner = is_side_uid(active.owner_uid);
+                let can_emit = if side_owner {
+                    active.effective
+                } else {
+                    hp.current(active.owner_uid) > 0
+                        && self
+                            .entities
+                            .iter()
+                            .any(|entity| entity.uid == active.owner_uid && entity.active)
+                };
+                can_emit.then_some((active, side_owner))
+            })
+            .flat_map(|(active, side_owner)| {
                 let emitter_uid = active.owner_uid;
                 let source_uid = active.buff.from_uid.unwrap_or(emitter_uid);
                 let carrier_buff_id = active.buff.buff_id.unwrap_or_default();
@@ -109,6 +118,7 @@ impl BuffManager {
                 let duration = active.buff.duration.unwrap_or_default();
                 halo::carriers(self.catalog(), carrier_buff_id)
                     .into_iter()
+                    .filter(move |carrier| !side_owner || carrier.kind == HaloKind::Master)
                     .map(move |carrier| {
                         (
                             emitter_uid,
