@@ -6,6 +6,8 @@ use crate::engine::{
     skill::{rule::CommandOrigin, target::TargetPool},
 };
 
+mod electric_lifetime;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct FieldDefinition {
     pub field_id: i32,

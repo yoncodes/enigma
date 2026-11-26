@@ -621,6 +621,22 @@ pub fn run_round_end_final_settlement(
     )?;
     let mut result = begin_round_phase(RoundPhase::RoundEndFinalSettlement);
     append_round_phase(&mut result, initial);
+    for command in managers.field.electric_round_end(managers.catalog()) {
+        append_round_phase(
+            &mut result,
+            drain::run_owned_command_group(
+                managers,
+                pool,
+                catalog,
+                determinism,
+                context,
+                [(
+                    FrameOwner::ElectricFieldDuration,
+                    RuleOp::Command(BattleCommand::Field(command)),
+                )],
+            )?,
+        );
+    }
     let take_stage = effect_time::ROUND_END_FINAL_SETTLEMENT;
     let expiring = managers
         .buff

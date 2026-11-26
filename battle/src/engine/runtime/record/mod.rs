@@ -60,6 +60,7 @@ pub enum FrameOwner {
         buff_uid: i64,
         take_stage: i32,
     },
+    ElectricFieldDuration,
     StageWave {
         wave: i32,
     },
@@ -245,7 +246,11 @@ pub(crate) fn event_scope_path(frames: &[SemanticFrame], path: &[usize]) -> Fram
         && let Some(setup_entity) = setup_entity_scope_path(frames, path)
     {
         setup_entity
-    } else if matches!(frame.owner, FrameOwner::BuffAct { .. }) && path.len() > 1 {
+    } else if matches!(
+        frame.owner,
+        FrameOwner::BuffAct { .. } | FrameOwner::ElectricFieldDuration
+    ) && path.len() > 1
+    {
         let mut parent = path.to_vec();
         parent.pop();
         parent
