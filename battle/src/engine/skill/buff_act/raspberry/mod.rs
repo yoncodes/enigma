@@ -481,10 +481,10 @@ pub fn capacity_rule_op(
 pub(crate) fn settle_capacity(
     managers: &mut BattleManagers,
     command: CapacityCommand,
-) -> Result<CapacityResult, CapacityError> {
+) -> Result<Option<CapacityResult>, CapacityError> {
     if command.delta != 0 {
         return execute_capacity(managers, command)
-            .map(|changes| CapacityResult::Applied(Box::new(changes)));
+            .map(|changes| Some(CapacityResult::Applied(Box::new(changes))));
     }
     if command.source_uid == 0
         || command.target_uid == 0
@@ -494,14 +494,27 @@ pub(crate) fn settle_capacity(
     {
         return Err(CapacityError::InvalidCommand);
     }
-    Ok(CapacityResult::AtCap(CapacityAtCap {
+    if !managers
+        .buff
+        .buff_has_act(command.target_uid, command.buff_uid, BuffActKind::Raspberry)
+    {
+        return Ok(None);
+    }
+    let capacity = managers
+        .buff
+        .snapshot(command.target_uid, command.buff_uid)
+        .and_then(|buff| recorded_capacity(Some(managers.catalog()), &buff));
+    let Some((current, cap)) = capacity.filter(|(current, cap)| *cap > 0 && current == cap) else {
+        return Ok(None);
+    };
+    Ok(Some(CapacityResult::AtCap(CapacityAtCap {
         target_uid: command.target_uid,
         buff_uid: command.buff_uid,
         buff_act_id: command.buff_act_id,
-        current: command.current,
-        cap: command.cap,
+        current,
+        cap,
         max_hp: managers.hp.max(command.target_uid),
-    }))
+    })))
 }
 
 pub(crate) fn execute_capacity(

@@ -137,6 +137,8 @@ fn add_count_uses_the_registered_raspberry_capacity_transaction() {
 
 #[test]
 fn add_count_at_cap_reports_a_sync_without_mutating_hp() {
+    use crate::engine::manager::buff::{BuffRemove, BuffRemoveSelector};
+
     crate::test_support::init_config();
     let fight = Fight {
         attacker: Some(FightTeam {
@@ -191,6 +193,32 @@ fn add_count_at_cap_reports_a_sync_without_mutating_hp() {
     );
     assert_eq!(managers.hp.current(11), 10_000);
     assert_eq!(managers.hp.max(11), 20_000);
+
+    let command = CapacityCommand {
+        origin: CommandOrigin {
+            domain: RuleDomain::BuffAct,
+            key: DefinitionKey::new(1042, "Raspberry"),
+        },
+        source_uid: 11,
+        target_uid: 11,
+        buff_uid: 77,
+        buff_act_id: 1042,
+        current: 1000,
+        cap: 1000,
+        delta: 0,
+    };
+    assert_eq!(
+        settle_capacity(&mut managers, command).unwrap(),
+        Some(result)
+    );
+    managers
+        .execute_buff(BuffCommand::Remove(BuffRemove {
+            origin: command.origin,
+            target_uid: 11,
+            selector: BuffRemoveSelector::Uid(77),
+        }))
+        .unwrap();
+    assert_eq!(settle_capacity(&mut managers, command).unwrap(), None);
 }
 
 #[test]
