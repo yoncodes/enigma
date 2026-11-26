@@ -191,16 +191,20 @@ pub(crate) fn field_thresholds(
 
 pub(super) struct Handler;
 
-fn supports_magic_circle_attr(behavior: &ParsedBehavior) -> bool {
-    let mut triples = behavior.args.chunks_exact(3);
-    !behavior.args.is_empty()
-        && triples.remainder().is_empty()
-        && triples.all(|triple| {
-            let [scope, raw_attr_id, _] = triple else {
-                return false;
-            };
-            matches!(*scope, 1 | 2) && AttrId::from_raw(*raw_attr_id).is_some()
+fn magic_circle_attributes(behavior: &ParsedBehavior) -> Option<Vec<(i32, AttrId, i32)>> {
+    if behavior.raw_arity != behavior.args.len() {
+        return None;
+    }
+    let (triples, remainder) = behavior.args.as_chunks::<3>();
+    if triples.is_empty() || !remainder.is_empty() {
+        return None;
+    }
+    triples
+        .iter()
+        .map(|&[scope, attr, delta]| {
+            matches!(scope, 1 | 2).then_some((scope, AttrId::from_raw(attr)?, delta))
         })
+        .collect()
 }
 
 impl BehaviorHandler for Handler {
@@ -218,7 +222,7 @@ impl BehaviorHandler for Handler {
                     && configured(*circle_id)
             }
             (BehaviorKind::RemoveMagicCircleById, [circle_id]) => configured(*circle_id),
-            (BehaviorKind::MagicCircleAttr, _) => supports_magic_circle_attr(behavior),
+            (BehaviorKind::MagicCircleAttr, _) => magic_circle_attributes(behavior).is_some(),
             (BehaviorKind::UpdateWangQiMagicCircle, [1]) => true,
             _ => false,
         }
@@ -236,7 +240,7 @@ impl BehaviorHandler for Handler {
             BehaviorKind::RemoveMagicCircleById => {
                 remove_rule_ops(behavior, context.source_team, context.managers)
             }
-            BehaviorKind::MagicCircleAttr => supports_magic_circle_attr(behavior).then(Vec::new),
+            BehaviorKind::MagicCircleAttr => magic_circle_attributes(behavior).map(|_| Vec::new()),
             BehaviorKind::UpdateWangQiMagicCircle => update_wangqi_rule_ops(
                 behavior,
                 context.source_uid,
@@ -311,6 +315,7 @@ pub fn emit_attributes(
     pool: &TargetPool,
     determinism: &mut RoundDeterminism,
     context: TargetContext,
+    only: Option<AttrId>,
 ) {
     let Some(field) = pool
         .team_type(source_uid)
@@ -339,11 +344,22 @@ pub fn emit_attributes(
         let Some(effect) = effects.get(passive_skill) else {
             continue;
         };
-        for slot in effect
-            .slots
-            .iter()
-            .filter(|slot| slot.behavior.spec.kind == BehaviorKind::MagicCircleAttr)
-        {
+        for slot in &effect.slots {
+            if slot.compiled_route.is_err()
+                || super::registry::find(&slot.behavior)
+                    .is_none_or(|definition| definition.kind != BehaviorKind::MagicCircleAttr)
+            {
+                continue;
+            }
+            let Some(mut terms) = magic_circle_attributes(&slot.behavior) else {
+                continue;
+            };
+            terms.retain(|&(scope, attr, _)| {
+                (scope == 2 || source_uid == owner.uid) && only.is_none_or(|read| read == attr)
+            });
+            if terms.is_empty() {
+                continue;
+            }
             let condition_targets = TargetResolver::resolve_with_managers_and_context(
                 &slot.condition_target,
                 active_skill_id,
@@ -363,21 +379,7 @@ pub fn emit_attributes(
             ) {
                 continue;
             }
-            for args in slot.behavior.args.chunks_exact(3) {
-                let [scope, raw_attr_id, delta] = args else {
-                    continue;
-                };
-                if *scope == 1 && source_uid != owner.uid {
-                    continue;
-                }
-                if !matches!(*scope, 1 | 2) {
-                    continue;
-                }
-                let Some(attr_id) = AttrId::from_raw(*raw_attr_id) else {
-                    continue;
-                };
-                attributes.push((attr_id, *delta));
-            }
+            attributes.extend(terms.into_iter().map(|(_, attr, delta)| (attr, delta)));
         }
     }
 }

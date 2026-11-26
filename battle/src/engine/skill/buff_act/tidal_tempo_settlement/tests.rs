@@ -11,9 +11,9 @@ use crate::engine::{
     runtime::{determinism::RoundDeterminism, drain},
     skill::{
         action::{ActionEvent, SkillLifecycle, SkillRequest},
-        effect::SkillEffectCatalog,
-        rule::{CommandOrigin, DefinitionKey, RuleDomain, output::RuleOp},
-        target::{TargetContext, TargetPool},
+        effect::{ParsedBehavior, ParsedSkillEffect, SkillEffectCatalog, SkillEffectSlot},
+        rule::{CommandOrigin, DefinitionKey, RuleDomain, output::RuleOp, route::RouteError},
+        target::{TargetContext, TargetPool, TargetRequest},
     },
 };
 
@@ -55,7 +55,7 @@ fn tidal_tempo_settles_paid_ultimate_moxie_for_the_current_round() {
                     ex_point: Some(8),
                     ex_point_max: Some(8),
                     ex_point_type: Some(ExPointKind::Faith.as_wire()),
-                    passive_skill: vec![433715],
+                    passive_skill: vec![433715, 80],
                     ..Default::default()
                 },
             ],
@@ -84,7 +84,42 @@ fn tidal_tempo_settles_paid_ultimate_moxie_for_the_current_round() {
         ..Default::default()
     };
     let pool = TargetPool::from_fight(&fight);
-    let catalog = SkillEffectCatalog::from_fight(config::configs::get(), &fight);
+    let mut catalog = SkillEffectCatalog::from_fight(config::configs::get(), &fight);
+    let mut irrelevant = SkillEffectSlot::new(
+        ParsedBehavior::new(60076, "MagicCircleAttr", vec![2, 301, 40]),
+        TargetRequest::self_only(),
+    );
+    irrelevant.condition_target = TargetRequest {
+        code: 106,
+        raw: Vec::new(),
+    };
+    let mut unknown_condition = SkillEffectSlot::new(
+        ParsedBehavior::new(60076, "MagicCircleAttr", vec![2, 211, 900]),
+        TargetRequest::self_only(),
+    );
+    unknown_condition.condition_target = irrelevant.condition_target.clone();
+    unknown_condition.compiled_route = Err(RouteError::UnregisteredExactKey {
+        opcode: 9_999,
+        type_name: "TestUnknownCondition".to_owned(),
+    });
+    catalog.insert(ParsedSkillEffect {
+        skill_id: 80,
+        slots: vec![
+            SkillEffectSlot::new(
+                ParsedBehavior::from_spec(
+                    crate::engine::skill::behavior::classify::BehaviorSpec::new(
+                        60076,
+                        "MagicCircleAttr",
+                    ),
+                    vec![2, 211, 120],
+                    ["2", "211", "120", "1,2"].map(str::to_owned).to_vec(),
+                ),
+                TargetRequest::self_only(),
+            ),
+            irrelevant,
+            unknown_condition,
+        ],
+    });
     let mut managers = BattleManagers::seeded(&fight);
     managers
         .field
@@ -172,4 +207,8 @@ fn tidal_tempo_settles_paid_ultimate_moxie_for_the_current_round() {
     managers.begin_reaction_round();
     run(&mut managers, settlement());
     assert_eq!(managers.hp.current(-1), 8_080);
+    assert_eq!(
+        determinism.lua_random_index(1000),
+        RoundDeterminism::default().lua_random_index(1000)
+    );
 }

@@ -66,14 +66,12 @@ pub fn rule_ops(context: &mut RuntimeContext<'_>) -> Option<Vec<RuleOp>> {
             runtime_target_uid: target_uid,
             ..Default::default()
         },
+        Some(AttrId::UltimateMight),
     );
-    formula.might = field_attributes
-        .into_iter()
-        .filter_map(|(attr, value)| (attr == AttrId::UltimateMight).then_some(value))
-        .fold(
-            1_000i32.saturating_add(managers.origin_attribute(source_uid, AttrId::UltimateMight)),
-            i32::saturating_add,
-        );
+    formula.might = field_attributes.into_iter().map(|(_, value)| value).fold(
+        1_000i32.saturating_add(managers.origin_attribute(source_uid, AttrId::UltimateMight)),
+        i32::saturating_add,
+    );
     formula.is_crit = context.determinism.roll_periodic_origin_crit(
         subscriber.buff_id,
         source_uid,

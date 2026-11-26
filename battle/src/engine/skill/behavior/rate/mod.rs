@@ -930,6 +930,7 @@ pub(crate) fn emit_passive_hit_attributes(
         pool,
         determinism,
         context,
+        None,
     );
 }
 
