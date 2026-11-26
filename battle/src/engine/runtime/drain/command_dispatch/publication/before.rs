@@ -240,6 +240,24 @@ pub(in super::super) fn prepare(
         result.events.extend(hit_events.iter().cloned());
         pending_hit_skills = hit_skills;
     }
+    state.defer_target_hit_reactions(
+        action_scope,
+        std::mem::take(&mut pending_hit_skills.before_publish),
+    );
+    if releases_hit_passive_skills
+        && let target_hit_reactions = state.take_target_hit_reactions(action_scope)
+        && !target_hit_reactions.is_empty()
+    {
+        drain_nested_queue(
+            managers,
+            pool,
+            catalog,
+            determinism,
+            target_hit_reactions.into(),
+            result,
+            state,
+        )?;
+    }
     if !before_reactions.before_publish.is_empty() {
         drain_nested_queue(
             managers,
@@ -251,8 +269,7 @@ pub(in super::super) fn prepare(
             state,
         )?;
     }
-    if !pending_hit_skills.before_publish.is_empty()
-        || !pending_hit_skills.after_publish.is_empty()
+    if !pending_hit_skills.after_publish.is_empty()
         || !pending_hit_skills.shared_hit_skills.is_empty()
     {
         let shared_hit_skills = std::mem::take(&mut pending_hit_skills.shared_hit_skills);

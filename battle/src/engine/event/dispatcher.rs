@@ -311,7 +311,10 @@ pub(crate) fn dispatch_selected_event(
 ) -> Result<DispatchBatch, SubscriberError> {
     let mut subscribers = selection.subscribers.clone();
     if let Some(publication) = selection.publication {
-        retain_publication(&mut subscribers, publication);
+        let released_target_hit = matches!(selection.lane, Some(ReactionLane::Skills))
+            && selection.hit_passives_pending
+            && matches!(event, BattleEvent::Hit(_));
+        retain_publication(&mut subscribers, publication, released_target_hit);
     }
     if let Some((owner_uid, skill_id)) = selection.completing_skill
         && subscribers
@@ -362,7 +365,7 @@ pub fn dispatch_event_phase(
 ) -> Result<DispatchBatch, SubscriberError> {
     subscriber::for_compiled_events(pool, managers, catalog, event.subscription_kinds()).map(
         |mut subscribers| {
-            retain_publication(&mut subscribers, publication);
+            retain_publication(&mut subscribers, publication, false);
             dispatch_subscribers(subscribers, pool, managers, catalog, determinism, event)
         },
     )
@@ -379,7 +382,7 @@ pub(crate) fn dispatch_event_phase_with_multiplicity(
 ) -> Result<DispatchBatch, SubscriberError> {
     subscriber::for_compiled_events(pool, managers, catalog, event.subscription_kinds()).map(
         |mut subscribers| {
-            retain_publication(&mut subscribers, publication);
+            retain_publication(&mut subscribers, publication, false);
             dispatch_subscribers_with_multiplicity(
                 subscribers,
                 pool,
@@ -422,7 +425,7 @@ pub(crate) fn dispatch_selected_skill_event(
                 && action.mode.completes_action()
         });
     } else {
-        retain_publication(&mut subscribers, selection.publication);
+        retain_publication(&mut subscribers, selection.publication, false);
     }
     retain_reaction_timing(&mut subscribers, selection.timing, event, false, false);
     Ok(dispatch_subscribers(
@@ -821,7 +824,7 @@ pub fn dispatch_owner_event_phase(
         owner_uids,
     )
     .map(|mut subscribers| {
-        retain_publication(&mut subscribers, publication);
+        retain_publication(&mut subscribers, publication, false);
         dispatch_subscribers(subscribers, pool, managers, catalog, determinism, event)
     })
 }
@@ -843,7 +846,7 @@ pub(crate) fn dispatch_owner_event_phase_with_multiplicity(
         scope.owner_uids,
     )
     .map(|mut subscribers| {
-        retain_publication(&mut subscribers, scope.publication);
+        retain_publication(&mut subscribers, scope.publication, false);
         dispatch_subscribers_with_multiplicity(
             subscribers,
             pool,
@@ -859,17 +862,23 @@ pub(crate) fn dispatch_owner_event_phase_with_multiplicity(
 fn retain_publication(
     subscribers: &mut subscriber::EventSubscribers,
     publication: crate::engine::event::subscription::PublicationPhase,
+    released_target_hit: bool,
 ) {
     use crate::engine::event::subscription::{PublicationPhase, ReactionTiming};
 
-    subscribers.skills.retain(|subscriber| match publication {
-        PublicationPhase::BeforePublish => {
-            subscriber.key.timing == ReactionTiming::Immediate
-                && subscriber.key.publication == PublicationPhase::BeforePublish
+    subscribers.skills.retain(|subscriber| {
+        if subscriber.key.timing == ReactionTiming::ReleasedTargetHit {
+            return released_target_hit == (publication == PublicationPhase::BeforePublish);
         }
-        PublicationPhase::AfterPublish => {
-            subscriber.key.timing != ReactionTiming::Immediate
-                || subscriber.key.publication == PublicationPhase::AfterPublish
+        match publication {
+            PublicationPhase::BeforePublish => {
+                subscriber.key.timing == ReactionTiming::Immediate
+                    && subscriber.key.publication == PublicationPhase::BeforePublish
+            }
+            PublicationPhase::AfterPublish => {
+                subscriber.key.timing != ReactionTiming::Immediate
+                    || subscriber.key.publication == PublicationPhase::AfterPublish
+            }
         }
     });
     subscribers
@@ -914,8 +923,15 @@ fn retain_reaction_timing(
     let shared_hit =
         delay_shared_hit && matches!(event, BattleEvent::Hit(hit) if hit.share_count > 0);
     let selected = |declared| match declared {
-        ReactionTiming::AfterSharedHit if shared_hit => timing == ReactionTiming::AfterSharedHit,
-        ReactionTiming::AfterSharedHit => timing == ReactionTiming::Immediate,
+        ReactionTiming::ReleasedTargetHit if hit_passives_pending => {
+            timing == ReactionTiming::Immediate
+        }
+        ReactionTiming::AfterSharedHit | ReactionTiming::ReleasedTargetHit if shared_hit => {
+            timing == ReactionTiming::AfterSharedHit
+        }
+        ReactionTiming::AfterSharedHit | ReactionTiming::ReleasedTargetHit => {
+            timing == ReactionTiming::Immediate
+        }
         ReactionTiming::AfterHitPassives if hit_passives_pending => {
             timing == ReactionTiming::BeforeAfterHitObservers
         }

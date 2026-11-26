@@ -140,7 +140,9 @@ fn life_threshold_reactions_observe_only_their_own_hp_loss() {
 
 #[test]
 fn shared_hit_delay_is_owned_by_the_subscription_timing() {
-    let subscriber = || SkillSubscriber {
+    use crate::engine::event::subscription::ReactionTiming;
+
+    let subscriber = |timing| SkillSubscriber {
         owner_uid: 10,
         skill_id: 100,
         slot_index: Some(0),
@@ -148,7 +150,7 @@ fn shared_hit_delay_is_owned_by_the_subscription_timing() {
             EventKind::TargetAttacked,
             DefinitionKey::new(22209, "BeAttacked"),
         )
-        .with_timing(crate::engine::event::subscription::ReactionTiming::AfterSharedHit),
+        .with_timing(timing),
     };
     let hit = |share_count| {
         BattleEvent::Hit(HitEvent {
@@ -170,31 +172,38 @@ fn shared_hit_delay_is_owned_by_the_subscription_timing() {
         })
     };
 
-    let mut normal = subscriber::EventSubscribers {
-        skills: vec![subscriber()],
-        buff_acts: Vec::new(),
-    };
-    retain_reaction_timing(
-        &mut normal,
-        crate::engine::event::subscription::ReactionTiming::Immediate,
-        &hit(0),
-        true,
-        false,
-    );
-    assert_eq!(normal.skills.len(), 1);
+    for declared in [
+        ReactionTiming::AfterSharedHit,
+        ReactionTiming::ReleasedTargetHit,
+    ] {
+        let subscribers = subscriber::EventSubscribers {
+            skills: vec![subscriber(declared)],
+            buff_acts: Vec::new(),
+        };
+        let mut normal = subscribers.clone();
+        retain_reaction_timing(&mut normal, ReactionTiming::Immediate, &hit(0), true, false);
+        assert_eq!(normal.skills.len(), 1);
 
-    let mut shared = subscriber::EventSubscribers {
-        skills: vec![subscriber()],
-        buff_acts: Vec::new(),
-    };
-    retain_reaction_timing(
-        &mut shared,
-        crate::engine::event::subscription::ReactionTiming::AfterSharedHit,
-        &hit(3),
-        true,
-        false,
-    );
-    assert_eq!(shared.skills.len(), 1);
+        let mut immediate_shared = subscribers.clone();
+        retain_reaction_timing(
+            &mut immediate_shared,
+            ReactionTiming::Immediate,
+            &hit(3),
+            true,
+            false,
+        );
+        assert!(immediate_shared.skills.is_empty());
+
+        let mut shared = subscribers;
+        retain_reaction_timing(
+            &mut shared,
+            ReactionTiming::AfterSharedHit,
+            &hit(3),
+            true,
+            false,
+        );
+        assert_eq!(shared.skills.len(), 1);
+    }
 }
 
 #[test]

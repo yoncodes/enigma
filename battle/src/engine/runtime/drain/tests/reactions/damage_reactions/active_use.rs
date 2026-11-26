@@ -1,6 +1,87 @@
 use super::*;
 
 #[test]
+fn ally_attacked_heal_follows_target_higge_and_pays_once_for_two_hits() {
+    crate::test_support::init_config();
+    let entity = |uid, team, passive_skill| FightEntityInfo {
+        uid: Some(uid),
+        team_type: Some(team),
+        current_hp: Some(7_500),
+        attr: Some(HeroAttribute {
+            hp: Some(10_000),
+            attack: Some(1_000),
+            ..Default::default()
+        }),
+        passive_skill,
+        ..Default::default()
+    };
+    let fight = Fight {
+        version: Some(7),
+        attacker: Some(FightTeam {
+            entitys: vec![entity(10, 1, vec![31200222]), entity(11, 1, vec![31250144])],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![entity(-1, 2, vec![])],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let catalog =
+        SkillEffectCatalog::from_roots(config::configs::get(), [40110421, 31200222, 31250144], []);
+    let mut managers = BattleManagers::seeded(&fight);
+    let mut invocation = SkillInvocation::from(SkillRequest {
+        source_uid: -1,
+        skill_id: 40110421,
+    });
+    invocation.mode = SkillExecutionMode::Active;
+    invocation.target = SkillTarget::Explicit(10);
+    let result = run(
+        &mut managers,
+        &pool,
+        &catalog,
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+        [RuleOp::Skill(invocation)],
+    )
+    .unwrap();
+
+    assert!(result.events.iter().any(|event| matches!(
+        event,
+        BattleEvent::SkillAction(action)
+            if action.phase == crate::engine::skill::action::SkillPhase::HitPassives
+                && action.attacked_target_uids.len() == 2
+    )));
+    let ordered_events = result
+        .events
+        .iter()
+        .filter_map(|event| match event {
+            BattleEvent::BuffAdded(change) if change.buff_id == 31200142 => Some("Higge"),
+            BattleEvent::BuffAdded(change) if change.buff_id == 31250191 => Some("marker"),
+            BattleEvent::HpHealed {
+                source_uid: 11,
+                target_uid: 10,
+                amount: 1_200,
+                ..
+            } => Some("heal Nautika"),
+            BattleEvent::HpHealed {
+                source_uid: 11,
+                target_uid: 11,
+                amount: 1_200,
+                ..
+            } => Some("heal Rubuska"),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        ordered_events,
+        ["Higge", "marker", "heal Nautika", "heal Rubuska"]
+    );
+    assert_eq!(managers.buff.buff_id_amount(11, 31250191), 0);
+}
+
+#[test]
 fn life_more_grants_pollution_after_the_owners_attack_above_the_threshold() {
     crate::test_support::init_config();
     let passive = 3120004;

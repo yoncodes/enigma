@@ -24,6 +24,7 @@ pub enum ReactionTiming {
     AfterHitObservers,
     AfterHitShell,
     AfterSharedHit,
+    ReleasedTargetHit,
     AfterAction,
 }
 

@@ -514,6 +514,11 @@ pub const fn after_shared_hit(mut metadata: ConditionMetadata) -> ConditionMetad
     metadata
 }
 
+const fn released_target_hit(mut metadata: ConditionMetadata) -> ConditionMetadata {
+    metadata.reaction_timing = ReactionTimingPolicy::Fixed(ReactionTiming::ReleasedTargetHit);
+    metadata
+}
+
 pub const fn after_hit_skills(mut metadata: ConditionMetadata) -> ConditionMetadata {
     metadata.reaction_timing = ReactionTimingPolicy::Fixed(ReactionTiming::AfterHitSkills);
     metadata
@@ -1101,7 +1106,8 @@ condition_definitions! {
     ] "TriggerTypeBullet" => trigger::parse_buff_feature, event_trigger(EventKind::BuffFeatureTriggered, None);
     [46301, 46303, 46307] "NoActRound" => trigger::parse_no_action_round, event_trigger(EventKind::NoActionRound, None);
     [46304] "NoActRound" => trigger::parse_no_action_round, event_trigger(EventKind::RoundEndAfterSettlement, None);
-    [22202, 22204, 22211] "BeAttacked" => trigger::parse_target_attacked, after_shared_hit(event_trigger(EventKind::TargetAttacked, None));
+    [22202, 22204] "BeAttacked" => trigger::parse_target_attacked, after_shared_hit(event_trigger(EventKind::TargetAttacked, None));
+    [22211] "BeAttacked" => trigger::parse_target_attacked, released_target_hit(event_trigger(EventKind::TargetAttacked, None));
     [22209] "BeAttacked" => trigger::parse_target_attacked, psychube_after_hit_observers(event_trigger(EventKind::TargetAttacked, None));
     [22213] "BeAttacked" => trigger::parse_ally_attacked, before_publish(ally_of_attacked_target_observes(event_trigger(EventKind::SkillAction, Some(SkillPhase::HitPassives))));
     [695213] "ShareDamage" => trigger::parse_share_damage, once_per_event_batch(event_trigger(EventKind::DamageShared, None));

@@ -32,6 +32,7 @@ pub(super) struct DrainState {
     after_hit: HashMap<FramePath, Vec<QueuedOp>>,
     attacked_skills: HashMap<FramePath, Vec<QueuedOp>>,
     hp_thresholds: HashMap<FramePath, Vec<QueuedOp>>,
+    target_hit_reactions: HashMap<FramePath, Vec<QueuedOp>>,
     hit_passive_skills: HashMap<FramePath, Vec<QueuedOp>>,
     hit_skills: HashMap<FramePath, Vec<QueuedOp>>,
     before_after_hit_observers: HashMap<FramePath, Vec<QueuedOp>>,
@@ -164,6 +165,23 @@ impl DrainState {
         queued: Vec<QueuedOp>,
     ) {
         defer(&mut self.hit_skills, action_path, queued);
+    }
+
+    pub(super) fn defer_target_hit_reactions(
+        &mut self,
+        action_path: Option<&[usize]>,
+        queued: Vec<QueuedOp>,
+    ) {
+        defer(&mut self.target_hit_reactions, action_path, queued);
+    }
+
+    pub(super) fn take_target_hit_reactions(
+        &mut self,
+        action_path: Option<&[usize]>,
+    ) -> Vec<QueuedOp> {
+        action_path
+            .and_then(|path| self.target_hit_reactions.remove(path))
+            .unwrap_or_default()
     }
 
     pub(super) fn defer_hit_passive_skills(
@@ -319,6 +337,7 @@ impl DrainState {
         let mut abandoned = self.after_hit.remove(action_path).unwrap_or_default();
         abandoned.extend(self.attacked_skills.remove(action_path).unwrap_or_default());
         abandoned.extend(self.hp_thresholds.remove(action_path).unwrap_or_default());
+        abandoned.extend(self.take_target_hit_reactions(Some(action_path)));
         abandoned.extend(
             self.hit_passive_skills
                 .remove(action_path)
