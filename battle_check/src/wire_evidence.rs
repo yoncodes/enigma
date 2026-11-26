@@ -5,8 +5,8 @@ use std::{
 };
 
 use battle::tooling::scan::buff_act::{
-    registry as buff_act_registry,
-    wire::{self, WirePhase},
+    registry::{ParsedBuffAct, resolve_feature},
+    wire::WirePhase,
 };
 use config::configs::GameDB;
 use serde_json::Value;
@@ -33,6 +33,15 @@ impl MarkerKey {
             effect_type,
         }
     }
+}
+
+fn configured_features<'a>(
+    db: &'a GameDB,
+    raw: &'a str,
+) -> impl Iterator<Item = ParsedBuffAct> + 'a {
+    raw.split('|')
+        .filter_map(|feature| resolve_feature(Some(db), feature))
+        .filter(|feature| !feature.is_malformed())
 }
 
 #[derive(Clone, Default)]
@@ -162,42 +171,33 @@ impl Evidence {
                 continue;
             };
 
-            let expected = buff
-                .features
-                .split('|')
-                .filter_map(|raw| buff_act_registry::resolve_feature(Some(db), raw))
-                .filter(|feature| !feature.is_malformed())
-                .filter_map(|feature| feature.act_id)
-                .filter_map(|id| db.buff_act.get(id))
-                .filter_map(|act| {
-                    wire::find(act.id, &act.r#type).map(|definition| (act, definition))
-                })
-                .flat_map(|(act, definition)| {
-                    definition
-                        .markers(phase)
-                        .iter()
-                        .copied()
-                        .map(move |effect_type| {
-                            MarkerKey::new(act.id, &act.r#type, phase, effect_type)
-                        })
+            let expected = configured_features(db, &buff.features)
+                .filter_map(|feature| feature.wire())
+                .flat_map(|wire| {
+                    wire.markers(phase).iter().copied().map(move |effect_type| {
+                        (
+                            MarkerKey::new(wire.key.opcode, wire.key.type_name, phase, effect_type),
+                            wire.has_untagged_grant_marker(),
+                        )
+                    })
                 })
                 .collect::<Vec<_>>();
             if expected.is_empty() || effects.len() < index + 1 + expected.len() {
                 continue;
             }
-            let actual = effects[index + 1..index + 1 + expected.len()]
+            let adjacent = &effects[index + 1..index + 1 + expected.len()];
+            if !adjacent
                 .iter()
-                .filter_map(|effect| effect.get("effectType").and_then(Value::as_i64))
-                .collect::<Vec<_>>();
-            if actual.len() != expected.len()
-                || !actual
-                    .iter()
-                    .zip(&expected)
-                    .all(|(&actual, expected)| actual == i64::from(expected.effect_type))
+                .zip(&expected)
+                .all(|(marker, (key, untagged_grant))| {
+                    marker.get("effectType").and_then(Value::as_i64)
+                        == Some(i64::from(key.effect_type))
+                        && (!untagged_grant || is_untagged_grant_marker(effect, marker))
+                })
             {
                 continue;
             }
-            for key in expected {
+            for (key, _) in expected {
                 self.sources
                     .entry(key.clone())
                     .or_default()
@@ -218,29 +218,19 @@ impl Evidence {
         else {
             return;
         };
-        let (definitions, buff_id) = if let Some(buff) = effect
+        let (carrier, explicit_act) = if let Some(buff) = effect
             .get("buff")
             .and_then(|buff| buff.get("buffId"))
             .and_then(Value::as_i64)
             .and_then(|id| i32::try_from(id).ok())
             .and_then(|id| db.skill_buff.get(id))
         {
-            (
-                buff.features
-                    .split('|')
-                    .filter_map(|raw| buff_act_registry::resolve_feature(Some(db), raw))
-                    .filter(|feature| !feature.is_malformed())
-                    .filter_map(|feature| feature.act_id)
-                    .filter_map(|id| db.buff_act.get(id))
-                    .collect::<Vec<_>>(),
-                buff.id,
-            )
+            (buff, None)
         } else {
-            let Some((act, carrier)) = effect
+            let Some((act_id, carrier)) = effect
                 .get("buffActId")
                 .and_then(Value::as_i64)
                 .and_then(|id| i32::try_from(id).ok())
-                .and_then(|id| db.buff_act.get(id))
                 .zip(
                     effect
                         .get("effectNum")
@@ -251,24 +241,24 @@ impl Evidence {
             else {
                 return;
             };
-            if !carrier
-                .features
-                .split('|')
-                .filter_map(|raw| buff_act_registry::resolve_feature(Some(db), raw))
-                .any(|feature| !feature.is_malformed() && feature.act_id == Some(act.id))
-            {
-                return;
-            }
-            (vec![act], carrier.id)
+            (carrier, Some(act_id))
         };
-        let candidates = definitions
-            .into_iter()
-            .filter_map(|act| wire::find(act.id, &act.r#type).map(|definition| (act, definition)))
-            .flat_map(|(act, definition)| {
+        let candidates = configured_features(db, &carrier.features)
+            .filter(|feature| explicit_act.is_none_or(|id| feature.act_id == Some(id)))
+            .filter_map(|feature| feature.wire())
+            .filter(|wire| !wire.has_untagged_grant_marker())
+            .take(if explicit_act.is_some() {
+                1
+            } else {
+                usize::MAX
+            })
+            .flat_map(|wire| {
                 [WirePhase::Add, WirePhase::Static, WirePhase::Refresh]
                     .into_iter()
-                    .filter(move |phase| definition.markers(*phase).contains(&effect_type))
-                    .map(move |phase| MarkerKey::new(act.id, &act.r#type, phase, effect_type))
+                    .filter(move |phase| wire.markers(*phase).contains(&effect_type))
+                    .map(move |phase| {
+                        MarkerKey::new(wire.key.opcode, wire.key.type_name, phase, effect_type)
+                    })
             })
             .collect::<Vec<_>>();
         if let [key] = candidates.as_slice() {
@@ -277,11 +267,25 @@ impl Evidence {
                 .or_default()
                 .insert(source.to_owned());
             self.carrier_sources
-                .entry((key.opcode, key.type_name.clone(), buff_id))
+                .entry((key.opcode, key.type_name.clone(), carrier.id))
                 .or_default()
                 .insert(source.to_owned());
         }
     }
+}
+
+fn effect_integer(effect: &Value, field: &str) -> Option<i64> {
+    let value = effect.get(field)?;
+    value.as_i64().or_else(|| value.as_str()?.parse().ok())
+}
+
+fn is_untagged_grant_marker(grant: &Value, marker: &Value) -> bool {
+    let same_recipient = effect_integer(grant, "targetId")
+        .is_some_and(|target| effect_integer(marker, "targetId") == Some(target));
+    same_recipient
+        && ["configEffect", "buffActId"].into_iter().all(|field| {
+            marker.get(field).is_none_or(Value::is_null) || effect_integer(marker, field) == Some(0)
+        })
 }
 
 #[cfg(test)]

@@ -299,12 +299,7 @@ impl BuffDefinition {
                     || !mutates_max_hp(feature))
                     && !transaction_owns_marker(feature, transaction_event)
             })
-            .flat_map(|feature| {
-                feature
-                    .wire
-                    .into_iter()
-                    .flat_map(move |definition| definition.markers(phase).iter().copied())
-            })
+            .flat_map(|feature| feature.wire_markers(phase).iter().copied())
             .collect()
     }
 
@@ -325,12 +320,7 @@ impl BuffDefinition {
                         || (command_owns_attribute_markers
                             && feature.kind == Some(BuffActKind::Attr)))
             })
-            .flat_map(|feature| {
-                feature
-                    .wire
-                    .into_iter()
-                    .flat_map(move |definition| definition.markers(phase).iter().copied())
-            })
+            .flat_map(|feature| feature.wire_markers(phase).iter().copied())
             .collect()
     }
 
@@ -440,12 +430,7 @@ impl BuffDefinition {
                     )
                 ) && !mutates_max_hp(feature)
             })
-            .flat_map(|feature| {
-                feature
-                    .wire
-                    .into_iter()
-                    .flat_map(|definition| definition.markers(phase).iter().copied())
-            })
+            .flat_map(|feature| feature.wire_markers(phase).iter().copied())
             .collect()
     }
 

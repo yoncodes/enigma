@@ -2,6 +2,7 @@ use sonettobuf::BuffInfo;
 
 use super::BuffDefinition;
 use crate::engine::skill::buff_act::registry::{self, BuffActKind};
+use crate::engine::skill::buff_act::wire::{BuffActWireDefinition, WirePhase};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct ResolvedBuffFeature {
@@ -14,7 +15,15 @@ pub(super) struct ResolvedBuffFeature {
     pub arguments_supported: bool,
     pub stat_read_timing: crate::engine::skill::buff_act::registry::StatReadTiming,
     pub initial_state: Option<crate::engine::skill::buff_act::registry::BuffActInitialStateRule>,
-    pub wire: Option<&'static crate::engine::skill::buff_act::wire::BuffActWireDefinition>,
+    pub wire: Option<&'static BuffActWireDefinition>,
+}
+
+impl ResolvedBuffFeature {
+    pub(super) fn wire_markers(&self, phase: WirePhase) -> &'static [i32] {
+        self.wire
+            .filter(|wire| wire.applies_to_feature(self.effect_time, self.arguments_supported))
+            .map_or(&[], |wire| wire.markers(phase))
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -1,5 +1,7 @@
 use crate::engine::skill::rule::DefinitionKey;
 
+use super::effect_time::{self, BuffActEvent};
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WirePhase {
     Add,
@@ -13,6 +15,7 @@ pub struct BuffActWireDefinition {
     add: &'static [i32],
     static_read: &'static [i32],
     refresh: &'static [i32],
+    untagged_grant_event: Option<BuffActEvent>,
     pub initial_state_marker: bool,
     pub initial_private_state: Option<InitialPrivateStateRule>,
     pub max_hp: Option<MaxHpWireRule>,
@@ -139,6 +142,7 @@ impl BuffActWireDefinition {
             add,
             static_read,
             refresh,
+            untagged_grant_event: None,
             initial_state_marker: true,
             initial_private_state: None,
             max_hp: None,
@@ -155,6 +159,7 @@ impl BuffActWireDefinition {
             add: markers,
             static_read: &[],
             refresh: &[],
+            untagged_grant_event: None,
             initial_state_marker: true,
             initial_private_state: None,
             max_hp: None,
@@ -171,6 +176,7 @@ impl BuffActWireDefinition {
             add: markers,
             static_read: &[],
             refresh: markers,
+            untagged_grant_event: None,
             initial_state_marker: true,
             initial_private_state: None,
             max_hp: None,
@@ -179,6 +185,20 @@ impl BuffActWireDefinition {
             refreshes_unchanged: false,
             projects_initial_state_on_refresh: false,
         }
+    }
+
+    pub const fn with_untagged_grant_event(mut self, event: BuffActEvent) -> Self {
+        self.untagged_grant_event = Some(event);
+        self
+    }
+
+    pub fn has_untagged_grant_marker(self) -> bool {
+        self.untagged_grant_event.is_some()
+    }
+
+    pub(crate) fn applies_to_feature(self, effect_time: i32, arguments_supported: bool) -> bool {
+        self.untagged_grant_event
+            .is_none_or(|event| arguments_supported && effect_time::classify(effect_time) == event)
     }
 
     pub const fn without_initial_state_marker(mut self) -> Self {

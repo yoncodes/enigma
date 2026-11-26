@@ -59,6 +59,38 @@ fn bendith_grant_markers_come_from_its_two_acts() {
 }
 
 #[test]
+fn reserve_cycle_reports_one_marker_only_when_granted() {
+    use crate::engine::skill::buff_act::wire::WirePhase;
+    use sonettobuf::effect_type_enum::EffectType;
+
+    crate::test_support::init_config();
+    for buff_id in [9260001, 116320000] {
+        let definition = BuffDefinition::get(buff_id).unwrap();
+        assert_eq!(
+            definition.command_add_wire_markers(),
+            [EffectType::None as i32]
+        );
+        assert_eq!(
+            definition.fanout_wire_markers(WirePhase::Add),
+            [EffectType::None as i32]
+        );
+        assert!(definition.wire_markers(WirePhase::Refresh).is_empty());
+        assert!(definition.wire_markers(WirePhase::Static).is_empty());
+    }
+
+    let mut definition = BuffDefinition::get(9260001).unwrap();
+    definition.replace_features_for_test(super::super::feature::resolve_features("931#1"));
+    assert!(definition.command_add_wire_markers().is_empty());
+    assert!(definition.fanout_wire_markers(WirePhase::Add).is_empty());
+
+    let mut wrong_route = super::super::feature::resolve_features("931");
+    wrong_route[0].effect_time = 0;
+    definition.replace_features_for_test(wrong_route);
+    assert!(definition.command_add_wire_markers().is_empty());
+    assert!(definition.fanout_wire_markers(WirePhase::Add).is_empty());
+}
+
+#[test]
 fn halo_cost_marker_stays_with_the_child_grant() {
     use crate::engine::skill::buff_act::wire::WirePhase;
     use sonettobuf::effect_type_enum::EffectType;

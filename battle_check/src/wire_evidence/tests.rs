@@ -292,6 +292,54 @@ fn runtime_buff_act_marker_uses_its_carrier_as_evidence() {
     fs::remove_dir_all(root).unwrap();
 }
 
+#[test]
+fn reserve_cycle_wire_evidence_requires_the_configured_feature() {
+    crate::init_config().unwrap();
+    let db = config::get();
+    let mut features = configured_features(db, "931|931#1");
+    let mut valid = features.next().unwrap();
+
+    assert_eq!(valid.wire().unwrap().markers(WirePhase::Add), [0]);
+    assert!(features.next().unwrap().wire().is_none());
+
+    valid.effect_time = 0;
+    assert!(valid.wire().is_none());
+}
+
+#[test]
+fn reserve_cycle_evidence_matches_the_untagged_grant_recipient() {
+    use serde_json::json;
+
+    crate::init_config().unwrap();
+    let db = config::get();
+    let grant = json!({"effectType": 5, "targetId": "-2", "buff": {"buffId": 9260001}});
+    for (marker, expected) in [
+        (
+            json!({"effectType": 0, "targetId": -2, "buffActId": 0, "configEffect": 0}),
+            true,
+        ),
+        (json!({"effectType": 0, "targetId": "-3"}), false),
+        (json!({"effectType": 0}), false),
+        (
+            json!({"effectType": 0, "targetId": "-2", "buffActId": 931, "effectNum": 9260001}),
+            false,
+        ),
+        (
+            json!({"effectType": 0, "targetId": "-2", "configEffect": 931}),
+            false,
+        ),
+    ] {
+        let mut evidence = Evidence::default();
+        evidence.inspect_effects(&[grant.clone(), marker], db, "Limbo");
+        assert_eq!(
+            evidence
+                .source(931, "CycleToSub", WirePhase::Add, 0)
+                .is_some(),
+            expected
+        );
+    }
+}
+
 #[cfg(feature = "private-fixtures")]
 #[test]
 fn derives_marker_evidence_from_captures() {

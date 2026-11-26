@@ -5,7 +5,7 @@ use battle::tooling::scan::{
     ConditionRoute, Destiny, ParsedBehavior, ParsedCondition, ParsedConditionKind,
     SkillEffectCatalog,
     behavior::{self, classify::BehaviorSpec},
-    buff_act::{effect_time, registry as buff_act_registry, wire},
+    buff_act::{effect_time, registry as buff_act_registry},
     condition_registry, parse_conditions,
 };
 
@@ -582,6 +582,10 @@ fn buff_act(
         Some(_) if destination.is_none() => "no semantic owner",
         Some(_) => "supported",
     };
+    let wire = feature.wire();
+    let capture_sources = wire.map_or_else(Vec::new, |_| {
+        wire_evidence.carrier_sources(opcode, &row.r#type, buff_id)
+    });
     Some(BuffAct {
         node: Node {
             opcode: Some(opcode),
@@ -597,15 +601,12 @@ fn buff_act(
             detail: definition
                 .map(|definition| format!("kind={:?}", definition.kind))
                 .unwrap_or_default(),
-            observation: if !wire_evidence
-                .carrier_sources(opcode, &row.r#type, buff_id)
-                .is_empty()
-            {
-                "Exact wire marker observed"
-            } else {
+            observation: if capture_sources.is_empty() {
                 "Unexercised"
+            } else {
+                "Exact wire marker observed"
             },
-            capture_sources: wire_evidence.carrier_sources(opcode, &row.r#type, buff_id),
+            capture_sources,
         },
         effect_time: row.effect_time,
         event: buff_act_registry::runtime_event(opcode, &row.r#type, row.effect_time).map_or_else(
@@ -614,11 +615,7 @@ fn buff_act(
         ),
         destination: destination.map_or_else(|| "—".to_owned(), |value| format!("{value:?}")),
         owns_duration: buff_act_registry::owns_duration(opcode, &row.r#type),
-        wire: if wire::find(opcode, &row.r#type).is_some() {
-            "mapped"
-        } else {
-            "missing"
-        },
+        wire: if wire.is_some() { "mapped" } else { "missing" },
     })
 }
 

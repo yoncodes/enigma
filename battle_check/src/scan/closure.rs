@@ -521,8 +521,7 @@ fn scan_buff(
                 });
             let destination = buff_act::registry::destination_for_feature(Some(db), &feature);
             let has_destination = destination.is_some();
-            let wire = buff_act::wire::find(act.id, &act.r#type);
-            if let Some(wire) = wire {
+            if let Some(wire) = feature.wire() {
                 for phase in [
                     buff_act::wire::WirePhase::Add,
                     buff_act::wire::WirePhase::Static,
@@ -610,7 +609,7 @@ fn scan_buff(
                     pending.path, pending.id, act.id, act.r#type, act.effect_time
                 ));
             }
-            if definition.is_some() && wire.is_none() {
+            if definition.is_some_and(|definition| definition.wire.is_none()) {
                 report.gap(key.clone(), "missing wire rule");
                 report.warning(format!(
                     "MissingWireRule path={} > buff {} act={} type={} route={route:?} effectTime={}",
