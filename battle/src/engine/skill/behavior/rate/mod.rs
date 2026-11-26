@@ -921,7 +921,7 @@ pub(crate) fn emit_passive_hit_attributes(
         }
     }
 
-    magic_circle::emit_attack_attributes(
+    magic_circle::emit_attributes(
         &mut modifiers.attack_attributes,
         source_uid,
         active_skill_id,

@@ -9,11 +9,13 @@ use crate::engine::{
     entity::attr::AttrId,
     manager::hp::{HpCommand, HpLoss, HurtDamageFromType, HurtInfoData},
     skill::{
+        behavior::magic_circle,
         buff_act::registry::{ParsedBuffAct, RuntimeContext},
         rule::{
             RuleReferences,
             output::{BattleCommand, RuleOp},
         },
+        target::TargetContext,
     },
 };
 
@@ -51,8 +53,27 @@ pub fn rule_ops(context: &mut RuntimeContext<'_>) -> Option<Vec<RuleOp>> {
         base_rate,
         periodic_genesis_multiplier(managers, source_uid, target_uid),
     );
-    formula.might =
-        1_000i32.saturating_add(managers.origin_attribute(source_uid, AttrId::UltimateMight));
+    let mut field_attributes = Vec::new();
+    magic_circle::emit_attributes(
+        &mut field_attributes,
+        source_uid,
+        0,
+        context.catalog,
+        managers,
+        context.pool,
+        context.determinism,
+        TargetContext {
+            runtime_target_uid: target_uid,
+            ..Default::default()
+        },
+    );
+    formula.might = field_attributes
+        .into_iter()
+        .filter_map(|(attr, value)| (attr == AttrId::UltimateMight).then_some(value))
+        .fold(
+            1_000i32.saturating_add(managers.origin_attribute(source_uid, AttrId::UltimateMight)),
+            i32::saturating_add,
+        );
     formula.is_crit = context.determinism.roll_periodic_origin_crit(
         subscriber.buff_id,
         source_uid,

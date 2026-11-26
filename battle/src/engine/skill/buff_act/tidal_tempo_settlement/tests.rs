@@ -6,12 +6,13 @@ use crate::engine::{
         BattleManagers,
         card::CARD_PLAY_ORIGIN,
         ex_point::{ExPointChange, ExPointCommand, ExPointKind},
+        field::{FieldCommand, FieldDefinition, FieldOperation},
     },
     runtime::{determinism::RoundDeterminism, drain},
     skill::{
         action::{ActionEvent, SkillLifecycle, SkillRequest},
         effect::SkillEffectCatalog,
-        rule::output::RuleOp,
+        rule::{CommandOrigin, DefinitionKey, RuleDomain, output::RuleOp},
         target::{TargetContext, TargetPool},
     },
 };
@@ -54,6 +55,7 @@ fn tidal_tempo_settles_paid_ultimate_moxie_for_the_current_round() {
                     ex_point: Some(8),
                     ex_point_max: Some(8),
                     ex_point_type: Some(ExPointKind::Faith.as_wire()),
+                    passive_skill: vec![433715],
                     ..Default::default()
                 },
             ],
@@ -84,6 +86,25 @@ fn tidal_tempo_settles_paid_ultimate_moxie_for_the_current_round() {
     let pool = TargetPool::from_fight(&fight);
     let catalog = SkillEffectCatalog::from_fight(config::configs::get(), &fight);
     let mut managers = BattleManagers::seeded(&fight);
+    managers
+        .field
+        .execute_command(FieldCommand {
+            origin: CommandOrigin {
+                domain: RuleDomain::Behavior,
+                key: DefinitionKey::new(50019, "AddMagicCircle"),
+            },
+            team: 1,
+            operation: FieldOperation::DeployIfAbsent {
+                definition: FieldDefinition {
+                    field_id: 1,
+                    duration: 1,
+                },
+                create_uid: 11,
+                initial_level: 1,
+                thresholds: Vec::new(),
+            },
+        })
+        .unwrap();
     let mut determinism = RoundDeterminism::default();
     let mut run = |managers: &mut BattleManagers, ops| {
         drain::run_command_group(
@@ -146,9 +167,9 @@ fn tidal_tempo_settles_paid_ultimate_moxie_for_the_current_round() {
     assert_eq!(managers.ex_point.round_ultimate_spend(2), 5);
     let settlement = || vec![RuleOp::Publish(BattleEvent::Kind(EventKind::RoundEnd))];
     run(&mut managers, settlement());
-    assert_eq!(managers.hp.current(-1), 8_260);
+    assert_eq!(managers.hp.current(-1), 8_080);
 
     managers.begin_reaction_round();
     run(&mut managers, settlement());
-    assert_eq!(managers.hp.current(-1), 8_260);
+    assert_eq!(managers.hp.current(-1), 8_080);
 }

@@ -289,8 +289,8 @@ pub fn active_self_skills(
 }
 
 #[allow(clippy::too_many_arguments)]
-pub fn emit_attack_attributes(
-    attack_attributes: &mut Vec<(AttrId, i32)>,
+pub fn emit_attributes(
+    attributes: &mut Vec<(AttrId, i32)>,
     source_uid: i64,
     active_skill_id: i32,
     effects: &SkillEffectCatalog,
@@ -363,7 +363,7 @@ pub fn emit_attack_attributes(
                 let Some(attr_id) = AttrId::from_raw(*raw_attr_id) else {
                     continue;
                 };
-                attack_attributes.push((attr_id, *delta));
+                attributes.push((attr_id, *delta));
             }
         }
     }
