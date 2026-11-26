@@ -283,5 +283,8 @@ pub(super) fn consume_card_grant_ops(
             },
         ))));
     }
+    if !plan.is_empty() {
+        ops.push(RuleOp::ActionHandSettlement { origin });
+    }
     Some(ops)
 }

@@ -212,7 +212,8 @@ fn consume_card_add_buff_emits_consumption_before_the_optional_grant() {
                 occurrences: 1,
                 child_uid_reservations: 0,
                 ..
-            })))
+            }))),
+            RuleOp::ActionHandSettlement { .. }
         ] if indices == &[0, 2]
     ));
 
@@ -238,8 +239,12 @@ fn consume_card_add_buff_emits_consumption_before_the_optional_grant() {
         &destroy_only,
     )
     .unwrap();
-    let [RuleOp::Command(BattleCommand::Card(command))] = destroy_ops.as_slice() else {
-        panic!("destroy-only behavior must emit only card consumption");
+    let [
+        RuleOp::Command(BattleCommand::Card(command)),
+        RuleOp::ActionHandSettlement { .. },
+    ] = destroy_ops.as_slice()
+    else {
+        panic!("destroy-only behavior must settle the remaining hand without granting a buff");
     };
 
     managers.execute_card(command.clone()).unwrap();
