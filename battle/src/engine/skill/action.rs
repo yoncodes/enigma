@@ -78,6 +78,7 @@ pub enum SkillStart {
     Immediate,
     /// Runs after the current action and its reactions as a child of that action.
     AfterCurrentAction,
+    AfterLossBatch,
 }
 
 impl SkillStart {

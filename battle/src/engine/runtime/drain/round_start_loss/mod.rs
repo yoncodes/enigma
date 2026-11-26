@@ -1,11 +1,17 @@
 use super::*;
 
-pub(super) fn is_threshold_from_loss(op: &RuleOp) -> bool {
-    matches!(
-        op,
-        RuleOp::Command(BattleCommand::ThresholdSkill(command))
-            if crate::engine::skill::buff_act::raspberry::owns_loss(command.cause)
-    )
+pub(super) fn hold(state: &mut DrainState, mut queued: QueuedOp) -> Option<QueuedOp> {
+    use crate::engine::skill::action::SkillStart;
+
+    if let Some(casts) = &mut state.round_start_loss_casts
+        && matches!(&queued.op, RuleOp::Skill(invocation) if invocation.start == SkillStart::AfterLossBatch)
+    {
+        queued.parent_path = None;
+        casts.push_back(queued);
+        None
+    } else {
+        Some(queued)
+    }
 }
 
 pub(super) fn run(

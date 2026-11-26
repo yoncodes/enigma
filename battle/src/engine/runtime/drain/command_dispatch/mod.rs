@@ -74,8 +74,6 @@ pub(super) fn drain_command(
         &command,
         RuleOp::SkillLifecycle(crate::engine::skill::action::SkillLifecycle::ActionCompleted(_))
     );
-    let loss_group_cast = state.round_start_loss_casts.is_some()
-        && super::round_start_loss::is_threshold_from_loss(&command);
     let deferred_followup_owner = matches!(
         &command,
         RuleOp::Command(crate::engine::skill::rule::output::BattleCommand::ThresholdSkill(_))
@@ -594,12 +592,7 @@ pub(super) fn drain_command(
                 .then(|| casting_reaction(&result.frames, &skill_path, &frame_path))
                 .flatten();
             state.push_after_action_cast(skill_path, caster, queued);
-        } else if loss_group_cast && let Some(casts) = &mut state.round_start_loss_casts {
-            casts.push_back(QueuedOp {
-                parent_path: None,
-                ..queued
-            });
-        } else {
+        } else if let Some(queued) = super::round_start_loss::hold(state, queued) {
             immediate_followups.push(queued);
         }
     }

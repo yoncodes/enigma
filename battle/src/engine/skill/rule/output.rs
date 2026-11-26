@@ -49,7 +49,6 @@ pub struct ThresholdSkillCommand {
     pub key: crate::engine::skill::rule::DefinitionKey,
     pub threshold: i32,
     pub delta: i32,
-    pub cause: crate::engine::skill::rule::CommandOrigin,
     pub invocation: SkillInvocation,
 }
 

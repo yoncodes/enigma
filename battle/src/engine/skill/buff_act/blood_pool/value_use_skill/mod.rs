@@ -5,7 +5,7 @@ use crate::engine::{
         gauge::{GaugeChangeKind, GaugeKind, GaugeOwner},
     },
     skill::{
-        action::SkillRequest,
+        action::{SkillRequest, SkillStart},
         effect::SkillEffectCatalog,
         rule::output::{BattleCommand, RuleOp, ThresholdSkillCommand},
         subscriber::BuffActSubscriber,
@@ -60,7 +60,11 @@ pub fn rule_ops(
         skill_id: *skill_id,
     }
     .into();
-    invocation.start = crate::engine::skill::action::SkillStart::AfterCurrentAction;
+    invocation.start = if crate::engine::skill::buff_act::raspberry::owns_loss(change.origin) {
+        SkillStart::AfterLossBatch
+    } else {
+        SkillStart::AfterCurrentAction
+    };
     Some(vec![RuleOp::Command(BattleCommand::ThresholdSkill(
         ThresholdSkillCommand {
             owner_uid: subscriber.owner_uid,
@@ -68,7 +72,6 @@ pub fn rule_ops(
             key: subscriber.key.definition,
             threshold: threshold.saturating_mul(1000),
             delta: progress_delta,
-            cause: change.origin,
             invocation,
         },
     ))])
