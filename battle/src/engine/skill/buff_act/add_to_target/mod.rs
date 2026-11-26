@@ -21,6 +21,30 @@ pub fn rule_ops(
     catalog: &SkillEffectCatalog,
     pool: &crate::engine::skill::target::TargetPool,
 ) -> Option<Vec<RuleOp>> {
+    grants(
+        managers,
+        subscriber,
+        event,
+        catalog,
+        pool,
+        RecipientScope::Action,
+    )
+}
+
+#[derive(Clone, Copy)]
+pub(super) enum RecipientScope {
+    Action,
+    Primary,
+}
+
+fn grants(
+    managers: &crate::engine::manager::BattleManagers,
+    subscriber: &BuffActSubscriber,
+    event: &BattleEvent,
+    catalog: &SkillEffectCatalog,
+    pool: &crate::engine::skill::target::TargetPool,
+    scope: RecipientScope,
+) -> Option<Vec<RuleOp>> {
     let kind = registry::kind(subscriber.key.definition.opcode, &subscriber.act_type)?;
     let (target_uid, target_uids, is_attack) = match (kind, event) {
         (BuffActKind::AddToAttacker, BattleEvent::Hit(hit)) => {
@@ -53,17 +77,15 @@ pub fn rule_ops(
     for &buff_id in buff_ids.iter().filter(|buff_id| **buff_id > 0) {
         *counts.entry(buff_id).or_insert(0) += 1;
     }
-    let targets = if target_uids.is_empty() {
-        vec![target_uid]
-    } else {
-        target_uids.to_vec()
-    }
-    .into_iter()
-    .filter(|target_uid| {
-        !is_attack
-            || pool.source_is_attacker(*target_uid) != pool.source_is_attacker(subscriber.owner_uid)
-    })
-    .collect::<Vec<_>>();
+    let targets = match scope {
+        RecipientScope::Primary if target_uid == 0 => &[],
+        RecipientScope::Primary => std::slice::from_ref(&target_uid),
+        RecipientScope::Action if target_uids.is_empty() => std::slice::from_ref(&target_uid),
+        RecipientScope::Action => target_uids,
+    };
+    let targets = targets.iter().copied().filter(|&uid| {
+        !is_attack || pool.source_is_attacker(uid) != pool.source_is_attacker(subscriber.owner_uid)
+    });
     let marker_effect_type =
         super::wire::find(subscriber.key.definition.opcode, &subscriber.act_type)
             .and_then(|wire| wire.markers(super::wire::WirePhase::Add).first())
@@ -111,14 +133,15 @@ pub fn rule_ops(
     Some(ops)
 }
 
-pub fn scoped_rule_ops(
+pub(super) fn scoped_rule_ops(
     managers: &crate::engine::manager::BattleManagers,
     subscriber: &BuffActSubscriber,
     event: &BattleEvent,
     catalog: &SkillEffectCatalog,
     pool: &crate::engine::skill::target::TargetPool,
+    scope: RecipientScope,
 ) -> Option<Vec<super::BuffActRuleOp>> {
-    rule_ops(managers, subscriber, event, catalog, pool).map(|ops| {
+    grants(managers, subscriber, event, catalog, pool, scope).map(|ops| {
         ops.into_iter()
             .map(super::BuffActRuleOp::subscriber_from_owner)
             .collect()

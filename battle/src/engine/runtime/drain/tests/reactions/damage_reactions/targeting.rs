@@ -258,16 +258,18 @@ fn target_bullet_proc_spends_a_charge_after_granting_the_debuff() {
             ..Default::default()
         }),
         defender: Some(FightTeam {
-            entitys: vec![FightEntityInfo {
-                uid: Some(-1),
-                team_type: Some(2),
-                current_hp: Some(10_000),
-                attr: Some(HeroAttribute {
-                    hp: Some(10_000),
+            entitys: [-1, -2]
+                .map(|uid| FightEntityInfo {
+                    uid: Some(uid),
+                    team_type: Some(2),
+                    current_hp: Some(10_000),
+                    attr: Some(HeroAttribute {
+                        hp: Some(10_000),
+                        ..Default::default()
+                    }),
                     ..Default::default()
-                }),
-                ..Default::default()
-            }],
+                })
+                .to_vec(),
             ..Default::default()
         }),
         ..Default::default()
@@ -333,5 +335,9 @@ fn target_bullet_proc_spends_a_charge_after_granting_the_debuff() {
             Some(1)
         );
         assert!(managers.buff.has_active_buff_id_or_type(-1, 30920158));
+        assert!(!managers.buff.has_active_buff_id_or_type(-2, 30920158));
+        assert!(result.events.iter().any(|event| matches!(event,
+            BattleEvent::Hit(hit) if hit.skill_id == 30920131 && hit.target_uid == -2
+        )));
     }
 }

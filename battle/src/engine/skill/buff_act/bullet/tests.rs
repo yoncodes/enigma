@@ -113,6 +113,21 @@ fn a_counted_target_bullet_spends_when_no_target_receives_the_grant() {
         .into_iter()
         .find(|buff| buff.act_type == "AddToTarget")
         .unwrap();
+    assert!(matches!(
+        recipients(&managers, &grant, true),
+        RecipientScope::Primary
+    ));
+    for (buff_id, debuff_id) in [(722501, 722503), (8112651, 4011)] {
+        let compound = BuffActSubscriber {
+            buff_id,
+            args: vec![1, debuff_id],
+            ..grant.clone()
+        };
+        assert!(matches!(
+            recipients(&managers, &compound, true),
+            RecipientScope::Action
+        ));
+    }
     let event = BattleEvent::SkillAction(crate::engine::skill::action::SkillActionEvent {
         target_uid: 0,
         target_uids: Vec::new(),

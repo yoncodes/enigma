@@ -300,6 +300,7 @@ fn add_to_target_frames_are_owned_by_the_carrier() {
         &event,
         &SkillEffectCatalog::default(),
         &pool,
+        RecipientScope::Action,
     )
     .unwrap();
 

@@ -1,6 +1,9 @@
 use crate::engine::{
     event::payload::{BattleEvent, BuffFeatureTriggeredEvent},
-    manager::buff::{BuffCommand, BuffConsume, BuffManager, BuffSelector, DepletedBuff},
+    manager::{
+        BattleManagers,
+        buff::{BuffCommand, BuffConsume, BuffManager, BuffSelector, DepletedBuff},
+    },
     skill::{
         rule::output::{BattleCommand, RuleOp},
         subscriber::BuffActSubscriber,
@@ -9,31 +12,35 @@ use crate::engine::{
 
 use super::{
     BuffActRuleOp,
+    add_to_target::RecipientScope,
     registry::{BuffActKind, RuntimeContext},
 };
 
 pub(crate) fn add_to_target(context: &mut RuntimeContext<'_>) -> Option<Vec<BuffActRuleOp>> {
     let subscriber = context.subscriber;
     let event = context.event?;
+    let counted = context
+        .managers
+        .catalog()
+        .buff_has_effect_count(subscriber.buff_id)
+        && context.managers.buff.buff_has_act(
+            subscriber.owner_uid,
+            subscriber.buff_uid,
+            BuffActKind::Bullet,
+        );
+    let recipients = recipients(context.managers, subscriber, counted);
     let mut ops = super::add_to_target::scoped_rule_ops(
         context.managers,
         subscriber,
         event,
         context.catalog,
         context.pool,
+        recipients,
     )?;
     if let BattleEvent::SkillAction(action) = event
         && action.source_uid == subscriber.owner_uid
         && action.is_attack
-        && context
-            .managers
-            .catalog()
-            .buff_has_effect_count(subscriber.buff_id)
-        && context.managers.buff.buff_has_act(
-            subscriber.owner_uid,
-            subscriber.buff_uid,
-            BuffActKind::Bullet,
-        )
+        && counted
     {
         ops.push(BuffActRuleOp::causing(RuleOp::Publish(
             BattleEvent::BuffFeatureTriggered(BuffFeatureTriggeredEvent {
@@ -47,6 +54,29 @@ pub(crate) fn add_to_target(context: &mut RuntimeContext<'_>) -> Option<Vec<Buff
         )));
     }
     Some(ops)
+}
+
+fn recipients(
+    managers: &BattleManagers,
+    subscriber: &BuffActSubscriber,
+    counted: bool,
+) -> RecipientScope {
+    if counted
+        && matches!(subscriber.args.as_slice(), [1, _])
+        && managers
+            .catalog()
+            .buff_feature_rows(subscriber.buff_id)
+            .len()
+            == 2
+        && matches!(managers.buff.definition_features(subscriber.buff_id).as_slice(), [grant, charge]
+            if grant.act_id() == Some(subscriber.key.definition.opcode)
+                && grant.act_type == subscriber.act_type
+                && super::is_kind(charge, BuffActKind::Bullet))
+    {
+        RecipientScope::Primary
+    } else {
+        RecipientScope::Action
+    }
 }
 
 pub(crate) fn reaction(context: &mut RuntimeContext<'_>) -> Option<Vec<BuffActRuleOp>> {

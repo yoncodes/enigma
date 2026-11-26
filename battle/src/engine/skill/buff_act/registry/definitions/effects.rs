@@ -99,7 +99,7 @@ buff_act_definitions! {
         supports: buff_act::rebound::supports, wire: (buff_act::wire::BuffActWireDefinition::all(DefinitionKey::new(303, "Rebound"), &[EffectType::Rebound as i32]));
     (305, "AddToAttacker") => AddToAttacker,
         runtime_marker: BeforeChanges(EventSource),
-        scoped_runtime: |context| buff_act::add_to_target::scoped_rule_ops(context.managers, context.subscriber, context.event?, context.catalog, context.pool),
+        scoped_runtime: |context| buff_act::add_to_target::scoped_rule_ops(context.managers, context.subscriber, context.event?, context.catalog, context.pool, buff_act::add_to_target::RecipientScope::Action),
         supports: |args| matches!(args, [buff_id] if *buff_id > 0),
         wire: (buff_act::wire::BuffActWireDefinition::new(DefinitionKey::new(305, "AddToAttacker"), &[], &[EffectType::Addtoattacker as i32], &[]));
     (306, "ExPointFix") => ExPointFix, event: EventKind::BeAttacked,
@@ -153,7 +153,7 @@ buff_act_definitions! {
         effect_time_subscription: false, supports: |args| args.is_empty(), state_consumer: true,
         wire: (buff_act::wire::BuffActWireDefinition::all(DefinitionKey::new(509, "ImmunityExpointChange"), &[EffectType::None as i32]));
     (518, "AddToTarget") => AddToTarget,
-        scoped_runtime: |context| buff_act::add_to_target::scoped_rule_ops(context.managers, context.subscriber, context.event?, context.catalog, context.pool),
+        scoped_runtime: |context| buff_act::add_to_target::scoped_rule_ops(context.managers, context.subscriber, context.event?, context.catalog, context.pool, buff_act::add_to_target::RecipientScope::Action),
         supports: |_| true;
     (519, "RealHurtFix") => RealHurtFix, effect_time_subscription: false,
         supports: |args| matches!(args, [value] if *value != 0), state_consumer: true, wire: (buff_act::wire::BuffActWireDefinition::add_refresh(DefinitionKey::new(519, "RealHurtFix"), &[EffectType::Realhurtfix as i32]));
