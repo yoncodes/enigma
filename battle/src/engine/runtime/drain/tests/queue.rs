@@ -4,6 +4,7 @@ mod action_reactions;
 mod buff_reentry;
 mod completion;
 mod design_revision;
+mod field_selected_casts;
 mod free_ultimate;
 mod hit_and_followups;
 mod marked_ally;
