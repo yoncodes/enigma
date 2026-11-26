@@ -58,6 +58,45 @@ fn arsenal_import_requires_a_complete_ordered_witness_from_one_cast() {
         .uid = Some(101);
     assert!(choices(catalog, &another_uid).is_empty());
 
+    let mut refresh = round.clone();
+    for effect in &mut refresh.fight_step[0].act_effect[4..] {
+        effect.effect_type = Some(EffectType::Buffupdate as i32);
+        let buff = effect.buff.as_mut().unwrap();
+        buff.count = buff.count.map(|count| count + 2);
+    }
+    assert!(choices(catalog, &refresh).is_empty());
+    let mut before = complete(30920155, 104).nth(1).unwrap();
+    before.effect_type = Some(EffectType::Buffadd as i32);
+    refresh.fight_step.insert(
+        0,
+        FightStep {
+            act_effect: vec![before.clone()],
+            ..Default::default()
+        },
+    );
+    assert_eq!(choices(catalog, &refresh)[0].buff_ids, [30920153, 30920155]);
+    for removal in [EffectType::Buffdel, EffectType::Buffdelnoeffect] {
+        let mut deleted = refresh.clone();
+        before.effect_type = Some(removal as i32);
+        deleted.fight_step[0].act_effect.push(before.clone());
+        assert!(choices(catalog, &deleted).is_empty());
+    }
+    let mut nested = refresh.clone();
+    nested.fight_step[1].act_effect.insert(
+        5,
+        ActEffect {
+            fight_step: Some(FightStep {
+                act_effect: vec![before.clone()],
+                ..Default::default()
+            }),
+            ..Default::default()
+        },
+    );
+    assert!(choices(catalog, &nested).is_empty());
+    before.buff.as_mut().unwrap().uid = None;
+    refresh.fight_step[0].act_effect.push(before);
+    assert!(choices(catalog, &refresh).is_empty());
+
     let mut ambiguous = round;
     ambiguous.fight_step.push(ambiguous.fight_step[0].clone());
     assert!(choices(catalog, &ambiguous).is_empty());
