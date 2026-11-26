@@ -2,7 +2,22 @@ use super::*;
 
 #[test]
 fn round_start_keeps_the_conditional_ally_riposte_before_its_sibling() {
+    use crate::engine::skill::rule::route::{ConditionDriver, ConditionSetup};
+
     init_config();
+    let db = config::configs::get();
+    let catalog = SkillEffectCatalog::from_roots(db, [312101245], []);
+    let slot = &catalog.get(312101245).unwrap().slots[0];
+    let unrelated = ParsedBehavior::new(1210001, "AddBuff", vec![312101245]);
+    let route = ConditionRoute::compile_configured(db, &slot.conditions, &unrelated).unwrap();
+    assert!(matches!(
+        route.branches[0].driver,
+        Some(ConditionDriver::Setup(ConditionSetup {
+            stage: SetupStage::BuffGate,
+            priority: 0,
+            ..
+        }))
+    ));
     for (buffs, expected) in [
         (Vec::new(), vec![312101245, 312101246]),
         (

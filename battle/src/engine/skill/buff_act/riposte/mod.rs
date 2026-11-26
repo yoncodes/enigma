@@ -12,7 +12,7 @@ use crate::engine::{
 };
 
 mod setup;
-pub(crate) use setup::place_grant;
+pub(crate) use setup::grant_setup;
 
 pub fn rule_ops(
     pool: &TargetPool,

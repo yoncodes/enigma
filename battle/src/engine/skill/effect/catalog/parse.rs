@@ -201,11 +201,11 @@ pub(super) fn parse_slot(db: &GameDB, raw: RawSlot<'_>) -> Result<SkillEffectSlo
             condition_limit
         }
     });
-    let compiled_route = crate::engine::skill::rule::route::ConditionRoute::compile_for_behavior(
+    let compiled_route = crate::engine::skill::rule::route::ConditionRoute::compile_configured(
+        db,
         &conditions,
-        &behavior.spec,
-    )
-    .map(|route| crate::engine::skill::buff_act::riposte::place_grant(db, &behavior, route));
+        &behavior,
+    );
     if let Err(crate::engine::skill::rule::route::RouteError::StandaloneConditionRequired {
         condition,
         required,

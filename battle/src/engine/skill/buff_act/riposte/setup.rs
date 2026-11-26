@@ -1,56 +1,37 @@
 use crate::engine::skill::{
-    behavior::{classify::BehaviorKind, registry},
+    behavior::registry::{self, ADD_BUFF_KEY},
     buff_act::registry::{BuffActKind, resolve_feature},
+    condition::{ParsedCondition, registry::BUFF_GATE_HAS_ID_KEY},
     effect::ParsedBehavior,
-    rule::{
-        SetupStage,
-        route::{ConditionDriver, ConditionRoute},
-    },
+    rule::{SetupStage, route::ConditionSetup},
 };
 
-pub(crate) fn place_grant(
+pub(crate) fn grant_setup(
     db: &config::GameDB,
     behavior: &ParsedBehavior,
-    mut route: ConditionRoute,
-) -> ConditionRoute {
-    let buff_gate = |driver: &Option<ConditionDriver>| {
-        matches!(
-            driver,
-            Some(ConditionDriver::Setup(setup))
-                if setup.stage == SetupStage::BuffGate
-        )
-    };
-    if !route
-        .branches
-        .iter()
-        .any(|branch| buff_gate(&branch.driver))
-        || !registry::find(behavior)
-            .is_some_and(|definition| definition.kind == BehaviorKind::AddBuff)
+    conditions: &[ParsedCondition],
+) -> Option<ConditionSetup> {
+    let gate = BUFF_GATE_HAS_ID_KEY;
+    if registry::find(behavior)?.key != ADD_BUFF_KEY
+        || !conditions.iter().any(|condition| {
+            condition.opcode == gate.opcode && condition.type_name == gate.type_name
+        })
     {
-        return route;
+        return None;
     }
-    let Some(buff_id) = behavior.arg(0) else {
-        return route;
-    };
-    let ally_riposte = db.skill_buff.get(buff_id).is_some_and(|buff| {
-        buff.features
-            .split('|')
-            .filter_map(|feature| resolve_feature(Some(db), feature))
-            .any(|feature| {
-                feature.arguments_supported
-                    && feature.kind == Some(BuffActKind::BeatBack)
-                    && super::holder_consumed_buff(&feature.args) == Some(buff_id)
-            })
-    });
-    if ally_riposte {
-        for branch in &mut route.branches {
-            if let Some(ConditionDriver::Setup(setup)) = &mut branch.driver
-                && setup.stage == SetupStage::BuffGate
-            {
-                setup.stage = SetupStage::RoundStart;
-                setup.priority = 1;
-            }
-        }
-    }
-    route
+    let buff_id = behavior.arg(0)?;
+    let buff = db.skill_buff.get(buff_id)?;
+    buff.features
+        .split('|')
+        .filter_map(|feature| resolve_feature(Some(db), feature))
+        .any(|feature| {
+            feature.arguments_supported
+                && feature.kind == Some(BuffActKind::BeatBack)
+                && super::holder_consumed_buff(&feature.args) == Some(buff_id)
+        })
+        .then_some(ConditionSetup {
+            key: gate,
+            stage: SetupStage::RoundStart,
+            priority: 1,
+        })
 }

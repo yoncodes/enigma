@@ -7,6 +7,7 @@ use crate::engine::{
             ParsedCondition, ParsedConditionKind,
             registry::{self, ConditionRole},
         },
+        effect::ParsedBehavior,
         rule::{DefinitionKey, RuleDescriptor, RuleDomain, SetupStage},
     },
 };
@@ -104,6 +105,23 @@ impl ConditionRoute {
         conditions: &[ParsedCondition],
         behavior: &BehaviorSpec,
     ) -> Result<Self, RouteError> {
+        Self::compile_slot(conditions, behavior, None)
+    }
+
+    pub(crate) fn compile_configured(
+        db: &config::GameDB,
+        conditions: &[ParsedCondition],
+        behavior: &ParsedBehavior,
+    ) -> Result<Self, RouteError> {
+        let setup = crate::engine::skill::buff_act::riposte::grant_setup(db, behavior, conditions);
+        Self::compile_slot(conditions, &behavior.spec, setup)
+    }
+
+    fn compile_slot(
+        conditions: &[ParsedCondition],
+        behavior: &BehaviorSpec,
+        configured_setup: Option<ConditionSetup>,
+    ) -> Result<Self, RouteError> {
         use crate::engine::skill::behavior::registry::ConditionRouteOverride;
 
         validate_behavior(conditions, behavior, conditions.len() == 1)?;
@@ -133,7 +151,8 @@ impl ConditionRoute {
                     stage,
                     priority,
                 })),
-            });
+            })
+            .or_else(|| configured_setup.map(ConditionDriver::Setup));
         let predicate_only = driver.is_none()
             && definition.is_some_and(|definition| definition.attack_modifier_only)
             && registry::attack_modifier_side(conditions).is_some();
