@@ -1,7 +1,7 @@
 use super::*;
 use crate::engine::{
     entity::attr::AttrId,
-    manager::ex_point::{ExPointCommand, ExPointKind},
+    manager::ex_point::ExPointCommand,
     skill::{action::SkillLifecycle, condition::registry::PER_DECR_EX_POINT_KEY},
 };
 
@@ -22,13 +22,10 @@ pub(super) fn payer(command: &RuleOp, catalog: &SkillEffectCatalog) -> Option<i6
 }
 
 fn is_own_spend_reaction(op: &QueuedOp, source_uid: i64) -> bool {
-    let SkillOpTrigger::Event(BattleEvent::ExPointChanged(change)) = &op.trigger else {
+    let SkillOpTrigger::Event(event) = &op.trigger else {
         return false;
     };
-    change.target_uid == source_uid
-        && change.kind == ExPointKind::Common
-        && change.spent
-        && change.applied_delta < 0
+    event.moxie_spender() == Some(source_uid)
         && matches!(&op.op, RuleOp::Skill(invocation)
             if invocation.condition_key == Some(PER_DECR_EX_POINT_KEY))
 }

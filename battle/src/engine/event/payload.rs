@@ -385,13 +385,17 @@ pub enum BattleEvent {
 
 impl BattleEvent {
     pub(crate) fn moxie_spender(&self) -> Option<i64> {
+        self.moxie_payment().map(|payment| payment.target_uid)
+    }
+
+    pub(crate) fn moxie_payment(&self) -> Option<&ExPointChangeEvent> {
         match self {
             Self::ExPointChanged(change)
                 if change.kind == ExPointKind::Common
                     && change.spent
                     && change.applied_delta < 0 =>
             {
-                Some(change.target_uid)
+                Some(change)
             }
             _ => None,
         }

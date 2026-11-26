@@ -1,9 +1,5 @@
 use crate::engine::{
-    event::payload::BattleEvent,
-    manager::{
-        buff::{BuffCommand, BuffGrant, configured_timed_stacks},
-        ex_point::ExPointKind,
-    },
+    manager::buff::{BuffCommand, BuffGrant, configured_timed_stacks},
     skill::{
         behavior::{
             BehaviorOpContext,
@@ -63,17 +59,14 @@ impl BehaviorHandler for Handler {
         let [buff_id] = behavior.args.as_slice() else {
             return None;
         };
-        let BattleEvent::ExPointChanged(change) = context.event? else {
+        let Some(change) = context.event?.moxie_payment() else {
             return Some(Vec::new());
         };
-        if !change.spent
-            || change.kind != ExPointKind::Common
-            || change.applied_delta >= 0
-            || !context
-                .pool
-                .main_allies(context.source_uid)
-                .iter()
-                .any(|ally| ally.uid == change.target_uid)
+        if !context
+            .pool
+            .main_allies(context.source_uid)
+            .iter()
+            .any(|ally| ally.uid == change.target_uid)
         {
             return Some(Vec::new());
         }
