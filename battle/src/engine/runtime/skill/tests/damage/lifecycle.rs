@@ -404,6 +404,83 @@ fn dodged_attack_does_not_apply_effects_to_the_target_hit() {
 }
 
 #[test]
+fn authored_guaranteed_crit_marks_only_the_actual_damage_targets() {
+    use crate::engine::runtime::executor::RuleOutcome;
+
+    crate::test_support::init_config();
+    let skill_id = 72540313;
+    let mut attacker =
+        crate::engine::fight::defender::Defender::build_monster_with_uid(100109, 10, 1, 1).unwrap();
+    attacker.ex_skill = Some(skill_id);
+    let enemy = |uid, position| {
+        crate::engine::fight::defender::Defender::build_monster_with_uid(100108, uid, position, 2)
+            .unwrap()
+    };
+    let mut dodging = enemy(-2, 2);
+    dodging.buffs.push(BuffInfo {
+        uid: Some(1002),
+        buff_id: Some(90201),
+        duration: Some(2),
+        count: Some(1),
+        from_uid: Some(-2),
+        ..Default::default()
+    });
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![attacker],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![enemy(-1, 1), dodging, enemy(-3, 3)],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    let hp_before = managers.hp.current(-2);
+    let result = crate::engine::runtime::drain::run(
+        &mut managers,
+        &pool,
+        crate::engine::skill::effect::catalog::global(),
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+        [RuleOp::Skill(
+            SkillRequest {
+                source_uid: 10,
+                skill_id,
+            }
+            .into(),
+        )],
+    )
+    .unwrap();
+
+    let markers = result
+        .outcomes
+        .iter()
+        .enumerate()
+        .filter_map(|(index, outcome)| match outcome {
+            RuleOutcome::EffectMarker(marker)
+                if marker.effect_type
+                    == sonettobuf::effect_type_enum::EffectType::Mustcrit as i32 =>
+            {
+                Some((index, marker.target_uid, marker.reserve_id))
+            }
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    let hits = result
+        .outcomes
+        .iter()
+        .position(|outcome| matches!(outcome, RuleOutcome::HpBatch(_)))
+        .unwrap();
+    assert!(
+        matches!(markers.as_slice(), [(first, 10, Some(-1)), (last, 10, Some(-3))] if first < last && *last < hits)
+    );
+    assert_eq!(managers.hp.current(-2), hp_before);
+}
+
+#[test]
 fn counted_dodge_is_removed_after_the_triggering_attack() {
     crate::test_support::init_config();
     let attacker =

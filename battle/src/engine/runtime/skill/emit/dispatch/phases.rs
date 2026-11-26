@@ -215,6 +215,9 @@ pub(super) fn finish(
             consequence: ConsequencePolicy::Default,
             frame_owner: damage_buff_act_frame_owner.clone(),
         }));
+        if execution.modifiers.force_critical {
+            outputs.extend(authored_critical_markers(&damage.damage));
+        }
         if !damage.damage.is_empty() {
             outputs.push(SkillEmissionOp {
                 op: RuleOp::Command(BattleCommand::HpBatch(damage.damage)),
@@ -486,5 +489,31 @@ pub(super) fn finish(
         fired_rules,
         continuation,
         target_uid: execution.primary_target_uid,
+    })
+}
+
+fn authored_critical_markers(
+    commands: &[crate::engine::manager::hp::HpCommand],
+) -> impl Iterator<Item = SkillEmissionOp> + '_ {
+    use crate::engine::manager::hp::{DamageEffectKind, HpCommand};
+
+    commands.iter().filter_map(|command| match command {
+        HpCommand::Damage(hit) if hit.effect_kind == DamageEffectKind::Critical => {
+            Some(SkillEmissionOp {
+                op: RuleOp::EffectMarker {
+                    target_uid: hit.source_uid,
+                    effect_type: sonettobuf::effect_type_enum::EffectType::Mustcrit as i32,
+                    effect_num: 0,
+                    effect_num1: None,
+                    config_effect: 0,
+                    reserve_id: Some(hit.target_uid),
+                    reserve_str: None,
+                },
+                owner: behavior::registry::OutputOwner::Skill,
+                consequence: ConsequencePolicy::Default,
+                frame_owner: None,
+            })
+        }
+        _ => None,
     })
 }
