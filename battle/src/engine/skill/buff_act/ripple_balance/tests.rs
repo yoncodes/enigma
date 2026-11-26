@@ -121,6 +121,50 @@ fn ripple_negates_smaller_hits_and_breaks_on_an_equal_hit() {
     assert_eq!(removed.change.removed[0].buff.act_info[0].param, [0]);
     assert!(managers.buff.snapshot(10, 100).is_none());
 
+    {
+        use crate::engine::{
+            event::payload::BattleEvent,
+            runtime::{determinism::RoundDeterminism, drain},
+            skill::{
+                action::{SkillInvocation, SkillRequest, SkillTarget},
+                effect::SkillEffectCatalog,
+                target::{TargetContext, TargetPool},
+            },
+        };
+
+        let mut fight = fight.clone();
+        let enemy = &mut fight.defender.as_mut().unwrap().entitys[0];
+        enemy.model_id = Some(3006);
+        enemy.attr.as_mut().unwrap().attack = Some(1_000);
+        let attack = 30060111;
+        let catalog = SkillEffectCatalog::from_roots(config::configs::get(), [attack], []);
+        let mut managers = BattleManagers::seeded(&fight);
+        let result = drain::run_action(
+            &mut managers,
+            &TargetPool::from_fight(&fight),
+            &catalog,
+            &mut RoundDeterminism::default(),
+            TargetContext::default(),
+            [],
+            SkillInvocation {
+                target: SkillTarget::Explicit(10),
+                ..SkillRequest {
+                    source_uid: -1,
+                    skill_id: attack,
+                }
+                .into()
+            },
+        )
+        .unwrap();
+        let hit = result.events.iter().position(|event| {
+            matches!(event, BattleEvent::Hit(hit) if hit.skill_id == attack && hit.target_uid == 10)
+        });
+        let expiry = result.events.iter().position(
+            |event| matches!(event, BattleEvent::BuffRemoved(change) if change.buff_uid == 100),
+        );
+        assert!(matches!((hit, expiry), (Some(hit), Some(expiry)) if hit < expiry));
+    }
+
     let mut shielded = fight;
     shielded
         .attacker

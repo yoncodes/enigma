@@ -285,15 +285,21 @@ pub(super) fn drain_command(
             && queued.frame_path.as_ref() == Some(&frame_path)
             && matches!(&queued.op, RuleOp::Skill(_))
     });
-    let defer_hits = matches!(&outcome, RuleOutcome::HpBatch(_))
+    if let RuleOutcome::HpBatch(hits) = &outcome
         && matches!(trigger, SkillOpTrigger::Active)
         && current_skill.is_some()
-        && has_active_continuation;
-    if defer_hits {
+        && has_active_continuation
+    {
         // Multi-part active hits share one HitPassives boundary. Hold
         // primary hits and their own HP loss. Their BeforePublish
         // buff acts still belong before this HP outcome.
-        let (immediate, deferred) = split_active_hit_event_groups(event_groups);
+        let post_damage_expiry = hits
+            .iter()
+            .filter_map(|hit| hit.changes.post_damage_expiry.as_ref())
+            .flat_map(|expiry| expiry.events())
+            .collect::<Vec<_>>();
+        let (immediate, deferred) =
+            split_active_hit_event_groups(event_groups, &post_damage_expiry);
         let hit_buff_acts = dispatch_event_groups(
             pool,
             managers,

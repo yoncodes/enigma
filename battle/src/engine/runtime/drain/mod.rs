@@ -153,6 +153,7 @@ fn grouped_hp_events(
 
 fn split_active_hit_event_groups(
     event_groups: Vec<Vec<BattleEvent>>,
+    post_damage_expiry: &[BattleEvent],
 ) -> (Vec<Vec<BattleEvent>>, Vec<Vec<BattleEvent>>) {
     let mut immediate_groups = Vec::new();
     let mut deferred_groups = Vec::new();
@@ -170,6 +171,7 @@ fn split_active_hit_event_groups(
         });
         let (deferred, immediate): (Vec<_>, Vec<_>) = events.into_iter().partition(|event| {
             matches!(event, BattleEvent::Hit(_))
+                || post_damage_expiry.contains(event)
                 || defers_hp_loss
                     && matches!(
                         event,

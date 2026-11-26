@@ -87,7 +87,7 @@ fn active_hit_deferral_carries_its_primary_skill_hp_transaction() {
             vec![additional_loss.clone(), additional_hit.clone()],
         ],
     );
-    let (immediate, deferred) = split_active_hit_event_groups(groups);
+    let (immediate, deferred) = split_active_hit_event_groups(groups, &[]);
 
     assert_eq!(
         immediate,
