@@ -234,8 +234,19 @@ fn queued_reaction_pass(
         let frame_group = Rc::new(RefCell::new(None));
         let independent_parent_group = Rc::new(RefCell::new(None));
         reactions.extend(ops.into_iter().map(|scoped| {
-            let causing_frame =
-                scoped.scope == crate::engine::skill::buff_act::BuffActFrameScope::CausingFrame;
+            use crate::engine::skill::buff_act::BuffActFrameScope;
+            let causing_path = reuse_path.or(parent_path);
+            let reused_path = match scoped.scope {
+                BuffActFrameScope::CausingFrame => causing_path,
+                BuffActFrameScope::ParentFrame => causing_path.map(|path| {
+                    if path.len() > 1 {
+                        &path[..path.len() - 1]
+                    } else {
+                        path
+                    }
+                }),
+                _ => None,
+            };
             let action_frame =
                 scoped.scope == crate::engine::skill::buff_act::BuffActFrameScope::ActionFrame;
             let independent_event = scoped.scope
@@ -257,10 +268,8 @@ fn queued_reaction_pass(
                 op: scoped.op,
                 trigger: SkillOpTrigger::Event(event.clone()),
                 skill_execution: None,
-                frame_path: causing_frame
-                    .then(|| reuse_path.or(parent_path).map(|path| path.to_vec()))
-                    .flatten(),
-                parent_path: (!causing_frame && !independent_event)
+                frame_path: reused_path.map(|path| path.to_vec()),
+                parent_path: (reused_path.is_none() && !independent_event)
                     .then(|| {
                         if action_frame {
                             action_path

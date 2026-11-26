@@ -225,6 +225,7 @@ pub struct BuffActStateDefinition {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BuffActInitialStateRule {
+    RippleCapacity,
     CrystalSelection,
     ConduitCardSelection,
     ButterflyAllowedSkillKinds,

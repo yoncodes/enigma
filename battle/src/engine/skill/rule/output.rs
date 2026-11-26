@@ -68,6 +68,7 @@ pub struct EffectMarker {
 pub enum BattleCommand {
     Buff(BuffCommand),
     BuffBatch(Vec<BuffCommand>),
+    RippleAccrual(crate::engine::skill::buff_act::ripple_accrual::Accrue),
     BuffMoveToHolder(crate::engine::manager::buff::BuffGrant),
     Hp(HpCommand),
     HpBatch(Vec<HpCommand>),

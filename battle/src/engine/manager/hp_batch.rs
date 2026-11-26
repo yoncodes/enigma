@@ -63,6 +63,7 @@ impl BattleManagers {
                 );
                 HpExecution {
                     changes: commit.changes,
+                    resolved_heal: commit.resolved_heal,
                     before_hp_markers: commit.before_hp_markers,
                     after_hp_markers: commit.after_hp_markers,
                     shield_counter_credits: commit.shield_counter_credits,

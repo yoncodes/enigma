@@ -213,6 +213,7 @@ pub(crate) fn snapshotted_attribute_delta(
 
 pub(crate) struct HpExecution {
     pub changes: hp::HpChanges,
+    pub(super) resolved_heal: Option<i32>,
     pub before_hp_markers: Vec<buff::BuffActInfoMarkerResult>,
     pub after_hp_markers: Vec<buff::BuffActInfoMarkerResult>,
     pub indicator: Option<crate::engine::skill::rule::output::EffectMarker>,
@@ -221,6 +222,7 @@ pub(crate) struct HpExecution {
 
 struct HpCommit {
     changes: hp::HpChanges,
+    resolved_heal: Option<i32>,
     shield_counter_credits: Vec<crate::engine::skill::buff_act::shield_counter::Credit>,
     before_hp_markers: Vec<buff::BuffActInfoMarkerResult>,
     after_hp_markers: Vec<buff::BuffActInfoMarkerResult>,
@@ -524,6 +526,7 @@ impl BattleManagers {
             .record_damage_indicator(commit.changes.target_uid, commit.changes.applied_damage());
         Ok(HpExecution {
             changes: commit.changes,
+            resolved_heal: commit.resolved_heal,
             before_hp_markers: commit.before_hp_markers,
             after_hp_markers: commit.after_hp_markers,
             shield_counter_credits: commit.shield_counter_credits,
@@ -890,6 +893,7 @@ impl BattleManagers {
         crate::engine::damage::export::settlement(command, &changes, &self.hp, loss_limit);
         HpCommit {
             changes,
+            resolved_heal: hp::healing::resolved_amount(command),
             shield_counter_credits: plan.shield_counter_credits,
             before_hp_markers,
             after_hp_markers,

@@ -127,6 +127,28 @@ pub struct EntityDiedEvent {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct HealResolvedEvent {
+    pub source_uid: i64,
+    pub target_uid: i64,
+    pub amount: i32,
+    pub cast: Option<HealCast>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HealCast {
+    Direct(i32),
+    Reaction(i32),
+}
+
+impl HealCast {
+    pub fn skill_id(self) -> i32 {
+        match self {
+            Self::Direct(skill_id) | Self::Reaction(skill_id) => skill_id,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ExPointChangeEvent {
     pub origin: CommandOrigin,
     pub spent: bool,
@@ -316,6 +338,7 @@ pub enum BattleEvent {
         target_uid: i64,
         amount: i32,
     },
+    HealResolved(HealResolvedEvent),
     ToughnessBroken {
         source_uid: i64,
         target_uid: i64,
@@ -381,6 +404,7 @@ impl BattleEvent {
             | Self::DamageShared { source_uid, .. }
             | Self::HpHealed { source_uid, .. }
             | Self::ToughnessBroken { source_uid, .. } => Some(*source_uid),
+            Self::HealResolved(heal) => Some(heal.source_uid),
             Self::Hit(hit) => Some(hit.source_uid),
             Self::EntityDied(death) => Some(death.source_uid),
             Self::ExPointChanged(change) | Self::ExPointOverflow(change) => Some(change.source_uid),
@@ -424,6 +448,7 @@ impl BattleEvent {
             Self::BuffRejected(change) => Some(change.target_uid),
             Self::BuffStateChanged(change) => Some(change.target_uid),
             Self::BuffFeatureTriggered(trigger) => Some(trigger.target_uid),
+            Self::HealResolved(heal) => Some(heal.target_uid),
             Self::Hit(hit) => Some(hit.target_uid),
             Self::EntityDied(death) => Some(death.target_uid),
             Self::ExPointChanged(change) | Self::ExPointOverflow(change) => Some(change.target_uid),
@@ -477,6 +502,7 @@ impl BattleEvent {
             Self::HpLost { .. } => EventKind::HpLost,
             Self::DamageShared { .. } => EventKind::DamageShared,
             Self::HpHealed { .. } => EventKind::HpHealed,
+            Self::HealResolved(_) => EventKind::HealResolved,
             Self::Hit(_) => EventKind::TargetAttacked,
             Self::ToughnessBroken { .. } => EventKind::ToughnessBroken,
             Self::EntityDied(_) => EventKind::EntityDied,

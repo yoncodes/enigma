@@ -774,6 +774,15 @@ pub(crate) fn execute_rule_op_with(
             }
             Ok(RuleOutcome::BuffBatch(batch))
         }
+        RuleOp::Command(BattleCommand::RippleAccrual(command)) => {
+            let changes = command.commit(managers)?;
+            for change in &changes {
+                for event in change.events() {
+                    events.push(event);
+                }
+            }
+            Ok(RuleOutcome::BuffBatch(changes))
+        }
         RuleOp::Command(BattleCommand::Hp(command)) => {
             let command = crate::engine::skill::buff_act::fixed_hurt::resolve_command(
                 &managers.buff,
@@ -781,7 +790,7 @@ pub(crate) fn execute_rule_op_with(
                 command,
             );
             let execution = managers.execute_rule_hp(command)?;
-            for event in execution.changes.events() {
+            for event in execution.events() {
                 events.push(event);
             }
             Ok(RuleOutcome::Hp(Box::new(execution)))
@@ -790,7 +799,7 @@ pub(crate) fn execute_rule_op_with(
             let Some(execution) = damage.settle(managers)? else {
                 return Ok(RuleOutcome::StateChanged);
             };
-            for event in execution.changes.events() {
+            for event in execution.events() {
                 events.push(event);
             }
             Ok(RuleOutcome::Hp(Box::new(execution)))
@@ -808,7 +817,7 @@ pub(crate) fn execute_rule_op_with(
                 .collect();
             let batch = managers.execute_rule_hp_batch(commands)?;
             for execution in &batch {
-                for event in execution.changes.events() {
+                for event in execution.events() {
                     events.push(event);
                 }
             }
@@ -826,7 +835,7 @@ pub(crate) fn execute_rule_op_with(
             }
             let batch = managers.execute_linked_damage(hits)?;
             for execution in &batch {
-                for event in execution.changes.events() {
+                for event in execution.events() {
                     events.push(event);
                 }
             }
@@ -869,7 +878,7 @@ pub(crate) fn execute_rule_op_with(
             else {
                 return Ok(RuleOutcome::StateChanged);
             };
-            for event in execution.changes.events() {
+            for event in execution.events() {
                 events.push(event);
             }
             Ok(RuleOutcome::Hp(Box::new(execution)))

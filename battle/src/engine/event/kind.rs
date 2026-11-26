@@ -20,6 +20,7 @@ pub enum EventKind {
     HpLost,
     DamageShared,
     HpHealed,
+    HealResolved,
     ToughnessBroken,
     TargetAttacked,
     ExPointChanged,

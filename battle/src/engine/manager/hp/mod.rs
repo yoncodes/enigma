@@ -9,6 +9,8 @@ use crate::engine::{
 
 use super::entities;
 
+pub(crate) mod healing;
+
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct HpState {
     pub current: i32,

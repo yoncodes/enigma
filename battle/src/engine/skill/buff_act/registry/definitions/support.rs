@@ -4,6 +4,16 @@ use super::super::*;
 use crate::engine::skill::buff_act;
 
 buff_act_definitions! {
+    (1154, "NarcissusHealToCounter") => RippleAccrual,
+        effect_time_subscription: false, events: [EventKind::HealResolved], source: Owner,
+        scoped_runtime: buff_act::ripple_accrual::rule_ops,
+        supports: buff_act::ripple_accrual::supports, raw_supports: buff_act::ripple_accrual::supports_link,
+        parser: buff_act::ripple_accrual::parse_args,
+        references: buff_act::ripple_accrual::references,
+        state_consumer: true, initial_state: RippleCapacity,
+        wire: (buff_act::wire::BuffActWireDefinition::add(
+            DefinitionKey::new(1154, "NarcissusHealToCounter"), &[EffectType::None as i32])
+            .without_initial_state_marker());
     (1155, "NarcissusRitualHealByPassion") => UltimateMoxieHeal,
         event: EventKind::AllyAction, source: Owner, timing: AfterAction,
         runtime: |context| buff_act::ultimate_moxie_heal::rule_ops(context.managers, context.pool, context.catalog, context.subscriber, context.event?),

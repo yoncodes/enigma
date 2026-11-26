@@ -383,6 +383,7 @@ fn round_start_capacity_uses_only_exact_raspberry_loss_instances() {
 
     let hp_outcome = |domain, key, delta| {
         RuleOutcome::Hp(Box::new(crate::engine::manager::HpExecution {
+            resolved_heal: None,
             changes: HpChanges {
                 origin: CommandOrigin { domain, key },
                 source_uid: 10,

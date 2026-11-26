@@ -11,6 +11,7 @@ use super::{command_prepare::prepare_command, *};
 
 mod commit;
 mod death;
+mod heal_attribution;
 mod publication;
 mod team_buff_layers;
 
@@ -231,13 +232,16 @@ pub(super) fn drain_command(
     let mut event_groups = match &outcome {
         RuleOutcome::HpBatch(batch) => grouped_hp_events(
             &events,
-            batch
-                .iter()
-                .map(|execution| execution.changes.events())
-                .collect(),
+            batch.iter().map(|execution| execution.events()).collect(),
         ),
         _ => vec![events.clone()],
     };
+    heal_attribution::attach(
+        &mut events,
+        &mut event_groups,
+        current_skill.map(|(_, id, _)| id),
+        &trigger,
+    );
     if matches!(trigger, SkillOpTrigger::Active)
         && let Some(queued) = queue.iter_mut().find(|queued| {
             matches!(queued.trigger, SkillOpTrigger::Active)
