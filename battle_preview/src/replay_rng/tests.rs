@@ -322,14 +322,21 @@ fn direct_child_step_imports_the_parent_target_choice() {
 }
 
 #[test]
-fn opening_rng_import_keeps_choices_and_excludes_temporary_cards() {
+fn opening_rng_import_reserves_counted_slots_and_keeps_later_refills_queued() {
     crate::init_test_config();
+    use std::io::Write;
+
+    use base64::{Engine, engine::general_purpose::STANDARD};
+    use flate2::{Compression, write::GzEncoder};
+    use prost::Message;
+    use sonettobuf::{ActEffect, effect_type_enum::EffectType};
     let fight = Fight {
         version: Some(7),
         attacker: Some(FightTeam {
             entitys: vec![FightEntityInfo {
                 uid: Some(10),
                 current_hp: Some(100),
+                ex_skill: Some(103),
                 skill_group1: vec![101],
                 skill_group2: vec![102],
                 ..Default::default()
@@ -354,24 +361,69 @@ fn opening_rng_import_keeps_choices_and_excludes_temporary_cards() {
         card(10, 102, false),
     ];
     let ai = vec![card(-1, 201, false)];
-    let mut captured = normal.clone();
-    captured.insert(2, card(10, 999, true));
-
-    let mut determinism = opening_determinism(
-        config::configs::get(),
-        &fight,
-        &FightRound {
-            team_a_cards1: captured,
-            ai_use_cards: ai.clone(),
+    let waiver = ActEffect {
+        effect_type: Some(EffectType::Buffadd as i32),
+        target_id: Some(10),
+        buff: Some(BuffInfo {
+            uid: Some(100),
+            buff_id: Some(31570005),
             ..Default::default()
-        },
-    )
-    .unwrap();
+        }),
+        ..Default::default()
+    };
+    let deal = ActEffect {
+        effect_type: Some(EffectType::Enterfightdeal as i32),
+        ..Default::default()
+    };
+    let nested_waiver = ActEffect {
+        effect_type: Some(EffectType::Fightstep as i32),
+        fight_step: Some(FightStep {
+            act_effect: vec![waiver.clone()],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let removal = ActEffect {
+        effect_type: Some(EffectType::Buffdel as i32),
+        ..waiver.clone()
+    };
+    for (effects, reserved) in [
+        (vec![nested_waiver, deal.clone(), removal], 0),
+        (vec![deal, waiver], 1),
+    ] {
+        let mut captured = normal.clone();
+        captured.insert(0, card(10, 103, false));
+        captured.insert(2, card(10, 999, true));
+        let step = FightStep {
+            act_effect: effects,
+            ..Default::default()
+        }
+        .encode_to_vec();
+        let mut encoder = GzEncoder::new(Vec::new(), Compression::fast());
+        encoder.write_all(&1_u32.to_be_bytes()).unwrap();
+        encoder
+            .write_all(&(step.len() as u32).to_be_bytes())
+            .unwrap();
+        encoder.write_all(&step).unwrap();
+        let mut compressed_round = serde_json::json!({
+            "teamACards1": captured,
+            "aiUseCards": ai,
+            "fightStepBytes": STANDARD.encode(encoder.finish().unwrap()),
+        });
+        crate::expand_compressed_fight_steps(&mut compressed_round).unwrap();
+        let round: FightRound = serde_json::from_value(compressed_round).unwrap();
+        let mut determinism = opening_determinism(config::configs::get(), &fight, &round).unwrap();
 
-    assert_eq!(
-        determinism.take_start_decks(),
-        Some((ai, normal.clone(), normal, 0))
-    );
+        assert_eq!(
+            determinism.take_start_decks(),
+            Some((
+                ai.clone(),
+                normal[..normal.len() - reserved].to_vec(),
+                normal.clone(),
+                reserved,
+            ))
+        );
+    }
 }
 
 #[test]

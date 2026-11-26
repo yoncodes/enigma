@@ -10,6 +10,7 @@ use battle::tooling::{
 use sonettobuf::{CardInfo, Fight, FightRound, FightStep};
 
 mod conduit_ex_point_rolls;
+mod opening_buffs;
 mod periodic_origin_crit;
 mod random_arsenal;
 mod random_buff;
@@ -45,6 +46,7 @@ pub fn opening_determinism(
         .flat_map(|team| &team.entitys)
         .filter_map(|entity| Some((entity.uid?, entity.ex_skill?)))
         .collect::<std::collections::HashSet<_>>();
+    let limit_fight = opening_buffs::before_deal(fight, round);
     let reserved_ultimate_slots = draws
         .iter()
         .filter(|card| {
@@ -55,7 +57,7 @@ pub fn opening_determinism(
         .try_fold(0, |count, card| {
             let ignores_limit = ultimate_ignores_limit(
                 battle::catalog::BattleCatalog::new(game_data),
-                fight,
+                &limit_fight,
                 card.uid.unwrap_or_default(),
                 card.skill_id.unwrap_or_default(),
             )?;

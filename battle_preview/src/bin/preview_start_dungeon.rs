@@ -7,9 +7,9 @@ use std::{
 use battle::tooling::replay::ReplayBattle;
 use battle_preview::{
     array_len_diff_lines, battle_inputs, build_metadata_source, canonical_comparison,
-    comparable_json, first_diff_path, loadout_diffs, normalize_live_json, opening_card_push_path,
-    opening_determinism, preview_attributes, preview_output_text,
-    render_json_with_capture_conventions, rouge2_side_skills, tower_plan_id,
+    comparable_json, expand_compressed_fight_steps, first_diff_path, loadout_diffs,
+    normalize_live_json, opening_card_push_path, opening_determinism, preview_attributes,
+    preview_output_text, render_json_with_capture_conventions, rouge2_side_skills, tower_plan_id,
 };
 use sonettobuf::{CardInfoPush, Fight, FightRound, StartDungeonReply};
 
@@ -35,15 +35,18 @@ fn run() -> anyhow::Result<()> {
     for input in inputs {
         let output = output_path(&input_root, &output_root, &input, &mut outputs)?;
         let original_text = fs::read_to_string(&input)?;
-        let (generated, cards, original, loadout) = generate_reply(db, &input)?;
+        let original: serde_json::Value = serde_json::from_str(&original_text)?;
+        let captured = captured_start_reply(&original);
+        let mut decoded = captured.clone();
+        expand_compressed_fight_steps(&mut decoded)?;
+        normalize_live_json(&mut decoded);
+        let (generated, cards, loadout) = generate_reply(db, &input, &decoded)?;
         for diff in &loadout {
             eprintln!("  loadout diff: {diff}");
         }
         let generated_value = serde_json::to_value(&generated)?;
-        let captured = captured_start_reply(&original);
         let output_value = render_json_with_capture_conventions(&generated_value, captured);
-        let (generated_compare, original_compare) =
-            canonical_comparison(generated_value, captured.clone());
+        let (generated_compare, original_compare) = canonical_comparison(generated_value, decoded);
         let fight_matches = generated_compare.get("fight") == original_compare.get("fight");
         let round_matches = generated_compare.get("round") == original_compare.get("round");
         let card_matches = compare_card_push(&input, cards)?;
@@ -134,15 +137,8 @@ fn captured_start_reply(value: &serde_json::Value) -> &serde_json::Value {
 fn generate_reply(
     db: &'static config::GameDB,
     path: &Path,
-) -> anyhow::Result<(
-    StartDungeonReply,
-    CardInfoPush,
-    serde_json::Value,
-    Vec<String>,
-)> {
-    let original: serde_json::Value = serde_json::from_str(&fs::read_to_string(path)?)?;
-    let mut value = captured_start_reply(&original).clone();
-    normalize_live_json(&mut value);
+    value: &serde_json::Value,
+) -> anyhow::Result<(StartDungeonReply, CardInfoPush, Vec<String>)> {
     let fight = value.get("fight").cloned().ok_or_else(|| {
         io::Error::new(
             io::ErrorKind::InvalidData,
@@ -178,7 +174,6 @@ fn generate_reply(
     Ok((
         battle::tooling::start_reply(&runtime),
         runtime.card_info_push(),
-        original,
         loadout,
     ))
 }

@@ -366,6 +366,7 @@ fn read_start_reply(path: &Path) -> anyhow::Result<serde_json::Value> {
     if let Some(start) = value.get("startDungeonReply").cloned() {
         value = start;
     }
+    expand_compressed_fight_steps(&mut value)?;
     normalize_live_json(&mut value);
     Ok(value)
 }
