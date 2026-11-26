@@ -331,6 +331,11 @@
     function heroEditorKey(field) {
       return `enigmaMuipHeroEditor:${heroCatalog.playerUid}:${field}`;
     }
+    function restoreOption(select, value) {
+      if (Array.from(select.options).some(option => option.value === value)) {
+        select.value = value;
+      }
+    }
     function filterUpgradeHeroes() {
       const query = document.getElementById('heroUpgradeSearch').value.trim().toLowerCase();
       const select = document.getElementById('heroUpgradeHero');
