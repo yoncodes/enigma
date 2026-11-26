@@ -25,7 +25,6 @@ pub fn run_card_energy_allocation(
     drain::run_command_group(managers, pool, catalog, determinism, context, ops)
 }
 
-#[allow(clippy::too_many_arguments)]
 pub(super) fn run_action_queue_committed(
     managers: &mut BattleManagers,
     pool: &TargetPool,
@@ -179,17 +178,21 @@ fn free_skill_consumed_remaining_buff(action: &DrainResult, source_uid: i64) -> 
         .any(|(before, after)| after > 0 && after < before)
 }
 
-#[allow(clippy::too_many_arguments)]
+pub(crate) struct ConduitPhase<'a> {
+    pub(crate) fight: &'a sonettobuf::Fight,
+    pub(crate) operations: &'a [sonettobuf::FightDeviceOper],
+}
+
 pub fn run_conduit_phase(
     battle_catalog: crate::catalog::BattleCatalog,
-    fight: &sonettobuf::Fight,
+    phase: ConduitPhase<'_>,
     managers: &mut BattleManagers,
     pool: &TargetPool,
     catalog: &mut SkillEffectCatalog,
     determinism: &mut RoundDeterminism,
     context: TargetContext,
-    operations: &[sonettobuf::FightDeviceOper],
 ) -> Result<DrainResult, DrainError> {
+    let ConduitPhase { fight, operations } = phase;
     let mut result = DrainResult::default();
     if crate::engine::round::outcome::battle_ended(fight, pool, managers) {
         return Ok(result);
@@ -223,9 +226,11 @@ pub fn run_conduit_phase(
                     catalog,
                     determinism,
                     context,
-                    source_uid,
-                    skill,
-                    used_free_skills.contains(&(source_uid, skill.skill_id)),
+                    crate::engine::runtime::conduit::ActivationRequest {
+                        source_uid,
+                        skill,
+                        free_skill_used: used_free_skills.contains(&(source_uid, skill.skill_id)),
+                    },
                 );
                 let Some(admission) =
                     admission.filter(|admission| admission.runtime_ready && admission.funded)
@@ -236,11 +241,7 @@ pub fn run_conduit_phase(
                         append(
                             &mut result,
                             drain::run_conduit_stop(
-                                managers,
-                                pool,
-                                catalog,
-                                determinism,
-                                context,
+                                BattleAccess::new(managers, pool, catalog, determinism, context),
                                 source_uid,
                                 device_index,
                                 position as i32 + 1,
@@ -259,15 +260,13 @@ pub fn run_conduit_phase(
                         skill.skill_id,
                     );
                 let action = drain::run_conduit_action(
-                    managers,
-                    pool,
-                    catalog,
-                    determinism,
-                    context,
+                    BattleAccess::new(managers, pool, catalog, determinism, context),
                     source_uid,
                     selected_group,
-                    device_index,
-                    position as i32 + 1,
+                    crate::engine::runtime::drain::ConduitSlot {
+                        device_index,
+                        skill_position: position as i32 + 1,
+                    },
                     skill.skill_id,
                     frame_target_uid,
                     cost_modifier,
@@ -333,24 +332,22 @@ pub fn run_conduit_phase(
     Ok(result)
 }
 
-#[allow(clippy::too_many_arguments)]
 /// Decodes and executes the player's authoritative queued card actions.
 pub fn run_player_action_queue(
-    managers: &mut BattleManagers,
-    pool: &TargetPool,
-    catalog: &SkillEffectCatalog,
-    determinism: &mut RoundDeterminism,
-    context: TargetContext,
+    battle: BattleAccess<'_>,
     plays: impl IntoIterator<Item = crate::engine::manager::card::CardPlay>,
     team: i32,
     emitter_uid: i64,
 ) -> Result<DrainResult, DrainError> {
-    run_player_card_ops(
+    let BattleAccess {
         managers,
         pool,
         catalog,
         determinism,
         context,
+    } = battle;
+    run_player_card_ops(
+        BattleAccess::new(managers, pool, catalog, determinism, context),
         plays.into_iter().map(PlayerCardOp::Play),
         team,
         emitter_uid,
@@ -406,25 +403,23 @@ fn player_ops_from_commands(
         .collect()
 }
 
-#[allow(clippy::too_many_arguments)]
 #[cfg(test)]
 pub fn run_player_commands(
-    managers: &mut BattleManagers,
-    pool: &TargetPool,
-    catalog: &SkillEffectCatalog,
-    determinism: &mut RoundDeterminism,
-    context: TargetContext,
+    battle: BattleAccess<'_>,
     commands: impl IntoIterator<Item = RoundCommand>,
     team: i32,
     emitter_uid: i64,
 ) -> Result<DrainResult, DrainError> {
-    let ops = player_ops_from_commands(commands, determinism);
-    run_player_card_ops(
+    let BattleAccess {
         managers,
         pool,
         catalog,
         determinism,
         context,
+    } = battle;
+    let ops = player_ops_from_commands(commands, determinism);
+    run_player_card_ops(
+        BattleAccess::new(managers, pool, catalog, determinism, context),
         ops,
         team,
         emitter_uid,
@@ -434,30 +429,28 @@ pub fn run_player_commands(
     .map(|(drain, ..)| drain)
 }
 
-#[allow(clippy::too_many_arguments)]
 pub fn run_player_phase(
     fight: &sonettobuf::Fight,
-    managers: &mut BattleManagers,
-    pool: &TargetPool,
-    catalog: &SkillEffectCatalog,
-    determinism: &mut RoundDeterminism,
-    context: TargetContext,
+    battle: BattleAccess<'_>,
     commands: impl IntoIterator<Item = RoundCommand>,
     device_operations: &[sonettobuf::FightDeviceOper],
     team: i32,
     emitter_uid: i64,
 ) -> Result<PlayerPhaseResult, DrainError> {
+    let BattleAccess {
+        managers,
+        pool,
+        catalog,
+        determinism,
+        context,
+    } = battle;
     let context = TargetContext {
         battle_id: fight.battle_id.unwrap_or_default(),
         ..context
     };
     let ops = player_ops_from_commands(commands, determinism);
     let (mut result, refill_slots, next_action_index) = run_player_card_ops(
-        managers,
-        pool,
-        catalog,
-        determinism,
-        context,
+        BattleAccess::new(managers, pool, catalog, determinism, context),
         ops,
         team,
         emitter_uid,
@@ -564,19 +557,21 @@ pub(crate) fn card_skill_is_blocked(
             .has_buff_act_kind(owner_uid, buff_act::registry::BuffActKind::NoneCastChannel)
 }
 
-#[allow(clippy::too_many_arguments)]
 fn run_player_card_ops(
-    managers: &mut BattleManagers,
-    pool: &TargetPool,
-    catalog: &SkillEffectCatalog,
-    determinism: &mut RoundDeterminism,
-    context: TargetContext,
+    battle: BattleAccess<'_>,
     ops: impl IntoIterator<Item = PlayerCardOp>,
     team: i32,
     emitter_uid: i64,
     fight: Option<&sonettobuf::Fight>,
     device_operations: &[sonettobuf::FightDeviceOper],
 ) -> Result<(DrainResult, RefillSlots, i32), DrainError> {
+    let BattleAccess {
+        managers,
+        pool,
+        catalog,
+        determinism,
+        context,
+    } = battle;
     let mut result = DrainResult::default();
     let selections = selection::Selection::from_operations(device_operations);
     let mut skills = Vec::new();
@@ -1386,11 +1381,7 @@ pub(super) fn run_active_action(
     append(
         &mut result,
         drain::run_round_action(
-            managers,
-            pool,
-            catalog,
-            determinism,
-            context,
+            BattleAccess::new(managers, pool, catalog, determinism, context),
             prelude,
             payment,
             skill,

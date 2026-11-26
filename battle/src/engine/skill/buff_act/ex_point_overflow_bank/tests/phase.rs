@@ -1,3 +1,4 @@
+use crate::engine::runtime::drain::BattleAccess;
 use sonettobuf::effect_type_enum::EffectType;
 
 use super::*;
@@ -51,11 +52,13 @@ fn round_end_bank_owns_a_gain_that_entirely_overflows() {
     let pool = TargetPool::from_fight(&fight);
     let catalog = SkillEffectCatalog::from_roots(config::configs::get(), [31390151], [31270400]);
     let result = run_group_event_lanes(
-        &mut managers,
-        &pool,
-        &catalog,
-        &mut RoundDeterminism::default(),
-        TargetContext::default(),
+        BattleAccess::new(
+            &mut managers,
+            &pool,
+            &catalog,
+            &mut RoundDeterminism::default(),
+            TargetContext::default(),
+        ),
         BattleEvent::Kind(EventKind::RoundEnd),
         &[ReactionLane::Skills],
         Some(&[10, 11]),

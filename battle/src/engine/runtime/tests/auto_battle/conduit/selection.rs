@@ -1,4 +1,5 @@
 use super::*;
+use crate::engine::runtime::drain::BattleAccess;
 
 #[test]
 fn auto_round_loads_visible_conduit_card_roots() {
@@ -168,11 +169,13 @@ fn auto_round_multi_device_plan_executes_without_cross_feeding_switches() {
     );
     let mut determinism = runtime.determinism.clone();
     crate::engine::runtime::schedule::run_player_commands(
-        &mut runtime.managers,
-        &pool,
-        &catalog,
-        &mut determinism,
-        crate::engine::skill::target::TargetContext::default(),
+        BattleAccess::new(
+            &mut runtime.managers,
+            &pool,
+            &catalog,
+            &mut determinism,
+            crate::engine::skill::target::TargetContext::default(),
+        ),
         reply
             .opers
             .iter()

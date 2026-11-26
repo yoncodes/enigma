@@ -1,3 +1,4 @@
+use crate::engine::runtime::drain::BattleAccess;
 use sonettobuf::{BeginRoundRequest, Fight, FightRound, FightStep};
 
 use crate::engine::{
@@ -28,11 +29,15 @@ struct WaveTransition {
     steps: Vec<FightStep>,
 }
 
-#[allow(clippy::too_many_arguments)]
+struct WaveState<'a> {
+    fight: &'a mut Fight,
+    managers: &'a mut crate::engine::manager::BattleManagers,
+    catalog: &'a mut crate::engine::skill::effect::SkillEffectCatalog,
+}
+
 fn advance_wave_transition(
-    fight: &mut Fight,
-    managers: &mut crate::engine::manager::BattleManagers,
-    catalog: &mut crate::engine::skill::effect::SkillEffectCatalog,
+    wave: WaveState<'_>,
+
     battle_catalog: crate::catalog::BattleCatalog,
     pool: &crate::engine::skill::target::TargetPool,
     power: i32,
@@ -40,6 +45,11 @@ fn advance_wave_transition(
     fight_version: i32,
     absorb_hurt_map_layout: crate::engine::fight::versions::AbsorbHurtMapLayout,
 ) -> Result<Option<WaveTransition>, String> {
+    let WaveState {
+        fight,
+        catalog,
+        managers,
+    } = wave;
     if !should_advance_wave(fight, pool, managers) {
         return Ok(None);
     }
@@ -83,11 +93,13 @@ impl BattleRuntime {
             &self.fight,
         );
         let result = schedule::run_player_action_queue(
-            &mut self.managers,
-            &pool,
-            &self.catalog,
-            determinism,
-            crate::engine::skill::target::TargetContext::default(),
+            BattleAccess::new(
+                &mut self.managers,
+                &pool,
+                &self.catalog,
+                determinism,
+                crate::engine::skill::target::TargetContext::default(),
+            ),
             plays,
             team,
             emitter_uid,
@@ -181,11 +193,13 @@ impl BattleRuntime {
 
         let player = schedule::run_player_phase(
             &self.fight,
-            &mut self.managers,
-            &pool,
-            catalog,
-            &mut self.determinism,
-            context,
+            BattleAccess::new(
+                &mut self.managers,
+                &pool,
+                catalog,
+                &mut self.determinism,
+                context,
+            ),
             commands.iter().cloned(),
             device_operations,
             1,
@@ -212,23 +226,27 @@ impl BattleRuntime {
         } else {
             schedule::run_conduit_phase(
                 battle_catalog,
-                &self.fight,
+                crate::engine::runtime::schedule::ConduitPhase {
+                    fight: &self.fight,
+                    operations: device_operations,
+                },
                 &mut self.managers,
                 &pool,
                 catalog,
                 &mut self.determinism,
                 conduit_context,
-                device_operations,
             )
             .map_err(|error| format!("{error:?}"))?
         };
         let extra_round_skill = schedule::run_extra_round_skill(
             &self.fight,
-            &mut self.managers,
-            &pool,
-            catalog,
-            &mut self.determinism,
-            conduit_context,
+            BattleAccess::new(
+                &mut self.managers,
+                &pool,
+                catalog,
+                &mut self.determinism,
+                conduit_context,
+            ),
             action_round,
             next_action_index,
         )
@@ -474,11 +492,13 @@ impl BattleRuntime {
                 ..context
             };
             let before_ai = schedule::run_before_ai_round_start(
-                &mut self.managers,
-                &pool,
-                catalog,
-                &mut self.determinism,
-                defender_context,
+                BattleAccess::new(
+                    &mut self.managers,
+                    &pool,
+                    catalog,
+                    &mut self.determinism,
+                    defender_context,
+                ),
                 1,
                 &wave_entry_condition_uids,
                 (uses_action_phase_power_clear && !wave_defeated_after_attacker_settlement)
@@ -494,11 +514,13 @@ impl BattleRuntime {
             if let Some(choices) = ai_turn.into_choices() {
                 let ai = schedule::run_ai_actions(
                     &self.fight,
-                    &mut self.managers,
-                    &pool,
-                    catalog,
-                    &mut self.determinism,
-                    context,
+                    BattleAccess::new(
+                        &mut self.managers,
+                        &pool,
+                        catalog,
+                        &mut self.determinism,
+                        context,
+                    ),
                     choices,
                     promotions.promotions(),
                 )
@@ -522,9 +544,11 @@ impl BattleRuntime {
         }
         let mut wave_entering_uids = Vec::new();
         if let Some(transition) = advance_wave_transition(
-            &mut self.fight,
-            &mut self.managers,
-            catalog,
+            WaveState {
+                fight: &mut self.fight,
+                catalog,
+                managers: &mut self.managers,
+            },
             battle_catalog,
             &pool,
             self.round_state.power,
@@ -652,9 +676,11 @@ impl BattleRuntime {
                     break None;
                 }
                 let Some(transition) = advance_wave_transition(
-                    &mut self.fight,
-                    &mut self.managers,
-                    catalog,
+                    WaveState {
+                        fight: &mut self.fight,
+                        catalog,
+                        managers: &mut self.managers,
+                    },
                     battle_catalog,
                     &pool,
                     self.round_state.power,
@@ -712,9 +738,11 @@ impl BattleRuntime {
         )?);
         if !self.round_state.is_finish
             && let Some(transition) = advance_wave_transition(
-                &mut self.fight,
-                &mut self.managers,
-                catalog,
+                WaveState {
+                    fight: &mut self.fight,
+                    catalog,
+                    managers: &mut self.managers,
+                },
                 battle_catalog,
                 &pool,
                 self.round_state.power,

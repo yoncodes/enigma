@@ -1,17 +1,34 @@
 use super::*;
 use crate::engine::skill::behavior::registry::ConditionRouteOverride;
 
-#[allow(clippy::too_many_arguments)]
+#[derive(Clone, Copy)]
+pub(in crate::engine::runtime::drain) struct ReactionFrame<'a> {
+    pub event: &'a BattleEvent,
+    pub parent_path: Option<&'a [usize]>,
+    pub reuse_path: Option<&'a [usize]>,
+    pub action_path: Option<&'a [usize]>,
+    pub reentry_skill: Option<(i64, i32, Option<i64>)>,
+    pub current_skill_target: Option<i64>,
+}
+
+impl<'a> ReactionFrame<'a> {
+    pub(in crate::engine::runtime::drain) fn for_event(event: &'a BattleEvent) -> Self {
+        Self {
+            event,
+            parent_path: None,
+            reuse_path: None,
+            action_path: None,
+            reentry_skill: None,
+            current_skill_target: None,
+        }
+    }
+}
+
 pub(in crate::engine::runtime::drain) fn queued_reactions(
     pool: &TargetPool,
     catalog: &SkillEffectCatalog,
     dispatched: dispatcher::DispatchBatch,
-    event: &BattleEvent,
-    parent_path: Option<&[usize]>,
-    reuse_path: Option<&[usize]>,
-    action_path: Option<&[usize]>,
-    reentry_skill: Option<(i64, i32, Option<i64>)>,
-    current_skill_target: Option<i64>,
+    frame: ReactionFrame<'_>,
     reaction_scope: Option<(u64, Option<Vec<usize>>)>,
 ) -> Result<Vec<QueuedOp>, DrainError> {
     let mut reactions = Vec::new();
@@ -20,31 +37,28 @@ pub(in crate::engine::runtime::drain) fn queued_reactions(
             pool,
             catalog,
             pass,
-            event,
-            parent_path,
-            reuse_path,
-            action_path,
-            reentry_skill,
-            current_skill_target,
+            frame,
             reaction_scope.clone(),
         )?);
     }
     Ok(reactions)
 }
 
-#[allow(clippy::too_many_arguments)]
 fn queued_reaction_pass(
     pool: &TargetPool,
     catalog: &SkillEffectCatalog,
     dispatched: dispatcher::DispatchBatch,
-    event: &BattleEvent,
-    parent_path: Option<&[usize]>,
-    reuse_path: Option<&[usize]>,
-    action_path: Option<&[usize]>,
-    reentry_skill: Option<(i64, i32, Option<i64>)>,
-    current_skill_target: Option<i64>,
+    frame: ReactionFrame<'_>,
     reaction_scope: Option<(u64, Option<Vec<usize>>)>,
 ) -> Result<Vec<QueuedOp>, DrainError> {
+    let ReactionFrame {
+        event,
+        parent_path,
+        reuse_path,
+        action_path,
+        reentry_skill,
+        current_skill_target,
+    } = frame;
     let mut skill_groups = HashMap::<(i64, i32), Rc<RefCell<Option<FramePath>>>>::new();
     let mut independent_skill_groups = HashMap::<(i64, i32), Rc<RefCell<Option<FramePath>>>>::new();
     let skills = dispatched

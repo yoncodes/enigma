@@ -30,6 +30,7 @@ use crate::engine::{
     },
 };
 
+mod access;
 mod command_dispatch;
 mod command_prepare;
 mod defeat;
@@ -45,6 +46,7 @@ mod shield_counter;
 mod skill_dispatch;
 mod state;
 
+pub(crate) use access::BattleAccess;
 use command_dispatch::drain_command;
 use defeat::settle_defeat;
 pub use entry::*;
@@ -58,7 +60,8 @@ use model::{
 };
 pub use model::{DrainError, DrainResult, ReactionLane};
 use reactions::{
-    ReactionDispatch, dispatch_event_groups, dispatch_owner_reactions, dispatch_reactions,
+    EventFrame, ReactionAccess, ReactionDispatch, ReactionFrame, ReactionSelection,
+    dispatch_event_groups, dispatch_owner_reactions, dispatch_reactions,
 };
 #[cfg(test)]
 use reactions::{
@@ -106,28 +109,26 @@ fn drain_queue_with_frames(
     frames: Vec<SemanticFrame>,
 ) -> Result<DrainResult, DrainError> {
     drain_queue_with_frames_and_cleanup_owner(
-        managers,
-        pool,
-        catalog,
-        determinism,
-        context,
+        BattleAccess::new(managers, pool, catalog, determinism, context),
         queue,
         frames,
         DefenderCardCleanupOwner::DeathAction,
     )
 }
 
-#[allow(clippy::too_many_arguments)]
 fn drain_queue_with_frames_and_cleanup_owner(
-    managers: &mut BattleManagers,
-    pool: &TargetPool,
-    catalog: &SkillEffectCatalog,
-    determinism: &mut RoundDeterminism,
-    context: TargetContext,
+    battle: BattleAccess<'_>,
     queue: &mut VecDeque<QueuedOp>,
     frames: Vec<SemanticFrame>,
     cleanup_owner: DefenderCardCleanupOwner,
 ) -> Result<DrainResult, DrainError> {
+    let BattleAccess {
+        managers,
+        pool,
+        catalog,
+        determinism,
+        context,
+    } = battle;
     let mut state = DrainState::new(context).with_defender_card_cleanup_owner(cleanup_owner);
     drain_queue_with_deferred(
         managers,
@@ -483,24 +484,29 @@ fn drain_queue_with_deferred(
                     managers.mark_buff_act_fired(cap.owner_uid, cap.buff_uid, cap.key);
                 }
                 drain_skill(
-                    managers,
+                    DrainAccess {
+                        managers,
+                        pool,
+                        catalog,
+                        determinism,
+                        result: &mut result,
+                        state,
+                    },
                     base_pool,
-                    pool,
-                    catalog,
-                    determinism,
                     context,
                     queue,
-                    &mut result,
-                    state,
-                    invocation,
-                    trigger,
-                    skill_execution,
-                    frame_path,
-                    parent_path,
-                    frame_group,
-                    frame_owner,
-                    subscriber,
-                    caster_frame,
+                    QueuedOp {
+                        op: invocation,
+                        trigger,
+                        skill_execution,
+                        frame_path,
+                        parent_path,
+                        frame_group,
+                        independent_parent_group: None,
+                        frame_owner,
+                        subscriber,
+                        caster_frame,
+                    },
                 )?
             }
             RuleOp::FreezeActiveSkillRates => {
@@ -537,27 +543,31 @@ fn drain_queue_with_deferred(
                     .expand_skill_targets(managers, pool, additional_count);
                 if expanded && let Some(consume) = consume {
                     drain_command(
-                        managers,
+                        DrainAccess {
+                            managers,
+                            pool,
+                            catalog,
+                            determinism,
+                            result: &mut result,
+                            state,
+                        },
                         base_pool,
-                        pool,
-                        catalog,
-                        determinism,
                         context,
                         queue,
-                        &mut result,
-                        state,
                         &mut bus,
                         &mut pending_hits,
-                        RuleOp::Command(BattleCommand::Buff(BuffCommand::Consume(consume))),
-                        trigger,
-                        skill_execution,
-                        Some(frame_path),
-                        parent_path,
-                        frame_group,
-                        independent_parent_group,
-                        frame_owner,
-                        subscriber,
-                        caster_frame,
+                        QueuedOp {
+                            op: RuleOp::Command(BattleCommand::Buff(BuffCommand::Consume(consume))),
+                            trigger,
+                            skill_execution,
+                            frame_path: Some(frame_path),
+                            parent_path,
+                            frame_group,
+                            frame_owner,
+                            subscriber,
+                            caster_frame,
+                            independent_parent_group,
+                        },
                     )?;
                 }
             }
@@ -580,27 +590,31 @@ fn drain_queue_with_deferred(
             | RuleOp::MarkBuffActFired { .. }
             | RuleOp::ModifyActiveSkillTargets { .. }
             | RuleOp::NuoDiKaHit(_)) => drain_command(
-                managers,
+                DrainAccess {
+                    managers,
+                    pool,
+                    catalog,
+                    determinism,
+                    result: &mut result,
+                    state,
+                },
                 base_pool,
-                pool,
-                catalog,
-                determinism,
                 context,
                 queue,
-                &mut result,
-                state,
                 &mut bus,
                 &mut pending_hits,
-                command,
-                trigger,
-                skill_execution,
-                frame_path,
-                parent_path,
-                frame_group,
-                independent_parent_group,
-                frame_owner,
-                subscriber,
-                caster_frame,
+                QueuedOp {
+                    op: command,
+                    trigger,
+                    skill_execution,
+                    frame_path,
+                    parent_path,
+                    frame_group,
+                    frame_owner,
+                    subscriber,
+                    caster_frame,
+                    independent_parent_group,
+                },
             )?,
         }
     }
@@ -663,17 +677,21 @@ fn drain_nested_queue(
     Ok(())
 }
 
-#[allow(clippy::too_many_arguments)]
 fn drain_death_settlement_queue(
-    managers: &mut BattleManagers,
-    pool: &TargetPool,
-    catalog: &SkillEffectCatalog,
-    determinism: &mut RoundDeterminism,
+    access: DrainAccess<'_>,
+
     queue: VecDeque<QueuedOp>,
-    result: &mut DrainResult,
-    state: &mut DrainState,
+
     deaths: &[crate::engine::manager::hp::PendingDeath],
 ) -> Result<(), DrainError> {
+    let DrainAccess {
+        managers,
+        pool,
+        catalog,
+        determinism,
+        result,
+        state,
+    } = access;
     state.enter_death_settlement(deaths);
     let nested = drain_nested_queue(managers, pool, catalog, determinism, queue, result, state);
     state.leave_death_settlement();

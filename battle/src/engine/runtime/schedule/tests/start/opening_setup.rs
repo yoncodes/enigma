@@ -42,11 +42,13 @@ fn opening_cards_exist_before_card_setup_rules_run() {
 
     let (result, _) = run_start(
         managers.catalog(),
-        &mut managers,
-        &pool,
-        &catalog,
-        &mut RoundDeterminism::default(),
-        TargetContext::default(),
+        BattleAccess::new(
+            &mut managers,
+            &pool,
+            &catalog,
+            &mut RoundDeterminism::default(),
+            TargetContext::default(),
+        ),
         CardSetup {
             hand: vec![CardInfo {
                 uid: Some(10),
@@ -137,11 +139,13 @@ fn opening_raw_deal_uses_surplus_cards_to_refill_composed_slots() {
 
     let (_, dealt) = run_start(
         managers.catalog(),
-        &mut managers,
-        &pool,
-        &SkillEffectCatalog::default(),
-        &mut RoundDeterminism::default(),
-        TargetContext::default(),
+        BattleAccess::new(
+            &mut managers,
+            &pool,
+            &SkillEffectCatalog::default(),
+            &mut RoundDeterminism::default(),
+            TargetContext::default(),
+        ),
         CardSetup {
             hand: raw_deal.clone(),
             draw_pile: Vec::new(),
@@ -238,11 +242,13 @@ fn opening_setup_applies_the_configured_fourth_ally_limit_before_dealing() {
 
     let (start, dealt) = run_start(
         managers.catalog(),
-        &mut managers,
-        &pool,
-        &catalog,
-        &mut determinism,
-        TargetContext::default(),
+        BattleAccess::new(
+            &mut managers,
+            &pool,
+            &catalog,
+            &mut determinism,
+            TargetContext::default(),
+        ),
         CardSetup {
             hand: opening[..8].to_vec(),
             draw_pile: opening[8..].to_vec(),
@@ -316,11 +322,13 @@ fn start_schedule_runs_the_leading_round_start_lane() {
 
     run_start(
         managers.catalog(),
-        &mut managers,
-        &pool,
-        &catalog,
-        &mut RoundDeterminism::default(),
-        TargetContext::default(),
+        BattleAccess::new(
+            &mut managers,
+            &pool,
+            &catalog,
+            &mut RoundDeterminism::default(),
+            TargetContext::default(),
+        ),
         CardSetup {
             hand: Vec::new(),
             draw_pile: Vec::new(),
@@ -446,11 +454,13 @@ fn opening_includes_defender_self_buff_maintenance_only() {
 
         let (opening, _) = run_start(
             managers.catalog(),
-            &mut managers,
-            &pool,
-            &catalog,
-            &mut RoundDeterminism::default(),
-            TargetContext::default(),
+            BattleAccess::new(
+                &mut managers,
+                &pool,
+                &catalog,
+                &mut RoundDeterminism::default(),
+                TargetContext::default(),
+            ),
             CardSetup {
                 hand: Vec::new(),
                 draw_pile: Vec::new(),
@@ -539,11 +549,13 @@ fn opening_round_does_not_consume_a_timed_layered_buff() {
 
     run_start(
         managers.catalog(),
-        &mut managers,
-        &pool,
-        &catalog,
-        &mut RoundDeterminism::default(),
-        TargetContext::default(),
+        BattleAccess::new(
+            &mut managers,
+            &pool,
+            &catalog,
+            &mut RoundDeterminism::default(),
+            TargetContext::default(),
+        ),
         CardSetup {
             hand: Vec::new(),
             draw_pile: Vec::new(),
@@ -597,11 +609,13 @@ fn opening_round_advances_a_timed_buff_granted_during_setup() {
 
     run_start(
         managers.catalog(),
-        &mut managers,
-        &pool,
-        &catalog,
-        &mut RoundDeterminism::default(),
-        TargetContext::default(),
+        BattleAccess::new(
+            &mut managers,
+            &pool,
+            &catalog,
+            &mut RoundDeterminism::default(),
+            TargetContext::default(),
+        ),
         CardSetup {
             hand: Vec::new(),
             draw_pile: Vec::new(),
@@ -658,11 +672,13 @@ fn opening_round_does_not_advance_a_buff_granted_by_round_start() {
 
     let (start, _) = run_start(
         managers.catalog(),
-        &mut managers,
-        &pool,
-        &catalog,
-        &mut RoundDeterminism::default(),
-        TargetContext::default(),
+        BattleAccess::new(
+            &mut managers,
+            &pool,
+            &catalog,
+            &mut RoundDeterminism::default(),
+            TargetContext::default(),
+        ),
         CardSetup {
             hand: Vec::new(),
             draw_pile: Vec::new(),
@@ -738,14 +754,16 @@ fn version_seven_opening_orders_immunity_duration_and_buff_gate() {
 
     let (start, _) = run_start(
         managers.catalog(),
-        &mut managers,
-        &pool,
-        &catalog,
-        &mut RoundDeterminism::default(),
-        TargetContext {
-            current_round: 1,
-            ..Default::default()
-        },
+        BattleAccess::new(
+            &mut managers,
+            &pool,
+            &catalog,
+            &mut RoundDeterminism::default(),
+            TargetContext {
+                current_round: 1,
+                ..Default::default()
+            },
+        ),
         CardSetup {
             hand: Vec::new(),
             draw_pile: Vec::new(),
@@ -903,14 +921,16 @@ fn version_seven_opening_interleaves_round_start_and_buff_gate_skills_by_owner()
 
     let (start, _) = run_start(
         managers.catalog(),
-        &mut managers,
-        &pool,
-        &catalog,
-        &mut RoundDeterminism::default(),
-        TargetContext {
-            current_round: 1,
-            ..Default::default()
-        },
+        BattleAccess::new(
+            &mut managers,
+            &pool,
+            &catalog,
+            &mut RoundDeterminism::default(),
+            TargetContext {
+                current_round: 1,
+                ..Default::default()
+            },
+        ),
         CardSetup {
             hand: Vec::new(),
             draw_pile: Vec::new(),
@@ -995,11 +1015,13 @@ fn version_seven_opening_groups_sync_and_late_setup() {
 
     let (start, _) = run_start(
         managers.catalog(),
-        &mut managers,
-        &pool,
-        &catalog,
-        &mut RoundDeterminism::default(),
-        TargetContext::default(),
+        BattleAccess::new(
+            &mut managers,
+            &pool,
+            &catalog,
+            &mut RoundDeterminism::default(),
+            TargetContext::default(),
+        ),
         CardSetup {
             hand: Vec::new(),
             draw_pile: Vec::new(),
@@ -1073,11 +1095,13 @@ fn lingering_glow_opening_grants_team_attributes_under_its_opening_owner() {
 
     let (opening, _) = run_start(
         managers.catalog(),
-        &mut managers,
-        &pool,
-        crate::engine::skill::effect::catalog::global(),
-        &mut RoundDeterminism::default(),
-        TargetContext::default(),
+        BattleAccess::new(
+            &mut managers,
+            &pool,
+            crate::engine::skill::effect::catalog::global(),
+            &mut RoundDeterminism::default(),
+            TargetContext::default(),
+        ),
         CardSetup {
             hand: Vec::new(),
             draw_pile: Vec::new(),

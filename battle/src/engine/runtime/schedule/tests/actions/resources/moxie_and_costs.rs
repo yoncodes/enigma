@@ -123,11 +123,13 @@ fn player_owned_negative_uid_gains_card_play_moxie() {
     });
 
     run_player_action_queue(
-        &mut managers,
-        &pool,
-        &catalog,
-        &mut RoundDeterminism::default(),
-        TargetContext::default(),
+        BattleAccess::new(
+            &mut managers,
+            &pool,
+            &catalog,
+            &mut RoundDeterminism::default(),
+            TargetContext::default(),
+        ),
         [CardPlay {
             origin: CARD_PLAY_ORIGIN,
             hand_index: 0,
@@ -181,11 +183,13 @@ fn blocked_ai_card_still_gains_card_play_moxie() {
 
     let result = run_ai_actions(
         &fight,
-        &mut managers,
-        &pool,
-        &catalog,
-        &mut RoundDeterminism::default(),
-        TargetContext::default(),
+        BattleAccess::new(
+            &mut managers,
+            &pool,
+            &catalog,
+            &mut RoundDeterminism::default(),
+            TargetContext::default(),
+        ),
         [AiSkillChoice {
             source_uid: -1,
             skill_id: 117_373_053,
@@ -235,11 +239,13 @@ fn precast_card_does_not_grant_card_play_moxie() {
     });
 
     run_player_action_queue(
-        &mut managers,
-        &pool,
-        &catalog,
-        &mut RoundDeterminism::default(),
-        TargetContext::default(),
+        BattleAccess::new(
+            &mut managers,
+            &pool,
+            &catalog,
+            &mut RoundDeterminism::default(),
+            TargetContext::default(),
+        ),
         [CardPlay {
             origin: CARD_PLAY_ORIGIN,
             hand_index: 0,
@@ -298,11 +304,13 @@ fn ultimate_spend_is_recorded_inside_its_skill_frame() {
     });
 
     let result = run_player_action_queue(
-        &mut managers,
-        &pool,
-        &catalog,
-        &mut RoundDeterminism::default(),
-        TargetContext::default(),
+        BattleAccess::new(
+            &mut managers,
+            &pool,
+            &catalog,
+            &mut RoundDeterminism::default(),
+            TargetContext::default(),
+        ),
         [CardPlay {
             origin: CARD_PLAY_ORIGIN,
             hand_index: 0,
@@ -385,11 +393,13 @@ fn configured_ultimate_alias_spends_moxie() {
     });
 
     run_player_action_queue(
-        &mut managers,
-        &pool,
-        &catalog,
-        &mut RoundDeterminism::default(),
-        TargetContext::default(),
+        BattleAccess::new(
+            &mut managers,
+            &pool,
+            &catalog,
+            &mut RoundDeterminism::default(),
+            TargetContext::default(),
+        ),
         [CardPlay {
             origin: CARD_PLAY_ORIGIN,
             hand_index: 7,
@@ -447,11 +457,13 @@ fn lorentz_rewritten_precast_does_not_grant_moxie() {
     });
 
     run_player_action_queue(
-        &mut managers,
-        &pool,
-        &catalog,
-        &mut RoundDeterminism::default(),
-        TargetContext::default(),
+        BattleAccess::new(
+            &mut managers,
+            &pool,
+            &catalog,
+            &mut RoundDeterminism::default(),
+            TargetContext::default(),
+        ),
         [CardPlay {
             origin: CARD_PLAY_ORIGIN,
             hand_index: 0,
@@ -529,11 +541,13 @@ fn source_opening_effects_precede_the_ultimate_cost() {
         .unwrap();
     let catalog = SkillEffectCatalog::from_fight(config::configs::get(), &fight);
     let result = run_player_action_queue(
-        &mut managers,
-        &pool,
-        &catalog,
-        &mut RoundDeterminism::default(),
-        TargetContext::default(),
+        BattleAccess::new(
+            &mut managers,
+            &pool,
+            &catalog,
+            &mut RoundDeterminism::default(),
+            TargetContext::default(),
+        ),
         [CardPlay {
             origin: CARD_PLAY_ORIGIN,
             hand_index: 0,
@@ -632,11 +646,13 @@ fn ultimate_spends_the_required_cost_derived_from_its_active_buff() {
     });
 
     run_player_action_queue(
-        &mut managers,
-        &pool,
-        &catalog,
-        &mut RoundDeterminism::default(),
-        TargetContext::default(),
+        BattleAccess::new(
+            &mut managers,
+            &pool,
+            &catalog,
+            &mut RoundDeterminism::default(),
+            TargetContext::default(),
+        ),
         [CardPlay {
             origin: CARD_PLAY_ORIGIN,
             hand_index: 0,

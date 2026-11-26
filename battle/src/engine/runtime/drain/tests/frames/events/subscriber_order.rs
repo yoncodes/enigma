@@ -31,12 +31,14 @@ fn independent_reaction_does_not_inherit_the_causing_frame() {
             )],
             ..Default::default()
         },
-        &BattleEvent::Kind(EventKind::RoundEndAfterOwnerSettlement),
-        Some(&[4, 2]),
-        Some(&[4, 2]),
-        None,
-        None,
-        None,
+        ReactionFrame {
+            event: &BattleEvent::Kind(EventKind::RoundEndAfterOwnerSettlement),
+            parent_path: Some(&[4, 2]),
+            reuse_path: Some(&[4, 2]),
+            action_path: None,
+            reentry_skill: None,
+            current_skill_target: None,
+        },
         None,
     )
     .unwrap();
@@ -83,12 +85,14 @@ fn queued_reaction_rejects_an_unregistered_exact_condition() {
             )],
             ..Default::default()
         },
-        &BattleEvent::Kind(EventKind::SkillAction),
-        Some(&[0]),
-        None,
-        None,
-        None,
-        None,
+        ReactionFrame {
+            event: &BattleEvent::Kind(EventKind::SkillAction),
+            parent_path: Some(&[0]),
+            reuse_path: None,
+            action_path: None,
+            reentry_skill: None,
+            current_skill_target: None,
+        },
         None,
     );
 

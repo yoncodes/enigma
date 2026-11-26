@@ -1,4 +1,5 @@
 use super::*;
+use crate::engine::runtime::drain::BattleAccess;
 
 #[test]
 fn auto_round_plays_energy_cards_before_other_cards() {
@@ -151,11 +152,13 @@ fn auto_round_selects_an_enemy_while_conduit_energy_resolves_on_its_owner() {
         .extend_skill_roots(&mut catalog, [31446012], std::iter::empty());
     let mut determinism = runtime.determinism.clone();
     crate::engine::runtime::schedule::run_player_commands(
-        &mut runtime.managers,
-        &pool,
-        &catalog,
-        &mut determinism,
-        crate::engine::skill::target::TargetContext::default(),
+        BattleAccess::new(
+            &mut runtime.managers,
+            &pool,
+            &catalog,
+            &mut determinism,
+            crate::engine::skill::target::TargetContext::default(),
+        ),
         reply
             .opers
             .iter()

@@ -414,12 +414,14 @@ fn allied_conduit_activation_keeps_each_behavior_frame_owner() {
         &pool,
         &catalog,
         dispatched,
-        &event,
-        Some(&[0]),
-        Some(&[0]),
-        None,
-        None,
-        None,
+        ReactionFrame {
+            event: &event,
+            parent_path: Some(&[0]),
+            reuse_path: Some(&[0]),
+            action_path: None,
+            reentry_skill: None,
+            current_skill_target: None,
+        },
         None,
     )
     .unwrap();

@@ -51,11 +51,13 @@ fn scheduled_toughness_recovery_waits_for_the_following_round_start() {
     let mut determinism = RoundDeterminism::default();
     let mut settle = |managers: &mut BattleManagers| {
         run_before_ai_round_start(
-            managers,
-            &pool,
-            &catalog,
-            &mut determinism,
-            TargetContext::default(),
+            BattleAccess::new(
+                managers,
+                &pool,
+                &catalog,
+                &mut determinism,
+                TargetContext::default(),
+            ),
             2,
             &[],
             None,
@@ -94,14 +96,16 @@ fn unbroken_toughness_timer_counts_down_from_the_defender_start() {
     let mut determinism = RoundDeterminism::default();
     let mut settle = |managers: &mut BattleManagers, defender_start_round| {
         run_before_ai_round_start(
-            managers,
-            &pool,
-            &catalog,
-            &mut determinism,
-            TargetContext {
-                defender_start_round,
-                ..TargetContext::default()
-            },
+            BattleAccess::new(
+                managers,
+                &pool,
+                &catalog,
+                &mut determinism,
+                TargetContext {
+                    defender_start_round,
+                    ..TargetContext::default()
+                },
+            ),
             2,
             &[],
             None,
@@ -138,14 +142,16 @@ fn toughness_timer_row_is_added_by_its_first_update() {
     let catalog = recovery_catalog();
     let mut determinism = RoundDeterminism::default();
     run_before_ai_round_start(
-        &mut managers,
-        &pool,
-        &catalog,
-        &mut determinism,
-        TargetContext {
-            defender_start_round: Some(2),
-            ..TargetContext::default()
-        },
+        BattleAccess::new(
+            &mut managers,
+            &pool,
+            &catalog,
+            &mut determinism,
+            TargetContext {
+                defender_start_round: Some(2),
+                ..TargetContext::default()
+            },
+        ),
         2,
         &[],
         None,

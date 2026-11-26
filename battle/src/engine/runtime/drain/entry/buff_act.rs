@@ -1,16 +1,18 @@
 use super::*;
 
-#[allow(clippy::too_many_arguments)]
 pub fn run_buff_act_setup_stage_for_owners(
-    managers: &mut BattleManagers,
-    pool: &TargetPool,
-    catalog: &SkillEffectCatalog,
-    determinism: &mut RoundDeterminism,
-    context: TargetContext,
+    battle: BattleAccess<'_>,
     stage: SetupStage,
     priority: i32,
     owner_uids: &[i64],
 ) -> Result<DrainResult, DrainError> {
+    let BattleAccess {
+        managers,
+        pool,
+        catalog,
+        determinism,
+        context,
+    } = battle;
     let trigger = FrameTrigger::Setup { stage, priority };
     let operations = dispatcher::dispatch_buff_act_setup(
         pool,
@@ -36,11 +38,7 @@ pub fn run_buff_act_setup_stage_for_owners(
         ))
     });
     run_owned_buff_act_groups(
-        managers,
-        pool,
-        catalog,
-        determinism,
-        context,
+        BattleAccess::new(managers, pool, catalog, determinism, context),
         trigger,
         SkillOpTrigger::Setup { stage, priority },
         operations,
@@ -57,11 +55,7 @@ pub fn run_buff_act_ops(
     operations: impl IntoIterator<Item = (crate::engine::skill::subscriber::BuffActSubscriber, RuleOp)>,
 ) -> Result<DrainResult, DrainError> {
     run_owned_buff_act_ops(
-        managers,
-        pool,
-        catalog,
-        determinism,
-        context,
+        BattleAccess::new(managers, pool, catalog, determinism, context),
         FrameTrigger::Active,
         SkillOpTrigger::Active,
         operations.into_iter().map(|(subscriber, op)| {
@@ -80,24 +74,22 @@ pub fn run_buff_act_ops(
     )
 }
 
-#[allow(clippy::too_many_arguments)]
 fn run_owned_buff_act_ops(
-    managers: &mut BattleManagers,
-    pool: &TargetPool,
-    catalog: &SkillEffectCatalog,
-    determinism: &mut RoundDeterminism,
-    context: TargetContext,
+    battle: BattleAccess<'_>,
     trigger: FrameTrigger,
     skill_trigger: SkillOpTrigger,
     operations: impl IntoIterator<Item = Result<(FrameOwner, RuleOp), DrainError>>,
     wrap_in_command: bool,
 ) -> Result<DrainResult, DrainError> {
-    run_owned_buff_act_groups(
+    let BattleAccess {
         managers,
         pool,
         catalog,
         determinism,
         context,
+    } = battle;
+    run_owned_buff_act_groups(
+        BattleAccess::new(managers, pool, catalog, determinism, context),
         trigger,
         skill_trigger,
         operations
@@ -107,18 +99,20 @@ fn run_owned_buff_act_ops(
     )
 }
 
-#[allow(clippy::too_many_arguments)]
 fn run_owned_buff_act_groups(
-    managers: &mut BattleManagers,
-    pool: &TargetPool,
-    catalog: &SkillEffectCatalog,
-    determinism: &mut RoundDeterminism,
-    context: TargetContext,
+    battle: BattleAccess<'_>,
     trigger: FrameTrigger,
     skill_trigger: SkillOpTrigger,
     operations: impl IntoIterator<Item = Result<(FrameOwner, Vec<RuleOp>), DrainError>>,
     wrap_in_command: bool,
 ) -> Result<DrainResult, DrainError> {
+    let BattleAccess {
+        managers,
+        pool,
+        catalog,
+        determinism,
+        context,
+    } = battle;
     let mut frames = Vec::new();
     let root =
         wrap_in_command.then(|| push_root(&mut frames, FrameOwner::Command, trigger.clone()));

@@ -71,10 +71,12 @@ fn extra_action_uses_the_configured_critical_attributes() {
             &managers.attribute,
             &managers.buff,
             &managers.hp,
-            false,
-            false,
-            true,
-            true,
+            super::super::AttackAttributeScope {
+                is_big_skill: false,
+                extra_action: false,
+                performs_extra_action: true,
+                source_performs_extra_action: true,
+            },
         ),
         300
     );

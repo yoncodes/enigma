@@ -6,6 +6,8 @@ use crate::engine::{
     manager::BattleManagers,
     runtime::{conduit::admit, determinism::RoundDeterminism},
     skill::{
+        action::SkillRequest,
+        behavior::rate::RateRuntime,
         effect::SkillEffectCatalog,
         target::{TargetContext, TargetPool},
     },
@@ -58,9 +60,11 @@ pub(in crate::engine::auto_battle) fn select_groups(
                     catalog,
                     determinism,
                     context,
-                    source_uid,
-                    *skill,
-                    false,
+                    crate::engine::runtime::conduit::ActivationRequest {
+                        source_uid,
+                        skill: *skill,
+                        free_skill_used: false,
+                    },
                 )
                 .filter(|admission| admission.selectable) else {
                     return total;
@@ -68,14 +72,18 @@ pub(in crate::engine::auto_battle) fn select_groups(
                 add_score(
                     total,
                     skill_score(
-                        source_uid,
-                        skill.skill_id,
+                        SkillRequest {
+                            source_uid,
+                            skill_id: skill.skill_id,
+                        },
                         admission.cost,
-                        managers,
-                        &pool,
-                        catalog,
+                        RateRuntime {
+                            effects: catalog,
+                            managers,
+                            pool: &pool,
+                            context,
+                        },
                         determinism,
-                        context,
                     ),
                 )
             });

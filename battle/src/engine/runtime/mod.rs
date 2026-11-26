@@ -82,11 +82,13 @@ impl AutoRoundPlanner {
     ) -> Result<sonettobuf::AutoRoundReply, AutoRoundError> {
         crate::engine::auto_battle::plan(
             request,
-            &self.fight,
-            &self.managers,
-            &self.catalog,
-            &self.round_state,
-            &self.determinism,
+            crate::engine::auto_battle::RoundSnapshot {
+                fight: &self.fight,
+                managers: &self.managers,
+                catalog: &self.catalog,
+                round_state: &self.round_state,
+                determinism: &self.determinism,
+            },
             self.devices.clone(),
             self.cloth_redealt,
         )
@@ -129,11 +131,13 @@ impl BattleRuntime {
         let (managers, round_state) = self.auto_round_state();
         crate::engine::auto_battle::plan(
             request,
-            &self.fight,
-            &managers,
-            &self.catalog,
-            &round_state,
-            &self.determinism,
+            crate::engine::auto_battle::RoundSnapshot {
+                fight: &self.fight,
+                managers: &managers,
+                catalog: &self.catalog,
+                round_state: &round_state,
+                determinism: &self.determinism,
+            },
             self.conduit_operations(),
             self.cloth_redealt,
         )

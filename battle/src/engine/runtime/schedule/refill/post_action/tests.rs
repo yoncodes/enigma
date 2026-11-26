@@ -61,11 +61,13 @@ fn post_action_refill_keeps_the_committed_ultimate_size_exemption() {
     };
     let result = run_player_phase(
         &fight,
-        &mut managers,
-        &pool,
-        &catalog,
-        &mut RoundDeterminism::default(),
-        TargetContext::default(),
+        BattleAccess::new(
+            &mut managers,
+            &pool,
+            &catalog,
+            &mut RoundDeterminism::default(),
+            TargetContext::default(),
+        ),
         [play.clone(), play],
         &[],
         1,

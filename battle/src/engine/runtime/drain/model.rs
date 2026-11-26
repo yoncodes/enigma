@@ -116,8 +116,8 @@ pub struct DrainResult {
     pub frames: Vec<SemanticFrame>,
 }
 
-pub(super) struct QueuedOp {
-    pub(super) op: RuleOp,
+pub(super) struct QueuedOp<T = RuleOp> {
+    pub(super) op: T,
     pub(super) trigger: SkillOpTrigger,
     pub(super) skill_execution: Option<SkillExecution>,
     pub(super) frame_path: Option<FramePath>,

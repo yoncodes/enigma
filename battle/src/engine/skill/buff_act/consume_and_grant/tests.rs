@@ -1,3 +1,4 @@
+use crate::engine::runtime::drain::BattleAccess;
 use sonettobuf::{BuffInfo, Fight, FightEntityInfo, FightTeam, PowerInfo};
 
 use super::*;
@@ -137,11 +138,13 @@ fn round_start_spends_eureka_grants_emitter_buff_then_consumes_stack() {
     ));
 
     drain::run_group_event(
-        &mut managers,
-        &pool,
-        &catalog,
-        &mut RoundDeterminism::default(),
-        TargetContext::default(),
+        BattleAccess::new(
+            &mut managers,
+            &pool,
+            &catalog,
+            &mut RoundDeterminism::default(),
+            TargetContext::default(),
+        ),
         BattleEvent::RoundStart,
         ReactionLane::BuffActs,
         Some(&[10]),
@@ -161,11 +164,13 @@ fn round_start_spends_eureka_grants_emitter_buff_then_consumes_stack() {
     );
 
     drain::run_group_event(
-        &mut managers,
-        &pool,
-        &catalog,
-        &mut RoundDeterminism::default(),
-        TargetContext::default(),
+        BattleAccess::new(
+            &mut managers,
+            &pool,
+            &catalog,
+            &mut RoundDeterminism::default(),
+            TargetContext::default(),
+        ),
         BattleEvent::RoundStart,
         ReactionLane::BuffActs,
         Some(&[10]),
@@ -185,11 +190,13 @@ fn insufficient_eureka_preserves_the_source_stack() {
     let catalog = SkillEffectCatalog::from_roots(config::configs::get(), [], [31410202]);
 
     drain::run_group_event(
-        &mut managers,
-        &pool,
-        &catalog,
-        &mut RoundDeterminism::default(),
-        TargetContext::default(),
+        BattleAccess::new(
+            &mut managers,
+            &pool,
+            &catalog,
+            &mut RoundDeterminism::default(),
+            TargetContext::default(),
+        ),
         BattleEvent::RoundStart,
         ReactionLane::BuffActs,
         Some(&[10]),

@@ -571,11 +571,13 @@ fn setup_reserves_summoned_lanes_before_the_next_buff() {
 
     run_start(
         managers.catalog(),
-        &mut managers,
-        &pool,
-        crate::engine::skill::effect::catalog::global(),
-        &mut RoundDeterminism::default(),
-        TargetContext::default(),
+        BattleAccess::new(
+            &mut managers,
+            &pool,
+            crate::engine::skill::effect::catalog::global(),
+            &mut RoundDeterminism::default(),
+            TargetContext::default(),
+        ),
         CardSetup {
             hand: Vec::new(),
             draw_pile: Vec::new(),
@@ -788,11 +790,13 @@ fn after_settlement_no_action_round_counts_enemy_casts() {
 
     run_ai_actions(
         &fight,
-        &mut managers,
-        &pool,
-        &catalog,
-        &mut RoundDeterminism::default(),
-        TargetContext::default(),
+        BattleAccess::new(
+            &mut managers,
+            &pool,
+            &catalog,
+            &mut RoundDeterminism::default(),
+            TargetContext::default(),
+        ),
         [AiSkillChoice {
             source_uid: -1,
             skill_id: 999,

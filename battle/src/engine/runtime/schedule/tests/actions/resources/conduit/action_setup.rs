@@ -46,16 +46,18 @@ fn conduit_dead_source_does_not_complete_activation() {
     let mut determinism = RoundDeterminism::default();
     let result = run_conduit_phase(
         managers.catalog(),
-        &fight,
+        crate::engine::runtime::schedule::ConduitPhase {
+            fight: &fight,
+            operations: &[sonettobuf::FightDeviceOper {
+                uid: Some(10),
+                index: Some(1),
+            }],
+        },
         &mut managers,
         &pool,
         &mut catalog,
         &mut determinism,
         TargetContext::default(),
-        &[sonettobuf::FightDeviceOper {
-            uid: Some(10),
-            index: Some(1),
-        }],
     )
     .unwrap();
 
@@ -70,15 +72,19 @@ fn conduit_dead_source_does_not_complete_activation() {
     );
     for skill_id in [31490111, 31490121] {
         let result = crate::engine::runtime::drain::run_conduit_action(
-            &mut managers,
-            &pool,
-            &catalog,
-            &mut determinism,
-            TargetContext::default(),
+            BattleAccess::new(
+                &mut managers,
+                &pool,
+                &catalog,
+                &mut determinism,
+                TargetContext::default(),
+            ),
             10,
             1,
-            1,
-            1,
+            crate::engine::runtime::drain::ConduitSlot {
+                device_index: 1,
+                skill_position: 1,
+            },
             skill_id,
             None,
             None,
@@ -135,16 +141,18 @@ fn conduit_attack_does_not_begin_without_a_living_enemy() {
 
     let result = run_conduit_phase(
         managers.catalog(),
-        &fight,
+        crate::engine::runtime::schedule::ConduitPhase {
+            fight: &fight,
+            operations: &[sonettobuf::FightDeviceOper {
+                uid: Some(10),
+                index: Some(3),
+            }],
+        },
         &mut managers,
         &pool,
         &mut catalog,
         &mut RoundDeterminism::default(),
         TargetContext::default(),
-        &[sonettobuf::FightDeviceOper {
-            uid: Some(10),
-            index: Some(3),
-        }],
     )
     .unwrap();
 
@@ -195,16 +203,18 @@ fn terminal_conduit_action_closes_its_running_state() {
 
     let result = run_conduit_phase(
         managers.catalog(),
-        &fight,
+        crate::engine::runtime::schedule::ConduitPhase {
+            fight: &fight,
+            operations: &[sonettobuf::FightDeviceOper {
+                uid: Some(10),
+                index: Some(3),
+            }],
+        },
         &mut managers,
         &pool,
         &mut catalog,
         &mut RoundDeterminism::default(),
         TargetContext::default(),
-        &[sonettobuf::FightDeviceOper {
-            uid: Some(10),
-            index: Some(3),
-        }],
     )
     .unwrap();
 
@@ -276,16 +286,18 @@ fn regulus_device_ultimate_selects_the_group_for_the_living_enemy_count() {
 
         run_conduit_phase(
             managers.catalog(),
-            &fight,
+            crate::engine::runtime::schedule::ConduitPhase {
+                fight: &fight,
+                operations: &[sonettobuf::FightDeviceOper {
+                    uid: Some(10),
+                    index: Some(3),
+                }],
+            },
             &mut managers,
             &pool,
             &mut catalog,
             &mut RoundDeterminism::default(),
             TargetContext::default(),
-            &[sonettobuf::FightDeviceOper {
-                uid: Some(10),
-                index: Some(3),
-            }],
         )
         .unwrap();
 
@@ -323,16 +335,18 @@ fn conduit_source_target_uses_the_first_living_main_ally_as_its_frame_anchor() {
 
     let result = run_conduit_phase(
         managers.catalog(),
-        &fight,
+        crate::engine::runtime::schedule::ConduitPhase {
+            fight: &fight,
+            operations: &[sonettobuf::FightDeviceOper {
+                uid: Some(10),
+                index: Some(1),
+            }],
+        },
         &mut managers,
         &pool,
         &mut catalog,
         &mut RoundDeterminism::default(),
         TargetContext::default(),
-        &[sonettobuf::FightDeviceOper {
-            uid: Some(10),
-            index: Some(1),
-        }],
     )
     .unwrap();
 
@@ -430,11 +444,13 @@ fn device_power_card_keeps_ally_action_without_granting_loop_chain() {
     };
 
     let device = run_player_action_queue(
-        &mut managers,
-        &pool,
-        &catalog,
-        &mut RoundDeterminism::default(),
-        TargetContext::default(),
+        BattleAccess::new(
+            &mut managers,
+            &pool,
+            &catalog,
+            &mut RoundDeterminism::default(),
+            TargetContext::default(),
+        ),
         [play()],
         1,
         crate::engine::manager::emitter::UID,
@@ -454,11 +470,13 @@ fn device_power_card_keeps_ally_action_without_granting_loop_chain() {
     assert_eq!(managers.buff.buff_id_amount(30, 31430151), 0);
 
     let active = run_player_action_queue(
-        &mut managers,
-        &pool,
-        &catalog,
-        &mut RoundDeterminism::default(),
-        TargetContext::default(),
+        BattleAccess::new(
+            &mut managers,
+            &pool,
+            &catalog,
+            &mut RoundDeterminism::default(),
+            TargetContext::default(),
+        ),
         [play()],
         1,
         crate::engine::manager::emitter::UID,

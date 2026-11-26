@@ -62,8 +62,39 @@ struct Candidate {
     strength: Option<(i32, i32)>,
 }
 
+#[derive(Clone, Copy)]
+pub(crate) struct RoundSnapshot<'a> {
+    pub(crate) fight: &'a Fight,
+    pub(crate) managers: &'a BattleManagers,
+    pub(crate) catalog: &'a SkillEffectCatalog,
+    pub(crate) round_state: &'a RoundState,
+    pub(crate) determinism: &'a RoundDeterminism,
+}
+
 struct CardPlan {
     opers: Vec<BeginRoundOper>,
+}
+
+struct CardQueue {
+    cards: CardManager,
+    normal_ap: i32,
+    played_owners: HashSet<i64>,
+}
+
+#[derive(Clone, Copy)]
+struct CandidateContext<'a> {
+    managers: &'a BattleManagers,
+    pool: &'a TargetPool,
+    catalog: &'a SkillEffectCatalog,
+    determinism: &'a RoundDeterminism,
+}
+
+struct QueuePolicy<'a> {
+    opening: bool,
+    opening_after_setup: bool,
+    queue_setup: bool,
+    dynamo_opening: &'a mut dynamo_opening::Order,
+    vision_order: Option<&'a sovereign::vision::Order>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -74,17 +105,19 @@ enum Support {
     Urgent,
 }
 
-#[allow(clippy::too_many_arguments)]
 pub(crate) fn plan(
     request: &AutoRoundRequest,
-    fight: &Fight,
-    managers: &BattleManagers,
-    catalog: &SkillEffectCatalog,
-    round_state: &RoundState,
-    determinism: &RoundDeterminism,
+    snapshot: RoundSnapshot<'_>,
     devices_opers: Vec<FightDeviceOper>,
     redealt: bool,
 ) -> Result<AutoRoundReply, AutoBattleError> {
+    let RoundSnapshot {
+        fight,
+        managers,
+        catalog,
+        round_state,
+        determinism,
+    } = snapshot;
     // Every card resolves before any skill runs, so indices, AP and readiness use round-start state.
     let pool = TargetPool::from_fight_with_catalog(managers.catalog(), fight);
     let preferred_target = request
@@ -132,62 +165,32 @@ pub(crate) fn plan(
     {
         return Ok(reply(request, Vec::new(), devices, skill));
     }
-    let card_plan = plan_cards(
-        request,
-        fight,
-        managers,
-        catalog,
-        round_state,
-        determinism,
-        &pool,
-        preferred_target,
-        &devices,
-    )?
-    .unwrap_or(CardPlan { opers: Vec::new() });
+    let card_plan = plan_cards(request, snapshot, &pool, preferred_target, &devices)?
+        .unwrap_or(CardPlan { opers: Vec::new() });
     Ok(reply(request, card_plan.opers, devices, 0))
 }
 
-#[allow(clippy::too_many_arguments)]
 fn plan_cards(
     request: &AutoRoundRequest,
-    fight: &Fight,
-    managers: &BattleManagers,
-    catalog: &SkillEffectCatalog,
-    round_state: &RoundState,
-    determinism: &RoundDeterminism,
+    snapshot: RoundSnapshot<'_>,
     pool: &TargetPool,
     preferred_target: Option<i64>,
     planned_devices: &[FightDeviceOper],
 ) -> Result<Option<CardPlan>, AutoBattleError> {
-    plan_cards_inner(
-        request,
+    let RoundSnapshot {
         fight,
         managers,
         catalog,
         round_state,
         determinism,
-        pool,
-        preferred_target,
-        planned_devices,
-    )
-}
-
-#[allow(clippy::too_many_arguments)]
-fn plan_cards_inner(
-    request: &AutoRoundRequest,
-    fight: &Fight,
-    managers: &BattleManagers,
-    catalog: &SkillEffectCatalog,
-    round_state: &RoundState,
-    determinism: &RoundDeterminism,
-    pool: &TargetPool,
-    preferred_target: Option<i64>,
-    planned_devices: &[FightDeviceOper],
-) -> Result<Option<CardPlan>, AutoBattleError> {
-    let mut cards = managers.card.clone();
+    } = snapshot;
+    let cards = managers.card.clone();
     let mut choice_determinism = determinism.clone();
-    let mut normal_ap = round_state.act_point.max(0);
-    let mut played_owners = HashSet::new();
+    let mut queue = CardQueue {
+        cards,
+        normal_ap: round_state.act_point.max(0),
+        played_owners: HashSet::new(),
+    };
     let live_pool = pool.runtime_view(managers);
     let ordinary_hand = planned_devices.is_empty()
         && fight.attacker.as_ref().is_some_and(|team| {
@@ -198,11 +201,15 @@ fn plan_cards_inner(
     let preparation_aim = !request.opers.is_empty()
         && ordinary_hand
         && dynamo_opening::opens(fight)
-        && dynamo_opening::has_channel(&cards, managers, &live_pool, catalog, normal_ap);
+        && dynamo_opening::has_channel(
+            &queue.cards,
+            managers,
+            &live_pool,
+            catalog,
+            queue.normal_ap,
+        );
     let prefix = apply_prefix(
-        &mut cards,
-        &mut normal_ap,
-        &mut played_owners,
+        &mut queue,
         &request.opers,
         managers,
         catalog,
@@ -217,7 +224,7 @@ fn plan_cards_inner(
     let ordinary_queue = request.opers.is_empty() && ordinary_hand;
     let basic_opening = fight.cur_round == Some(1)
         && ordinary_queue
-        && cards.visible_cards().all(|card| {
+        && queue.cards.visible_cards().all(|card| {
             !card.temp_card.unwrap_or_default()
                 && card_choice_options(card, managers).is_empty()
                 && card_identity(card, None).is_some_and(|(uid, skill_id)| {
@@ -243,39 +250,43 @@ fn plan_cards_inner(
     let mut opening_setup = basic_opening
         && fight.version == Some(7)
         && opers.is_empty()
-        && cards
+        && queue
+            .cards
             .visible_cards()
             .all(|card| card.energy.unwrap_or_default() == 0);
     let mut reported_unsupported = HashSet::new();
+    let context = CandidateContext {
+        managers,
+        pool: &live_pool,
+        catalog,
+        determinism,
+    };
     loop {
-        let choices = cards
+        let choices = queue
+            .cards
             .visible_cards()
             .map(|card| {
-                cards
+                queue
+                    .cards
                     .can_use_card(card)
                     .then(|| random_card_choice(card, managers, &mut choice_determinism))
                     .flatten()
             })
             .collect::<Vec<_>>();
         let Some(candidate) = best_candidate(
-            &cards,
+            &queue,
             &choices,
-            &played_owners,
-            normal_ap,
             preferred_target,
-            managers,
-            managers,
-            &live_pool,
-            &live_pool,
-            catalog,
-            determinism,
+            context,
             &selected_power_types,
             &mut reported_unsupported,
-            basic_opening && opers.is_empty(),
-            opening_setup && !opers.is_empty(),
-            queue_setup,
-            &mut dynamo_opening,
-            vision_order.as_ref(),
+            QueuePolicy {
+                opening: basic_opening && opers.is_empty(),
+                opening_after_setup: opening_setup && !opers.is_empty(),
+                queue_setup,
+                dynamo_opening: &mut dynamo_opening,
+                vision_order: vision_order.as_ref(),
+            },
         )?
         else {
             break;
@@ -283,7 +294,7 @@ fn plan_cards_inner(
         let recorded_skill = butterfly_record_skill::auto_record(
             managers,
             catalog,
-            cards.hand(),
+            queue.cards.hand(),
             SkillRequest {
                 source_uid: candidate.source_uid,
                 skill_id: candidate.skill_id,
@@ -303,7 +314,7 @@ fn plan_cards_inner(
             candidate.chosen_skill_id,
             recorded_skill,
         );
-        if !play_card(&mut cards, play) {
+        if !play_card(&mut queue.cards, play) {
             break;
         }
         if let Some(order) = &mut vision_order {
@@ -314,9 +325,9 @@ fn plan_cards_inner(
             && candidate.support != Support::Unneeded
             && catalog.effect_tag(candidate.skill_id)
                 == crate::engine::skill::effect::catalog::SkillEffectTag::Buff as i32;
-        normal_ap = normal_ap.saturating_sub(candidate.normal_ap);
+        queue.normal_ap = queue.normal_ap.saturating_sub(candidate.normal_ap);
         if candidate.normal_ap > 0 {
-            played_owners.insert(candidate.source_uid);
+            queue.played_owners.insert(candidate.source_uid);
         }
         opers.push(operation);
     }
@@ -330,9 +341,11 @@ fn plan_cards_inner(
             current_round: round_state.cur_round,
             ..Default::default()
         },
-        planned_devices,
-        &request.opers,
-        cards.played(),
+        conduit::demand::PlannedOperations {
+            devices: planned_devices,
+            prefix: &request.opers,
+            played: queue.cards.played(),
+        },
     );
     Ok(Some(CardPlan { opers }))
 }
@@ -373,7 +386,6 @@ fn reply(
     }
 }
 
-#[allow(clippy::too_many_arguments)]
 fn assist_boss_operation(
     fight: &Fight,
     managers: &BattleManagers,
@@ -470,11 +482,8 @@ fn play_card(cards: &mut CardManager, play: CardPlay) -> bool {
             .is_ok()
 }
 
-#[allow(clippy::too_many_arguments)]
 fn apply_prefix(
-    cards: &mut CardManager,
-    normal_ap: &mut i32,
-    played_owners: &mut HashSet<i64>,
+    queue: &mut CardQueue,
     opers: &[BeginRoundOper],
     managers: &BattleManagers,
     catalog: &SkillEffectCatalog,
@@ -482,6 +491,11 @@ fn apply_prefix(
     determinism: &RoundDeterminism,
     preparation_aim: bool,
 ) -> Result<bool, AutoBattleError> {
+    let CardQueue {
+        cards,
+        normal_ap,
+        played_owners,
+    } = queue;
     for oper in opers {
         let Some(command) = RoundCommand::from_oper(oper) else {
             return Ok(false);
@@ -589,27 +603,29 @@ fn apply_prefix(
     Ok(true)
 }
 
-#[allow(clippy::too_many_arguments)]
 fn best_candidate(
-    cards: &CardManager,
+    queue: &CardQueue,
     choices: &[Option<i32>],
-    played_owners: &HashSet<i64>,
-    normal_ap: i32,
     preferred_target: Option<i64>,
-    managers: &BattleManagers,
-    sim: &BattleManagers,
-    live_pool: &TargetPool,
-    pool: &TargetPool,
-    catalog: &SkillEffectCatalog,
-    determinism: &RoundDeterminism,
+    context: CandidateContext<'_>,
     selected_power_types: &HashSet<(i32, i32)>,
     reported_unsupported: &mut HashSet<i32>,
-    opening: bool,
-    opening_after_setup: bool,
-    queue_setup: bool,
-    dynamo_opening: &mut dynamo_opening::Order,
-    vision_order: Option<&sovereign::vision::Order>,
+    policy: QueuePolicy<'_>,
 ) -> Result<Option<Candidate>, AutoBattleError> {
+    let CandidateContext {
+        managers,
+        pool,
+        catalog,
+        determinism,
+    } = context;
+    let QueuePolicy {
+        opening,
+        opening_after_setup,
+        queue_setup,
+        dynamo_opening,
+        vision_order,
+    } = policy;
+    let cards = &queue.cards;
     let candidates = cards
         .visible_cards()
         .enumerate()
@@ -620,7 +636,7 @@ fn best_candidate(
             let chosen_skill_id = choices.get(card_index).copied().flatten();
             let (source_uid, skill_id) = card_identity(card, chosen_skill_id)?;
             let normal_ap_cost = action_point_cost(card, source_uid, skill_id, managers, catalog);
-            if normal_ap_cost > normal_ap {
+            if normal_ap_cost > queue.normal_ap {
                 return None;
             }
             let issues = catalog.issues(skill_id);
@@ -633,7 +649,7 @@ fn best_candidate(
             if card_skill_is_blocked(managers, catalog, source_uid, skill_id) {
                 return None;
             }
-            let source = live_pool.entity(source_uid)?;
+            let source = pool.entity(source_uid)?;
             let temporary = card.temp_card.unwrap_or_default();
             let device = crate::engine::mechanic::card::CardMechanic.is_device_card(managers, card);
             // Stage-rule temporary cards are left for the player.
@@ -655,7 +671,7 @@ fn best_candidate(
                 source_uid,
                 skill_id,
                 preferred_target,
-                sim,
+                managers,
                 pool,
                 catalog,
                 determinism,
@@ -665,10 +681,12 @@ fn best_candidate(
             let energy = match conduit::card_energy(
                 cards,
                 managers,
-                live_pool,
+                pool,
                 catalog,
-                source_uid,
-                skill_id,
+                SkillRequest {
+                    source_uid,
+                    skill_id,
+                },
                 temporary,
                 selected_power_types,
             ) {
@@ -695,12 +713,12 @@ fn best_candidate(
                 setup,
                 if may_be_redundant { &buffs } else { &[] },
                 &targets,
-                sim,
+                managers,
                 pool,
             );
             let damage_rate = catalog.damage_rate(skill_id);
             let first_for_owner = energy.is_none()
-                && !played_owners.contains(&source_uid)
+                && !queue.played_owners.contains(&source_uid)
                 && support != Support::Unneeded;
             let defense_setup = opening_after_setup
                 && first_for_owner
@@ -709,7 +727,12 @@ fn best_candidate(
                 && damage_rate == 0
                 && effect_tag
                     == crate::engine::skill::effect::catalog::SkillEffectTag::Debuff as i32
-                && defense_setup::available(catalog.logic_target(skill_id), &targets, &buffs, sim);
+                && defense_setup::available(
+                    catalog.logic_target(skill_id),
+                    &targets,
+                    &buffs,
+                    managers,
+                );
             let live_preferred_target = catalog
                 .is_attack(skill_id)
                 .then(|| {
@@ -718,7 +741,7 @@ fn best_candidate(
                         skill_id,
                         preferred_target,
                         managers,
-                        live_pool,
+                        pool,
                         catalog,
                         determinism,
                     )
@@ -730,7 +753,7 @@ fn best_candidate(
                     skill_id,
                     preferred_target,
                     &buffs,
-                    sim,
+                    managers,
                     pool,
                     catalog,
                 )
@@ -743,7 +766,7 @@ fn best_candidate(
                         skill_id,
                         preferred_target,
                         managers,
-                        live_pool,
+                        pool,
                         catalog,
                         determinism,
                     )
@@ -767,7 +790,7 @@ fn best_candidate(
                         catalog,
                         skill_id,
                         source_uid,
-                        live_pool,
+                        pool,
                         preferred_target,
                         managers,
                     )
@@ -798,8 +821,7 @@ fn best_candidate(
                     temporary,
                     source.position,
                 ),
-                opening_skill_two: opening
-                    && live_pool.skill_slot(managers, source_uid, skill_id) == 2,
+                opening_skill_two: opening && pool.skill_slot(managers, source_uid, skill_id) == 2,
                 first_for_owner,
                 defense_setup,
                 support,
@@ -837,7 +859,7 @@ fn best_candidate(
     if let Some(preparation) = dynamo_opening.pick(&candidates, best, cards, catalog) {
         return Ok(Some(dynamo_opening::aim(
             preparation,
-            live_pool,
+            pool,
             preferred_target,
         )));
     }
@@ -869,7 +891,7 @@ fn best_candidate(
                                 cards,
                                 managers,
                                 catalog,
-                                live_pool,
+                                pool,
                                 determinism,
                             )
                         })
@@ -988,7 +1010,6 @@ fn action_point_cost(
     )
 }
 
-#[allow(clippy::too_many_arguments)]
 fn legal_target(
     source_uid: i64,
     skill_id: i32,
@@ -1057,7 +1078,6 @@ fn choose_target(
     })
 }
 
-#[allow(clippy::too_many_arguments)]
 fn target_options(
     source_uid: i64,
     skill_id: i32,
@@ -1092,7 +1112,6 @@ fn target_options(
     )
 }
 
-#[allow(clippy::too_many_arguments)]
 fn card_selection_target_options(
     source_uid: i64,
     skill_id: i32,
@@ -1106,8 +1125,10 @@ fn card_selection_target_options(
     let code = request.code;
     CardSelectionResolver::candidates(
         request,
-        skill_id,
-        source_uid,
+        SkillRequest {
+            skill_id,
+            source_uid,
+        },
         pool,
         catalog,
         determinism,

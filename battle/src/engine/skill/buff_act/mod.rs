@@ -1113,18 +1113,27 @@ pub fn incoming_target_attack_attributes(
         .collect()
 }
 
-#[allow(clippy::too_many_arguments)]
+pub(crate) struct AttackAttributeScope {
+    pub(crate) is_big_skill: bool,
+    pub(crate) extra_action: bool,
+    pub(crate) performs_extra_action: bool,
+    pub(crate) source_performs_extra_action: bool,
+}
+
 pub fn calculated_attack_attribute_delta_for_skill(
     feature: &ActiveBuffFeature,
     attr_id: AttrId,
     attributes: &crate::engine::manager::attribute::AttributeManager,
     buffs: &crate::engine::manager::buff::BuffManager,
     hp: &crate::engine::manager::hp::HpManager,
-    is_big_skill: bool,
-    extra_action: bool,
-    performs_extra_action: bool,
-    source_performs_extra_action: bool,
+    scope: AttackAttributeScope,
 ) -> i32 {
+    let AttackAttributeScope {
+        is_big_skill,
+        extra_action,
+        performs_extra_action,
+        source_performs_extra_action,
+    } = scope;
     // Gust Force Field bonuses share the field's own "performs an extra action" clause.
     match feature_kind(feature) {
         Some(registry::BuffActKind::MustCritAndFixTempAttr) if performs_extra_action => {

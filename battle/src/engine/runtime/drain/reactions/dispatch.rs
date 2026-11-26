@@ -13,13 +13,8 @@ use crate::engine::{
 /// One dispatch of an event's reactions: where they attach and which ones are selected.
 #[derive(Clone, Copy)]
 pub(in crate::engine::runtime::drain) struct ReactionDispatch<'a> {
-    pub event: &'a BattleEvent,
-    pub parent_path: Option<&'a [usize]>,
-    pub reuse_path: Option<&'a [usize]>,
-    pub action_path: Option<&'a [usize]>,
+    pub frame: ReactionFrame<'a>,
     pub entry_halo_scope: Option<&'a [usize]>,
-    pub reentry_skill: Option<(i64, i32, Option<i64>)>,
-    pub current_skill_target: Option<i64>,
     pub lane: Option<ReactionLane>,
     pub owner_uids: Option<&'a [i64]>,
     pub execute_unscoped_after_action: bool,
@@ -31,13 +26,8 @@ impl<'a> ReactionDispatch<'a> {
     /// An unscoped dispatch of every reaction to `event`.
     pub(in crate::engine::runtime::drain) fn for_event(event: &'a BattleEvent) -> Self {
         Self {
-            event,
-            parent_path: None,
-            reuse_path: None,
-            action_path: None,
+            frame: ReactionFrame::for_event(event),
             entry_halo_scope: None,
-            reentry_skill: None,
-            current_skill_target: None,
             lane: None,
             owner_uids: None,
             execute_unscoped_after_action: false,
@@ -63,7 +53,7 @@ impl<'a> ReactionPlan<'a> {
             pool,
             managers,
             catalog,
-            dispatch.event,
+            dispatch.frame.event,
             dispatch.owner_uids,
         )?;
         Ok(Self {
@@ -82,13 +72,15 @@ pub(in crate::engine::runtime::drain) fn dispatch_reactions(
     mut multiplicity: Option<&mut crate::engine::event::dispatcher::DispatchMultiplicity<'_>>,
 ) -> Result<ReactionBatch, DrainError> {
     let ReactionDispatch {
-        event,
-        parent_path,
-        reuse_path,
-        action_path,
+        frame:
+            ReactionFrame {
+                event,
+                parent_path,
+                reuse_path,
+                action_path,
+                ..
+            },
         entry_halo_scope,
-        reentry_skill: _,
-        current_skill_target: _,
         lane,
         owner_uids,
         execute_unscoped_after_action,
@@ -460,16 +452,13 @@ fn queued_selected_timing(
     (publication, timing): (PublicationPhase, ReactionTiming),
     multiplicity: Option<&mut crate::engine::event::dispatcher::DispatchMultiplicity<'_>>,
 ) -> Result<Vec<QueuedOp>, DrainError> {
-    let ReactionDispatch {
+    let frame = plan.dispatch.frame;
+    let ReactionFrame {
         event,
-        parent_path,
-        reuse_path,
-        action_path,
         reentry_skill,
-        current_skill_target,
-        lane,
         ..
-    } = plan.dispatch;
+    } = frame;
+    let lane = plan.dispatch.lane;
     let reaction_scope = multiplicity.as_ref().map(|multiplicity| {
         (
             multiplicity.event_batch_id,
@@ -527,12 +516,10 @@ fn queued_selected_timing(
         pool,
         catalog,
         dispatched,
-        event,
-        parent_path,
-        reuse_path,
-        action_path,
-        reentry_skill.filter(|_| !matches!(event, BattleEvent::AllyAction(_))),
-        current_skill_target,
+        ReactionFrame {
+            reentry_skill: reentry_skill.filter(|_| !matches!(event, BattleEvent::AllyAction(_))),
+            ..frame
+        },
         reaction_scope,
     )?;
     if matches!(lane, None | Some(ReactionLane::Skills))
@@ -552,18 +539,7 @@ fn queued_selected_timing(
                 timing,
             },
         )?;
-        queued.extend(queued_reactions(
-            pool,
-            catalog,
-            selected,
-            event,
-            parent_path,
-            reuse_path,
-            action_path,
-            reentry_skill,
-            current_skill_target,
-            None,
-        )?);
+        queued.extend(queued_reactions(pool, catalog, selected, frame, None)?);
     }
     Ok(queued)
 }
@@ -587,7 +563,11 @@ pub(in crate::engine::runtime::drain) fn dispatch_owner_reactions(
         &scoped_owner_uids,
     )?;
     let mut reactions = queued_reactions(
-        pool, catalog, dispatched, event, None, None, None, None, None, None,
+        pool,
+        catalog,
+        dispatched,
+        ReactionFrame::for_event(event),
+        None,
     )?;
     if let Some(fanout) = queued_entity_entry_halo_fanout(event, None, None) {
         reactions.push(fanout);

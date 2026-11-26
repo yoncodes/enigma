@@ -52,22 +52,24 @@ fn conduit_devices_share_power_in_team_turns() {
 
     let result = run_conduit_phase(
         managers.catalog(),
-        &fight,
+        crate::engine::runtime::schedule::ConduitPhase {
+            fight: &fight,
+            operations: &[
+                sonettobuf::FightDeviceOper {
+                    uid: Some(10),
+                    index: Some(1),
+                },
+                sonettobuf::FightDeviceOper {
+                    uid: Some(11),
+                    index: Some(1),
+                },
+            ],
+        },
         &mut managers,
         &pool,
         &mut catalog,
         &mut RoundDeterminism::default(),
         TargetContext::default(),
-        &[
-            sonettobuf::FightDeviceOper {
-                uid: Some(10),
-                index: Some(1),
-            },
-            sonettobuf::FightDeviceOper {
-                uid: Some(11),
-                index: Some(1),
-            },
-        ],
     )
     .unwrap();
 
@@ -132,22 +134,24 @@ fn a_later_device_can_enable_an_earlier_device_on_the_next_team_pass() {
 
     let result = run_conduit_phase(
         managers.catalog(),
-        &fight,
+        crate::engine::runtime::schedule::ConduitPhase {
+            fight: &fight,
+            operations: &[
+                sonettobuf::FightDeviceOper {
+                    uid: Some(10),
+                    index: Some(1),
+                },
+                sonettobuf::FightDeviceOper {
+                    uid: Some(11),
+                    index: Some(1),
+                },
+            ],
+        },
         &mut managers,
         &pool,
         &mut catalog,
         &mut RoundDeterminism::default(),
         TargetContext::default(),
-        &[
-            sonettobuf::FightDeviceOper {
-                uid: Some(10),
-                index: Some(1),
-            },
-            sonettobuf::FightDeviceOper {
-                uid: Some(11),
-                index: Some(1),
-            },
-        ],
     )
     .unwrap();
 

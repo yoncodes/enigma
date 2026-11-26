@@ -239,11 +239,13 @@ fn a_cycle_reserve_enters_after_the_action_without_promoting_ordinary_deaths() {
     let catalog = SkillEffectCatalog::from_fight(crate::test_support::game_data(), &fight);
     run_ai_actions(
         &fight,
-        &mut managers,
-        &pool,
-        &catalog,
-        &mut RoundDeterminism::default(),
-        TargetContext::default(),
+        BattleAccess::new(
+            &mut managers,
+            &pool,
+            &catalog,
+            &mut RoundDeterminism::default(),
+            TargetContext::default(),
+        ),
         [AiSkillChoice {
             source_uid: -2,
             skill_id: 100,

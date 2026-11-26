@@ -17,30 +17,37 @@ mod payment_critical;
 mod publication;
 mod team_buff_layers;
 
-#[allow(clippy::too_many_arguments)]
 pub(super) fn drain_command(
-    managers: &mut BattleManagers,
+    access: DrainAccess<'_>,
     base_pool: &TargetPool,
-    pool: &TargetPool,
-    catalog: &SkillEffectCatalog,
-    determinism: &mut RoundDeterminism,
+
     context: TargetContext,
     queue: &mut VecDeque<QueuedOp>,
-    result: &mut DrainResult,
-    state: &mut DrainState,
+
     bus: &mut EventBus,
     pending_hits: &mut HashMap<FramePath, Vec<Vec<BattleEvent>>>,
-    mut command: RuleOp,
-    trigger: SkillOpTrigger,
-    skill_execution: Option<SkillExecution>,
-    frame_path: Option<FramePath>,
-    parent_path: Option<FramePath>,
-    frame_group: Option<Rc<RefCell<Option<FramePath>>>>,
-    independent_parent_group: Option<Rc<RefCell<Option<FramePath>>>>,
-    frame_owner: Option<FrameOwner>,
-    subscriber: Option<SubscriberContext>,
-    caster_frame: Option<FrameOwner>,
+    operation: QueuedOp,
 ) -> Result<(), DrainError> {
+    let DrainAccess {
+        managers,
+        pool,
+        catalog,
+        determinism,
+        result,
+        state,
+    } = access;
+    let QueuedOp {
+        op: mut command,
+        trigger,
+        skill_execution,
+        frame_path,
+        parent_path,
+        frame_group,
+        frame_owner,
+        subscriber,
+        caster_frame,
+        independent_parent_group,
+    } = operation;
     // After-hit observers must execute before the lifecycle operation
     // that closes their boundary, so requeue that closer behind them.
     let releases_after_hit = matches!(
@@ -304,22 +311,29 @@ pub(super) fn drain_command(
         let (immediate, deferred) =
             split_active_hit_event_groups(event_groups, &post_damage_expiry);
         let hit_buff_acts = dispatch_event_groups(
-            pool,
-            managers,
-            catalog,
-            determinism,
+            ReactionAccess {
+                pool,
+                managers,
+                catalog,
+                determinism,
+            },
             state,
             &deferred,
-            &event_scope,
-            &frame_path,
-            action_scope.as_deref(),
-            &entry_halo_scope,
-            current_skill,
-            true,
-            context.current_round > 0,
-            crate::engine::event::subscription::PublicationPhase::BeforePublish,
-            None,
-            Some(ReactionLane::BuffActs),
+            EventFrame {
+                parent_path: &event_scope,
+                reuse_path: &frame_path,
+                action_path: action_scope.as_deref(),
+                entry_halo_scope: Some(&entry_halo_scope),
+                current_skill,
+            },
+            ReactionSelection {
+                include_attack_consumption: true,
+                execute_unscoped_after_action: context.current_round > 0,
+                publication_phase:
+                    crate::engine::event::subscription::PublicationPhase::BeforePublish,
+                owner_uids: None,
+                lane: Some(ReactionLane::BuffActs),
+            },
             None,
             None,
         )?;
@@ -380,8 +394,10 @@ pub(super) fn drain_command(
         pending_hits,
         &outcome,
         &fanout,
-        &events,
-        event_groups,
+        publication::before::CommittedEvents {
+            events: &events,
+            groups: event_groups,
+        },
         paying_attack,
     )?;
     if payment_critical_damage != 0

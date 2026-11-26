@@ -1,3 +1,4 @@
+use crate::engine::runtime::drain::BattleAccess;
 use crate::engine::{
     manager::{
         BattleManagers,
@@ -58,11 +59,13 @@ fn opening_unlocks_rightmost() {
     let catalog = SkillEffectCatalog::from_fight(config::configs::get(), &fight);
     schedule::run_start(
         managers.catalog(),
-        &mut managers,
-        &pool,
-        &catalog,
-        &mut RoundDeterminism::default(),
-        TargetContext::default(),
+        BattleAccess::new(
+            &mut managers,
+            &pool,
+            &catalog,
+            &mut RoundDeterminism::default(),
+            TargetContext::default(),
+        ),
         CardSetup {
             hand: vec![
                 CardInfo {
@@ -142,11 +145,13 @@ fn handoff_unlocks_once() {
         .unwrap();
     let handoff = |managers: &mut BattleManagers| {
         schedule::run_before_ai_round_start(
-            managers,
-            &pool,
-            &catalog,
-            &mut RoundDeterminism::default(),
-            TargetContext::default(),
+            BattleAccess::new(
+                managers,
+                &pool,
+                &catalog,
+                &mut RoundDeterminism::default(),
+                TargetContext::default(),
+            ),
             1,
             &[],
             None,

@@ -52,13 +52,15 @@ pub(super) fn settle(
     // chance to change HP before death transitions are finalized.
     if managers.terminal_outcome().is_none() && !pending_deaths.is_empty() {
         drain_death_settlement_queue(
-            managers,
-            pool,
-            catalog,
-            determinism,
+            crate::engine::runtime::drain::DrainAccess {
+                managers,
+                pool,
+                catalog,
+                determinism,
+                result,
+                state,
+            },
             after_publish.into(),
-            result,
-            state,
             &pending_deaths,
         )?;
         after_publish = after_settlement;

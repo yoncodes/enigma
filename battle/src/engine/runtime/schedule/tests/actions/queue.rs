@@ -67,11 +67,13 @@ fn next_player_action_index_follows_generated_casts() {
     let catalog = SkillEffectCatalog::from_fight(config::configs::get(), &fight);
     let player = run_player_phase(
         &fight,
-        &mut managers,
-        &pool,
-        &catalog,
-        &mut RoundDeterminism::default(),
-        TargetContext::default(),
+        BattleAccess::new(
+            &mut managers,
+            &pool,
+            &catalog,
+            &mut RoundDeterminism::default(),
+            TargetContext::default(),
+        ),
         [RoundCommand::PlayCard {
             card_index: 0,
             target_uid: Some(-1),
@@ -411,11 +413,13 @@ fn active_precast_card_publishes_moxie_after_its_card_indexed_skill() {
         )],
     });
     let result = run_player_action_queue(
-        &mut managers,
-        &pool,
-        &catalog,
-        &mut RoundDeterminism::default(),
-        TargetContext::default(),
+        BattleAccess::new(
+            &mut managers,
+            &pool,
+            &catalog,
+            &mut RoundDeterminism::default(),
+            TargetContext::default(),
+        ),
         [CardPlay {
             origin: crate::engine::manager::card::CARD_PLAY_ORIGIN,
             hand_index: 0,
@@ -496,11 +500,13 @@ fn dead_queued_target_retargets_the_next_living_enemy() {
         slots: Vec::new(),
     });
     let result = run_player_action_queue(
-        &mut managers,
-        &pool,
-        &catalog,
-        &mut RoundDeterminism::default(),
-        TargetContext::default(),
+        BattleAccess::new(
+            &mut managers,
+            &pool,
+            &catalog,
+            &mut RoundDeterminism::default(),
+            TargetContext::default(),
+        ),
         [CardPlay {
             origin: CARD_PLAY_ORIGIN,
             hand_index: 0,
@@ -614,11 +620,13 @@ fn cards_without_a_living_current_enemy_resolve_support_effects_or_only_grant_mo
         }
         let result = run_player_phase(
             &fight,
-            &mut managers,
-            &pool,
-            &catalog,
-            &mut RoundDeterminism::default(),
-            TargetContext::default(),
+            BattleAccess::new(
+                &mut managers,
+                &pool,
+                &catalog,
+                &mut RoundDeterminism::default(),
+                TargetContext::default(),
+            ),
             [RoundCommand::PlayCard {
                 card_index: 0,
                 target_uid: Some(-1),
@@ -735,11 +743,13 @@ fn terminal_player_action_stops_the_remaining_action_queue() {
 
     let result = run_player_phase(
         &fight,
-        &mut managers,
-        &pool,
-        &catalog,
-        &mut RoundDeterminism::default(),
-        TargetContext::default(),
+        BattleAccess::new(
+            &mut managers,
+            &pool,
+            &catalog,
+            &mut RoundDeterminism::default(),
+            TargetContext::default(),
+        ),
         [
             RoundCommand::PlayCard {
                 card_index: 0,
@@ -835,11 +845,13 @@ fn side_owned_support_card_reports_defeated_opponents_during_wave_transition() {
 
     let result = run_player_phase(
         &fight,
-        &mut managers,
-        &pool,
-        &catalog,
-        &mut RoundDeterminism::default(),
-        TargetContext::default(),
+        BattleAccess::new(
+            &mut managers,
+            &pool,
+            &catalog,
+            &mut RoundDeterminism::default(),
+            TargetContext::default(),
+        ),
         [RoundCommand::PlayCard {
             card_index: 0,
             target_uid: Some(-1),
@@ -930,11 +942,13 @@ fn repeated_play_index_tracks_the_composed_mutating_hand() {
 
     let result = run_player_phase(
         &fight,
-        &mut managers,
-        &pool,
-        &catalog,
-        &mut RoundDeterminism::default(),
-        TargetContext::default(),
+        BattleAccess::new(
+            &mut managers,
+            &pool,
+            &catalog,
+            &mut RoundDeterminism::default(),
+            TargetContext::default(),
+        ),
         [
             RoundCommand::PlayCard {
                 card_index: 2,
@@ -1054,11 +1068,13 @@ fn queued_move_settles_moxie_in_input_order() {
         };
         let result = run_player_phase(
             &fight,
-            &mut managers,
-            &pool,
-            &catalog,
-            &mut RoundDeterminism::default(),
-            TargetContext::default(),
+            BattleAccess::new(
+                &mut managers,
+                &pool,
+                &catalog,
+                &mut RoundDeterminism::default(),
+                TargetContext::default(),
+            ),
             commands,
             &[],
             1,
@@ -1159,11 +1175,13 @@ fn terminal_player_action_settles_the_trailing_move() {
         }
         let result = run_player_phase(
             &fight,
-            &mut managers,
-            &pool,
-            &catalog,
-            &mut RoundDeterminism::default(),
-            TargetContext::default(),
+            BattleAccess::new(
+                &mut managers,
+                &pool,
+                &catalog,
+                &mut RoundDeterminism::default(),
+                TargetContext::default(),
+            ),
             [
                 RoundCommand::PlayCard {
                     card_index: 0,
@@ -1254,11 +1272,13 @@ fn queued_move_does_not_grant_moxie_to_a_special_resource() {
     });
 
     run_player_commands(
-        &mut managers,
-        &pool,
-        &catalog,
-        &mut RoundDeterminism::default(),
-        TargetContext::default(),
+        BattleAccess::new(
+            &mut managers,
+            &pool,
+            &catalog,
+            &mut RoundDeterminism::default(),
+            TargetContext::default(),
+        ),
         [RoundCommand::MoveCard {
             from_index: 0,
             to_index: 1,

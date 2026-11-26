@@ -43,15 +43,19 @@ fn conduit_skill_finishes_after_its_hit_passive_reaction() {
         .unwrap();
 
     let result = crate::engine::runtime::drain::run_conduit_action(
-        &mut managers,
-        &pool,
-        &catalog,
-        &mut RoundDeterminism::default(),
-        TargetContext::default(),
+        BattleAccess::new(
+            &mut managers,
+            &pool,
+            &catalog,
+            &mut RoundDeterminism::default(),
+            TargetContext::default(),
+        ),
         10,
         2,
-        1,
-        2,
+        crate::engine::runtime::drain::ConduitSlot {
+            device_index: 1,
+            skill_position: 2,
+        },
         31441121,
         None,
         None,
@@ -172,15 +176,19 @@ fn conduit_activation_reactions_settle_before_ally_action_reactions() {
         .unwrap();
 
     let result = crate::engine::runtime::drain::run_conduit_action(
-        &mut managers,
-        &pool,
-        &catalog,
-        &mut RoundDeterminism::default(),
-        TargetContext::default(),
+        BattleAccess::new(
+            &mut managers,
+            &pool,
+            &catalog,
+            &mut RoundDeterminism::default(),
+            TargetContext::default(),
+        ),
         10,
         1,
-        1,
-        1,
+        crate::engine::runtime::drain::ConduitSlot {
+            device_index: 1,
+            skill_position: 1,
+        },
         302524112,
         None,
         None,

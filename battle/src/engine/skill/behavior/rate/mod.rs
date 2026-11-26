@@ -925,11 +925,13 @@ pub(crate) fn emit_passive_hit_attributes(
         &mut modifiers.attack_attributes,
         source_uid,
         active_skill_id,
-        effects,
-        managers,
-        pool,
+        crate::engine::skill::behavior::rate::RateRuntime {
+            effects,
+            managers,
+            pool,
+            context,
+        },
         determinism,
-        context,
         None,
     );
 }

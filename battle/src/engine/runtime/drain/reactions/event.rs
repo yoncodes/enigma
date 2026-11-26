@@ -1,5 +1,30 @@
 use super::*;
 
+pub(in crate::engine::runtime::drain) struct ReactionAccess<'a> {
+    pub pool: &'a TargetPool,
+    pub managers: &'a BattleManagers,
+    pub catalog: &'a SkillEffectCatalog,
+    pub determinism: &'a mut RoundDeterminism,
+}
+
+#[derive(Clone, Copy)]
+pub(in crate::engine::runtime::drain) struct EventFrame<'a> {
+    pub parent_path: &'a [usize],
+    pub reuse_path: &'a [usize],
+    pub action_path: Option<&'a [usize]>,
+    pub entry_halo_scope: Option<&'a [usize]>,
+    pub current_skill: Option<(i64, i32, Option<i64>)>,
+}
+
+#[derive(Clone, Copy)]
+pub(in crate::engine::runtime::drain) struct ReactionSelection<'a> {
+    pub include_attack_consumption: bool,
+    pub execute_unscoped_after_action: bool,
+    pub publication_phase: crate::engine::event::subscription::PublicationPhase,
+    pub owner_uids: Option<&'a [i64]>,
+    pub lane: Option<ReactionLane>,
+}
+
 const ULTIMATE_AVAILABILITY_ORIGIN: CommandOrigin = CommandOrigin {
     domain: RuleDomain::Lifecycle,
     key: DefinitionKey::new(0, "UltimateAvailability"),
@@ -146,27 +171,34 @@ pub(super) fn route_skill_start_settlement(
     None
 }
 
-#[allow(clippy::too_many_arguments)]
 pub(in crate::engine::runtime::drain) fn dispatch_event_groups(
-    pool: &TargetPool,
-    managers: &BattleManagers,
-    catalog: &SkillEffectCatalog,
-    determinism: &mut RoundDeterminism,
+    access: ReactionAccess<'_>,
+
     drain_state: &mut DrainState,
     event_groups: &[Vec<BattleEvent>],
-    parent_path: &[usize],
-    reuse_path: &[usize],
-    action_path: Option<&[usize]>,
-    entry_halo_scope: &[usize],
-    current_skill: Option<(i64, i32, Option<i64>)>,
-    include_attack_consumption: bool,
-    execute_unscoped_after_action: bool,
-    publication_phase: crate::engine::event::subscription::PublicationPhase,
-    owner_uids: Option<&[i64]>,
-    lane: Option<ReactionLane>,
+    frame: EventFrame<'_>,
+
+    selection: ReactionSelection<'_>,
+
     pending_deaths: Option<&[crate::engine::manager::hp::PendingDeath]>,
     field_transfer_owner: Option<&[usize]>,
 ) -> Result<ReactionBatch, DrainError> {
+    let ReactionAccess {
+        pool,
+        managers,
+        catalog,
+        determinism,
+    } = access;
+    let EventFrame {
+        parent_path,
+        action_path,
+        ..
+    } = frame;
+    let ReactionSelection {
+        publication_phase,
+        lane,
+        ..
+    } = selection;
     let mut all_events = event_groups.iter().flatten().cloned().collect::<Vec<_>>();
     drain_state.record_action_shared_damage(action_path, &mut all_events);
     let mut state = EventBatchState {
@@ -186,22 +218,16 @@ pub(in crate::engine::runtime::drain) fn dispatch_event_groups(
         let events = &all_events[event_offset..event_offset + events.len()];
         event_offset += events.len();
         let mut group = dispatch_event_batch_inner(
-            pool,
-            managers,
-            catalog,
-            determinism,
+            ReactionAccess {
+                pool,
+                managers,
+                catalog,
+                determinism,
+            },
             events,
             &all_events,
-            parent_path,
-            reuse_path,
-            action_path,
-            Some(entry_halo_scope),
-            current_skill,
-            include_attack_consumption,
-            execute_unscoped_after_action,
-            publication_phase,
-            owner_uids,
-            lane,
+            frame,
+            selection,
             &mut state,
             action_reactions,
         )?;
@@ -241,42 +267,60 @@ pub(in crate::engine::runtime::drain) fn dispatch_event_groups(
     Ok(reactions)
 }
 
-#[allow(clippy::too_many_arguments)]
 #[cfg(test)]
 pub(in crate::engine::runtime::drain) fn dispatch_event_batch(
-    pool: &TargetPool,
-    managers: &BattleManagers,
-    catalog: &SkillEffectCatalog,
-    determinism: &mut RoundDeterminism,
+    access: ReactionAccess<'_>,
+
     events: &[BattleEvent],
-    parent_path: &[usize],
-    reuse_path: &[usize],
-    action_path: Option<&[usize]>,
-    current_skill: Option<(i64, i32, Option<i64>)>,
-    include_attack_consumption: bool,
-    execute_unscoped_after_action: bool,
-    publication_phase: crate::engine::event::subscription::PublicationPhase,
-    owner_uids: Option<&[i64]>,
+    frame: EventFrame<'_>,
+
+    selection: ReactionSelection<'_>,
 ) -> Result<ReactionBatch, DrainError> {
-    let mut events = events.to_vec();
-    DrainState::default().record_action_shared_damage(None, &mut events);
-    let mut reactions = dispatch_event_batch_inner(
+    let ReactionAccess {
         pool,
         managers,
         catalog,
         determinism,
-        &events,
-        &events,
+    } = access;
+    let EventFrame {
         parent_path,
         reuse_path,
         action_path,
-        None,
         current_skill,
+        ..
+    } = frame;
+    let ReactionSelection {
         include_attack_consumption,
         execute_unscoped_after_action,
         publication_phase,
         owner_uids,
-        None,
+        ..
+    } = selection;
+    let mut events = events.to_vec();
+    DrainState::default().record_action_shared_damage(None, &mut events);
+    let mut reactions = dispatch_event_batch_inner(
+        ReactionAccess {
+            pool,
+            managers,
+            catalog,
+            determinism,
+        },
+        &events,
+        &events,
+        EventFrame {
+            parent_path,
+            reuse_path,
+            action_path,
+            entry_halo_scope: None,
+            current_skill,
+        },
+        ReactionSelection {
+            include_attack_consumption,
+            execute_unscoped_after_action,
+            publication_phase,
+            owner_uids,
+            lane: None,
+        },
         &mut EventBatchState::default(),
         &mut super::super::state::ActionReactions::default(),
     )?;
@@ -296,27 +340,38 @@ struct EventBatchState<'a> {
         std::collections::HashSet<crate::engine::event::dispatcher::ReactionMultiplicityKey>,
 }
 
-#[allow(clippy::too_many_arguments)]
 fn dispatch_event_batch_inner(
-    pool: &TargetPool,
-    managers: &BattleManagers,
-    catalog: &SkillEffectCatalog,
-    determinism: &mut RoundDeterminism,
+    access: ReactionAccess<'_>,
+
     events: &[BattleEvent],
     attack_events: &[BattleEvent],
-    parent_path: &[usize],
-    reuse_path: &[usize],
-    action_path: Option<&[usize]>,
-    entry_halo_scope: Option<&[usize]>,
-    current_skill: Option<(i64, i32, Option<i64>)>,
-    include_attack_consumption: bool,
-    execute_unscoped_after_action: bool,
-    publication_phase: crate::engine::event::subscription::PublicationPhase,
-    owner_uids: Option<&[i64]>,
-    lane: Option<ReactionLane>,
+    frame: EventFrame<'_>,
+
+    selection: ReactionSelection<'_>,
+
     state: &mut EventBatchState<'_>,
     action_reactions: &mut super::super::state::ActionReactions,
 ) -> Result<ReactionBatch, DrainError> {
+    let ReactionAccess {
+        pool,
+        managers,
+        catalog,
+        determinism,
+    } = access;
+    let EventFrame {
+        parent_path,
+        reuse_path,
+        action_path,
+        entry_halo_scope,
+        current_skill,
+    } = frame;
+    let ReactionSelection {
+        include_attack_consumption,
+        execute_unscoped_after_action,
+        publication_phase,
+        owner_uids,
+        lane,
+    } = selection;
     let scoped_owner_uids = terminal_owner_scope(pool, managers, owner_uids);
     let owner_uids = scoped_owner_uids.as_deref();
     let current_skill_target = current_skill.and_then(|(_, _, target_uid)| target_uid);
@@ -422,17 +477,19 @@ fn dispatch_event_batch_inner(
             catalog,
             determinism,
             ReactionDispatch {
-                event,
-                parent_path: Some(parent_path),
-                reuse_path: Some(if matches!(event, BattleEvent::FieldTransferred { .. }) {
-                    state.field_transfer_owner.unwrap_or(reuse_path)
-                } else {
-                    reuse_path
-                }),
-                action_path,
+                frame: ReactionFrame {
+                    event,
+                    parent_path: Some(parent_path),
+                    reuse_path: Some(if matches!(event, BattleEvent::FieldTransferred { .. }) {
+                        state.field_transfer_owner.unwrap_or(reuse_path)
+                    } else {
+                        reuse_path
+                    }),
+                    action_path,
+                    reentry_skill,
+                    current_skill_target,
+                },
                 entry_halo_scope,
-                reentry_skill,
-                current_skill_target,
                 lane,
                 owner_uids,
                 execute_unscoped_after_action,

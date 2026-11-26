@@ -2,27 +2,35 @@ use crate::engine::{runtime::change::BattleChange, skill::action::SkillExecution
 
 use super::*;
 
-#[allow(clippy::too_many_arguments)]
 pub(super) fn drain_skill(
-    managers: &mut BattleManagers,
+    access: DrainAccess<'_>,
     base_pool: &TargetPool,
-    pool: &TargetPool,
-    catalog: &SkillEffectCatalog,
-    determinism: &mut RoundDeterminism,
+
     context: TargetContext,
     queue: &mut VecDeque<QueuedOp>,
-    result: &mut DrainResult,
-    state: &mut DrainState,
-    mut invocation: crate::engine::skill::action::SkillInvocation,
-    trigger: SkillOpTrigger,
-    skill_execution: Option<SkillExecution>,
-    frame_path: Option<FramePath>,
-    parent_path: Option<FramePath>,
-    frame_group: Option<Rc<RefCell<Option<FramePath>>>>,
-    frame_owner: Option<FrameOwner>,
-    mut subscriber: Option<SubscriberContext>,
-    caster_frame: Option<FrameOwner>,
+
+    operation: QueuedOp<crate::engine::skill::action::SkillInvocation>,
 ) -> Result<(), DrainError> {
+    let DrainAccess {
+        managers,
+        pool,
+        catalog,
+        determinism,
+        result,
+        state,
+    } = access;
+    let QueuedOp {
+        op: mut invocation,
+        trigger,
+        skill_execution,
+        frame_path,
+        parent_path,
+        frame_group,
+        frame_owner,
+        mut subscriber,
+        caster_frame,
+        ..
+    } = operation;
     if let Some(FrameOwner::BuffAct { key, .. }) = &frame_owner
         && let Some(route) =
             crate::engine::skill::buff_act::registry::find(key.opcode, key.type_name)

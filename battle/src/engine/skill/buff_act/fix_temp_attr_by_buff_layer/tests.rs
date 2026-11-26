@@ -87,10 +87,12 @@ fn field_uses_all_tracked_stacks_on_its_source() {
             &attributes,
             &buffs,
             &hp,
-            false,
-            false,
-            true,
-            true,
+            super::super::AttackAttributeScope {
+                is_big_skill: false,
+                extra_action: false,
+                performs_extra_action: true,
+                source_performs_extra_action: true,
+            },
         ),
         320
     );

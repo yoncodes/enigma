@@ -209,11 +209,13 @@ fn defender_round_start_death_cleans_its_cards_in_the_death_action() {
     });
 
     let round = run_before_ai_round_start(
-        &mut managers,
-        &pool,
-        &catalog,
-        &mut RoundDeterminism::default(),
-        TargetContext::default(),
+        BattleAccess::new(
+            &mut managers,
+            &pool,
+            &catalog,
+            &mut RoundDeterminism::default(),
+            TargetContext::default(),
+        ),
         2,
         &[],
         None,
@@ -291,11 +293,13 @@ fn action_queue_stops_when_the_configured_win_target_dies() {
 
     run_ai_actions(
         &fight,
-        &mut managers,
-        &pool,
-        &catalog,
-        &mut RoundDeterminism::default(),
-        TargetContext::default(),
+        BattleAccess::new(
+            &mut managers,
+            &pool,
+            &catalog,
+            &mut RoundDeterminism::default(),
+            TargetContext::default(),
+        ),
         [
             AiSkillChoice {
                 source_uid: 10,
@@ -353,11 +357,13 @@ fn lethal_skill_cost_settles_before_damage_and_stops_later_behaviors() {
 
     let result = run_ai_actions(
         &fight,
-        &mut managers,
-        &pool,
-        &catalog,
-        &mut RoundDeterminism::default(),
-        TargetContext::default(),
+        BattleAccess::new(
+            &mut managers,
+            &pool,
+            &catalog,
+            &mut RoundDeterminism::default(),
+            TargetContext::default(),
+        ),
         [AiSkillChoice {
             source_uid: -1,
             skill_id: 119381126,

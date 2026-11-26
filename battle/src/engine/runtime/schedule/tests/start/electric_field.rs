@@ -37,14 +37,16 @@ fn electric_field_precedes_both_sides_early_opening_rules() {
     catalog.insert(early_ally_rule);
     let (opening, _) = run_start(
         managers.catalog(),
-        &mut managers,
-        &pool,
-        &catalog,
-        &mut RoundDeterminism::default(),
-        TargetContext {
-            current_round: 1,
-            ..Default::default()
-        },
+        BattleAccess::new(
+            &mut managers,
+            &pool,
+            &catalog,
+            &mut RoundDeterminism::default(),
+            TargetContext {
+                current_round: 1,
+                ..Default::default()
+            },
+        ),
         CardSetup {
             hand: Vec::new(),
             draw_pile: Vec::new(),
@@ -115,14 +117,16 @@ fn electric_field_attached_after_the_early_pass_still_runs() {
     });
     let (opening, _) = run_start(
         managers.catalog(),
-        &mut managers,
-        &pool,
-        &catalog,
-        &mut RoundDeterminism::default(),
-        TargetContext {
-            current_round: 1,
-            ..Default::default()
-        },
+        BattleAccess::new(
+            &mut managers,
+            &pool,
+            &catalog,
+            &mut RoundDeterminism::default(),
+            TargetContext {
+                current_round: 1,
+                ..Default::default()
+            },
+        ),
         CardSetup {
             hand: Vec::new(),
             draw_pile: Vec::new(),

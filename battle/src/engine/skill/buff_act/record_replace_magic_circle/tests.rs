@@ -148,11 +148,13 @@ fn missing_return_mapping_fails_before_countdown() {
 
     assert!(matches!(
         crate::engine::runtime::drain::run_group_event(
-            &mut managers,
-            &pool,
-            &crate::engine::skill::effect::SkillEffectCatalog::default(),
-            &mut determinism,
-            crate::engine::skill::target::TargetContext::default(),
+            crate::engine::runtime::drain::BattleAccess::new(
+                &mut managers,
+                &pool,
+                &crate::engine::skill::effect::SkillEffectCatalog::default(),
+                &mut determinism,
+                crate::engine::skill::target::TargetContext::default(),
+            ),
             event,
             crate::engine::runtime::drain::ReactionLane::BuffActs,
             None,

@@ -74,7 +74,6 @@ impl RefillSlots {
 #[cfg(test)]
 mod tests;
 
-#[allow(clippy::too_many_arguments)]
 pub fn run_post_action_refill(
     managers: &mut BattleManagers,
     pool: &TargetPool,
@@ -85,11 +84,7 @@ pub fn run_post_action_refill(
     team_type: i32,
 ) -> Result<DrainResult, DrainError> {
     super::run_card_refill(
-        managers,
-        pool,
-        catalog,
-        determinism,
-        context,
+        BattleAccess::new(managers, pool, catalog, determinism, context),
         target_hand_len,
         team_type,
         CardRefillStage::AfterActions,

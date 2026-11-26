@@ -87,14 +87,16 @@ fn raspberry_threshold_cast_waits_for_both_round_start_losses() {
     );
 
     let result = run_group_event(
-        &mut managers,
-        &pool,
-        &catalog,
-        &mut RoundDeterminism::default(),
-        TargetContext {
-            current_round: 3,
-            ..Default::default()
-        },
+        BattleAccess::new(
+            &mut managers,
+            &pool,
+            &catalog,
+            &mut RoundDeterminism::default(),
+            TargetContext {
+                current_round: 3,
+                ..Default::default()
+            },
+        ),
         BattleEvent::RoundStart,
         ReactionLane::BuffActsBeforeSettlement,
         Some(&[10, 11]),

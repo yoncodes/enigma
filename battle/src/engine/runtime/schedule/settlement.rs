@@ -59,11 +59,7 @@ pub fn run_attacker_round_end(
     append(
         &mut result,
         drain::run_grouped_owner_event_lanes(
-            managers,
-            pool,
-            catalog,
-            determinism,
-            context,
+            BattleAccess::new(managers, pool, catalog, determinism, context),
             BattleEvent::Kind(EventKind::SmallRoundEnd),
             &owners,
             &[drain::ReactionLane::BuffActs, drain::ReactionLane::Skills],
@@ -84,11 +80,7 @@ pub fn run_attacker_round_end(
     append(
         &mut result,
         drain::run_group_event(
-            managers,
-            pool,
-            catalog,
-            determinism,
-            context,
+            BattleAccess::new(managers, pool, catalog, determinism, context),
             BattleEvent::Kind(EventKind::RoundEnd),
             drain::ReactionLane::BuffActs,
             Some(&owners),
@@ -199,11 +191,7 @@ pub fn run_finished_attacker_settlement(
         .map(|entity| entity.uid)
         .collect::<Vec<_>>();
     let mut result = drain::run_group_event(
-        managers,
-        pool,
-        catalog,
-        determinism,
-        context,
+        BattleAccess::new(managers, pool, catalog, determinism, context),
         BattleEvent::Kind(EventKind::SmallRoundEnd),
         drain::ReactionLane::BuffActs,
         Some(&owners),
@@ -261,7 +249,6 @@ pub(in crate::engine::runtime) fn run_terminal_attacker_transition(
     Ok(result)
 }
 
-#[allow(clippy::too_many_arguments)]
 fn run_duration_advances_for_event(
     managers: &mut BattleManagers,
     pool: &TargetPool,
@@ -319,11 +306,7 @@ fn run_defender_settlement(
     owners.push(crate::engine::fight::rules::DEFENDER_SIDE_UID);
     let small_round_end = |managers: &mut BattleManagers, determinism: &mut RoundDeterminism| {
         drain::run_grouped_owner_event_lanes(
-            managers,
-            pool,
-            catalog,
-            determinism,
-            context,
+            BattleAccess::new(managers, pool, catalog, determinism, context),
             BattleEvent::Kind(EventKind::SmallRoundEnd),
             &owners,
             &[drain::ReactionLane::BuffActs, drain::ReactionLane::Skills],
@@ -337,11 +320,7 @@ fn run_defender_settlement(
     append(
         &mut result,
         drain::run_group_event_lanes(
-            managers,
-            pool,
-            catalog,
-            determinism,
-            context,
+            BattleAccess::new(managers, pool, catalog, determinism, context),
             BattleEvent::Kind(EventKind::RoundEnd),
             &[drain::ReactionLane::BuffActs, drain::ReactionLane::Skills],
             Some(&owners),
@@ -471,21 +450,13 @@ pub fn run_entity_settlement(
                 let event = BattleEvent::Kind(*kind);
                 if *kind == EventKind::RoundEndAfterSettlement {
                     let mut result = drain::run_grouped_owner_event(
-                        managers,
-                        pool,
-                        catalog,
-                        determinism,
-                        context,
+                        BattleAccess::new(managers, pool, catalog, determinism, context),
                         event.clone(),
                         &active_owner_uids,
                         drain::ReactionLane::BuffActs,
                     )?;
                     let mut skills = drain::run_grouped_owner_event(
-                        managers,
-                        pool,
-                        catalog,
-                        determinism,
-                        context,
+                        BattleAccess::new(managers, pool, catalog, determinism, context),
                         event.clone(),
                         &active_owner_uids,
                         drain::ReactionLane::Skills,
@@ -513,22 +484,14 @@ pub fn run_entity_settlement(
                     result
                 } else {
                     let mut result = drain::run_grouped_owner_event(
-                        managers,
-                        pool,
-                        catalog,
-                        determinism,
-                        context,
+                        BattleAccess::new(managers, pool, catalog, determinism, context),
                         event.clone(),
                         &active_owner_uids,
                         drain::ReactionLane::Skills,
                     )?;
                     if *kind == EventKind::RoundEndEntitySettlement {
                         let mut buff_acts = drain::run_grouped_owner_event(
-                            managers,
-                            pool,
-                            catalog,
-                            determinism,
-                            context,
+                            BattleAccess::new(managers, pool, catalog, determinism, context),
                             event.clone(),
                             &active_owner_uids,
                             drain::ReactionLane::BuffActs,
@@ -608,11 +571,7 @@ pub fn run_round_end_final_settlement(
     let pool = &pool.runtime_view(managers);
     let owner_uids = final_settlement_owner_order(pool, managers);
     let initial = drain::run_grouped_owner_event_lanes(
-        managers,
-        pool,
-        catalog,
-        determinism,
-        context,
+        BattleAccess::new(managers, pool, catalog, determinism, context),
         BattleEvent::BuffsSettled(settled_buffs.clone()),
         &owner_uids,
         &[drain::ReactionLane::BuffActs, drain::ReactionLane::Skills],
@@ -683,11 +642,7 @@ pub fn run_round_end_final_settlement(
     append_round_phase(
         &mut result,
         drain::run_grouped_owner_event(
-            managers,
-            pool,
-            catalog,
-            determinism,
-            context,
+            BattleAccess::new(managers, pool, catalog, determinism, context),
             BattleEvent::AfterSideFinalExpiry(settled_buffs),
             &owner_uids,
             drain::ReactionLane::Skills,
@@ -716,11 +671,7 @@ pub fn run_round_end_final_settlement(
         )?,
     );
     let mut after_buff_acts = drain::run_group_event(
-        managers,
-        pool,
-        catalog,
-        determinism,
-        context,
+        BattleAccess::new(managers, pool, catalog, determinism, context),
         after.clone(),
         drain::ReactionLane::BuffActs,
         None,
@@ -730,11 +681,7 @@ pub fn run_round_end_final_settlement(
     }
     append_round_phase(&mut after_phase, after_buff_acts);
     let mut after_skills = drain::run_group_event(
-        managers,
-        pool,
-        catalog,
-        determinism,
-        context,
+        BattleAccess::new(managers, pool, catalog, determinism, context),
         after.clone(),
         drain::ReactionLane::Skills,
         Some(&owner_uids),

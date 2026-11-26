@@ -104,11 +104,13 @@ fn forbid_discards_support_cards_but_preserves_locked_cards() {
     let before = locked.card.clone();
     assert!(matches!(
         run_player_commands(
-            &mut locked,
-            &pool,
-            &catalog,
-            &mut RoundDeterminism::default(),
-            TargetContext::default(),
+            BattleAccess::new(
+                &mut locked,
+                &pool,
+                &catalog,
+                &mut RoundDeterminism::default(),
+                TargetContext::default(),
+            ),
             [RoundCommand::PlayCard {
                 card_index: 0,
                 target_uid: None,
@@ -127,11 +129,13 @@ fn forbid_discards_support_cards_but_preserves_locked_cards() {
     assert_eq!(locked.card, before);
 
     let result = run_player_commands(
-        &mut managers,
-        &pool,
-        &catalog,
-        &mut RoundDeterminism::default(),
-        TargetContext::default(),
+        BattleAccess::new(
+            &mut managers,
+            &pool,
+            &catalog,
+            &mut RoundDeterminism::default(),
+            TargetContext::default(),
+        ),
         [RoundCommand::PlayCard {
             card_index: 0,
             target_uid: None,
@@ -159,11 +163,13 @@ fn forbid_discards_support_cards_but_preserves_locked_cards() {
     );
 
     run_player_commands(
-        &mut managers,
-        &pool,
-        &catalog,
-        &mut RoundDeterminism::default(),
-        TargetContext::default(),
+        BattleAccess::new(
+            &mut managers,
+            &pool,
+            &catalog,
+            &mut RoundDeterminism::default(),
+            TargetContext::default(),
+        ),
         [RoundCommand::PlayCard {
             card_index: 0,
             target_uid: None,

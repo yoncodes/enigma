@@ -6,7 +6,9 @@ use crate::engine::{
     manager::BattleManagers,
     runtime::determinism::RoundDeterminism,
     skill::{
-        effect::{SkillEffectCatalog, catalog::SkillEffectTag},
+        action::SkillRequest,
+        behavior::rate::{RateRuntime, active_modifiers},
+        effect::catalog::SkillEffectTag,
         target::TargetPool,
     },
 };
@@ -55,17 +57,22 @@ pub(super) fn add_score(left: GroupScore, right: GroupScore) -> GroupScore {
     )
 }
 
-#[allow(clippy::too_many_arguments)]
 pub(super) fn skill_score(
-    source_uid: i64,
-    skill_id: i32,
+    skill: SkillRequest,
     spent: i32,
-    managers: &BattleManagers,
-    pool: &TargetPool,
-    catalog: &SkillEffectCatalog,
+    runtime: RateRuntime<'_>,
     determinism: &RoundDeterminism,
-    context: crate::engine::skill::target::TargetContext,
 ) -> GroupScore {
+    let SkillRequest {
+        source_uid,
+        skill_id,
+    } = skill;
+    let RateRuntime {
+        effects: catalog,
+        managers,
+        pool,
+        ..
+    } = runtime;
     let Some(source) = pool.entity(source_uid) else {
         return (0, 0, 0, 0, 0);
     };
@@ -103,20 +110,9 @@ pub(super) fn skill_score(
         let attack_career = targets
             .first()
             .map(|target_uid| {
-                crate::engine::skill::behavior::rate::active_modifiers(
-                    source_uid,
-                    skill_id,
-                    *target_uid,
-                    crate::engine::skill::behavior::rate::RateRuntime {
-                        effects: catalog,
-                        managers,
-                        pool,
-                        context,
-                    },
-                    determinism,
-                )
-                .attack_career
-                .unwrap_or(source.career)
+                active_modifiers(source_uid, skill_id, *target_uid, runtime, determinism)
+                    .attack_career
+                    .unwrap_or(source.career)
             })
             .unwrap_or(source.career);
         let mut affinities = targets

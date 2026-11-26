@@ -143,6 +143,5 @@ pub fn command_origin(
     })
 }
 
-#[allow(clippy::too_many_arguments)]
 #[cfg(test)]
 mod op_tests;

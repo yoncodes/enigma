@@ -15,22 +15,28 @@ pub(super) fn reactions(
     };
     access.result.events.extend(events.iter().cloned());
     dispatch_event_groups(
-        access.pool,
-        access.managers,
-        access.catalog,
-        access.determinism,
+        ReactionAccess {
+            pool: access.pool,
+            managers: access.managers,
+            catalog: access.catalog,
+            determinism: access.determinism,
+        },
         access.state,
         &[events],
-        settlement,
-        path,
-        scope.action_scope.map(Vec::as_slice),
-        scope.entry_halo_scope,
-        scope.current_skill,
-        false,
-        scope.context.current_round > 0,
-        crate::engine::event::subscription::PublicationPhase::AfterPublish,
-        owner_uids,
-        None,
+        EventFrame {
+            parent_path: settlement,
+            reuse_path: path,
+            action_path: scope.action_scope.map(Vec::as_slice),
+            entry_halo_scope: Some(scope.entry_halo_scope),
+            current_skill: scope.current_skill,
+        },
+        ReactionSelection {
+            include_attack_consumption: false,
+            execute_unscoped_after_action: scope.context.current_round > 0,
+            publication_phase: crate::engine::event::subscription::PublicationPhase::AfterPublish,
+            owner_uids,
+            lane: None,
+        },
         None,
         None,
     )

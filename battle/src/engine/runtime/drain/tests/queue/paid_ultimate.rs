@@ -180,14 +180,16 @@ fn round_end_paid_ultimate_spends_before_hitting_the_marked_enemy() {
         };
         let mut managers = BattleManagers::seeded(&fight);
         let result = run_group_event(
-            &mut managers,
-            &TargetPool::from_fight(&fight),
-            &catalog,
-            &mut RoundDeterminism::default(),
-            TargetContext {
-                current_round: 2,
-                ..Default::default()
-            },
+            BattleAccess::new(
+                &mut managers,
+                &TargetPool::from_fight(&fight),
+                &catalog,
+                &mut RoundDeterminism::default(),
+                TargetContext {
+                    current_round: 2,
+                    ..Default::default()
+                },
+            ),
             BattleEvent::Kind(EventKind::RoundEnd),
             ReactionLane::Skills,
             Some(&[10]),

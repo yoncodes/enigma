@@ -29,11 +29,13 @@ fn ai_self_target_skills_ignore_the_selected_opponent() {
 
     let result = run_ai_actions(
         &fight,
-        &mut managers,
-        &pool,
-        &catalog,
-        &mut RoundDeterminism::default(),
-        TargetContext::default(),
+        BattleAccess::new(
+            &mut managers,
+            &pool,
+            &catalog,
+            &mut RoundDeterminism::default(),
+            TargetContext::default(),
+        ),
         [AiSkillChoice {
             source_uid: -2,
             skill_id: 116330112,
@@ -107,11 +109,13 @@ fn ai_actions_see_provoke_added_after_the_target_pool_was_built() {
 
     let result = run_ai_actions(
         &fight,
-        &mut managers,
-        &pool,
-        &catalog,
-        &mut RoundDeterminism::default(),
-        TargetContext::default(),
+        BattleAccess::new(
+            &mut managers,
+            &pool,
+            &catalog,
+            &mut RoundDeterminism::default(),
+            TargetContext::default(),
+        ),
         [AiSkillChoice {
             source_uid: -1,
             skill_id: 999,
@@ -165,11 +169,13 @@ fn missing_allied_monster_is_resummoned_after_active_skill_damage() {
 
     let result = run_ai_actions(
         &fight,
-        &mut managers,
-        &pool,
-        &catalog,
-        &mut RoundDeterminism::default(),
-        TargetContext::default(),
+        BattleAccess::new(
+            &mut managers,
+            &pool,
+            &catalog,
+            &mut RoundDeterminism::default(),
+            TargetContext::default(),
+        ),
         [AiSkillChoice {
             source_uid: -1,
             skill_id: 103374111,
@@ -224,11 +230,13 @@ fn ai_action_phase_consumes_the_current_queue() {
 
     run_ai_actions(
         &fight,
-        &mut managers,
-        &pool,
-        &SkillEffectCatalog::default(),
-        &mut RoundDeterminism::default(),
-        TargetContext::default(),
+        BattleAccess::new(
+            &mut managers,
+            &pool,
+            &SkillEffectCatalog::default(),
+            &mut RoundDeterminism::default(),
+            TargetContext::default(),
+        ),
         [],
         &[],
     )
@@ -282,11 +290,13 @@ fn ai_actions_credit_a_promoted_replacement_when_the_card_is_invalidated() {
 
     let result = run_ai_actions(
         &fight,
-        &mut managers,
-        &pool,
-        &catalog,
-        &mut RoundDeterminism::default(),
-        TargetContext::default(),
+        BattleAccess::new(
+            &mut managers,
+            &pool,
+            &catalog,
+            &mut RoundDeterminism::default(),
+            TargetContext::default(),
+        ),
         [AiSkillChoice {
             source_uid: -1,
             skill_id: 100,
@@ -376,11 +386,13 @@ fn ai_actions_do_not_credit_a_defeated_combatant_replaced_by_a_summon() {
 
     let result = run_ai_actions(
         &fight,
-        &mut managers,
-        &pool,
-        &catalog,
-        &mut RoundDeterminism::default(),
-        TargetContext::default(),
+        BattleAccess::new(
+            &mut managers,
+            &pool,
+            &catalog,
+            &mut RoundDeterminism::default(),
+            TargetContext::default(),
+        ),
         [
             AiSkillChoice {
                 source_uid: -3,
@@ -457,11 +469,13 @@ fn ai_actions_invalidate_a_queued_ultimate_after_its_resource_is_lost() {
 
     let result = run_ai_actions(
         &fight,
-        &mut managers,
-        &pool,
-        &catalog,
-        &mut RoundDeterminism::default(),
-        TargetContext::default(),
+        BattleAccess::new(
+            &mut managers,
+            &pool,
+            &catalog,
+            &mut RoundDeterminism::default(),
+            TargetContext::default(),
+        ),
         [AiSkillChoice {
             source_uid: -1,
             skill_id: 40231731,

@@ -20,7 +20,6 @@ pub fn run_command_group(
     )
 }
 
-#[allow(clippy::too_many_arguments)]
 pub fn run_command_group_as(
     managers: &mut BattleManagers,
     pool: &TargetPool,
@@ -88,7 +87,6 @@ pub fn run_command_group_as(
     )
 }
 
-#[allow(clippy::too_many_arguments)]
 pub fn run_owned_command_group(
     managers: &mut BattleManagers,
     pool: &TargetPool,
@@ -109,7 +107,6 @@ pub fn run_owned_command_group(
     .map(|(result, _)| result)
 }
 
-#[allow(clippy::too_many_arguments)]
 pub(super) fn run_owned_command_group_as(
     managers: &mut BattleManagers,
     pool: &TargetPool,
@@ -151,7 +148,6 @@ pub(super) fn run_owned_command_group_as(
     .map(|result| (result, root))
 }
 
-#[allow(clippy::too_many_arguments)]
 pub fn run_setup_schedule(
     managers: &mut BattleManagers,
     pool: &TargetPool,
@@ -178,7 +174,6 @@ pub fn run_setup_schedule(
     Ok(result)
 }
 
-#[allow(clippy::too_many_arguments)]
 pub fn run_setup_schedule_for_owners_in_round_phase(
     managers: &mut BattleManagers,
     pool: &TargetPool,
@@ -189,11 +184,7 @@ pub fn run_setup_schedule_for_owners_in_round_phase(
     owner_uids: &[i64],
 ) -> Result<DrainResult, DrainError> {
     run_setup_schedule_with_container(
-        managers,
-        pool,
-        catalog,
-        determinism,
-        context,
+        BattleAccess::new(managers, pool, catalog, determinism, context),
         schedule,
         Some(owner_uids),
         SetupFrameContainer::RoundPhase,
@@ -201,7 +192,6 @@ pub fn run_setup_schedule_for_owners_in_round_phase(
     )
 }
 
-#[allow(clippy::too_many_arguments)]
 pub fn run_setup_schedule_for_owners_in_round_phase_with_death_cleanup(
     managers: &mut BattleManagers,
     pool: &TargetPool,
@@ -212,11 +202,7 @@ pub fn run_setup_schedule_for_owners_in_round_phase_with_death_cleanup(
     owner_uids: &[i64],
 ) -> Result<DrainResult, DrainError> {
     run_setup_schedule_with_container(
-        managers,
-        pool,
-        catalog,
-        determinism,
-        context,
+        BattleAccess::new(managers, pool, catalog, determinism, context),
         schedule,
         Some(owner_uids),
         SetupFrameContainer::RoundPhase,
@@ -224,7 +210,6 @@ pub fn run_setup_schedule_for_owners_in_round_phase_with_death_cleanup(
     )
 }
 
-#[allow(clippy::too_many_arguments)]
 pub fn run_setup_schedule_for_owners_in_opening_round_phase(
     managers: &mut BattleManagers,
     pool: &TargetPool,
@@ -235,11 +220,7 @@ pub fn run_setup_schedule_for_owners_in_opening_round_phase(
     owner_uids: &[i64],
 ) -> Result<DrainResult, DrainError> {
     run_setup_schedule_with_container(
-        managers,
-        pool,
-        catalog,
-        determinism,
-        context,
+        BattleAccess::new(managers, pool, catalog, determinism, context),
         schedule,
         Some(owner_uids),
         SetupFrameContainer::OpeningRoundPhase,
@@ -247,7 +228,6 @@ pub fn run_setup_schedule_for_owners_in_opening_round_phase(
     )
 }
 
-#[allow(clippy::too_many_arguments)]
 pub fn run_skill_setup_schedule_in_opening_round_phase(
     managers: &mut BattleManagers,
     pool: &TargetPool,
@@ -258,18 +238,13 @@ pub fn run_skill_setup_schedule_in_opening_round_phase(
     owner_uids: Option<&[i64]>,
 ) -> Result<DrainResult, DrainError> {
     run_skill_setup_schedule_with_container(
-        managers,
-        pool,
-        catalog,
-        determinism,
-        context,
+        BattleAccess::new(managers, pool, catalog, determinism, context),
         schedule,
         owner_uids,
         SetupFrameContainer::OpeningRoundPhase,
     )
 }
 
-#[allow(clippy::too_many_arguments)]
 pub fn run_opening_settlement_skills_in_owner_order(
     managers: &mut BattleManagers,
     pool: &TargetPool,
@@ -284,11 +259,7 @@ pub fn run_opening_settlement_skills_in_owner_order(
     let mut result = DrainResult::default();
     for owner_uid in owner_uids {
         let owner_result = run_skill_setup_schedule_with_container(
-            managers,
-            pool,
-            catalog,
-            determinism,
-            context,
+            BattleAccess::new(managers, pool, catalog, determinism, context),
             SCHEDULE,
             Some(std::slice::from_ref(owner_uid)),
             SetupFrameContainer::OpeningRoundPhase,
@@ -299,15 +270,13 @@ pub fn run_opening_settlement_skills_in_owner_order(
     }
 
     let remaining = run_skill_setup_stage_filtered(
-        managers,
-        pool,
-        catalog,
-        determinism,
-        context,
-        SetupStage::RoundStart,
-        1,
-        None,
-        owner_uids,
+        BattleAccess::new(managers, pool, catalog, determinism, context),
+        crate::engine::runtime::drain::entry::setup::SetupSelection {
+            stage: SetupStage::RoundStart,
+            priority: 1,
+            owner_uids: None,
+            excluded_owner_uids: owner_uids,
+        },
         false,
         SetupFrameContainer::OpeningRoundPhase,
         DefenderCardCleanupOwner::DeathAction,
@@ -318,7 +287,6 @@ pub fn run_opening_settlement_skills_in_owner_order(
     Ok(result)
 }
 
-#[allow(clippy::too_many_arguments)]
 pub fn run_buff_act_setup_schedule_in_opening_round_phase(
     managers: &mut BattleManagers,
     pool: &TargetPool,
@@ -339,7 +307,6 @@ pub fn run_buff_act_setup_schedule_in_opening_round_phase(
     )
 }
 
-#[allow(clippy::too_many_arguments)]
 pub fn run_setup_schedule_in_owner_order_round_phase(
     managers: &mut BattleManagers,
     pool: &TargetPool,
@@ -353,11 +320,7 @@ pub fn run_setup_schedule_in_owner_order_round_phase(
     for &(stage, priority) in schedule {
         for owner_uid in owner_uids {
             let owner_result = run_setup_schedule_with_container(
-                managers,
-                pool,
-                catalog,
-                determinism,
-                context,
+                BattleAccess::new(managers, pool, catalog, determinism, context),
                 &[(stage, priority)],
                 Some(std::slice::from_ref(owner_uid)),
                 SetupFrameContainer::RoundPhase,
@@ -371,7 +334,6 @@ pub fn run_setup_schedule_in_owner_order_round_phase(
     Ok(result)
 }
 
-#[allow(clippy::too_many_arguments)]
 pub fn run_opening_sync_setup_in_owner_order(
     managers: &mut BattleManagers,
     pool: &TargetPool,
@@ -382,11 +344,7 @@ pub fn run_opening_sync_setup_in_owner_order(
     exclude_parent_late: bool,
 ) -> Result<DrainResult, DrainError> {
     run_sync_setup_in_owner_order(
-        managers,
-        pool,
-        catalog,
-        determinism,
-        context,
+        BattleAccess::new(managers, pool, catalog, determinism, context),
         owner_uids,
         &[(SetupStage::BuffSync, 0), (SetupStage::RoundStartLate, 0)],
         if exclude_parent_late {
@@ -400,7 +358,6 @@ pub fn run_opening_sync_setup_in_owner_order(
     )
 }
 
-#[allow(clippy::too_many_arguments)]
 pub fn run_opening_parent_late_setup(
     managers: &mut BattleManagers,
     pool: &TargetPool,
@@ -410,11 +367,7 @@ pub fn run_opening_parent_late_setup(
     owner_uids: &[i64],
 ) -> Result<DrainResult, DrainError> {
     run_sync_setup_in_owner_order(
-        managers,
-        pool,
-        catalog,
-        determinism,
-        context,
+        BattleAccess::new(managers, pool, catalog, determinism, context),
         owner_uids,
         &[(SetupStage::RoundStartLate, 0)],
         SetupSkillFilter::ParentOnly,
@@ -424,7 +377,6 @@ pub fn run_opening_parent_late_setup(
     )
 }
 
-#[allow(clippy::too_many_arguments)]
 pub fn run_round_sync_setup_in_owner_order(
     managers: &mut BattleManagers,
     pool: &TargetPool,
@@ -434,11 +386,7 @@ pub fn run_round_sync_setup_in_owner_order(
     owner_uids: &[i64],
 ) -> Result<DrainResult, DrainError> {
     run_sync_setup_in_owner_order(
-        managers,
-        pool,
-        catalog,
-        determinism,
-        context,
+        BattleAccess::new(managers, pool, catalog, determinism, context),
         owner_uids,
         &[(SetupStage::BuffSync, 0), (SetupStage::RoundStartLate, 0)],
         SetupSkillFilter::All,
@@ -448,13 +396,8 @@ pub fn run_round_sync_setup_in_owner_order(
     )
 }
 
-#[allow(clippy::too_many_arguments)]
 fn run_sync_setup_in_owner_order(
-    managers: &mut BattleManagers,
-    pool: &TargetPool,
-    catalog: &SkillEffectCatalog,
-    determinism: &mut RoundDeterminism,
-    context: TargetContext,
+    battle: BattleAccess<'_>,
     owner_uids: &[i64],
     schedule: &[(SetupStage, i32)],
     late_skill_filter: SetupSkillFilter<'_>,
@@ -462,6 +405,13 @@ fn run_sync_setup_in_owner_order(
     frame_container: SetupFrameContainer,
     cleanup_owner: DefenderCardCleanupOwner,
 ) -> Result<DrainResult, DrainError> {
+    let BattleAccess {
+        managers,
+        pool,
+        catalog,
+        determinism,
+        context,
+    } = battle;
     let mut result = DrainResult::default();
     for owner_uid in owner_uids {
         for &(stage, priority) in schedule {
@@ -471,15 +421,13 @@ fn run_sync_setup_in_owner_order(
                 SetupSkillFilter::All
             };
             let owner_result = run_skill_then_buff_act_setup_stage_filtered(
-                managers,
-                pool,
-                catalog,
-                determinism,
-                context,
-                stage,
-                priority,
-                Some(std::slice::from_ref(owner_uid)),
-                &[],
+                BattleAccess::new(managers, pool, catalog, determinism, context),
+                crate::engine::runtime::drain::entry::setup::SetupSelection {
+                    stage,
+                    priority,
+                    owner_uids: Some(std::slice::from_ref(owner_uid)),
+                    excluded_owner_uids: &[],
+                },
                 false,
                 skill_filter,
                 stage != SetupStage::RoundStartLate || include_late_buff_acts,
@@ -499,15 +447,13 @@ fn run_sync_setup_in_owner_order(
             SetupSkillFilter::All
         };
         let remaining = run_skill_then_buff_act_setup_stage_filtered(
-            managers,
-            pool,
-            catalog,
-            determinism,
-            context,
-            stage,
-            priority,
-            (stage == SetupStage::RoundStartLate).then_some([].as_slice()),
-            owner_uids,
+            BattleAccess::new(managers, pool, catalog, determinism, context),
+            crate::engine::runtime::drain::entry::setup::SetupSelection {
+                stage,
+                priority,
+                owner_uids: (stage == SetupStage::RoundStartLate).then_some([].as_slice()),
+                excluded_owner_uids: owner_uids,
+            },
             stage == SetupStage::RoundStartLate,
             skill_filter,
             stage != SetupStage::RoundStartLate || include_late_buff_acts,
@@ -521,7 +467,6 @@ fn run_sync_setup_in_owner_order(
     Ok(result)
 }
 
-#[allow(clippy::too_many_arguments)]
 pub fn run_skill_setup_schedule(
     managers: &mut BattleManagers,
     pool: &TargetPool,
@@ -531,11 +476,7 @@ pub fn run_skill_setup_schedule(
     schedule: &[(SetupStage, i32)],
 ) -> Result<DrainResult, DrainError> {
     run_skill_setup_schedule_with_container(
-        managers,
-        pool,
-        catalog,
-        determinism,
-        context,
+        BattleAccess::new(managers, pool, catalog, determinism, context),
         schedule,
         None,
         SetupFrameContainer::Standalone,
@@ -552,18 +493,13 @@ pub(crate) fn run_skill_setup_schedule_for_owners(
     owner_uids: &[i64],
 ) -> Result<DrainResult, DrainError> {
     run_skill_setup_schedule_with_container(
-        managers,
-        pool,
-        catalog,
-        determinism,
-        context,
+        BattleAccess::new(managers, pool, catalog, determinism, context),
         schedule,
         Some(owner_uids),
         SetupFrameContainer::Standalone,
     )
 }
 
-#[allow(clippy::too_many_arguments)]
 pub fn run_version_seven_round_start_event_setup(
     managers: &mut BattleManagers,
     pool: &TargetPool,
@@ -579,11 +515,7 @@ pub fn run_version_seven_round_start_event_setup(
     let mut result = DrainResult::default();
     for owner_uid in owner_uids {
         let owner_result = run_setup_schedule_with_container(
-            managers,
-            pool,
-            catalog,
-            determinism,
-            context,
+            BattleAccess::new(managers, pool, catalog, determinism, context),
             OWNER_SCHEDULE,
             Some(std::slice::from_ref(owner_uid)),
             SetupFrameContainer::RoundPhase,
@@ -595,11 +527,7 @@ pub fn run_version_seven_round_start_event_setup(
     }
     for owner_uid in owner_uids {
         let owner_result = run_setup_schedule_with_container(
-            managers,
-            pool,
-            catalog,
-            determinism,
-            context,
+            BattleAccess::new(managers, pool, catalog, determinism, context),
             TRANSITION_SCHEDULE,
             Some(std::slice::from_ref(owner_uid)),
             SetupFrameContainer::RoundPhase,
@@ -612,7 +540,6 @@ pub fn run_version_seven_round_start_event_setup(
     Ok(result)
 }
 
-#[allow(clippy::too_many_arguments)]
 pub fn run_buff_act_setup_schedule_for_owners_in_round_phase(
     managers: &mut BattleManagers,
     pool: &TargetPool,
@@ -633,30 +560,30 @@ pub fn run_buff_act_setup_schedule_for_owners_in_round_phase(
     )
 }
 
-#[allow(clippy::too_many_arguments)]
 fn run_setup_schedule_with_container(
-    managers: &mut BattleManagers,
-    pool: &TargetPool,
-    catalog: &SkillEffectCatalog,
-    determinism: &mut RoundDeterminism,
-    context: TargetContext,
+    battle: BattleAccess<'_>,
     schedule: &[(SetupStage, i32)],
     owner_uids: Option<&[i64]>,
     frame_container: SetupFrameContainer,
     cleanup_owner: DefenderCardCleanupOwner,
 ) -> Result<DrainResult, DrainError> {
+    let BattleAccess {
+        managers,
+        pool,
+        catalog,
+        determinism,
+        context,
+    } = battle;
     let mut result = DrainResult::default();
     for &(stage, priority) in schedule {
         let stage_result = run_skill_then_buff_act_setup_stage_filtered(
-            managers,
-            pool,
-            catalog,
-            determinism,
-            context,
-            stage,
-            priority,
-            owner_uids,
-            &[],
+            BattleAccess::new(managers, pool, catalog, determinism, context),
+            crate::engine::runtime::drain::entry::setup::SetupSelection {
+                stage,
+                priority,
+                owner_uids,
+                excluded_owner_uids: &[],
+            },
             false,
             SetupSkillFilter::All,
             true,
@@ -670,29 +597,29 @@ fn run_setup_schedule_with_container(
     Ok(result)
 }
 
-#[allow(clippy::too_many_arguments)]
 fn run_skill_setup_schedule_with_container(
-    managers: &mut BattleManagers,
-    pool: &TargetPool,
-    catalog: &SkillEffectCatalog,
-    determinism: &mut RoundDeterminism,
-    context: TargetContext,
+    battle: BattleAccess<'_>,
     schedule: &[(SetupStage, i32)],
     owner_uids: Option<&[i64]>,
     frame_container: SetupFrameContainer,
 ) -> Result<DrainResult, DrainError> {
+    let BattleAccess {
+        managers,
+        pool,
+        catalog,
+        determinism,
+        context,
+    } = battle;
     let mut result = DrainResult::default();
     for &(stage, priority) in schedule {
         let stage_result = run_skill_setup_stage_filtered(
-            managers,
-            pool,
-            catalog,
-            determinism,
-            context,
-            stage,
-            priority,
-            owner_uids,
-            &[],
+            BattleAccess::new(managers, pool, catalog, determinism, context),
+            crate::engine::runtime::drain::entry::setup::SetupSelection {
+                stage,
+                priority,
+                owner_uids,
+                excluded_owner_uids: &[],
+            },
             false,
             frame_container,
             DefenderCardCleanupOwner::DeathAction,
@@ -724,7 +651,6 @@ pub(crate) fn run_round_start_buff_setup(
     )
 }
 
-#[allow(clippy::too_many_arguments)]
 fn run_buff_act_setup_schedule(
     managers: &mut BattleManagers,
     pool: &TargetPool,
@@ -737,15 +663,13 @@ fn run_buff_act_setup_schedule(
     let mut result = DrainResult::default();
     for &(stage, priority) in schedule {
         let stage_result = run_buff_act_setup_stage_filtered(
-            managers,
-            pool,
-            catalog,
-            determinism,
-            context,
-            stage,
-            priority,
-            owner_uids,
-            &[],
+            BattleAccess::new(managers, pool, catalog, determinism, context),
+            crate::engine::runtime::drain::entry::setup::SetupSelection {
+                stage,
+                priority,
+                owner_uids,
+                excluded_owner_uids: &[],
+            },
         )?;
         result.outcomes.extend(stage_result.outcomes);
         result.events.extend(stage_result.events);

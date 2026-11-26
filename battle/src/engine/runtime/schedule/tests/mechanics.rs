@@ -942,13 +942,15 @@ fn impromptu_owns_its_clear_after_owner_death_across_conduit() {
     let battle_catalog = managers.catalog();
     let conduit = run_conduit_phase(
         battle_catalog,
-        &fight,
+        crate::engine::runtime::schedule::ConduitPhase {
+            fight: &fight,
+            operations: &[],
+        },
         &mut managers,
         &pool,
         &mut catalog,
         &mut determinism,
         TargetContext::default(),
-        &[],
     )
     .unwrap();
     assert!(conduit.frames.is_empty());

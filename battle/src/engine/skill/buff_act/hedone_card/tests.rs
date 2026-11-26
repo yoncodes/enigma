@@ -1,3 +1,4 @@
+use crate::engine::runtime::drain::BattleAccess;
 use crate::test_support::effects;
 use sonettobuf::{
     ActEffect, BuffActInfo, BuffInfo, CardExtraInfo, CardInfo, Fight, FightEntityInfo, FightStep,
@@ -105,11 +106,13 @@ fn round_end_absorbs_normal_energy_through_the_registry() {
     let catalog = SkillEffectCatalog::from_roots(config::configs::get(), [], [31560185]);
 
     let result = drain::run_group_event(
-        &mut managers,
-        &pool,
-        &catalog,
-        &mut RoundDeterminism::default(),
-        TargetContext::default(),
+        BattleAccess::new(
+            &mut managers,
+            &pool,
+            &catalog,
+            &mut RoundDeterminism::default(),
+            TargetContext::default(),
+        ),
         BattleEvent::Kind(EventKind::RoundEnd),
         crate::engine::event::dispatcher::ReactionLane::BuffActs,
         Some(&[-4]),
@@ -235,11 +238,13 @@ fn round_end_stops_at_storage_capacity_without_scaling_stored_energy() {
     let catalog = SkillEffectCatalog::from_roots(config::configs::get(), [], [31560187]);
 
     let result = drain::run_group_event(
-        &mut managers,
-        &pool,
-        &catalog,
-        &mut RoundDeterminism::default(),
-        TargetContext::default(),
+        BattleAccess::new(
+            &mut managers,
+            &pool,
+            &catalog,
+            &mut RoundDeterminism::default(),
+            TargetContext::default(),
+        ),
         BattleEvent::Kind(EventKind::RoundEnd),
         crate::engine::event::dispatcher::ReactionLane::BuffActs,
         Some(&[-4]),

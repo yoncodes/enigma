@@ -53,11 +53,13 @@ fn apple_rank_two_attack_heals_the_lowest_hp_ally() {
         .unwrap();
     let catalog = SkillEffectCatalog::from_fight(config::configs::get(), &fight);
     run_player_action_queue(
-        &mut managers,
-        &pool,
-        &catalog,
-        &mut RoundDeterminism::default(),
-        TargetContext::default(),
+        BattleAccess::new(
+            &mut managers,
+            &pool,
+            &catalog,
+            &mut RoundDeterminism::default(),
+            TargetContext::default(),
+        ),
         [CardPlay {
             origin: CARD_PLAY_ORIGIN,
             hand_index: 0,
@@ -128,11 +130,13 @@ fn apple_ultimate_settles_death_before_its_after_damage_heal() {
         .unwrap();
     let catalog = SkillEffectCatalog::from_fight(config::configs::get(), &fight);
     let result = run_player_action_queue(
-        &mut managers,
-        &pool,
-        &catalog,
-        &mut RoundDeterminism::default(),
-        TargetContext::default(),
+        BattleAccess::new(
+            &mut managers,
+            &pool,
+            &catalog,
+            &mut RoundDeterminism::default(),
+            TargetContext::default(),
+        ),
         [CardPlay {
             origin: CARD_PLAY_ORIGIN,
             hand_index: 0,
@@ -197,11 +201,13 @@ fn decoded_card_commands_share_the_command_only_player_schedule() {
         .unwrap();
 
     let result = run_player_commands(
-        &mut managers,
-        &pool,
-        &SkillEffectCatalog::default(),
-        &mut RoundDeterminism::default(),
-        TargetContext::default(),
+        BattleAccess::new(
+            &mut managers,
+            &pool,
+            &SkillEffectCatalog::default(),
+            &mut RoundDeterminism::default(),
+            TargetContext::default(),
+        ),
         [
             RoundCommand::MoveCard {
                 from_index: 0,
@@ -288,11 +294,13 @@ fn playing_a_card_composes_adjacent_remaining_cards() {
         .unwrap();
 
     run_player_commands(
-        &mut managers,
-        &pool,
-        &SkillEffectCatalog::from_fight(config::configs::get(), &fight),
-        &mut RoundDeterminism::default(),
-        TargetContext::default(),
+        BattleAccess::new(
+            &mut managers,
+            &pool,
+            &SkillEffectCatalog::from_fight(config::configs::get(), &fight),
+            &mut RoundDeterminism::default(),
+            TargetContext::default(),
+        ),
         [
             RoundCommand::PlayCard {
                 card_index: 0,
@@ -362,11 +370,13 @@ fn ex_point_card_move_modifies_the_base_move_moxie() {
         .unwrap();
 
     run_player_commands(
-        &mut managers,
-        &pool,
-        &SkillEffectCatalog::default(),
-        &mut RoundDeterminism::default(),
-        TargetContext::default(),
+        BattleAccess::new(
+            &mut managers,
+            &pool,
+            &SkillEffectCatalog::default(),
+            &mut RoundDeterminism::default(),
+            TargetContext::default(),
+        ),
         [RoundCommand::MoveCard {
             from_index: 0,
             to_index: 1,
@@ -501,11 +511,13 @@ fn rewritten_card_executes_for_its_resolved_caster() {
     });
 
     run_player_action_queue(
-        &mut managers,
-        &pool,
-        &catalog,
-        &mut RoundDeterminism::default(),
-        TargetContext::default(),
+        BattleAccess::new(
+            &mut managers,
+            &pool,
+            &catalog,
+            &mut RoundDeterminism::default(),
+            TargetContext::default(),
+        ),
         [CardPlay {
             origin: CARD_PLAY_ORIGIN,
             hand_index: 0,

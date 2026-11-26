@@ -1,3 +1,4 @@
+use crate::engine::runtime::drain::BattleAccess;
 use sonettobuf::{BuffInfo, Fight, FightEntityInfo, FightTeam, PowerInfo};
 
 use super::*;
@@ -212,11 +213,13 @@ fn active_holder_cast_spends_source_eureka_then_adds_inspiration() {
     ));
 
     drain::run_group_event(
-        &mut managers,
-        &pool,
-        &catalog,
-        &mut RoundDeterminism::default(),
-        TargetContext::default(),
+        BattleAccess::new(
+            &mut managers,
+            &pool,
+            &catalog,
+            &mut RoundDeterminism::default(),
+            TargetContext::default(),
+        ),
         cast(SkillExecutionMode::Active),
         ReactionLane::BuffActs,
         Some(&[11]),
@@ -254,11 +257,13 @@ fn nested_cast_or_insufficient_eureka_does_nothing() {
     ] {
         let mut managers = managers(eureka);
         drain::run_group_event(
-            &mut managers,
-            &pool,
-            &catalog,
-            &mut RoundDeterminism::default(),
-            TargetContext::default(),
+            BattleAccess::new(
+                &mut managers,
+                &pool,
+                &catalog,
+                &mut RoundDeterminism::default(),
+                TargetContext::default(),
+            ),
             cast(mode),
             ReactionLane::BuffActs,
             Some(&[11]),

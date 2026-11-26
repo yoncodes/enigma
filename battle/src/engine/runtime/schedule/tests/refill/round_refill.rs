@@ -182,11 +182,13 @@ fn post_action_refill_keeps_the_recorded_ultimate_waiver() {
     let catalog = SkillEffectCatalog::from_roots(config::configs::get(), [31280131], []);
 
     run_player_action_queue(
-        &mut managers,
-        &pool,
-        &catalog,
-        &mut RoundDeterminism::default(),
-        TargetContext::default(),
+        BattleAccess::new(
+            &mut managers,
+            &pool,
+            &catalog,
+            &mut RoundDeterminism::default(),
+            TargetContext::default(),
+        ),
         [CardPlay {
             origin: CARD_PLAY_ORIGIN,
             hand_index: 0,

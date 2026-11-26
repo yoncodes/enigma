@@ -72,16 +72,18 @@ fn conduit_attacks_complete_loop_chain_and_grant_moxie() {
 
     let result = run_conduit_phase(
         managers.catalog(),
-        &fight,
+        crate::engine::runtime::schedule::ConduitPhase {
+            fight: &fight,
+            operations: &[sonettobuf::FightDeviceOper {
+                uid: Some(10),
+                index: Some(1),
+            }],
+        },
         &mut managers,
         &pool,
         &mut catalog,
         &mut RoundDeterminism::default(),
         TargetContext::default(),
-        &[sonettobuf::FightDeviceOper {
-            uid: Some(10),
-            index: Some(1),
-        }],
     )
     .unwrap();
 
@@ -177,16 +179,18 @@ fn conduit_attacks_keep_their_lifecycle_without_becoming_active_incantations() {
 
     let result = run_conduit_phase(
         managers.catalog(),
-        &fight,
+        crate::engine::runtime::schedule::ConduitPhase {
+            fight: &fight,
+            operations: &[sonettobuf::FightDeviceOper {
+                uid: Some(10),
+                index: Some(1),
+            }],
+        },
         &mut managers,
         &pool,
         &mut catalog,
         &mut RoundDeterminism::default(),
         TargetContext::default(),
-        &[sonettobuf::FightDeviceOper {
-            uid: Some(10),
-            index: Some(1),
-        }],
     )
     .unwrap();
     assert!(result.outcomes.iter().any(|outcome| matches!(
@@ -252,16 +256,18 @@ fn conduit_repeats_a_paid_skill_until_its_energy_is_spent() {
 
     let result = run_conduit_phase(
         managers.catalog(),
-        &fight,
+        crate::engine::runtime::schedule::ConduitPhase {
+            fight: &fight,
+            operations: &[sonettobuf::FightDeviceOper {
+                uid: Some(10),
+                index: Some(1),
+            }],
+        },
         &mut managers,
         &pool,
         &mut catalog,
         &mut RoundDeterminism::default(),
         TargetContext::default(),
-        &[sonettobuf::FightDeviceOper {
-            uid: Some(10),
-            index: Some(1),
-        }],
     )
     .unwrap();
 

@@ -78,22 +78,28 @@ fn each_death_event_group_settles_before_the_next_group_reacts() {
     let mut frames = Vec::new();
     let root = push_root(&mut frames, FrameOwner::Command, FrameTrigger::Active);
     let reactions = dispatch_event_groups(
-        &pool,
-        &managers,
-        &catalog,
-        &mut determinism,
+        ReactionAccess {
+            pool: &pool,
+            managers: &managers,
+            catalog: &catalog,
+            determinism: &mut determinism,
+        },
         &mut state,
         &event_groups,
-        &root,
-        &root,
-        Some(&root),
-        &root,
-        None,
-        false,
-        true,
-        crate::engine::event::subscription::PublicationPhase::AfterPublish,
-        None,
-        None,
+        EventFrame {
+            parent_path: &root,
+            reuse_path: &root,
+            action_path: Some(&root),
+            entry_halo_scope: Some(&root),
+            current_skill: None,
+        },
+        ReactionSelection {
+            include_attack_consumption: false,
+            execute_unscoped_after_action: true,
+            publication_phase: crate::engine::event::subscription::PublicationPhase::AfterPublish,
+            owner_uids: None,
+            lane: None,
+        },
         Some(&pending_deaths),
         None,
     )

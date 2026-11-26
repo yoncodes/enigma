@@ -75,17 +75,20 @@ impl CardSelectionResolver {
         selectable_enemies(pool, source_uid).any(|enemy| enemy.uid == target_uid)
     }
 
-    #[allow(clippy::too_many_arguments)]
     pub(crate) fn candidates(
         request: &TargetRequest,
-        skill_id: i32,
-        source_uid: i64,
+        actor: crate::engine::skill::action::SkillRequest,
+
         pool: &TargetPool,
         catalog: &SkillEffectCatalog,
         determinism: &RoundDeterminism,
         managers: Option<&BattleManagers>,
         context: TargetContext,
     ) -> Vec<i64> {
+        let crate::engine::skill::action::SkillRequest {
+            skill_id,
+            source_uid,
+        } = actor;
         if request.code == super::request::SOURCE_TARGET_CODE
             && catalog.get(skill_id).is_some_and(|effect| {
                 effect.slots.iter().any(|slot| {

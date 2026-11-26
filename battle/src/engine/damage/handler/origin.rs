@@ -198,10 +198,8 @@ fn genesis_multiplier(
                     &managers.attribute,
                     &managers.buff,
                     &managers.hp,
-                    runtime.pool.catalog().skill_is_big(runtime.skill_id),
-                    false,
-                    true,
-                    true,
+                    crate::engine::skill::buff_act::AttackAttributeScope { is_big_skill: runtime.pool.catalog().skill_is_big(runtime.skill_id), extra_action: false, performs_extra_action: true, source_performs_extra_action: true },
+
                 )
             })
             .sum::<i32>()

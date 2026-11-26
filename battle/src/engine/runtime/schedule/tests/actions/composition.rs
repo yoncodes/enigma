@@ -95,11 +95,13 @@ fn play(card_index: usize, target_uid: i64) -> RoundCommand {
 fn played_composition_reward_survives_ultimate_payment_at_cap() {
     let (mut managers, pool, catalog) = setup(&[31470111, 31473141, 31470111], 5, 1000);
     let result = run_player_commands(
-        &mut managers,
-        &pool,
-        &catalog,
-        &mut RoundDeterminism::default(),
-        TargetContext::default(),
+        BattleAccess::new(
+            &mut managers,
+            &pool,
+            &catalog,
+            &mut RoundDeterminism::default(),
+            TargetContext::default(),
+        ),
         [play(1, 10)],
         1,
         crate::engine::manager::emitter::UID,
@@ -143,11 +145,13 @@ fn invalidated_card_keeps_composition_and_play_rewards_separate() {
         })
         .unwrap();
     let result = run_player_commands(
-        &mut managers,
-        &pool,
-        &catalog,
-        &mut RoundDeterminism::default(),
-        TargetContext::default(),
+        BattleAccess::new(
+            &mut managers,
+            &pool,
+            &catalog,
+            &mut RoundDeterminism::default(),
+            TargetContext::default(),
+        ),
         [play(0, -1), play(1, -1)],
         1,
         crate::engine::manager::emitter::UID,
@@ -213,11 +217,13 @@ fn side_owned_temporary_card_executes_without_entity_hp() {
     });
 
     let result = run_player_commands(
-        &mut managers,
-        &pool,
-        &catalog,
-        &mut RoundDeterminism::default(),
-        TargetContext::default(),
+        BattleAccess::new(
+            &mut managers,
+            &pool,
+            &catalog,
+            &mut RoundDeterminism::default(),
+            TargetContext::default(),
+        ),
         [play(0, -1)],
         1,
         crate::engine::manager::emitter::UID,
@@ -294,11 +300,13 @@ fn side_owned_ultimate_card_keeps_its_submitted_target() {
             }))
             .unwrap();
         let result = run_player_commands(
-            &mut managers,
-            &pool,
-            &catalog,
-            &mut RoundDeterminism::default(),
-            TargetContext::default(),
+            BattleAccess::new(
+                &mut managers,
+                &pool,
+                &catalog,
+                &mut RoundDeterminism::default(),
+                TargetContext::default(),
+            ),
             [play(0, selected)],
             1,
             crate::engine::manager::emitter::UID,

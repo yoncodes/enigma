@@ -114,9 +114,11 @@ fn estimates_mixed_payments_from_current_and_queued_energy_in_device_order() {
             &catalog,
             &RoundDeterminism::default(),
             TargetContext::default(),
-            devices,
-            &prefix,
-            managers.card.played(),
+            PlannedOperations {
+                devices,
+                prefix: &prefix,
+                played: managers.card.played(),
+            },
         )
         .unwrap()
     };
@@ -185,9 +187,11 @@ fn estimates_require_a_verified_prefix() {
             &catalog,
             &RoundDeterminism::default(),
             TargetContext::default(),
-            &[],
-            prefix,
-            &[card],
+            PlannedOperations {
+                devices: &[],
+                prefix,
+                played: &[card],
+            },
         )
         .err()
     };

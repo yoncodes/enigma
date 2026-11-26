@@ -15,5 +15,9 @@ pub(super) use dispatch::terminal_owner_scope;
 pub(super) use dispatch::{ReactionDispatch, dispatch_owner_reactions, dispatch_reactions};
 #[cfg(test)]
 pub(super) use event::dispatch_event_batch;
-pub(super) use event::{dispatch_event_groups, ordered_hit_entities};
-pub(super) use queue::{queued_reactions, reaction_counterparty, reaction_skill_target};
+pub(super) use event::{
+    EventFrame, ReactionAccess, ReactionSelection, dispatch_event_groups, ordered_hit_entities,
+};
+pub(super) use queue::{
+    ReactionFrame, queued_reactions, reaction_counterparty, reaction_skill_target,
+};

@@ -1,3 +1,4 @@
+use crate::engine::runtime::drain::BattleAccess;
 use crate::engine::{
     manager::{
         BattleManagers,
@@ -212,14 +213,16 @@ fn opening_commits_prepared_cards() {
         .unwrap();
     schedule::run_start(
         managers.catalog(),
-        &mut managers,
-        &pool,
-        &catalog,
-        &mut determinism,
-        TargetContext {
-            current_round: 4,
-            ..Default::default()
-        },
+        BattleAccess::new(
+            &mut managers,
+            &pool,
+            &catalog,
+            &mut determinism,
+            TargetContext {
+                current_round: 4,
+                ..Default::default()
+            },
+        ),
         CardSetup {
             hand: Vec::new(),
             draw_pile: Vec::new(),

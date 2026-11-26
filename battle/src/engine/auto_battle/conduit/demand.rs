@@ -23,6 +23,12 @@ mod tests;
 type Powers = BTreeMap<(i32, i32), i32>;
 type Spend = Result<[(i32, i32); 2], ConduitError>;
 
+pub(in crate::engine::auto_battle) struct PlannedOperations<'a> {
+    pub devices: &'a [FightDeviceOper],
+    pub prefix: &'a [BeginRoundOper],
+    pub played: &'a [PlayedCard],
+}
+
 struct Estimate {
     current: Powers,
     queued: Powers,
@@ -43,30 +49,18 @@ pub(in crate::engine::auto_battle) fn unavailable(
     }
 }
 
-#[allow(clippy::too_many_arguments)]
 pub(in crate::engine::auto_battle) fn trace(
     managers: &BattleManagers,
     pool: &TargetPool,
     catalog: &SkillEffectCatalog,
     determinism: &RoundDeterminism,
     context: TargetContext,
-    devices: &[FightDeviceOper],
-    prefix: &[BeginRoundOper],
-    played: &[PlayedCard],
+    operations: PlannedOperations<'_>,
 ) {
-    if !enabled(devices) {
+    if !enabled(operations.devices) {
         return;
     }
-    match estimate(
-        managers,
-        pool,
-        catalog,
-        determinism,
-        context,
-        devices,
-        prefix,
-        played,
-    ) {
+    match estimate(managers, pool, catalog, determinism, context, operations) {
         Ok(estimate) => eprintln!(
             "conduit demand round={} current={:?} queued_fixed={:?} first_pass={:?}",
             context.current_round, estimate.current, estimate.queued, estimate.first_pass
@@ -78,17 +72,19 @@ pub(in crate::engine::auto_battle) fn trace(
     }
 }
 
-#[allow(clippy::too_many_arguments)]
 fn estimate(
     managers: &BattleManagers,
     pool: &TargetPool,
     catalog: &SkillEffectCatalog,
     determinism: &RoundDeterminism,
     context: TargetContext,
-    devices: &[FightDeviceOper],
-    prefix: &[BeginRoundOper],
-    played: &[PlayedCard],
+    operations: PlannedOperations<'_>,
 ) -> Result<Estimate, &'static str> {
+    let PlannedOperations {
+        devices,
+        prefix,
+        played,
+    } = operations;
     if prefix.iter().any(|op| {
         op.oper_type == Some(CardOpType::PlayCard.id()) && op.param2.is_some_and(|index| index > 0)
     }) {
@@ -152,9 +148,11 @@ fn estimate(
                 catalog,
                 determinism,
                 context,
-                uid,
-                skill,
-                false,
+                crate::engine::runtime::conduit::ActivationRequest {
+                    source_uid: uid,
+                    skill,
+                    free_skill_used: false,
+                },
             )
             .filter(|admission| admission.runtime_ready && admission.selectable) else {
                 continue;

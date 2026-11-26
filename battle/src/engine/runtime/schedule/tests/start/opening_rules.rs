@@ -107,14 +107,16 @@ fn opening_sync_runs_marsha_and_isolde_in_position_order() {
         let mut managers = BattleManagers::seeded(&fight);
         let (opening, _) = run_start(
             managers.catalog(),
-            &mut managers,
-            &pool,
-            &catalog,
-            &mut RoundDeterminism::default(),
-            TargetContext {
-                current_round: 1,
-                ..Default::default()
-            },
+            BattleAccess::new(
+                &mut managers,
+                &pool,
+                &catalog,
+                &mut RoundDeterminism::default(),
+                TargetContext {
+                    current_round: 1,
+                    ..Default::default()
+                },
+            ),
             CardSetup {
                 hand: Vec::new(),
                 draw_pile: Vec::new(),
@@ -285,14 +287,16 @@ fn version_seven_opening_checks_round_start_skills_before_reset_and_buff_acts() 
     let mut managers = BattleManagers::seeded(&fight);
     let (start, _) = run_start(
         managers.catalog(),
-        &mut managers,
-        &pool,
-        &catalog,
-        &mut RoundDeterminism::default(),
-        TargetContext {
-            current_round: 1,
-            ..Default::default()
-        },
+        BattleAccess::new(
+            &mut managers,
+            &pool,
+            &catalog,
+            &mut RoundDeterminism::default(),
+            TargetContext {
+                current_round: 1,
+                ..Default::default()
+            },
+        ),
         CardSetup {
             hand: Vec::new(),
             draw_pile: Vec::new(),
@@ -434,14 +438,16 @@ fn anjo_contract_is_offered_once_during_opening_and_not_on_later_rounds() {
     let mut determinism = RoundDeterminism::default();
     let (opening, _) = run_start(
         managers.catalog(),
-        &mut managers,
-        &pool,
-        &catalog,
-        &mut determinism,
-        TargetContext {
-            current_round: 1,
-            ..Default::default()
-        },
+        BattleAccess::new(
+            &mut managers,
+            &pool,
+            &catalog,
+            &mut determinism,
+            TargetContext {
+                current_round: 1,
+                ..Default::default()
+            },
+        ),
         CardSetup {
             hand: Vec::new(),
             draw_pile: Vec::new(),
@@ -576,14 +582,16 @@ fn configured_special_temp_card_runs_during_the_opening_round_start_card_event()
     let catalog = SkillEffectCatalog::default();
     let (start, _) = run_start(
         managers.catalog(),
-        &mut managers,
-        &pool,
-        &catalog,
-        &mut RoundDeterminism::default(),
-        TargetContext {
-            current_round: 1,
-            ..Default::default()
-        },
+        BattleAccess::new(
+            &mut managers,
+            &pool,
+            &catalog,
+            &mut RoundDeterminism::default(),
+            TargetContext {
+                current_round: 1,
+                ..Default::default()
+            },
+        ),
         CardSetup {
             hand: (0..7)
                 .map(|index| CardInfo {
@@ -644,14 +652,16 @@ fn buff_gated_skill_rule_runs_during_the_opening_round_start_card_event() {
     let mut managers = BattleManagers::seeded(&fight);
     let (start, _) = run_start(
         managers.catalog(),
-        &mut managers,
-        &pool,
-        &catalog,
-        &mut RoundDeterminism::default(),
-        TargetContext {
-            current_round: 1,
-            ..Default::default()
-        },
+        BattleAccess::new(
+            &mut managers,
+            &pool,
+            &catalog,
+            &mut RoundDeterminism::default(),
+            TargetContext {
+                current_round: 1,
+                ..Default::default()
+            },
+        ),
         CardSetup {
             hand: Vec::new(),
             draw_pile: Vec::new(),
@@ -693,14 +703,16 @@ fn configured_hero_temp_card_uses_the_live_group_rank_and_projection() {
     let mut managers = BattleManagers::seeded(&fight);
     let (start, _) = run_start(
         managers.catalog(),
-        &mut managers,
-        &pool,
-        &SkillEffectCatalog::default(),
-        &mut RoundDeterminism::default(),
-        TargetContext {
-            current_round: 4,
-            ..Default::default()
-        },
+        BattleAccess::new(
+            &mut managers,
+            &pool,
+            &SkillEffectCatalog::default(),
+            &mut RoundDeterminism::default(),
+            TargetContext {
+                current_round: 4,
+                ..Default::default()
+            },
+        ),
         CardSetup {
             hand: Vec::new(),
             draw_pile: Vec::new(),
@@ -783,14 +795,16 @@ fn configured_skill3_buff_adds_the_captured_card_and_removes_its_carrier() {
     let mut managers = BattleManagers::seeded(&fight);
     let (start, _) = run_start(
         managers.catalog(),
-        &mut managers,
-        &pool,
-        &SkillEffectCatalog::default(),
-        &mut RoundDeterminism::default(),
-        TargetContext {
-            current_round: 2,
-            ..Default::default()
-        },
+        BattleAccess::new(
+            &mut managers,
+            &pool,
+            &SkillEffectCatalog::default(),
+            &mut RoundDeterminism::default(),
+            TargetContext {
+                current_round: 2,
+                ..Default::default()
+            },
+        ),
         CardSetup {
             hand: Vec::new(),
             draw_pile: Vec::new(),
@@ -1066,14 +1080,16 @@ fn side_owned_round_start_skill_only_runs_for_the_scheduled_side() {
 
     run_start(
         managers.catalog(),
-        &mut managers,
-        &pool,
-        &catalog,
-        &mut RoundDeterminism::default(),
-        TargetContext {
-            current_round: 1,
-            ..Default::default()
-        },
+        BattleAccess::new(
+            &mut managers,
+            &pool,
+            &catalog,
+            &mut RoundDeterminism::default(),
+            TargetContext {
+                current_round: 1,
+                ..Default::default()
+            },
+        ),
         CardSetup {
             hand: Vec::new(),
             draw_pile: Vec::new(),
@@ -1143,14 +1159,16 @@ fn twins_battle_rule_unlocks_the_precast_card_after_two_round_starts() {
 
     run_start(
         managers.catalog(),
-        &mut managers,
-        &pool,
-        &catalog,
-        &mut RoundDeterminism::default(),
-        TargetContext {
-            current_round: 1,
-            ..Default::default()
-        },
+        BattleAccess::new(
+            &mut managers,
+            &pool,
+            &catalog,
+            &mut RoundDeterminism::default(),
+            TargetContext {
+                current_round: 1,
+                ..Default::default()
+            },
+        ),
         CardSetup {
             hand: Vec::new(),
             draw_pile: Vec::new(),

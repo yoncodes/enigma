@@ -1025,11 +1025,13 @@ fn channel_round_start_casts_once_per_converted_incantation() {
         let catalog = SkillEffectCatalog::from_fight(config::configs::get(), &fight);
 
         let result = run_buff_act_setup_stage_for_owners(
-            &mut managers,
-            &pool,
-            &catalog,
-            &mut RoundDeterminism::default(),
-            TargetContext::default(),
+            BattleAccess::new(
+                &mut managers,
+                &pool,
+                &catalog,
+                &mut RoundDeterminism::default(),
+                TargetContext::default(),
+            ),
             SetupStage::RoundStart,
             2,
             &[10],

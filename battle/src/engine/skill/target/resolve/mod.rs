@@ -215,8 +215,10 @@ impl TargetResolver {
     ) -> Vec<i64> {
         Self::resolve_request(
             request,
-            skill_id,
-            source_uid,
+            crate::engine::skill::action::SkillRequest {
+                skill_id,
+                source_uid,
+            },
             pool,
             determinism,
             managers,
@@ -225,17 +227,20 @@ impl TargetResolver {
         )
     }
 
-    #[allow(clippy::too_many_arguments)]
     fn resolve_request(
         request: &TargetRequest,
-        skill_id: i32,
-        source_uid: i64,
+        actor: crate::engine::skill::action::SkillRequest,
+
         pool: &TargetPool,
         determinism: &mut RoundDeterminism,
         managers: Option<&BattleManagers>,
         context: TargetContext,
         action: bool,
     ) -> Vec<i64> {
+        let crate::engine::skill::action::SkillRequest {
+            skill_id,
+            source_uid,
+        } = actor;
         let rule = target_rule(request.code);
         if rule.is_none() {
             eprintln!(
@@ -465,8 +470,10 @@ impl TargetResolver {
     ) -> Vec<i64> {
         let targets = Self::resolve_request(
             request,
-            skill_id,
-            source_uid,
+            crate::engine::skill::action::SkillRequest {
+                skill_id,
+                source_uid,
+            },
             pool,
             determinism,
             managers,
@@ -478,7 +485,6 @@ impl TargetResolver {
         redirect_mock_taunted_single_target(targets, source_uid, pool, context)
     }
 
-    #[allow(clippy::too_many_arguments)]
     pub fn resolve_primary_candidates(
         request: &TargetRequest,
         skill_id: i32,

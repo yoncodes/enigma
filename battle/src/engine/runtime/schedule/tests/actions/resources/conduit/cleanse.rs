@@ -71,15 +71,19 @@ fn conduit_unique_cast_dispels_the_casters_negative_status() {
             )
             .unwrap();
         let result = crate::engine::runtime::drain::run_conduit_action(
-            &mut managers,
-            &pool,
-            &catalog,
-            &mut RoundDeterminism::default(),
-            TargetContext::default(),
+            BattleAccess::new(
+                &mut managers,
+                &pool,
+                &catalog,
+                &mut RoundDeterminism::default(),
+                TargetContext::default(),
+            ),
             10,
             group,
-            1,
-            position,
+            crate::engine::runtime::drain::ConduitSlot {
+                device_index: 1,
+                skill_position: position,
+            },
             skill_id,
             None,
             None,

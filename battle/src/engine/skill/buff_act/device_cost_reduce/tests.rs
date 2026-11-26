@@ -95,16 +95,18 @@ fn conduit_uses_only_its_carriers_calibration_stack() {
     );
     crate::engine::runtime::schedule::run_conduit_phase(
         managers.catalog(),
-        &fight,
+        crate::engine::runtime::schedule::ConduitPhase {
+            fight: &fight,
+            operations: &[sonettobuf::FightDeviceOper {
+                uid: Some(11),
+                index: Some(2),
+            }],
+        },
         &mut managers,
         &pool,
         &mut catalog,
         &mut crate::engine::runtime::determinism::RoundDeterminism::default(),
         crate::engine::skill::target::TargetContext::default(),
-        &[sonettobuf::FightDeviceOper {
-            uid: Some(11),
-            index: Some(2),
-        }],
     )
     .unwrap();
 

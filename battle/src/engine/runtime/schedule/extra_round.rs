@@ -1,17 +1,19 @@
 use super::*;
 use crate::engine::skill::action::{SkillExecutionMode, SkillInvocation};
 
-#[allow(clippy::too_many_arguments)]
 pub(in crate::engine::runtime) fn run_extra_round_skill(
     fight: &sonettobuf::Fight,
-    managers: &mut BattleManagers,
-    pool: &TargetPool,
-    catalog: &SkillEffectCatalog,
-    determinism: &mut RoundDeterminism,
-    context: TargetContext,
+    battle: BattleAccess<'_>,
     round: ActionRound,
     card_index: i32,
 ) -> Result<DrainResult, DrainError> {
+    let BattleAccess {
+        managers,
+        pool,
+        catalog,
+        determinism,
+        context,
+    } = battle;
     let ActionRound::AlliedExtra(skill) = round else {
         return Ok(DrainResult::default());
     };
@@ -25,11 +27,7 @@ pub(in crate::engine::runtime) fn run_extra_round_skill(
     invocation.mode = SkillExecutionMode::Active;
     invocation.card_index = card_index;
     drain::run_round_action(
-        managers,
-        pool,
-        catalog,
-        determinism,
-        context,
+        BattleAccess::new(managers, pool, catalog, determinism, context),
         [],
         None,
         invocation,

@@ -217,11 +217,13 @@ fn restrained_ultimate_consumes_bedrock_before_damage_once_per_round() {
     let ultimate_pool = TargetPool::from_fight(&ultimate_fight);
     let mut ultimate_managers = BattleManagers::seeded(&ultimate_fight);
     let ultimate_result = run_action_with_cost(
-        &mut ultimate_managers,
-        &ultimate_pool,
-        &catalog,
-        &mut RoundDeterminism::default(),
-        context,
+        BattleAccess::new(
+            &mut ultimate_managers,
+            &ultimate_pool,
+            &catalog,
+            &mut RoundDeterminism::default(),
+            context,
+        ),
         [],
         Some(ExPointCommand::Spend(ExPointChange {
             origin: CARD_PLAY_ORIGIN,

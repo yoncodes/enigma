@@ -17,17 +17,25 @@ pub(crate) struct Admission {
     pub selectable: bool,
 }
 
-#[allow(clippy::too_many_arguments)]
+pub(crate) struct ActivationRequest {
+    pub(crate) source_uid: i64,
+    pub(crate) skill: ConduitSkill,
+    pub(crate) free_skill_used: bool,
+}
+
 pub(crate) fn admit(
     managers: &BattleManagers,
     pool: &TargetPool,
     catalog: &SkillEffectCatalog,
     determinism: &RoundDeterminism,
     context: TargetContext,
-    source_uid: i64,
-    skill: ConduitSkill,
-    free_skill_used: bool,
+    request: ActivationRequest,
 ) -> Option<Admission> {
+    let ActivationRequest {
+        source_uid,
+        skill,
+        free_skill_used,
+    } = request;
     let cost_modifier = crate::engine::skill::buff_act::device_cost_reduce::modifier(
         managers,
         source_uid,

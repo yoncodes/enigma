@@ -144,12 +144,14 @@ fn queued_reactions_preserve_dispatch_pass_order() {
             }],
             ..Default::default()
         },
-        &started,
-        Some(&[0]),
-        None,
-        None,
-        None,
-        None,
+        ReactionFrame {
+            event: &started,
+            parent_path: Some(&[0]),
+            reuse_path: None,
+            action_path: None,
+            reentry_skill: None,
+            current_skill_target: None,
+        },
         None,
     )
     .unwrap();

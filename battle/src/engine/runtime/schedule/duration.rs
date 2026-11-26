@@ -180,7 +180,6 @@ pub(super) fn settlement_timers(
         .collect()
 }
 
-#[allow(clippy::too_many_arguments)]
 pub(super) fn run_owned_duration_advances(
     managers: &mut BattleManagers,
     pool: &TargetPool,

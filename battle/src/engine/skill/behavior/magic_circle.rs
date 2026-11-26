@@ -305,18 +305,22 @@ pub fn active_self_skills(
         .unwrap_or_default()
 }
 
-#[allow(clippy::too_many_arguments)]
 pub fn emit_attributes(
     attributes: &mut Vec<(AttrId, i32)>,
     source_uid: i64,
     active_skill_id: i32,
-    effects: &SkillEffectCatalog,
-    managers: &BattleManagers,
-    pool: &TargetPool,
+    runtime: crate::engine::skill::behavior::rate::RateRuntime<'_>,
+
     determinism: &mut RoundDeterminism,
-    context: TargetContext,
+
     only: Option<AttrId>,
 ) {
+    let crate::engine::skill::behavior::rate::RateRuntime {
+        effects,
+        managers,
+        pool,
+        context,
+    } = runtime;
     let Some(field) = pool
         .team_type(source_uid)
         .and_then(|team| managers.field.get(team))

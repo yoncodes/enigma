@@ -1,5 +1,10 @@
 use super::*;
 
+pub(in super::super) struct CommittedEvents<'a> {
+    pub(in super::super) events: &'a [BattleEvent],
+    pub(in super::super) groups: Vec<Vec<BattleEvent>>,
+}
+
 pub(in super::super) struct PreparedEvents {
     pub(in super::super) replacement: Option<BuffReplacementParts>,
     pub(in super::super) event_groups: Vec<Vec<BattleEvent>>,
@@ -11,17 +16,20 @@ pub(in super::super) struct PreparedEvents {
     pub(in super::super) releases_after_hit_skills: bool,
 }
 
-#[allow(clippy::too_many_arguments)]
 pub(in super::super) fn prepare(
     access: DrainAccess<'_>,
     scope: Scope<'_>,
     pending_hits: &mut HashMap<FramePath, Vec<Vec<BattleEvent>>>,
     outcome: &RuleOutcome,
     fanout: &[BuffFanoutResult],
-    events: &[BattleEvent],
-    mut event_groups: Vec<Vec<BattleEvent>>,
+    committed: CommittedEvents<'_>,
+
     paying_attack: Option<i64>,
 ) -> Result<PreparedEvents, DrainError> {
+    let CommittedEvents {
+        events,
+        groups: mut event_groups,
+    } = committed;
     let DrainAccess {
         managers,
         pool,
@@ -89,22 +97,29 @@ pub(in super::super) fn prepare(
                     if parts.removed_buff_uids.contains(&change.buff_uid))
             });
         let removal_reactions = dispatch_event_groups(
-            pool,
-            managers,
-            catalog,
-            determinism,
+            ReactionAccess {
+                pool,
+                managers,
+                catalog,
+                determinism,
+            },
             state,
             &[removal_events],
-            event_scope,
-            frame_path,
-            action_scope,
-            entry_halo_scope,
-            current_skill,
-            false,
-            context.current_round > 0,
-            crate::engine::event::subscription::PublicationPhase::BeforePublish,
-            None,
-            None,
+            EventFrame {
+                parent_path: event_scope,
+                reuse_path: frame_path,
+                action_path: action_scope,
+                entry_halo_scope: Some(entry_halo_scope),
+                current_skill,
+            },
+            ReactionSelection {
+                include_attack_consumption: false,
+                execute_unscoped_after_action: context.current_round > 0,
+                publication_phase:
+                    crate::engine::event::subscription::PublicationPhase::BeforePublish,
+                owner_uids: None,
+                lane: None,
+            },
             None,
             None,
         )?;
@@ -136,22 +151,28 @@ pub(in super::super) fn prepare(
     // BeforePublish reactions run before this outcome is recorded in
     // its semantic frame. Their own manager commits use nested drains.
     let mut before_reactions = dispatch_event_groups(
-        pool,
-        managers,
-        catalog,
-        determinism,
+        ReactionAccess {
+            pool,
+            managers,
+            catalog,
+            determinism,
+        },
         state,
         &event_groups,
-        event_scope,
-        frame_path,
-        action_scope,
-        entry_halo_scope,
-        current_skill,
-        matches!(outcome, RuleOutcome::HpBatch(_)),
-        context.current_round > 0,
-        crate::engine::event::subscription::PublicationPhase::BeforePublish,
-        None,
-        None,
+        EventFrame {
+            parent_path: event_scope,
+            reuse_path: frame_path,
+            action_path: action_scope,
+            entry_halo_scope: Some(entry_halo_scope),
+            current_skill,
+        },
+        ReactionSelection {
+            include_attack_consumption: matches!(outcome, RuleOutcome::HpBatch(_)),
+            execute_unscoped_after_action: context.current_round > 0,
+            publication_phase: crate::engine::event::subscription::PublicationPhase::BeforePublish,
+            owner_uids: None,
+            lane: None,
+        },
         None,
         None,
     )?;
@@ -166,22 +187,29 @@ pub(in super::super) fn prepare(
             | RuleOutcome::PaidSkillStarted(_)
     ) {
         let mut started_reactions = dispatch_event_groups(
-            pool,
-            managers,
-            catalog,
-            determinism,
+            ReactionAccess {
+                pool,
+                managers,
+                catalog,
+                determinism,
+            },
             state,
             &event_groups,
-            event_scope,
-            frame_path,
-            action_scope,
-            entry_halo_scope,
-            current_skill,
-            matches!(outcome, RuleOutcome::HpBatch(_)),
-            context.current_round > 0,
-            crate::engine::event::subscription::PublicationPhase::AfterPublish,
-            None,
-            None,
+            EventFrame {
+                parent_path: event_scope,
+                reuse_path: frame_path,
+                action_path: action_scope,
+                entry_halo_scope: Some(entry_halo_scope),
+                current_skill,
+            },
+            ReactionSelection {
+                include_attack_consumption: matches!(outcome, RuleOutcome::HpBatch(_)),
+                execute_unscoped_after_action: context.current_round > 0,
+                publication_phase:
+                    crate::engine::event::subscription::PublicationPhase::AfterPublish,
+                owner_uids: None,
+                lane: None,
+            },
             None,
             None,
         )?;
@@ -221,22 +249,29 @@ pub(in super::super) fn prepare(
     if let Some(hit_event_groups) = released_hit_events.as_ref() {
         let hit_events = flatten_event_groups(hit_event_groups);
         let hit_skills = dispatch_event_groups(
-            pool,
-            managers,
-            catalog,
-            determinism,
+            ReactionAccess {
+                pool,
+                managers,
+                catalog,
+                determinism,
+            },
             state,
             hit_event_groups,
-            event_scope,
-            frame_path,
-            action_scope,
-            entry_halo_scope,
-            current_skill,
-            true,
-            context.current_round > 0,
-            crate::engine::event::subscription::PublicationPhase::BeforePublish,
-            None,
-            Some(ReactionLane::Skills),
+            EventFrame {
+                parent_path: event_scope,
+                reuse_path: frame_path,
+                action_path: action_scope,
+                entry_halo_scope: Some(entry_halo_scope),
+                current_skill,
+            },
+            ReactionSelection {
+                include_attack_consumption: true,
+                execute_unscoped_after_action: context.current_round > 0,
+                publication_phase:
+                    crate::engine::event::subscription::PublicationPhase::BeforePublish,
+                owner_uids: None,
+                lane: Some(ReactionLane::Skills),
+            },
             None,
             None,
         )?;

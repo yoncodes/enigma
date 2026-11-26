@@ -1,3 +1,4 @@
+use crate::engine::runtime::drain::BattleAccess;
 use sonettobuf::{CardInfo, CardInfoPush, Fight, FightRound, FightStep};
 
 use crate::engine::{
@@ -32,11 +33,7 @@ fn run_start_schedule(
     };
     let (result, visible_cards) = schedule::run_start(
         battle_catalog,
-        managers,
-        &pool,
-        catalog,
-        determinism,
-        context,
+        BattleAccess::new(managers, &pool, catalog, determinism, context),
         cards,
         hand_size,
     )

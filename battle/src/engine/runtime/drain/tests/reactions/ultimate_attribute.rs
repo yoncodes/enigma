@@ -160,11 +160,13 @@ fn primary_ultimate_uses_preparatory_credit_and_excludes_its_own_payment_credit(
     };
     let mut determinism = RoundDeterminism::default();
     let result = run_action_with_cost(
-        &mut managers,
-        &pool,
-        &catalog,
-        &mut determinism,
-        TargetContext::default(),
+        BattleAccess::new(
+            &mut managers,
+            &pool,
+            &catalog,
+            &mut determinism,
+            TargetContext::default(),
+        ),
         [RuleOp::DebitUltimate {
             action: request,
             cost: spend(-2),

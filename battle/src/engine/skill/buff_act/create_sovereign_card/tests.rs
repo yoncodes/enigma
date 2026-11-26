@@ -1,3 +1,4 @@
+use crate::engine::runtime::drain::BattleAccess;
 use sonettobuf::{BuffInfo, Fight, FightEntityInfo, FightTeam};
 
 use super::*;
@@ -54,11 +55,13 @@ fn counted_resources_fail_before_mutation_and_stacks_are_spent_on_the_new_card()
         let before_cards = managers.card.clone();
         let before_buffs = managers.buff.active_for(10).cloned().collect::<Vec<_>>();
         let result = drain::run_group_event(
-            &mut managers,
-            &pool,
-            &catalog,
-            &mut RoundDeterminism::default(),
-            TargetContext::default(),
+            BattleAccess::new(
+                &mut managers,
+                &pool,
+                &catalog,
+                &mut RoundDeterminism::default(),
+                TargetContext::default(),
+            ),
             BattleEvent::Kind(EventKind::RoundStartCard),
             ReactionLane::BuffActs,
             Some(&[10]),
@@ -110,11 +113,13 @@ fn counted_resources_fail_before_mutation_and_stacks_are_spent_on_the_new_card()
                 .unwrap();
             let held_cards = managers.card.clone();
             drain::run_group_event(
-                &mut managers,
-                &pool,
-                &catalog,
-                &mut RoundDeterminism::default(),
-                TargetContext::default(),
+                BattleAccess::new(
+                    &mut managers,
+                    &pool,
+                    &catalog,
+                    &mut RoundDeterminism::default(),
+                    TargetContext::default(),
+                ),
                 BattleEvent::Kind(EventKind::RoundStartCard),
                 ReactionLane::BuffActs,
                 Some(&[10]),

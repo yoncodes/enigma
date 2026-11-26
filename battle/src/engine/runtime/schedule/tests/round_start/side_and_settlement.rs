@@ -45,11 +45,13 @@ fn round_start_executes_each_team_at_its_own_turn_boundary() {
     let mut determinism = RoundDeterminism::default();
 
     run_before_ai_round_start(
-        &mut managers,
-        &pool,
-        &catalog,
-        &mut determinism,
-        TargetContext::default(),
+        BattleAccess::new(
+            &mut managers,
+            &pool,
+            &catalog,
+            &mut determinism,
+            TargetContext::default(),
+        ),
         1,
         &[],
         None,
@@ -221,11 +223,13 @@ fn version_seven_defers_defender_round_start_until_after_ai() {
     let mut managers = BattleManagers::seeded(&fight);
 
     run_before_ai_round_start(
-        &mut managers,
-        &pool,
-        &catalog,
-        &mut RoundDeterminism::default(),
-        TargetContext::default(),
+        BattleAccess::new(
+            &mut managers,
+            &pool,
+            &catalog,
+            &mut RoundDeterminism::default(),
+            TargetContext::default(),
+        ),
         2,
         &[],
         None,
@@ -401,11 +405,13 @@ fn defender_action_phase_runs_progress_reactions_before_ai() {
     let mut managers = BattleManagers::seeded(&fight);
 
     let result = run_before_ai_round_start(
-        &mut managers,
-        &pool,
-        &catalog,
-        &mut RoundDeterminism::default(),
-        TargetContext::default(),
+        BattleAccess::new(
+            &mut managers,
+            &pool,
+            &catalog,
+            &mut RoundDeterminism::default(),
+            TargetContext::default(),
+        ),
         2,
         &[],
         None,
@@ -454,11 +460,13 @@ fn defender_round_start_ticks_the_configured_actor_duration() {
     let mut managers = BattleManagers::seeded(&fight);
 
     run_before_ai_round_start(
-        &mut managers,
-        &pool,
-        &SkillEffectCatalog::default(),
-        &mut RoundDeterminism::default(),
-        TargetContext::default(),
+        BattleAccess::new(
+            &mut managers,
+            &pool,
+            &SkillEffectCatalog::default(),
+            &mut RoundDeterminism::default(),
+            TargetContext::default(),
+        ),
         1,
         &[],
         Some(2),
@@ -528,14 +536,16 @@ fn defender_round_start_late_applies_configured_buffs_before_ai_and_filters_owne
     let mut determinism = RoundDeterminism::default();
 
     run_before_ai_round_start(
-        &mut managers,
-        &pool,
-        &catalog,
-        &mut determinism,
-        TargetContext {
-            current_round: 2,
-            ..Default::default()
-        },
+        BattleAccess::new(
+            &mut managers,
+            &pool,
+            &catalog,
+            &mut determinism,
+            TargetContext {
+                current_round: 2,
+                ..Default::default()
+            },
+        ),
         1,
         &[],
         None,
@@ -550,14 +560,16 @@ fn defender_round_start_late_applies_configured_buffs_before_ai_and_filters_owne
 
     run_ai_actions(
         &fight,
-        &mut managers,
-        &pool,
-        &catalog,
-        &mut determinism,
-        TargetContext {
-            current_round: 2,
-            ..Default::default()
-        },
+        BattleAccess::new(
+            &mut managers,
+            &pool,
+            &catalog,
+            &mut determinism,
+            TargetContext {
+                current_round: 2,
+                ..Default::default()
+            },
+        ),
         [AiSkillChoice {
             source_uid: -1,
             skill_id: 999,
@@ -721,14 +733,16 @@ fn defender_round_start_groups_event_subscribers_with_round_start_setup() {
     let mut managers = BattleManagers::seeded(&fight);
 
     let result = run_before_ai_round_start(
-        &mut managers,
-        &pool,
-        &catalog,
-        &mut RoundDeterminism::default(),
-        TargetContext {
-            current_round: 1,
-            ..Default::default()
-        },
+        BattleAccess::new(
+            &mut managers,
+            &pool,
+            &catalog,
+            &mut RoundDeterminism::default(),
+            TargetContext {
+                current_round: 1,
+                ..Default::default()
+            },
+        ),
         1,
         &[],
         None,

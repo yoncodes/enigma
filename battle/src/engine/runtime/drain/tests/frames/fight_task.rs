@@ -136,16 +136,18 @@ fn enemy_death_awards_the_health_task_before_kill_progress() {
                 FrameTrigger::Active,
             );
             drain_death_settlement_queue(
-                &mut managers,
-                &pool,
-                &effects,
-                &mut determinism,
+                crate::engine::runtime::drain::DrainAccess {
+                    managers: &mut managers,
+                    pool: &pool,
+                    catalog: &effects,
+                    determinism: &mut determinism,
+                    result: &mut result,
+                    state: &mut state,
+                },
                 VecDeque::from([
                     queued_death_event_group_settlement(reaction_death, &root),
                     queued_death_event_group_settlement(primary_death, &root),
                 ]),
-                &mut result,
-                &mut state,
                 &[primary_death],
             )
             .unwrap();

@@ -507,14 +507,16 @@ fn defender_round_start_expires_the_previous_status_before_alternating_setup() {
     let mut managers = BattleManagers::seeded(&fight);
 
     run_before_ai_round_start(
-        &mut managers,
-        &pool,
-        &catalog,
-        &mut RoundDeterminism::default(),
-        TargetContext {
-            current_round: 2,
-            ..Default::default()
-        },
+        BattleAccess::new(
+            &mut managers,
+            &pool,
+            &catalog,
+            &mut RoundDeterminism::default(),
+            TargetContext {
+                current_round: 2,
+                ..Default::default()
+            },
+        ),
         2,
         &[],
         None,

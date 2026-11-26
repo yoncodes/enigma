@@ -106,11 +106,13 @@ fn scheduled_defender_cleanup_policy_keeps_player_cleanup_in_the_death_frame() {
         caster_frame: None,
     }]);
     let result = drain_queue_with_frames_and_cleanup_owner(
-        &mut managers,
-        &pool,
-        &catalog,
-        &mut RoundDeterminism::default(),
-        TargetContext::default(),
+        BattleAccess::new(
+            &mut managers,
+            &pool,
+            &catalog,
+            &mut RoundDeterminism::default(),
+            TargetContext::default(),
+        ),
         &mut queue,
         Vec::new(),
         DefenderCardCleanupOwner::ScheduledRoundPhase,

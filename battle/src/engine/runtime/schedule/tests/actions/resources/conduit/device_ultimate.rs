@@ -139,15 +139,19 @@ fn device_overflow_is_banked_before_applied_harmonization_is_recorded() {
     let catalog = SkillEffectCatalog::from_fight(config::configs::get(), &fight);
 
     let result = crate::engine::runtime::drain::run_conduit_action(
-        &mut managers,
-        &pool,
-        &catalog,
-        &mut RoundDeterminism::default(),
-        TargetContext::default(),
+        BattleAccess::new(
+            &mut managers,
+            &pool,
+            &catalog,
+            &mut RoundDeterminism::default(),
+            TargetContext::default(),
+        ),
         10,
         2,
-        1,
-        2,
+        crate::engine::runtime::drain::ConduitSlot {
+            device_index: 1,
+            skill_position: 2,
+        },
         31490141,
         None,
         None,
@@ -206,13 +210,15 @@ fn conduit_unique_waits_for_full_personal_device_power() {
         let (pool, mut managers, mut catalog) = selected_unique_device(&fight);
         let result = run_conduit_phase(
             managers.catalog(),
-            &fight,
+            crate::engine::runtime::schedule::ConduitPhase {
+                fight: &fight,
+                operations: &operation(),
+            },
             &mut managers,
             &pool,
             &mut catalog,
             &mut RoundDeterminism::default(),
             TargetContext::default(),
-            &operation(),
         )
         .unwrap();
 
@@ -232,15 +238,19 @@ fn conduit_unique_waits_for_full_personal_device_power() {
         )));
 
         let error = match crate::engine::runtime::drain::run_conduit_action(
-            &mut managers,
-            &pool,
-            &catalog,
-            &mut RoundDeterminism::default(),
-            TargetContext::default(),
+            BattleAccess::new(
+                &mut managers,
+                &pool,
+                &catalog,
+                &mut RoundDeterminism::default(),
+                TargetContext::default(),
+            ),
             10,
             3,
-            1,
-            1,
+            crate::engine::runtime::drain::ConduitSlot {
+                device_index: 1,
+                skill_position: 1,
+            },
             31495151,
             None,
             None,
@@ -268,13 +278,15 @@ fn conduit_unique_spends_personal_device_power_before_casting() {
 
     let result = run_conduit_phase(
         managers.catalog(),
-        &fight,
+        crate::engine::runtime::schedule::ConduitPhase {
+            fight: &fight,
+            operations: &operation(),
+        },
         &mut managers,
         &pool,
         &mut catalog,
         &mut RoundDeterminism::default(),
         TargetContext::default(),
-        &operation(),
     )
     .unwrap();
 
@@ -391,16 +403,18 @@ fn consumed_energy_reactions_follow_the_twins_unique_skill() {
 
     let result = run_conduit_phase(
         managers.catalog(),
-        &fight,
+        crate::engine::runtime::schedule::ConduitPhase {
+            fight: &fight,
+            operations: &[sonettobuf::FightDeviceOper {
+                uid: Some(10),
+                index: Some(3),
+            }],
+        },
         &mut managers,
         &pool,
         &mut catalog,
         &mut RoundDeterminism::default(),
         TargetContext::default(),
-        &[sonettobuf::FightDeviceOper {
-            uid: Some(10),
-            index: Some(3),
-        }],
     )
     .unwrap();
     let steps = crate::engine::packet::timeline::project(&result.frames).unwrap();

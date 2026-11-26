@@ -82,11 +82,7 @@ pub fn run_round_refill(
     team_type: i32,
 ) -> Result<DrainResult, DrainError> {
     run_card_refill(
-        managers,
-        pool,
-        catalog,
-        determinism,
-        context,
+        BattleAccess::new(managers, pool, catalog, determinism, context),
         hand_size,
         team_type,
         CardRefillStage::AfterActions,
@@ -104,11 +100,7 @@ pub(super) fn run_round_start_refill(
     team_type: i32,
 ) -> Result<DrainResult, DrainError> {
     run_card_refill(
-        managers,
-        pool,
-        catalog,
-        determinism,
-        context,
+        BattleAccess::new(managers, pool, catalog, determinism, context),
         hand_size,
         team_type,
         CardRefillStage::RoundStart,
@@ -126,11 +118,7 @@ pub(super) fn run_opening_hand_refill(
     seed: OpeningRefillSeed,
 ) -> Result<DrainResult, DrainError> {
     run_card_refill(
-        managers,
-        pool,
-        catalog,
-        determinism,
-        context,
+        BattleAccess::new(managers, pool, catalog, determinism, context),
         hand_size,
         1,
         CardRefillStage::Opening,
@@ -138,18 +126,20 @@ pub(super) fn run_opening_hand_refill(
     )
 }
 
-#[allow(clippy::too_many_arguments)]
 fn run_card_refill(
-    managers: &mut BattleManagers,
-    pool: &TargetPool,
-    catalog: &SkillEffectCatalog,
-    determinism: &mut RoundDeterminism,
-    context: TargetContext,
+    battle: BattleAccess<'_>,
     hand_size: usize,
     team_type: i32,
     stage: CardRefillStage,
     opening_draws: Vec<sonettobuf::CardInfo>,
 ) -> Result<DrainResult, DrainError> {
+    let BattleAccess {
+        managers,
+        pool,
+        catalog,
+        determinism,
+        context,
+    } = battle;
     let mut opening_draws = opening_draws.into_iter();
     let mut result = begin_round_phase(RoundPhase::CardRefill);
     let origin = CommandOrigin {

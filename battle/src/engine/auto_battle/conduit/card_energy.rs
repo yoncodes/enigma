@@ -4,6 +4,7 @@ use crate::engine::{
     manager::{BattleManagers, card::CardManager},
     mechanic::{card::CardMechanic, hedone_device_power},
     skill::{
+        action::SkillRequest,
         behavior::hedone_device_power::{CardReleaseError, card_release},
         effect::SkillEffectCatalog,
         target::TargetPool,
@@ -56,17 +57,19 @@ impl Priority {
     }
 }
 
-#[allow(clippy::too_many_arguments)]
 pub(in crate::engine::auto_battle) fn card_energy(
     cards: &CardManager,
     managers: &BattleManagers,
     pool: &TargetPool,
     catalog: &SkillEffectCatalog,
-    source_uid: i64,
-    skill_id: i32,
+    skill: SkillRequest,
     temporary: bool,
     selected_power_types: &HashSet<(i32, i32)>,
 ) -> Result<Option<CardEnergy>, CardEnergyError> {
+    let SkillRequest {
+        source_uid,
+        skill_id,
+    } = skill;
     let Some(energy) = cards.conduit_skill_energy(skill_id) else {
         return Ok(None);
     };

@@ -188,19 +188,27 @@ fn attack_consumption_waits_for_hit_reactions() {
     let root = push_root(&mut frames, FrameOwner::Command, FrameTrigger::Active);
 
     let reactions = dispatch_event_batch(
-        &pool,
-        &managers,
-        &catalog,
-        &mut RoundDeterminism::default(),
+        ReactionAccess {
+            pool: &pool,
+            managers: &managers,
+            catalog: &catalog,
+            determinism: &mut RoundDeterminism::default(),
+        },
         &[hit],
-        &root,
-        &root,
-        Some(&root),
-        Some((10, 1, Some(-1))),
-        true,
-        true,
-        crate::engine::event::subscription::PublicationPhase::AfterPublish,
-        None,
+        EventFrame {
+            parent_path: &root,
+            reuse_path: &root,
+            action_path: Some(&root),
+            current_skill: Some((10, 1, Some(-1))),
+            entry_halo_scope: None,
+        },
+        ReactionSelection {
+            include_attack_consumption: true,
+            execute_unscoped_after_action: true,
+            publication_phase: crate::engine::event::subscription::PublicationPhase::AfterPublish,
+            owner_uids: None,
+            lane: None,
+        },
     )
     .unwrap();
 

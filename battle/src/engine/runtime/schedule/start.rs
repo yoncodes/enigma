@@ -66,11 +66,7 @@ pub fn run_round_start_split(
     team_type: i32,
 ) -> Result<(DrainResult, DrainResult), DrainError> {
     let mut before = run_before_ai_round_start(
-        managers,
-        pool,
-        catalog,
-        determinism,
-        context,
+        BattleAccess::new(managers, pool, catalog, determinism, context),
         team_type,
         &[],
         None,
@@ -100,17 +96,19 @@ pub fn run_round_start_split(
     Ok((before, next_round))
 }
 
-#[allow(clippy::too_many_arguments)]
 pub fn run_before_ai_round_start(
-    managers: &mut BattleManagers,
-    pool: &TargetPool,
-    catalog: &SkillEffectCatalog,
-    determinism: &mut RoundDeterminism,
-    context: TargetContext,
+    battle: BattleAccess<'_>,
     _team_type: i32,
     wave_entry_condition_uids: &[i64],
     action_phase_team: Option<i32>,
 ) -> Result<DrainResult, DrainError> {
+    let BattleAccess {
+        managers,
+        pool,
+        catalog,
+        determinism,
+        context,
+    } = battle;
     let mut result = super::sovereign::run_unlock(managers, pool, catalog, determinism, context)?;
     let mut owner_uids = pool
         .defender_main
@@ -122,11 +120,7 @@ pub fn run_before_ai_round_start(
     let round_start_duration_snapshot = duration_snapshot(managers, &owner_uids);
     let setup_owner_uids = round_start_setup_owner_uids(&owner_uids, 2);
     let (conditions, pending_settlement, split_losses) = run_round_start_before_duration(
-        managers,
-        pool,
-        catalog,
-        determinism,
-        context,
+        BattleAccess::new(managers, pool, catalog, determinism, context),
         2,
         &owner_uids,
         false,
@@ -147,11 +141,7 @@ pub fn run_before_ai_round_start(
             &round_start_duration_snapshot,
         )?;
         let late_setup = drain::run_setup_stage_for_owners(
-            managers,
-            pool,
-            catalog,
-            determinism,
-            context,
+            BattleAccess::new(managers, pool, catalog, determinism, context),
             SetupStage::RoundStartLate,
             0,
             &setup_owner_uids,
@@ -168,11 +158,7 @@ pub fn run_before_ai_round_start(
         append(
             &mut result,
             drain::run_setup_stage_for_owners(
-                managers,
-                pool,
-                catalog,
-                determinism,
-                context,
+                BattleAccess::new(managers, pool, catalog, determinism, context),
                 SetupStage::RoundStartLate,
                 0,
                 &setup_owner_uids,
@@ -180,11 +166,7 @@ pub fn run_before_ai_round_start(
         );
     }
     let action_phase_reactions = drain::run_grouped_owner_event(
-        managers,
-        pool,
-        catalog,
-        determinism,
-        context,
+        BattleAccess::new(managers, pool, catalog, determinism, context),
         BattleEvent::Kind(EventKind::DefenderActionPhaseStart),
         &setup_owner_uids,
         drain::ReactionLane::Skills,
@@ -281,11 +263,7 @@ pub(crate) fn settle_round_start(
         Vec::new()
     };
     let (conditions, settlement_plan, mut split_losses) = run_round_start_before_duration(
-        managers,
-        pool,
-        catalog,
-        determinism,
-        context,
+        BattleAccess::new(managers, pool, catalog, determinism, context),
         1,
         &owner_uids,
         true,
@@ -312,11 +290,7 @@ pub(crate) fn settle_round_start(
     append_round_phase(
         &mut settlement,
         drain::run_buff_act_setup_stage_for_owners(
-            managers,
-            pool,
-            catalog,
-            determinism,
-            context,
+            BattleAccess::new(managers, pool, catalog, determinism, context),
             SetupStage::RoundStart,
             2,
             &owner_uids,
@@ -715,17 +689,19 @@ pub fn run_finished_round_transition(managers: &BattleManagers) -> (DrainResult,
     (fight_steps, next_round_begin_steps)
 }
 
-#[allow(clippy::too_many_arguments)]
 pub fn run_start(
     battle_catalog: crate::catalog::BattleCatalog,
-    managers: &mut BattleManagers,
-    pool: &TargetPool,
-    catalog: &SkillEffectCatalog,
-    determinism: &mut RoundDeterminism,
-    context: TargetContext,
+    battle: BattleAccess<'_>,
     card_setup: CardSetup,
     hand_size: usize,
 ) -> Result<(DrainResult, Vec<sonettobuf::CardInfo>), DrainError> {
+    let BattleAccess {
+        managers,
+        pool,
+        catalog,
+        determinism,
+        context,
+    } = battle;
     let mut opening_ultimate_cards: Option<Vec<sonettobuf::CardInfo>> = None;
     let mut result = DrainResult::default();
     let conduit_initializations = managers
@@ -1116,11 +1092,7 @@ pub fn run_start(
             SetupStage::RoundStartCondition | SetupStage::RoundStartLate
         ) {
             drain::run_opening_setup_stage_for_owners(
-                managers,
-                pool,
-                catalog,
-                determinism,
-                context,
+                BattleAccess::new(managers, pool, catalog, determinism, context),
                 stage,
                 priority,
                 &setup_owner_uids,
@@ -1128,11 +1100,7 @@ pub fn run_start(
             )?
         } else if stage == SetupStage::RoundStart && priority == 2 {
             drain::run_buff_act_setup_stage_for_owners(
-                managers,
-                pool,
-                catalog,
-                determinism,
-                context,
+                BattleAccess::new(managers, pool, catalog, determinism, context),
                 stage,
                 priority,
                 &owner_uids,
@@ -1327,11 +1295,7 @@ pub fn run_start(
     append(
         &mut result,
         drain::run_group_event(
-            managers,
-            pool,
-            catalog,
-            determinism,
-            context,
+            BattleAccess::new(managers, pool, catalog, determinism, context),
             BattleEvent::Kind(EventKind::RoundStartCard),
             drain::ReactionLane::BuffActs,
             Some(&owner_uids),
@@ -1340,11 +1304,7 @@ pub fn run_start(
     append(
         &mut result,
         drain::run_group_event(
-            managers,
-            pool,
-            catalog,
-            determinism,
-            context,
+            BattleAccess::new(managers, pool, catalog, determinism, context),
             BattleEvent::Kind(EventKind::RoundStartCard),
             drain::ReactionLane::Skills,
             Some(&owner_uids),
@@ -1419,13 +1379,8 @@ pub fn run_start(
     ))
 }
 
-#[allow(clippy::too_many_arguments)]
 fn run_round_start_before_duration(
-    managers: &mut BattleManagers,
-    pool: &TargetPool,
-    catalog: &SkillEffectCatalog,
-    determinism: &mut RoundDeterminism,
-    context: TargetContext,
+    battle: BattleAccess<'_>,
     team: i32,
     owner_uids: &[i64],
     split_settlement: bool,
@@ -1433,6 +1388,13 @@ fn run_round_start_before_duration(
     defer_round_start_duration: bool,
     opposing_round_start_owner_uids: &[i64],
 ) -> Result<(RoundStartConditions, RoundStartSettlementPlan, DrainResult), DrainError> {
+    let BattleAccess {
+        managers,
+        pool,
+        catalog,
+        determinism,
+        context,
+    } = battle;
     let actor_timers = duration_snapshot(managers, owner_uids);
     let setup_owner_uids = round_start_setup_owner_uids(owner_uids, team);
     let field_ops = managers
@@ -1522,11 +1484,7 @@ fn run_round_start_before_duration(
         append(
             &mut result,
             drain::run_setup_stage_for_owners(
-                managers,
-                pool,
-                catalog,
-                determinism,
-                context,
+                BattleAccess::new(managers, pool, catalog, determinism, context),
                 stage,
                 priority,
                 &pending_owner_uids,
@@ -1539,11 +1497,7 @@ fn run_round_start_before_duration(
     append(
         &mut result,
         drain::run_setup_stage_for_owners(
-            managers,
-            pool,
-            catalog,
-            determinism,
-            context,
+            BattleAccess::new(managers, pool, catalog, determinism, context),
             SetupStage::RoundTransitionStart,
             0,
             &setup_owner_uids,
@@ -1617,7 +1571,6 @@ fn run_round_start_before_duration(
     ))
 }
 
-#[allow(clippy::too_many_arguments)]
 fn run_round_start_loss_mechanics(
     managers: &mut BattleManagers,
     pool: &TargetPool,
@@ -1632,11 +1585,7 @@ fn run_round_start_loss_mechanics(
         .into_iter()
         .collect::<Vec<_>>();
     let result = drain::run_group_event(
-        managers,
-        pool,
-        catalog,
-        determinism,
-        context,
+        BattleAccess::new(managers, pool, catalog, determinism, context),
         BattleEvent::RoundStart,
         drain::ReactionLane::BuffActsBeforeSettlement,
         buff_owner_uids,
@@ -1700,7 +1649,6 @@ fn record_raspberry_loss(
     *loss = loss.saturating_add(hp.delta.saturating_abs());
 }
 
-#[allow(clippy::too_many_arguments)]
 fn run_round_start_skill_mechanics(
     managers: &mut BattleManagers,
     pool: &TargetPool,
@@ -1710,11 +1658,7 @@ fn run_round_start_skill_mechanics(
     owner_uids: &[i64],
 ) -> Result<DrainResult, DrainError> {
     drain::run_group_event(
-        managers,
-        pool,
-        catalog,
-        determinism,
-        context,
+        BattleAccess::new(managers, pool, catalog, determinism, context),
         BattleEvent::RoundStart,
         drain::ReactionLane::Skills,
         Some(owner_uids),
@@ -1732,7 +1676,6 @@ fn run_round_start_damage_heal_settlement(
     drain::run(managers, pool, catalog, determinism, context, ops)
 }
 
-#[allow(clippy::too_many_arguments)]
 fn run_round_start_after_loss_mechanics(
     managers: &mut BattleManagers,
     pool: &TargetPool,
@@ -1757,7 +1700,6 @@ fn run_round_start_after_loss_mechanics(
     Ok(result)
 }
 
-#[allow(clippy::too_many_arguments)]
 pub(super) fn run_round_start_owner_settlement(
     managers: &mut BattleManagers,
     pool: &TargetPool,
@@ -1790,11 +1732,7 @@ pub(super) fn run_round_start_owner_settlement(
             append(
                 &mut result,
                 drain::run_group_event(
-                    managers,
-                    pool,
-                    catalog,
-                    determinism,
-                    context,
+                    BattleAccess::new(managers, pool, catalog, determinism, context),
                     BattleEvent::RoundStart,
                     drain::ReactionLane::BuffActsAfterSettlement,
                     Some(std::slice::from_ref(owner_uid)),

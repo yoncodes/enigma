@@ -55,11 +55,13 @@ fn settlement_owner_and_feedback_target_remain_distinct() {
     };
     let mut managers = BattleManagers::seeded(&fight);
     let result = run_grouped_owner_event(
-        &mut managers,
-        &TargetPool::from_fight(&fight),
-        &SkillEffectCatalog::from_fight(config::configs::get(), &fight),
-        &mut RoundDeterminism::default(),
-        TargetContext::default(),
+        BattleAccess::new(
+            &mut managers,
+            &TargetPool::from_fight(&fight),
+            &SkillEffectCatalog::from_fight(config::configs::get(), &fight),
+            &mut RoundDeterminism::default(),
+            TargetContext::default(),
+        ),
         BattleEvent::Kind(crate::engine::event::kind::EventKind::RoundEndAfterSideFinalExpiry),
         &[10],
         ReactionLane::Skills,

@@ -61,19 +61,27 @@ fn damage_based_rebound_routes_once_and_removes_the_counter() {
     let mut frames = Vec::new();
     let root = push_root(&mut frames, FrameOwner::Command, FrameTrigger::Active);
     let dispatched = dispatch_event_batch(
-        &pool.runtime_view(&managers),
-        &managers,
-        &catalog,
-        &mut RoundDeterminism::default(),
+        ReactionAccess {
+            pool: &pool.runtime_view(&managers),
+            managers: &managers,
+            catalog: &catalog,
+            determinism: &mut RoundDeterminism::default(),
+        },
         &events,
-        &root,
-        &root,
-        Some(&root),
-        Some((10, 1, Some(-1))),
-        false,
-        true,
-        crate::engine::event::subscription::PublicationPhase::AfterPublish,
-        None,
+        EventFrame {
+            parent_path: &root,
+            reuse_path: &root,
+            action_path: Some(&root),
+            current_skill: Some((10, 1, Some(-1))),
+            entry_halo_scope: None,
+        },
+        ReactionSelection {
+            include_attack_consumption: false,
+            execute_unscoped_after_action: true,
+            publication_phase: crate::engine::event::subscription::PublicationPhase::AfterPublish,
+            owner_uids: None,
+            lane: None,
+        },
     )
     .unwrap();
     let mut queue = std::collections::VecDeque::from(dispatched.into_ordered());
@@ -171,19 +179,27 @@ fn hurt_skill_reactions_are_once_per_attacked_owner_per_action() {
     let root = push_root(&mut frames, FrameOwner::Command, FrameTrigger::Active);
 
     let reactions = dispatch_event_batch(
-        &pool,
-        &managers,
-        &catalog,
-        &mut RoundDeterminism::default(),
+        ReactionAccess {
+            pool: &pool,
+            managers: &managers,
+            catalog: &catalog,
+            determinism: &mut RoundDeterminism::default(),
+        },
         &events,
-        &root,
-        &root,
-        Some(&root),
-        Some((10, 31_490_121, Some(-1))),
-        false,
-        true,
-        crate::engine::event::subscription::PublicationPhase::AfterPublish,
-        None,
+        EventFrame {
+            parent_path: &root,
+            reuse_path: &root,
+            action_path: Some(&root),
+            current_skill: Some((10, 31_490_121, Some(-1))),
+            entry_halo_scope: None,
+        },
+        ReactionSelection {
+            include_attack_consumption: false,
+            execute_unscoped_after_action: true,
+            publication_phase: crate::engine::event::subscription::PublicationPhase::AfterPublish,
+            owner_uids: None,
+            lane: None,
+        },
     )
     .unwrap();
     let mut queue = std::collections::VecDeque::from(reactions.attacked_skills);
@@ -290,43 +306,55 @@ fn shared_damage_subscription_carries_event_batch_ownership() {
     let mut drain_state = DrainState::new(TargetContext::default());
     let mut determinism = RoundDeterminism::default();
     let first = dispatch_event_groups(
-        &pool,
-        &managers,
-        &catalog,
-        &mut determinism,
+        ReactionAccess {
+            pool: &pool,
+            managers: &managers,
+            catalog: &catalog,
+            determinism: &mut determinism,
+        },
         &mut drain_state,
         &[transaction(11), transaction(10)],
-        &root,
-        &root,
-        Some(&root),
-        &root,
-        Some((-1, 1, Some(10))),
-        true,
-        true,
-        crate::engine::event::subscription::PublicationPhase::AfterPublish,
-        None,
-        None,
+        EventFrame {
+            parent_path: &root,
+            reuse_path: &root,
+            action_path: Some(&root),
+            entry_halo_scope: Some(&root),
+            current_skill: Some((-1, 1, Some(10))),
+        },
+        ReactionSelection {
+            include_attack_consumption: true,
+            execute_unscoped_after_action: true,
+            publication_phase: crate::engine::event::subscription::PublicationPhase::AfterPublish,
+            owner_uids: None,
+            lane: None,
+        },
         None,
         None,
     )
     .unwrap();
     let second = dispatch_event_groups(
-        &pool,
-        &managers,
-        &catalog,
-        &mut determinism,
+        ReactionAccess {
+            pool: &pool,
+            managers: &managers,
+            catalog: &catalog,
+            determinism: &mut determinism,
+        },
         &mut drain_state,
         &[transaction(11), transaction(10)],
-        &root,
-        &root,
-        Some(&root),
-        &root,
-        Some((-1, 1, Some(10))),
-        true,
-        true,
-        crate::engine::event::subscription::PublicationPhase::AfterPublish,
-        None,
-        None,
+        EventFrame {
+            parent_path: &root,
+            reuse_path: &root,
+            action_path: Some(&root),
+            entry_halo_scope: Some(&root),
+            current_skill: Some((-1, 1, Some(10))),
+        },
+        ReactionSelection {
+            include_attack_consumption: true,
+            execute_unscoped_after_action: true,
+            publication_phase: crate::engine::event::subscription::PublicationPhase::AfterPublish,
+            owner_uids: None,
+            lane: None,
+        },
         None,
         None,
     )

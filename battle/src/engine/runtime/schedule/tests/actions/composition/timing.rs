@@ -74,11 +74,13 @@ fn other_owner_composition_precedes_paid_source_opening() {
     skill.slots.push(observer);
     catalog.insert(skill);
     let result = run_player_commands(
-        &mut managers,
-        &pool,
-        &catalog,
-        &mut RoundDeterminism::default(),
-        TargetContext::default(),
+        BattleAccess::new(
+            &mut managers,
+            &pool,
+            &catalog,
+            &mut RoundDeterminism::default(),
+            TargetContext::default(),
+        ),
         [play(1, 10)],
         1,
         crate::engine::manager::emitter::UID,

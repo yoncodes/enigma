@@ -129,11 +129,13 @@ fn opening_refill_defers_an_ultimate_made_ready_during_setup() {
 
     run_start(
         managers.catalog(),
-        &mut managers,
-        &pool,
-        &catalog,
-        &mut RoundDeterminism::default(),
-        TargetContext::default(),
+        BattleAccess::new(
+            &mut managers,
+            &pool,
+            &catalog,
+            &mut RoundDeterminism::default(),
+            TargetContext::default(),
+        ),
         CardSetup {
             hand: vec![CardInfo {
                 uid: Some(10),
@@ -235,11 +237,13 @@ fn opening_refill_includes_an_ultimate_made_ready_during_enter_fight() {
 
     run_start(
         managers.catalog(),
-        &mut managers,
-        &pool,
-        &catalog,
-        &mut RoundDeterminism::default(),
-        TargetContext::default(),
+        BattleAccess::new(
+            &mut managers,
+            &pool,
+            &catalog,
+            &mut RoundDeterminism::default(),
+            TargetContext::default(),
+        ),
         CardSetup {
             hand: vec![CardInfo {
                 uid: Some(10),
@@ -320,11 +324,13 @@ fn opening_keeps_the_exact_battle_start_ultimate_after_later_resource_loss() {
 
     run_start(
         managers.catalog(),
-        &mut managers,
-        &pool,
-        &catalog,
-        &mut RoundDeterminism::default(),
-        TargetContext::default(),
+        BattleAccess::new(
+            &mut managers,
+            &pool,
+            &catalog,
+            &mut RoundDeterminism::default(),
+            TargetContext::default(),
+        ),
         CardSetup {
             hand: vec![CardInfo {
                 uid: Some(10),
@@ -399,11 +405,13 @@ fn opening_team_cards_use_battle_start_ultimate_readiness() {
 
     run_start(
         managers.catalog(),
-        &mut managers,
-        &pool,
-        &catalog,
-        &mut RoundDeterminism::default(),
-        TargetContext::default(),
+        BattleAccess::new(
+            &mut managers,
+            &pool,
+            &catalog,
+            &mut RoundDeterminism::default(),
+            TargetContext::default(),
+        ),
         CardSetup {
             hand: vec![CardInfo {
                 uid: Some(10),
@@ -460,11 +468,13 @@ fn opening_deal_keeps_entity_exempt_ultimate_ahead_of_ordinary_cards() {
     };
     run_start(
         managers.catalog(),
-        &mut managers,
-        &pool,
-        &catalog,
-        &mut RoundDeterminism::default(),
-        TargetContext::default(),
+        BattleAccess::new(
+            &mut managers,
+            &pool,
+            &catalog,
+            &mut RoundDeterminism::default(),
+            TargetContext::default(),
+        ),
         CardSetup {
             hand: vec![card(31570111), card(31570111)],
             draw_pile: vec![card(31571121)],
@@ -554,11 +564,13 @@ fn opening_setup_rejects_an_ineligible_seeded_ultimate() {
 
     run_start(
         managers.catalog(),
-        &mut managers,
-        &pool,
-        &SkillEffectCatalog::default(),
-        &mut RoundDeterminism::default(),
-        TargetContext::default(),
+        BattleAccess::new(
+            &mut managers,
+            &pool,
+            &SkillEffectCatalog::default(),
+            &mut RoundDeterminism::default(),
+            TargetContext::default(),
+        ),
         CardSetup {
             hand: vec![CardInfo {
                 uid: Some(10),

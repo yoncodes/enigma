@@ -53,7 +53,13 @@ fn conduit_admission_observes_committed_terminal_outcomes() {
         let mut catalog = SkillEffectCatalog::from_fight(config::configs::get(), &fight);
         let result = run_conduit_phase(
             managers.catalog(),
-            &fight,
+            crate::engine::runtime::schedule::ConduitPhase {
+                fight: &fight,
+                operations: &[10, 12].map(|uid| sonettobuf::FightDeviceOper {
+                    uid: Some(uid),
+                    index: Some(1),
+                }),
+            },
             &mut managers,
             &pool,
             &mut catalog,
@@ -63,10 +69,6 @@ fn conduit_admission_observes_committed_terminal_outcomes() {
                 current_round: 1,
                 ..Default::default()
             },
-            &[10, 12].map(|uid| sonettobuf::FightDeviceOper {
-                uid: Some(uid),
-                index: Some(1),
-            }),
         )
         .unwrap();
 

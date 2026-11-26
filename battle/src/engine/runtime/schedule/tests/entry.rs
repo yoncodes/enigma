@@ -95,11 +95,13 @@ fn player_and_marked_monster_reserves_promote_after_the_action() {
 
     let result = run_player_phase(
         &fight,
-        &mut managers,
-        &pool,
-        &catalog,
-        &mut determinism,
-        TargetContext::default(),
+        BattleAccess::new(
+            &mut managers,
+            &pool,
+            &catalog,
+            &mut determinism,
+            TargetContext::default(),
+        ),
         [
             RoundCommand::PlayCard {
                 card_index: 0,
@@ -294,11 +296,7 @@ fn promoted_defender_joins_the_normal_round_start_once() {
     )
     .unwrap();
     run_before_ai_round_start(
-        &mut managers,
-        &pool,
-        &catalog,
-        &mut determinism,
-        context,
+        BattleAccess::new(&mut managers, &pool, &catalog, &mut determinism, context),
         2,
         &[],
         None,
@@ -575,11 +573,7 @@ fn wave_entry_round_start_condition_runs_once_before_the_first_ai_turn() {
     .unwrap();
     managers.begin_round();
     let before_ai = run_before_ai_round_start(
-        &mut managers,
-        &pool,
-        &catalog,
-        &mut determinism,
-        context,
+        BattleAccess::new(&mut managers, &pool, &catalog, &mut determinism, context),
         2,
         &[-3],
         None,

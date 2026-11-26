@@ -715,9 +715,11 @@ pub(super) fn damage_ops(
     );
     let (targets, base_count, behavior_extra_count) = damage_targets(
         invocation,
-        managers,
-        pool,
-        catalog,
+        DamageTargeting {
+            managers,
+            pool,
+            catalog,
+        },
         effect_skill_id,
         determinism,
         execution,
@@ -1332,17 +1334,26 @@ pub(super) fn damage_ops(
     })
 }
 
-#[allow(clippy::too_many_arguments)]
+struct DamageTargeting<'a> {
+    managers: &'a BattleManagers,
+    pool: &'a TargetPool,
+    catalog: &'a SkillEffectCatalog,
+}
+
 fn damage_targets(
     invocation: &SkillInvocation,
-    managers: &BattleManagers,
-    pool: &TargetPool,
-    catalog: &SkillEffectCatalog,
+    battle: DamageTargeting<'_>,
+
     effect_skill_id: i32,
     determinism: &mut RoundDeterminism,
     execution: &mut SkillExecution,
     rend: Option<&crate::engine::skill::buff_act::emitter_rend_target::EmitterRendPlan>,
 ) -> (Vec<i64>, usize, usize) {
+    let DamageTargeting {
+        managers,
+        pool,
+        catalog,
+    } = battle;
     let source_uid = invocation.plan.source_uid;
     let skill_id = invocation.plan.skill_id;
     let request = catalog.logic_request(effect_skill_id);
@@ -1410,9 +1421,11 @@ pub(super) fn plan_crits(
     );
     let (targets, _, _) = damage_targets(
         invocation,
-        managers,
-        pool,
-        catalog,
+        DamageTargeting {
+            managers,
+            pool,
+            catalog,
+        },
         effect_skill_id,
         determinism,
         execution,

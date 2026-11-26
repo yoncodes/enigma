@@ -65,11 +65,13 @@ fn device_only_queue_runs_configured_group_switches() {
             let mut determinism = RoundDeterminism::default();
             let result = run_player_phase(
                 &fight,
-                &mut managers,
-                &pool,
-                &catalog,
-                &mut determinism,
-                TargetContext::default(),
+                BattleAccess::new(
+                    &mut managers,
+                    &pool,
+                    &catalog,
+                    &mut determinism,
+                    TargetContext::default(),
+                ),
                 move_only.then_some(RoundCommand::MoveCard {
                     from_index: 0,
                     to_index: 1,

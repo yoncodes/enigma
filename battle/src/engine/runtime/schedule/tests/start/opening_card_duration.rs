@@ -29,11 +29,13 @@ fn opening_card_phase_expires_advancement() {
     let mut managers = BattleManagers::seeded(&fight);
     let (start, _) = run_start(
         managers.catalog(),
-        &mut managers,
-        &TargetPool::from_fight(&fight),
-        &SkillEffectCatalog::default(),
-        &mut RoundDeterminism::default(),
-        TargetContext::default(),
+        BattleAccess::new(
+            &mut managers,
+            &TargetPool::from_fight(&fight),
+            &SkillEffectCatalog::default(),
+            &mut RoundDeterminism::default(),
+            TargetContext::default(),
+        ),
         CardSetup {
             hand: Vec::new(),
             draw_pile: Vec::new(),
@@ -119,11 +121,13 @@ fn preparation_expires_after_opening_sovereign_unlock() {
     let catalog = SkillEffectCatalog::from_fight(config::configs::get(), &fight);
     let (start, _) = run_start(
         managers.catalog(),
-        &mut managers,
-        &pool,
-        &catalog,
-        &mut RoundDeterminism::default(),
-        TargetContext::default(),
+        BattleAccess::new(
+            &mut managers,
+            &pool,
+            &catalog,
+            &mut RoundDeterminism::default(),
+            TargetContext::default(),
+        ),
         CardSetup {
             hand: vec![CardInfo {
                 uid: Some(10),

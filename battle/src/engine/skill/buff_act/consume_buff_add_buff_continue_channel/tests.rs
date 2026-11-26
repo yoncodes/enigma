@@ -1,4 +1,5 @@
 use super::*;
+use crate::engine::runtime::drain::BattleAccess;
 use crate::engine::skill::subscriber;
 use sonettobuf::{BuffInfo, Fight, FightEntityInfo, FightTeam};
 
@@ -207,14 +208,16 @@ fn round_end_commits_the_captured_zero_cost_channel_sequence() {
     let mut managers = BattleManagers::seeded(&fight);
     let catalog = SkillEffectCatalog::from_roots(config::configs::get(), [], [31280115]);
     let result = drain::run_group_event(
-        &mut managers,
-        &pool,
-        &catalog,
-        &mut RoundDeterminism::default(),
-        TargetContext {
-            current_round: 2,
-            ..Default::default()
-        },
+        BattleAccess::new(
+            &mut managers,
+            &pool,
+            &catalog,
+            &mut RoundDeterminism::default(),
+            TargetContext {
+                current_round: 2,
+                ..Default::default()
+            },
+        ),
         BattleEvent::Kind(EventKind::RoundEnd),
         ReactionLane::BuffActs,
         Some(&[10]),
@@ -280,14 +283,16 @@ fn targetless_round_end_channel_does_not_start_its_attack() {
     let catalog = SkillEffectCatalog::from_roots(config::configs::get(), [], [31280115]);
 
     let result = drain::run_group_event(
-        &mut managers,
-        &pool,
-        &catalog,
-        &mut RoundDeterminism::default(),
-        TargetContext {
-            current_round: 2,
-            ..Default::default()
-        },
+        BattleAccess::new(
+            &mut managers,
+            &pool,
+            &catalog,
+            &mut RoundDeterminism::default(),
+            TargetContext {
+                current_round: 2,
+                ..Default::default()
+            },
+        ),
         BattleEvent::Kind(EventKind::RoundEnd),
         ReactionLane::BuffActs,
         Some(&[10]),

@@ -65,8 +65,10 @@ fn conduit_energy_behaviors_select_a_living_enemy_while_ordinary_source_skills_s
     assert_eq!(
         CardSelectionResolver::candidates(
             &request,
-            100,
-            10,
+            crate::engine::skill::action::SkillRequest {
+                skill_id: 100,
+                source_uid: 10
+            },
             &pool,
             &catalog,
             &RoundDeterminism::default(),
@@ -78,8 +80,10 @@ fn conduit_energy_behaviors_select_a_living_enemy_while_ordinary_source_skills_s
     assert_eq!(
         CardSelectionResolver::candidates(
             &request,
-            200,
-            10,
+            crate::engine::skill::action::SkillRequest {
+                skill_id: 200,
+                source_uid: 10
+            },
             &pool,
             &catalog,
             &RoundDeterminism::default(),
@@ -91,8 +95,10 @@ fn conduit_energy_behaviors_select_a_living_enemy_while_ordinary_source_skills_s
     assert_eq!(
         CardSelectionResolver::candidates(
             &request,
-            300,
-            10,
+            crate::engine::skill::action::SkillRequest {
+                skill_id: 300,
+                source_uid: 10
+            },
             &pool,
             &catalog,
             &RoundDeterminism::default(),

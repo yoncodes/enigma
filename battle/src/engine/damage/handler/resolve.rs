@@ -173,7 +173,6 @@ pub fn resolve_avoided_attack_command(
     })
 }
 
-#[allow(clippy::too_many_arguments)]
 pub fn resolve_configured_replacement_damage_command(
     request: DamageRequest<'_>,
     runtime: DamageRuntime<'_>,
@@ -872,10 +871,12 @@ fn direct_damage_trace(
                     attributes,
                     buffs,
                     hp,
-                    is_ultimate,
-                    extra_action,
-                    performs_extra_action,
-                    source_performs_extra_action,
+                    crate::engine::skill::buff_act::AttackAttributeScope {
+                        is_big_skill: is_ultimate,
+                        extra_action,
+                        performs_extra_action,
+                        source_performs_extra_action,
+                    },
                 )
             })
             .sum::<i32>()
@@ -1166,10 +1167,12 @@ fn direct_damage_trace(
                         attributes,
                         buffs,
                         hp,
-                        is_ultimate,
-                        extra_action,
-                        performs_extra_action,
-                        source_performs_extra_action,
+                        crate::engine::skill::buff_act::AttackAttributeScope {
+                            is_big_skill: is_ultimate,
+                            extra_action,
+                            performs_extra_action,
+                            source_performs_extra_action,
+                        },
                     );
                 (delta != 0).then_some((feature.buff_id, feature.act_type.as_str(), delta))
             })

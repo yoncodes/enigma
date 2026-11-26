@@ -58,14 +58,16 @@ pub fn rule_ops(context: &mut RuntimeContext<'_>) -> Option<Vec<RuleOp>> {
         &mut field_attributes,
         source_uid,
         0,
-        context.catalog,
-        managers,
-        context.pool,
-        context.determinism,
-        TargetContext {
-            runtime_target_uid: target_uid,
-            ..Default::default()
+        crate::engine::skill::behavior::rate::RateRuntime {
+            effects: context.catalog,
+            managers,
+            pool: context.pool,
+            context: TargetContext {
+                runtime_target_uid: target_uid,
+                ..Default::default()
+            },
         },
+        context.determinism,
         Some(AttrId::UltimateMight),
     );
     formula.might = field_attributes.into_iter().map(|(_, value)| value).fold(

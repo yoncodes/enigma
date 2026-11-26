@@ -30,22 +30,29 @@ fn field_transfer_reaction_uses_the_published_owner() {
     let settlement = [0, 1];
     for owner in [None, Some(settlement.as_slice())] {
         let reactions = dispatch_event_groups(
-            &pool,
-            &managers,
-            &SkillEffectCatalog::default(),
-            &mut RoundDeterminism::default(),
+            ReactionAccess {
+                pool: &pool,
+                managers: &managers,
+                catalog: &SkillEffectCatalog::default(),
+                determinism: &mut RoundDeterminism::default(),
+            },
             &mut DrainState::default(),
             &[vec![event.clone()]],
-            &cast,
-            &cast,
-            None,
-            &cast,
-            None,
-            false,
-            true,
-            crate::engine::event::subscription::PublicationPhase::AfterPublish,
-            None,
-            None,
+            EventFrame {
+                parent_path: &cast,
+                reuse_path: &cast,
+                action_path: None,
+                entry_halo_scope: Some(&cast),
+                current_skill: None,
+            },
+            ReactionSelection {
+                include_attack_consumption: false,
+                execute_unscoped_after_action: true,
+                publication_phase:
+                    crate::engine::event::subscription::PublicationPhase::AfterPublish,
+                owner_uids: None,
+                lane: None,
+            },
             None,
             owner,
         )

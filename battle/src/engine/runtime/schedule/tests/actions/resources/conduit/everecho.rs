@@ -170,16 +170,18 @@ fn free_skill_repeats_then_continues_in_the_selected_group() {
 
     let result = run_conduit_phase(
         managers.catalog(),
-        &fight,
+        crate::engine::runtime::schedule::ConduitPhase {
+            fight: &fight,
+            operations: &[sonettobuf::FightDeviceOper {
+                uid: Some(10),
+                index: Some(1),
+            }],
+        },
         &mut managers,
         &pool,
         &mut catalog,
         &mut RoundDeterminism::default(),
         TargetContext::default(),
-        &[sonettobuf::FightDeviceOper {
-            uid: Some(10),
-            index: Some(1),
-        }],
     )
     .unwrap();
 
@@ -281,16 +283,18 @@ fn mend_restart_reopens_a_device_after_its_group_changes() {
 
     let result = run_conduit_phase(
         managers.catalog(),
-        &fight,
+        crate::engine::runtime::schedule::ConduitPhase {
+            fight: &fight,
+            operations: &[sonettobuf::FightDeviceOper {
+                uid: Some(10),
+                index: Some(1),
+            }],
+        },
         &mut managers,
         &pool,
         &mut catalog,
         &mut RoundDeterminism::default(),
         TargetContext::default(),
-        &[sonettobuf::FightDeviceOper {
-            uid: Some(10),
-            index: Some(1),
-        }],
     )
     .unwrap();
 

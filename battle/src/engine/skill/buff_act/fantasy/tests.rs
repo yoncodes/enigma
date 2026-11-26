@@ -1,3 +1,4 @@
+use crate::engine::runtime::drain::BattleAccess;
 use sonettobuf::{BuffInfo, Fight, FightEntityInfo, FightTeam, HeroAttribute};
 
 use super::*;
@@ -90,11 +91,13 @@ fn run_round_start(teeth: i32) -> (BattleManagers, DrainResult) {
         .unwrap();
     let catalog = SkillEffectCatalog::from_roots(config::configs::get(), [], [30530207]);
     let result = drain::run_group_event(
-        &mut managers,
-        &pool,
-        &catalog,
-        &mut RoundDeterminism::default(),
-        TargetContext::default(),
+        BattleAccess::new(
+            &mut managers,
+            &pool,
+            &catalog,
+            &mut RoundDeterminism::default(),
+            TargetContext::default(),
+        ),
         BattleEvent::RoundStart,
         ReactionLane::BuffActs,
         Some(&[10]),

@@ -34,30 +34,27 @@ pub fn run_event(
     )
 }
 
-#[allow(clippy::too_many_arguments)]
 pub fn run_group_event(
-    managers: &mut BattleManagers,
-    pool: &TargetPool,
-    catalog: &SkillEffectCatalog,
-    determinism: &mut RoundDeterminism,
-    context: TargetContext,
+    battle: BattleAccess<'_>,
     event: BattleEvent,
     lane: ReactionLane,
     owner_uids: Option<&[i64]>,
 ) -> Result<DrainResult, DrainError> {
-    run_group_event_lanes(
+    let BattleAccess {
         managers,
         pool,
         catalog,
         determinism,
         context,
+    } = battle;
+    run_group_event_lanes(
+        BattleAccess::new(managers, pool, catalog, determinism, context),
         event,
         &[lane],
         owner_uids,
     )
 }
 
-#[allow(clippy::too_many_arguments)]
 pub fn run_round_start_card_event(
     managers: &mut BattleManagers,
     pool: &TargetPool,
@@ -74,11 +71,7 @@ pub fn run_round_start_card_event(
         })
         .collect::<Vec<_>>();
     let mut result = run_group_event_lanes(
-        managers,
-        pool,
-        catalog,
-        determinism,
-        context,
+        BattleAccess::new(managers, pool, catalog, determinism, context),
         event,
         &[ReactionLane::BuffActs, ReactionLane::Skills],
         Some(owner_uids),
@@ -138,23 +131,21 @@ pub(crate) fn run_round_start_card_duration(
     Ok(result)
 }
 
-#[allow(clippy::too_many_arguments)]
 pub fn run_group_event_lanes(
-    managers: &mut BattleManagers,
-    pool: &TargetPool,
-    catalog: &SkillEffectCatalog,
-    determinism: &mut RoundDeterminism,
-    context: TargetContext,
+    battle: BattleAccess<'_>,
     event: BattleEvent,
     lanes: &[ReactionLane],
     owner_uids: Option<&[i64]>,
 ) -> Result<DrainResult, DrainError> {
-    drain_group_event(
+    let BattleAccess {
         managers,
         pool,
         catalog,
         determinism,
         context,
+    } = battle;
+    drain_group_event(
+        BattleAccess::new(managers, pool, catalog, determinism, context),
         event,
         lanes,
         owner_uids,
@@ -171,11 +162,7 @@ pub(in crate::engine::runtime) fn run_attacker_round_end_skills(
     owner_uids: &[i64],
 ) -> Result<DrainResult, DrainError> {
     drain_group_event(
-        managers,
-        pool,
-        catalog,
-        determinism,
-        context,
+        BattleAccess::new(managers, pool, catalog, determinism, context),
         BattleEvent::Kind(EventKind::RoundEnd),
         &[ReactionLane::Skills],
         Some(owner_uids),
@@ -183,18 +170,20 @@ pub(in crate::engine::runtime) fn run_attacker_round_end_skills(
     )
 }
 
-#[allow(clippy::too_many_arguments)]
 fn drain_group_event(
-    managers: &mut BattleManagers,
-    pool: &TargetPool,
-    catalog: &SkillEffectCatalog,
-    determinism: &mut RoundDeterminism,
-    context: TargetContext,
+    battle: BattleAccess<'_>,
     event: BattleEvent,
     lanes: &[ReactionLane],
     owner_uids: Option<&[i64]>,
     cleanup_owner: DefenderCardCleanupOwner,
 ) -> Result<DrainResult, DrainError> {
+    let BattleAccess {
+        managers,
+        pool,
+        catalog,
+        determinism,
+        context,
+    } = battle;
     let mut frames = Vec::new();
     let root = push_root(&mut frames, FrameOwner::Command, FrameTrigger::Active);
     let mut result = DrainResult {
@@ -213,11 +202,7 @@ fn drain_group_event(
                     FrameTrigger::Event(event.clone()),
                 );
                 let next = drain_group_event_lane(
-                    managers,
-                    pool,
-                    catalog,
-                    determinism,
-                    context,
+                    BattleAccess::new(managers, pool, catalog, determinism, context),
                     &event,
                     lane,
                     Some(std::slice::from_ref(owner_uid)),
@@ -243,11 +228,7 @@ fn drain_group_event(
             | ReactionLane::BuffActsAfterSettlement => root.clone(),
         };
         let next = drain_group_event_lane(
-            managers,
-            pool,
-            catalog,
-            determinism,
-            context,
+            BattleAccess::new(managers, pool, catalog, determinism, context),
             &event,
             lane,
             owner_uids,
@@ -264,13 +245,8 @@ fn drain_group_event(
     Ok(result)
 }
 
-#[allow(clippy::too_many_arguments)]
 fn drain_group_event_lane(
-    managers: &mut BattleManagers,
-    pool: &TargetPool,
-    catalog: &SkillEffectCatalog,
-    determinism: &mut RoundDeterminism,
-    context: TargetContext,
+    battle: BattleAccess<'_>,
     event: &BattleEvent,
     lane: ReactionLane,
     owner_uids: Option<&[i64]>,
@@ -278,6 +254,13 @@ fn drain_group_event_lane(
     frames: Vec<SemanticFrame>,
     cleanup_owner: DefenderCardCleanupOwner,
 ) -> Result<DrainResult, DrainError> {
+    let BattleAccess {
+        managers,
+        pool,
+        catalog,
+        determinism,
+        context,
+    } = battle;
     let current_pool = subscriber_view(pool, managers, event);
     let mut reactions = dispatch_reactions(
         &current_pool,
@@ -285,7 +268,10 @@ fn drain_group_event_lane(
         catalog,
         determinism,
         ReactionDispatch {
-            parent_path: Some(scope),
+            frame: ReactionFrame {
+                parent_path: Some(scope),
+                ..ReactionFrame::for_event(event)
+            },
             lane: Some(lane),
             owner_uids,
             execute_unscoped_after_action: context.current_round > 0,
@@ -307,51 +293,47 @@ fn drain_group_event_lane(
         );
     }
     drain_queue_with_frames_and_cleanup_owner(
-        managers,
-        pool,
-        catalog,
-        determinism,
-        context,
+        BattleAccess::new(managers, pool, catalog, determinism, context),
         &mut queue,
         frames,
         cleanup_owner,
     )
 }
 
-#[allow(clippy::too_many_arguments)]
 pub fn run_grouped_owner_event(
-    managers: &mut BattleManagers,
-    pool: &TargetPool,
-    catalog: &SkillEffectCatalog,
-    determinism: &mut RoundDeterminism,
-    context: TargetContext,
+    battle: BattleAccess<'_>,
     event: BattleEvent,
     owner_uids: &[i64],
     lane: ReactionLane,
 ) -> Result<DrainResult, DrainError> {
-    run_grouped_owner_event_lanes(
+    let BattleAccess {
         managers,
         pool,
         catalog,
         determinism,
         context,
+    } = battle;
+    run_grouped_owner_event_lanes(
+        BattleAccess::new(managers, pool, catalog, determinism, context),
         event,
         owner_uids,
         &[lane],
     )
 }
 
-#[allow(clippy::too_many_arguments)]
 pub fn run_grouped_owner_event_lanes(
-    managers: &mut BattleManagers,
-    pool: &TargetPool,
-    catalog: &SkillEffectCatalog,
-    determinism: &mut RoundDeterminism,
-    context: TargetContext,
+    battle: BattleAccess<'_>,
     event: BattleEvent,
     owner_uids: &[i64],
     lanes: &[ReactionLane],
 ) -> Result<DrainResult, DrainError> {
+    let BattleAccess {
+        managers,
+        pool,
+        catalog,
+        determinism,
+        context,
+    } = battle;
     let mut result = DrainResult::default();
     let root = push_root(
         &mut result.frames,
@@ -359,11 +341,7 @@ pub fn run_grouped_owner_event_lanes(
         FrameTrigger::Active,
     );
     run_grouped_owner_event_at(
-        managers,
-        pool,
-        catalog,
-        determinism,
-        context,
+        BattleAccess::new(managers, pool, catalog, determinism, context),
         event,
         owner_uids,
         lanes,
@@ -391,11 +369,7 @@ pub(in crate::engine::runtime) fn run_settlement_tail(
         operations,
     )?;
     run_grouped_owner_event_at(
-        managers,
-        pool,
-        catalog,
-        determinism,
-        context,
+        BattleAccess::new(managers, pool, catalog, determinism, context),
         BattleEvent::Kind(crate::engine::event::kind::EventKind::RoundEndAfterOwnerSettlement),
         owner_uids,
         &[ReactionLane::Skills],
@@ -404,19 +378,21 @@ pub(in crate::engine::runtime) fn run_settlement_tail(
     )
 }
 
-#[allow(clippy::too_many_arguments)]
 fn run_grouped_owner_event_at(
-    managers: &mut BattleManagers,
-    pool: &TargetPool,
-    catalog: &SkillEffectCatalog,
-    determinism: &mut RoundDeterminism,
-    context: TargetContext,
+    battle: BattleAccess<'_>,
     event: BattleEvent,
     owner_uids: &[i64],
     lanes: &[ReactionLane],
     mut result: DrainResult,
     root: FramePath,
 ) -> Result<DrainResult, DrainError> {
+    let BattleAccess {
+        managers,
+        pool,
+        catalog,
+        determinism,
+        context,
+    } = battle;
     let event_index = result.events.len();
     managers.buff.begin_transaction();
     let result = (|| {
@@ -438,7 +414,10 @@ fn run_grouped_owner_event_at(
                     catalog,
                     determinism,
                     ReactionDispatch {
-                        parent_path: Some(&scope),
+                        frame: ReactionFrame {
+                            parent_path: Some(&scope),
+                            ..ReactionFrame::for_event(&event)
+                        },
                         lane: Some(lane),
                         owner_uids: Some(std::slice::from_ref(owner_uid)),
                         execute_unscoped_after_action: context.current_round > 0,

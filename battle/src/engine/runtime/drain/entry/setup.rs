@@ -1,4 +1,12 @@
 use super::*;
+
+#[derive(Clone, Copy)]
+pub(super) struct SetupSelection<'a> {
+    pub(super) stage: SetupStage,
+    pub(super) priority: i32,
+    pub(super) owner_uids: Option<&'a [i64]>,
+    pub(super) excluded_owner_uids: &'a [i64],
+}
 use crate::engine::skill::{effect::slot::SkillEffectSlot, subscriber::SetupSubscriber};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -64,15 +72,13 @@ pub fn run_setup_stage(
     priority: i32,
 ) -> Result<DrainResult, DrainError> {
     run_skill_then_buff_act_setup_stage_filtered(
-        managers,
-        pool,
-        catalog,
-        determinism,
-        context,
-        stage,
-        priority,
-        None,
-        &[],
+        BattleAccess::new(managers, pool, catalog, determinism, context),
+        crate::engine::runtime::drain::entry::setup::SetupSelection {
+            stage,
+            priority,
+            owner_uids: None,
+            excluded_owner_uids: &[],
+        },
         false,
         SetupSkillFilter::All,
         true,
@@ -81,27 +87,27 @@ pub fn run_setup_stage(
     )
 }
 
-#[allow(clippy::too_many_arguments)]
 pub fn run_setup_stage_for_owners(
-    managers: &mut BattleManagers,
-    pool: &TargetPool,
-    catalog: &SkillEffectCatalog,
-    determinism: &mut RoundDeterminism,
-    context: TargetContext,
+    battle: BattleAccess<'_>,
     stage: SetupStage,
     priority: i32,
     owner_uids: &[i64],
 ) -> Result<DrainResult, DrainError> {
-    run_skill_then_buff_act_setup_stage_filtered(
+    let BattleAccess {
         managers,
         pool,
         catalog,
         determinism,
         context,
-        stage,
-        priority,
-        Some(owner_uids),
-        &[],
+    } = battle;
+    run_skill_then_buff_act_setup_stage_filtered(
+        BattleAccess::new(managers, pool, catalog, determinism, context),
+        crate::engine::runtime::drain::entry::setup::SetupSelection {
+            stage,
+            priority,
+            owner_uids: Some(owner_uids),
+            excluded_owner_uids: &[],
+        },
         false,
         SetupSkillFilter::All,
         true,
@@ -110,29 +116,29 @@ pub fn run_setup_stage_for_owners(
     )
 }
 
-#[allow(clippy::too_many_arguments)]
 pub(crate) fn run_opening_setup_stage_for_owners(
-    managers: &mut BattleManagers,
-    pool: &TargetPool,
-    catalog: &SkillEffectCatalog,
-    determinism: &mut RoundDeterminism,
-    context: TargetContext,
+    battle: BattleAccess<'_>,
     stage: SetupStage,
     priority: i32,
     player_owner_uids: &[i64],
     includes: impl Fn(&SetupSubscriber) -> bool,
 ) -> Result<DrainResult, DrainError> {
-    let select = |subscriber: &SetupSubscriber, _: &SkillEffectSlot| includes(subscriber);
-    run_skill_then_buff_act_setup_stage_filtered(
+    let BattleAccess {
         managers,
         pool,
         catalog,
         determinism,
         context,
-        stage,
-        priority,
-        Some(player_owner_uids),
-        &[],
+    } = battle;
+    let select = |subscriber: &SetupSubscriber, _: &SkillEffectSlot| includes(subscriber);
+    run_skill_then_buff_act_setup_stage_filtered(
+        BattleAccess::new(managers, pool, catalog, determinism, context),
+        crate::engine::runtime::drain::entry::setup::SetupSelection {
+            stage,
+            priority,
+            owner_uids: Some(player_owner_uids),
+            excluded_owner_uids: &[],
+        },
         true,
         SetupSkillFilter::Select(&select),
         true,
@@ -155,34 +161,38 @@ impl SetupStageState {
     }
 }
 
-#[allow(clippy::too_many_arguments)]
 pub(super) fn run_skill_then_buff_act_setup_stage_filtered(
-    managers: &mut BattleManagers,
-    pool: &TargetPool,
-    catalog: &SkillEffectCatalog,
-    determinism: &mut RoundDeterminism,
-    context: TargetContext,
-    stage: SetupStage,
-    priority: i32,
-    owner_uids: Option<&[i64]>,
-    excluded_owner_uids: &[i64],
+    battle: BattleAccess<'_>,
+    selection: SetupSelection<'_>,
+
     include_both_sides_opening: bool,
     skill_filter: SetupSkillFilter<'_>,
     include_buff_acts: bool,
     frame_container: SetupFrameContainer,
     cleanup_owner: DefenderCardCleanupOwner,
 ) -> Result<DrainResult, DrainError> {
-    let mut state = SetupStageState::default();
-    append_skill_setup_stage(
+    let SetupSelection {
+        stage,
+        priority,
+        owner_uids,
+        excluded_owner_uids,
+    } = selection;
+    let BattleAccess {
         managers,
         pool,
         catalog,
         determinism,
         context,
-        stage,
-        priority,
-        owner_uids,
-        excluded_owner_uids,
+    } = battle;
+    let mut state = SetupStageState::default();
+    append_skill_setup_stage(
+        BattleAccess::new(managers, pool, catalog, determinism, context),
+        crate::engine::runtime::drain::entry::setup::SetupSelection {
+            stage,
+            priority,
+            owner_uids,
+            excluded_owner_uids,
+        },
         include_both_sides_opening,
         skill_filter,
         frame_container,
@@ -191,15 +201,13 @@ pub(super) fn run_skill_then_buff_act_setup_stage_filtered(
     )?;
     if include_buff_acts {
         append_buff_act_setup_stage(
-            managers,
-            pool,
-            catalog,
-            determinism,
-            context,
-            stage,
-            priority,
-            owner_uids,
-            excluded_owner_uids,
+            BattleAccess::new(managers, pool, catalog, determinism, context),
+            crate::engine::runtime::drain::entry::setup::SetupSelection {
+                stage,
+                priority,
+                owner_uids,
+                excluded_owner_uids,
+            },
             cleanup_owner,
             &mut state,
         )?;
@@ -207,32 +215,36 @@ pub(super) fn run_skill_then_buff_act_setup_stage_filtered(
     Ok(state.result)
 }
 
-#[allow(clippy::too_many_arguments)]
 pub(super) fn run_skill_setup_stage_filtered(
-    managers: &mut BattleManagers,
-    pool: &TargetPool,
-    catalog: &SkillEffectCatalog,
-    determinism: &mut RoundDeterminism,
-    context: TargetContext,
-    stage: SetupStage,
-    priority: i32,
-    owner_uids: Option<&[i64]>,
-    excluded_owner_uids: &[i64],
+    battle: BattleAccess<'_>,
+    selection: SetupSelection<'_>,
+
     include_both_sides_opening: bool,
     frame_container: SetupFrameContainer,
     cleanup_owner: DefenderCardCleanupOwner,
 ) -> Result<DrainResult, DrainError> {
-    let mut state = SetupStageState::default();
-    append_skill_setup_stage(
+    let SetupSelection {
+        stage,
+        priority,
+        owner_uids,
+        excluded_owner_uids,
+    } = selection;
+    let BattleAccess {
         managers,
         pool,
         catalog,
         determinism,
         context,
-        stage,
-        priority,
-        owner_uids,
-        excluded_owner_uids,
+    } = battle;
+    let mut state = SetupStageState::default();
+    append_skill_setup_stage(
+        BattleAccess::new(managers, pool, catalog, determinism, context),
+        crate::engine::runtime::drain::entry::setup::SetupSelection {
+            stage,
+            priority,
+            owner_uids,
+            excluded_owner_uids,
+        },
         include_both_sides_opening,
         SetupSkillFilter::All,
         frame_container,
@@ -242,52 +254,61 @@ pub(super) fn run_skill_setup_stage_filtered(
     Ok(state.result)
 }
 
-#[allow(clippy::too_many_arguments)]
 pub(super) fn run_buff_act_setup_stage_filtered(
-    managers: &mut BattleManagers,
-    pool: &TargetPool,
-    catalog: &SkillEffectCatalog,
-    determinism: &mut RoundDeterminism,
-    context: TargetContext,
-    stage: SetupStage,
-    priority: i32,
-    owner_uids: Option<&[i64]>,
-    excluded_owner_uids: &[i64],
+    battle: BattleAccess<'_>,
+    selection: SetupSelection<'_>,
 ) -> Result<DrainResult, DrainError> {
-    let mut state = SetupStageState::default();
-    append_buff_act_setup_stage(
+    let SetupSelection {
+        stage,
+        priority,
+        owner_uids,
+        excluded_owner_uids,
+    } = selection;
+    let BattleAccess {
         managers,
         pool,
         catalog,
         determinism,
         context,
-        stage,
-        priority,
-        owner_uids,
-        excluded_owner_uids,
+    } = battle;
+    let mut state = SetupStageState::default();
+    append_buff_act_setup_stage(
+        BattleAccess::new(managers, pool, catalog, determinism, context),
+        crate::engine::runtime::drain::entry::setup::SetupSelection {
+            stage,
+            priority,
+            owner_uids,
+            excluded_owner_uids,
+        },
         DefenderCardCleanupOwner::DeathAction,
         &mut state,
     )?;
     Ok(state.result)
 }
 
-#[allow(clippy::too_many_arguments)]
 fn append_skill_setup_stage(
-    managers: &mut BattleManagers,
-    pool: &TargetPool,
-    catalog: &SkillEffectCatalog,
-    determinism: &mut RoundDeterminism,
-    context: TargetContext,
-    stage: SetupStage,
-    priority: i32,
-    owner_uids: Option<&[i64]>,
-    excluded_owner_uids: &[i64],
+    battle: BattleAccess<'_>,
+    selection: SetupSelection<'_>,
+
     include_both_sides_opening: bool,
     skill_filter: SetupSkillFilter<'_>,
     frame_container: SetupFrameContainer,
     cleanup_owner: DefenderCardCleanupOwner,
     state: &mut SetupStageState,
 ) -> Result<(), DrainError> {
+    let SetupSelection {
+        stage,
+        priority,
+        owner_uids,
+        excluded_owner_uids,
+    } = selection;
+    let BattleAccess {
+        managers,
+        pool,
+        catalog,
+        determinism,
+        context,
+    } = battle;
     let context = context_for_setup_stage(context, stage);
     let trigger = FrameTrigger::Setup { stage, priority };
     let current_pool = pool.runtime_view(managers);
@@ -409,11 +430,7 @@ fn append_skill_setup_stage(
         });
     }
     let stage_result = drain_queue_with_frames_and_cleanup_owner(
-        managers,
-        pool,
-        catalog,
-        determinism,
-        context,
+        BattleAccess::new(managers, pool, catalog, determinism, context),
         &mut queue,
         frames,
         cleanup_owner,
@@ -422,20 +439,26 @@ fn append_skill_setup_stage(
     Ok(())
 }
 
-#[allow(clippy::too_many_arguments)]
 fn append_buff_act_setup_stage(
-    managers: &mut BattleManagers,
-    pool: &TargetPool,
-    catalog: &SkillEffectCatalog,
-    determinism: &mut RoundDeterminism,
-    context: TargetContext,
-    stage: SetupStage,
-    priority: i32,
-    owner_uids: Option<&[i64]>,
-    excluded_owner_uids: &[i64],
+    battle: BattleAccess<'_>,
+    selection: SetupSelection<'_>,
+
     cleanup_owner: DefenderCardCleanupOwner,
     state: &mut SetupStageState,
 ) -> Result<(), DrainError> {
+    let SetupSelection {
+        stage,
+        priority,
+        owner_uids,
+        excluded_owner_uids,
+    } = selection;
+    let BattleAccess {
+        managers,
+        pool,
+        catalog,
+        determinism,
+        context,
+    } = battle;
     let context = context_for_setup_stage(context, stage);
     let trigger = FrameTrigger::Setup { stage, priority };
     let mut frames = std::mem::take(&mut state.result.frames);
@@ -577,11 +600,7 @@ fn append_buff_act_setup_stage(
         }
     }
     let buff_act_result = drain_queue_with_frames_and_cleanup_owner(
-        managers,
-        pool,
-        catalog,
-        determinism,
-        context,
+        BattleAccess::new(managers, pool, catalog, determinism, context),
         &mut queue,
         frames,
         cleanup_owner,

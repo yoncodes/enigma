@@ -1,3 +1,4 @@
+use crate::engine::runtime::drain::BattleAccess;
 use sonettobuf::{Fight, FightEntityInfo, FightTeam, HeroAttribute};
 
 use super::*;
@@ -166,11 +167,13 @@ fn absolute_outgoing_evaluation_tracks_committed_defender_cards() {
     let play_card = |managers: &mut BattleManagers, source_uid| {
         run_ai_actions(
             &fight,
-            managers,
-            &pool,
-            &catalog,
-            &mut RoundDeterminism::default(),
-            TargetContext::default(),
+            BattleAccess::new(
+                managers,
+                &pool,
+                &catalog,
+                &mut RoundDeterminism::default(),
+                TargetContext::default(),
+            ),
             [AiSkillChoice {
                 source_uid,
                 skill_id: self_consumption,
@@ -207,11 +210,13 @@ fn absolute_outgoing_evaluation_tracks_committed_defender_cards() {
     .into();
     rejected.card_index = 1;
     let result = drain::run_round_action(
-        &mut managers,
-        &pool,
-        &catalog,
-        &mut RoundDeterminism::default(),
-        TargetContext::default(),
+        BattleAccess::new(
+            &mut managers,
+            &pool,
+            &catalog,
+            &mut RoundDeterminism::default(),
+            TargetContext::default(),
+        ),
         [],
         None,
         rejected,

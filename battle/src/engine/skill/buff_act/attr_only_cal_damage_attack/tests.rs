@@ -78,10 +78,12 @@ fn extra_action_attribute_waits_for_the_exact_action_kind() {
             &managers.attribute,
             &managers.buff,
             &managers.hp,
-            false,
-            false,
-            true,
-            true,
+            super::super::AttackAttributeScope {
+                is_big_skill: false,
+                extra_action: false,
+                performs_extra_action: true,
+                source_performs_extra_action: true,
+            },
         ),
         200
     );
@@ -92,10 +94,12 @@ fn extra_action_attribute_waits_for_the_exact_action_kind() {
             &managers.attribute,
             &managers.buff,
             &managers.hp,
-            false,
-            true,
-            false,
-            false,
+            super::super::AttackAttributeScope {
+                is_big_skill: false,
+                extra_action: true,
+                performs_extra_action: false,
+                source_performs_extra_action: false,
+            },
         ),
         0
     );

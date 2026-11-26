@@ -316,15 +316,17 @@ fn death_settlement_restores_depth_after_nested_error() {
     let mut state = DrainState::new(TargetContext::default());
 
     let error = drain_death_settlement_queue(
-        &mut managers,
-        &pool,
-        &SkillEffectCatalog::default(),
-        &mut RoundDeterminism::default(),
+        crate::engine::runtime::drain::DrainAccess {
+            managers: &mut managers,
+            pool: &pool,
+            catalog: &SkillEffectCatalog::default(),
+            determinism: &mut RoundDeterminism::default(),
+            result: &mut result,
+            state: &mut state,
+        },
         VecDeque::from([queued(RuleOp::ModifyActiveSkillTargets {
             additional_count: 1,
         })]),
-        &mut result,
-        &mut state,
         &[],
     )
     .unwrap_err();

@@ -78,11 +78,7 @@ pub fn run_action(
     invocation: crate::engine::skill::action::SkillInvocation,
 ) -> Result<DrainResult, DrainError> {
     run_action_with_cost(
-        managers,
-        pool,
-        catalog,
-        determinism,
-        context,
+        BattleAccess::new(managers, pool, catalog, determinism, context),
         prelude,
         None,
         invocation,
@@ -121,23 +117,21 @@ pub(crate) fn settle_fight_tasks(
     }
 }
 
-#[allow(clippy::too_many_arguments)]
 pub fn run_action_with_cost(
-    managers: &mut BattleManagers,
-    pool: &TargetPool,
-    catalog: &SkillEffectCatalog,
-    determinism: &mut RoundDeterminism,
-    context: TargetContext,
+    battle: BattleAccess<'_>,
     prelude: impl IntoIterator<Item = RuleOp>,
     action_cost: Option<crate::engine::manager::ex_point::ExPointCommand>,
     invocation: crate::engine::skill::action::SkillInvocation,
 ) -> Result<DrainResult, DrainError> {
-    run_root_action(
+    let BattleAccess {
         managers,
         pool,
         catalog,
         determinism,
         context,
+    } = battle;
+    run_root_action(
+        BattleAccess::new(managers, pool, catalog, determinism, context),
         prelude,
         action_cost.map(|cost| crate::engine::skill::action::ActionPayment {
             cost,
@@ -148,23 +142,21 @@ pub fn run_action_with_cost(
     )
 }
 
-#[allow(clippy::too_many_arguments)]
 pub fn run_round_action(
-    managers: &mut BattleManagers,
-    pool: &TargetPool,
-    catalog: &SkillEffectCatalog,
-    determinism: &mut RoundDeterminism,
-    context: TargetContext,
+    battle: BattleAccess<'_>,
     prelude: impl IntoIterator<Item = RuleOp>,
     payment: Option<crate::engine::skill::action::ActionPayment>,
     invocation: crate::engine::skill::action::SkillInvocation,
 ) -> Result<DrainResult, DrainError> {
-    run_root_action(
+    let BattleAccess {
         managers,
         pool,
         catalog,
         determinism,
         context,
+    } = battle;
+    run_root_action(
+        BattleAccess::new(managers, pool, catalog, determinism, context),
         prelude,
         payment,
         invocation,
@@ -187,18 +179,20 @@ impl RootAction {
     }
 }
 
-#[allow(clippy::too_many_arguments)]
 fn run_root_action(
-    managers: &mut BattleManagers,
-    pool: &TargetPool,
-    catalog: &SkillEffectCatalog,
-    determinism: &mut RoundDeterminism,
-    context: TargetContext,
+    battle: BattleAccess<'_>,
     prelude: impl IntoIterator<Item = RuleOp>,
     payment: Option<crate::engine::skill::action::ActionPayment>,
     invocation: crate::engine::skill::action::SkillInvocation,
     root_action: RootAction,
 ) -> Result<DrainResult, DrainError> {
+    let BattleAccess {
+        managers,
+        pool,
+        catalog,
+        determinism,
+        context,
+    } = battle;
     let current_pool = pool.runtime_view(managers);
     if attack_has_no_target(
         &invocation,
@@ -258,11 +252,7 @@ fn run_root_action(
         caster_frame: None,
     });
     let mut result = drain_queue_with_frames_and_cleanup_owner(
-        managers,
-        pool,
-        catalog,
-        determinism,
-        context,
+        BattleAccess::new(managers, pool, catalog, determinism, context),
         &mut queue,
         frames,
         root_action.defender_cleanup(),
@@ -271,31 +261,38 @@ fn run_root_action(
     Ok(result)
 }
 
-#[allow(clippy::too_many_arguments)]
+pub(crate) struct ConduitSlot {
+    pub(crate) device_index: i32,
+    pub(crate) skill_position: i32,
+}
+
 pub fn run_conduit_action(
-    managers: &mut BattleManagers,
-    pool: &TargetPool,
-    catalog: &SkillEffectCatalog,
-    determinism: &mut RoundDeterminism,
-    context: TargetContext,
+    battle: BattleAccess<'_>,
     source_uid: i64,
     selected_group: i32,
-    device_index: i32,
-    skill_position: i32,
+    slot: ConduitSlot,
+
     skill_id: i32,
     frame_target_uid: Option<i64>,
     cost_modifier: Option<(i32, RuleOp)>,
 ) -> Result<DrainResult, DrainError> {
+    let ConduitSlot {
+        device_index,
+        skill_position,
+    } = slot;
+    let BattleAccess {
+        managers,
+        pool,
+        catalog,
+        determinism,
+        context,
+    } = battle;
     if managers.terminal_outcome().is_some() {
         return Ok(DrainResult::default());
     }
     if managers.hp.current(source_uid) <= 0 {
         return run_conduit_stop(
-            managers,
-            pool,
-            catalog,
-            determinism,
-            context,
+            BattleAccess::new(managers, pool, catalog, determinism, context),
             source_uid,
             device_index,
             skill_position,
@@ -486,11 +483,7 @@ pub fn run_conduit_action(
         },
     ]);
     let mut result = drain_queue_with_frames_and_cleanup_owner(
-        managers,
-        pool,
-        catalog,
-        determinism,
-        context,
+        BattleAccess::new(managers, pool, catalog, determinism, context),
         &mut queue,
         frames,
         DefenderCardCleanupOwner::ScheduledRoundPhase,
@@ -517,11 +510,7 @@ pub fn run_conduit_action(
         caster_frame: None,
     }]);
     let mut completed = drain_queue_with_frames_and_cleanup_owner(
-        managers,
-        pool,
-        catalog,
-        determinism,
-        context,
+        BattleAccess::new(managers, pool, catalog, determinism, context),
         &mut completion,
         std::mem::take(&mut result.frames),
         DefenderCardCleanupOwner::ScheduledRoundPhase,
@@ -533,17 +522,19 @@ pub fn run_conduit_action(
     Ok(result)
 }
 
-#[allow(clippy::too_many_arguments)]
 pub fn run_conduit_stop(
-    managers: &mut BattleManagers,
-    pool: &TargetPool,
-    catalog: &SkillEffectCatalog,
-    determinism: &mut RoundDeterminism,
-    context: TargetContext,
+    battle: BattleAccess<'_>,
     source_uid: i64,
     device_index: i32,
     skill_position: i32,
 ) -> Result<DrainResult, DrainError> {
+    let BattleAccess {
+        managers,
+        pool,
+        catalog,
+        determinism,
+        context,
+    } = battle;
     let mut frames = Vec::new();
     let root = push_root(
         &mut frames,

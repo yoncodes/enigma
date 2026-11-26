@@ -43,15 +43,13 @@ impl OpeningFields {
             true
         };
         run_skill_then_buff_act_setup_stage_filtered(
-            managers,
-            pool,
-            catalog,
-            determinism,
-            context,
-            SetupStage::RoundStartCondition,
-            100,
-            Some(owner_uids),
-            &[],
+            BattleAccess::new(managers, pool, catalog, determinism, context),
+            crate::engine::runtime::drain::entry::setup::SetupSelection {
+                stage: SetupStage::RoundStartCondition,
+                priority: 100,
+                owner_uids: Some(owner_uids),
+                excluded_owner_uids: &[],
+            },
             false,
             SetupSkillFilter::Select(&select),
             false,

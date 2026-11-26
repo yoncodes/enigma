@@ -17,11 +17,7 @@ pub(super) fn run_unlock(
         return Ok(DrainResult::default());
     }
     drain::run_group_event(
-        managers,
-        pool,
-        catalog,
-        determinism,
-        context,
+        BattleAccess::new(managers, pool, catalog, determinism, context),
         BattleEvent::Kind(EventKind::SovereignUnlock),
         drain::ReactionLane::BuffActs,
         Some(&owners),

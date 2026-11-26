@@ -250,12 +250,14 @@ fn one_skill_event_groups_all_of_its_subscribed_rules() {
             ],
             ..Default::default()
         },
-        &BattleEvent::Kind(EventKind::SkillAction),
-        Some(&[0]),
-        None,
-        None,
-        None,
-        None,
+        ReactionFrame {
+            event: &BattleEvent::Kind(EventKind::SkillAction),
+            parent_path: Some(&[0]),
+            reuse_path: None,
+            action_path: None,
+            reentry_skill: None,
+            current_skill_target: None,
+        },
         None,
     )
     .unwrap();
@@ -301,12 +303,14 @@ fn event_sibling_rules_share_one_skill_frame() {
             skills: vec![(subscriber(0), op()), (subscriber(1), op())],
             ..Default::default()
         },
-        &BattleEvent::Kind(EventKind::BuffRemoved),
-        Some(&[4, 2]),
-        None,
-        None,
-        None,
-        None,
+        ReactionFrame {
+            event: &BattleEvent::Kind(EventKind::BuffRemoved),
+            parent_path: Some(&[4, 2]),
+            reuse_path: None,
+            action_path: None,
+            reentry_skill: None,
+            current_skill_target: None,
+        },
         None,
     )
     .unwrap();

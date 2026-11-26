@@ -1,6 +1,7 @@
 //! Owns when declared setup, actions, transitions, and settlement run.
 //! Scheduling orders semantic work; it does not define rule meaning or mutate protobuf output.
 
+use crate::engine::runtime::drain::BattleAccess;
 use crate::engine::{
     event::{
         kind::EventKind,
@@ -368,17 +369,19 @@ impl AiTurnPlan {
 }
 
 /// Executes registered AI choices through the same skill and manager pipeline.
-#[allow(clippy::too_many_arguments)]
 pub fn run_ai_actions(
     fight: &sonettobuf::Fight,
-    managers: &mut BattleManagers,
-    pool: &TargetPool,
-    catalog: &SkillEffectCatalog,
-    determinism: &mut RoundDeterminism,
-    context: TargetContext,
+    battle: BattleAccess<'_>,
     choices: impl IntoIterator<Item = AiSkillChoice>,
     promotions: &[crate::engine::fight::reserve::Promotion],
 ) -> Result<DrainResult, DrainError> {
+    let BattleAccess {
+        managers,
+        pool,
+        catalog,
+        determinism,
+        context,
+    } = battle;
     let mut result = DrainResult::default();
     append(
         &mut result,
@@ -583,11 +586,7 @@ pub fn run_no_action_round(
         append(
             &mut result,
             drain::run_group_event(
-                managers,
-                pool,
-                catalog,
-                determinism,
-                context,
+                BattleAccess::new(managers, pool, catalog, determinism, context),
                 BattleEvent::Kind(EventKind::NoActionRound),
                 drain::ReactionLane::Skills,
                 Some(std::slice::from_ref(&owner_uid)),
@@ -627,11 +626,7 @@ pub fn run_wave_entry_setup(
     }
     for (stage, priority) in [(SetupStage::RoundStartCondition, 100)] {
         let next = drain::run_setup_stage_for_owners(
-            managers,
-            pool,
-            catalog,
-            determinism,
-            context,
+            BattleAccess::new(managers, pool, catalog, determinism, context),
             stage,
             priority,
             owner_uids,

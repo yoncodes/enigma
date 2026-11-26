@@ -385,13 +385,15 @@ fn auto_round_keeps_selected_groups_without_owner_energy() {
     let mut catalog = runtime.catalog.clone();
     crate::engine::runtime::schedule::run_conduit_phase(
         runtime.managers.catalog(),
-        &runtime.fight,
+        crate::engine::runtime::schedule::ConduitPhase {
+            fight: &runtime.fight,
+            operations: &reply.devices_opers,
+        },
         &mut runtime.managers,
         &pool,
         &mut catalog,
         &mut runtime.determinism,
         crate::engine::skill::target::TargetContext::default(),
-        &reply.devices_opers,
     )
     .unwrap();
     assert_eq!(runtime.managers.conduit.uses(10), 1);
