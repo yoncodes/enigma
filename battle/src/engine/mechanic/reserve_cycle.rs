@@ -36,6 +36,7 @@ pub(crate) fn promote(managers: &mut BattleManagers, window: Window) -> Promotio
             if let Some(plan) = plan {
                 promotion.queued_reserve = Some(managers.queue_reserve_cycle(plan(&promotion)));
             }
+            managers.buff.sync_promotion(&promotion);
             if let Some(entering) = managers.entity_snapshot(promotion.entering_uid) {
                 promotion.entering = entering;
             }

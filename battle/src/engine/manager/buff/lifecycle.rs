@@ -780,6 +780,20 @@ impl BuffManager {
         }
     }
 
+    pub(crate) fn sync_promotion(&mut self, promotion: &crate::engine::fight::reserve::Promotion) {
+        let queued_uid = promotion
+            .queued_reserve
+            .as_ref()
+            .and_then(|reserve| reserve.entity.uid);
+        for tracked in &mut self.entities {
+            if tracked.uid == promotion.entering_uid {
+                tracked.active = true;
+            } else if tracked.uid == promotion.defeated_uid || Some(tracked.uid) == queued_uid {
+                tracked.active = false;
+            }
+        }
+    }
+
     pub(crate) fn sync_entity_order(&mut self, ordered_uids: &[i64]) {
         self.entities.sort_by_key(|tracked| {
             ordered_uids

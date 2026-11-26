@@ -69,7 +69,14 @@ fn collect_cycle_grants(frame: &SemanticFrame, owner: i64, grants: &mut Vec<()>)
 
 #[test]
 fn a_cycle_reserve_enters_after_the_action_without_promoting_ordinary_deaths() {
-    use crate::engine::skill::action::{SkillInvocation, SkillRequest, SkillTarget};
+    use crate::engine::{
+        fight::rules::ATTACKER_SIDE_UID,
+        manager::{
+            buff::{BuffCommand, BuffGrant},
+            entity::{EntityCommand, EntityOperation},
+        },
+        skill::action::{SkillInvocation, SkillRequest, SkillTarget},
+    };
     use sonettobuf::effect_type_enum::EffectType;
 
     init_config();
@@ -109,6 +116,20 @@ fn a_cycle_reserve_enters_after_the_action_without_promoting_ordinary_deaths() {
         };
         let pool = TargetPool::from_fight(&fight);
         let mut managers = BattleManagers::seeded(&fight);
+        managers
+            .execute_buff(BuffCommand::Grant(BuffGrant {
+                origin: CommandOrigin {
+                    domain: RuleDomain::Behavior,
+                    key: DefinitionKey::new(1, "AddBuff"),
+                },
+                source_uid: ATTACKER_SIDE_UID,
+                target_uid: ATTACKER_SIDE_UID,
+                buff_id: 9260101,
+                amount: None,
+                occurrences: 1,
+                child_uid_reservations: 0,
+            }))
+            .unwrap();
         let mut catalog = SkillEffectCatalog::from_fight(crate::test_support::game_data(), &fight);
         catalog.insert(ParsedSkillEffect {
             skill_id: 900,
@@ -157,6 +178,8 @@ fn a_cycle_reserve_enters_after_the_action_without_promoting_ordinary_deaths() {
     assert_eq!(managers.entity.roster_lane(-5), Some(RosterLane::Main));
     assert_eq!(managers.entity_snapshot(-5).unwrap().position, Some(2));
     assert_eq!(managers.entity.roster_lane(-6), Some(RosterLane::Reserve));
+    assert!(managers.buff.has_active_buff_id(-5, 9260103));
+    assert!(!managers.buff.has_buff_id(-6, 9260103));
     let split = effects.last().unwrap();
     assert_eq!(
         split.act_effect[0].effect_type,
@@ -167,11 +190,51 @@ fn a_cycle_reserve_enters_after_the_action_without_promoting_ordinary_deaths() {
         Some(EffectType::Splitend as i32)
     );
 
+    managers.hp.lose(-1, 100, 10);
+    let summoned = managers
+        .execute_entity(EntityCommand {
+            origin: CommandOrigin {
+                domain: RuleDomain::Behavior,
+                key: DefinitionKey::new(60008, "Summon"),
+            },
+            source_uid: -5,
+            target_uid: -5,
+            operation: EntityOperation::SummonCombatant {
+                model_id: 30111003,
+                position: 1,
+            },
+        })
+        .unwrap()
+        .entity
+        .uid
+        .unwrap();
+    assert_eq!(managers.entity.roster_lane(-1), Some(RosterLane::Replaced));
+
     let mut pool = TargetPool::from_fight(&fight);
     result.frames.clear();
     sync_cycle_roster(&mut fight, &mut managers, &mut pool, &result);
     assert!(pool.defender_main.iter().any(|entity| entity.uid == -5));
     assert!(!pool.defender_main.iter().any(|entity| entity.uid == -2));
+    let halo = managers
+        .execute_buff(BuffCommand::Grant(BuffGrant {
+            origin: CommandOrigin {
+                domain: RuleDomain::Behavior,
+                key: DefinitionKey::new(1, "AddBuff"),
+            },
+            source_uid: summoned,
+            target_uid: summoned,
+            buff_id: 109320111,
+            amount: None,
+            occurrences: 1,
+            child_uid_reservations: 0,
+        }))
+        .unwrap();
+    let recipients = halo
+        .fanout
+        .iter()
+        .flat_map(|fanout| fanout.added.iter().map(|added| added.target_uid))
+        .collect::<Vec<_>>();
+    assert_eq!(recipients, [-5]);
 
     let catalog = SkillEffectCatalog::from_fight(crate::test_support::game_data(), &fight);
     run_ai_actions(
