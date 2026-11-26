@@ -318,6 +318,21 @@ impl CardMechanic {
         self.skill_ignores_limit(managers, owner_uid, skill_id, true)
     }
 
+    pub(crate) fn entity_ultimate_ignores_limit(
+        &self,
+        managers: &BattleManagers,
+        pool: &TargetPool,
+        card: &CardInfo,
+    ) -> bool {
+        pool.entity(card.uid.unwrap_or_default())
+            .is_some_and(|entity| {
+                managers
+                    .buff
+                    .has_buff_act_kind(entity.uid, BuffActKind::EntityExSkillNotCalSize)
+                    && self.is_ultimate(managers, card, entity)
+            })
+    }
+
     pub(crate) fn carried_team_cards(&self, managers: &BattleManagers) -> Vec<(i64, i32)> {
         let team_cards = managers.card.team_cards();
         if team_cards.is_empty() {

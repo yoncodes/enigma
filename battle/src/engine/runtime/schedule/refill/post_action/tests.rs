@@ -83,4 +83,10 @@ fn post_action_refill_keeps_the_committed_ultimate_size_exemption() {
     );
     assert_eq!(result.refill_slots.replacements(&managers), 1);
     assert_eq!(result.refill_slots.target(&managers, &pool, 5), 5);
+    managers.card.add_to_hand(CardInfo {
+        uid: Some(10),
+        skill_id: Some(31270111),
+        ..Default::default()
+    });
+    assert_eq!(result.refill_slots.target(&managers, &pool, 6), 7);
 }

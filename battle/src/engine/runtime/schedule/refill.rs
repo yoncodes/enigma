@@ -205,12 +205,26 @@ fn run_card_refill(
         )?,
     );
     append_round_phase(&mut result, composition);
+    let card_mechanic = crate::engine::mechanic::card::CardMechanic;
+    let version7 =
+        crate::engine::fight::versions::round_start_setup_layout(managers.fight_version())
+            == Some(crate::engine::fight::versions::RoundStartSetupLayout::Version7);
     loop {
         let needs_normal_card = match stage {
+            CardRefillStage::Opening if version7 => {
+                managers
+                    .card
+                    .hand()
+                    .iter()
+                    .filter(|card| {
+                        !card_mechanic.entity_ultimate_ignores_limit(managers, pool, card)
+                    })
+                    .count()
+                    < hand_size
+            }
             CardRefillStage::Opening => managers.card.hand().len() < hand_size,
             CardRefillStage::AfterActions | CardRefillStage::RoundStart => {
-                crate::engine::mechanic::card::CardMechanic.refill_hand_len(managers, pool)
-                    < hand_size
+                card_mechanic.refill_hand_len(managers, pool) < hand_size
             }
         };
         let ready_normal = if stage == CardRefillStage::Opening {

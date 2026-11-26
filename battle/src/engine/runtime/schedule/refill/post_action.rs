@@ -8,24 +8,23 @@ pub(crate) struct RefillSlots {
 
 impl RefillSlots {
     pub(crate) fn capture(managers: &BattleManagers, pool: &TargetPool) -> Self {
-        let ignores_draw_limit =
-            crate::engine::mechanic::card::CardMechanic.round_draw_waiver(managers);
-        let exempt_ultimate = |card: &sonettobuf::CardInfo| {
-            pool.entity(card.uid.unwrap_or_default())
-                .is_some_and(|entity| {
-                    managers.buff.has_buff_act_kind(
-                        entity.uid,
-                        buff_act::registry::BuffActKind::EntityExSkillNotCalSize,
-                    ) && crate::engine::mechanic::card::CardMechanic
-                        .is_ultimate(managers, card, entity)
-                })
-        };
+        let card_mechanic = crate::engine::mechanic::card::CardMechanic;
+        let ignores_draw_limit = card_mechanic.round_draw_waiver(managers);
+        let version7 =
+            crate::engine::fight::versions::round_start_setup_layout(managers.fight_version())
+                == Some(crate::engine::fight::versions::RoundStartSetupLayout::Version7);
+        let exempt_ultimate =
+            |card| card_mechanic.entity_ultimate_ignores_limit(managers, pool, card);
         Self {
             committed: managers
                 .card
                 .committed_hand()
                 .iter()
-                .filter(|card| !card.temp_card.unwrap_or_default() && !ignores_draw_limit(card))
+                .filter(|card| {
+                    !(card.temp_card.unwrap_or_default()
+                        || ignores_draw_limit(card)
+                        || (version7 && exempt_ultimate(card)))
+                })
                 .count(),
             played: managers
                 .card

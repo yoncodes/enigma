@@ -959,13 +959,14 @@ pub fn run_start(
             let opening_ultimate_cards = opening_ultimate_cards
                 .take()
                 .expect("opening schedule includes BattleStart");
-            let (opening_team_cards, opening_normal_ultimates): (Vec<_>, Vec<_>) =
+            let (opening_team_cards, opening_dealt_ultimates): (Vec<_>, Vec<_>) =
                 opening_ultimate_cards.into_iter().partition(|card| {
                     card_mechanic.ultimate_ignores_limit(
                         managers,
                         card.uid.unwrap_or_default(),
                         card.skill_id.unwrap_or_default(),
-                    )
+                    ) && !(version7_opening
+                        && card_mechanic.entity_ultimate_ignores_limit(managers, pool, card))
                 });
             let raw_hand_size = hand_size;
             let hand_size = card_mechanic.normal_hand_limit(raw_hand_size, managers, pool);
@@ -974,7 +975,11 @@ pub fn run_start(
                 pool.entity(card.uid.unwrap_or_default())
                     .is_none_or(|entity| !card_mechanic.is_ultimate(managers, card, entity))
             });
-            let seeded_normal_limit = hand_size.saturating_sub(opening_normal_ultimates.len());
+            let ultimate_slots = opening_dealt_ultimates
+                .iter()
+                .filter(|card| card_mechanic.counts_toward_hand_limit(card, managers, pool))
+                .count();
+            let seeded_normal_limit = hand_size.saturating_sub(ultimate_slots);
             let mut normal_cards = 0;
             setup.hand.retain(|card| {
                 if !card_mechanic.counts_toward_hand_limit(card, managers, pool) {
@@ -990,7 +995,7 @@ pub fn run_start(
                     false
                 }
             });
-            setup.hand.splice(0..0, opening_normal_ultimates);
+            setup.hand.splice(0..0, opening_dealt_ultimates);
             let free_deal_count = setup
                 .hand
                 .iter()

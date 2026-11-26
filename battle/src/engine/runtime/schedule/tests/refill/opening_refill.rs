@@ -430,6 +430,66 @@ fn opening_team_cards_use_battle_start_ultimate_readiness() {
 }
 
 #[test]
+fn opening_deal_keeps_entity_exempt_ultimate_ahead_of_ordinary_cards() {
+    init_config();
+    let fight = Fight {
+        version: Some(7),
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                model_id: Some(3157),
+                team_type: Some(1),
+                current_hp: Some(100),
+                ex_skill: Some(31571131),
+                passive_skill: vec![31571143],
+                skill_group1: vec![31570111, 31570112],
+                skill_group2: vec![31571121],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    let catalog = SkillEffectCatalog::from_fight(config::configs::get(), &fight);
+    let card = |skill_id| CardInfo {
+        uid: Some(10),
+        skill_id: Some(skill_id),
+        ..Default::default()
+    };
+    run_start(
+        managers.catalog(),
+        &mut managers,
+        &pool,
+        &catalog,
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+        CardSetup {
+            hand: vec![card(31570111), card(31570111)],
+            draw_pile: vec![card(31571121)],
+            deck_num: 1,
+        },
+        2,
+    )
+    .unwrap();
+
+    assert_eq!(
+        managers
+            .card
+            .hand()
+            .iter()
+            .filter_map(|card| card.skill_id)
+            .collect::<Vec<_>>(),
+        vec![31571131, 31570112, 31571121]
+    );
+    assert_eq!(
+        managers.card.opening_deal().unwrap()[0].skill_id,
+        Some(31571131)
+    );
+}
+
+#[test]
 fn opening_setup_rejects_an_ineligible_seeded_ultimate() {
     init_config();
     let fight = Fight {
