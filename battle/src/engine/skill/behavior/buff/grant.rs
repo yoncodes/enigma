@@ -1,5 +1,18 @@
 use super::*;
 
+pub(super) fn snapshot_shared_attribute(
+    managers: &BattleManagers,
+    command: BattleCommand,
+) -> BattleCommand {
+    let BattleCommand::Buff(BuffCommand::Grant(grant)) = command else {
+        return command;
+    };
+    let buff_command =
+        crate::engine::skill::buff_act::each_change_attr::shared_critical_grant(managers, grant)
+            .map_or(BuffCommand::Grant(grant), BuffCommand::GrantSharedAttribute);
+    BattleCommand::Buff(buff_command)
+}
+
 pub(super) fn grant_command(
     source_uid: i64,
     target_uid: i64,

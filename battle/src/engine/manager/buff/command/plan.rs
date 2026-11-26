@@ -113,6 +113,16 @@ impl BuffManager {
                 plan.snapshot_markers = true;
                 (grant.origin, BuffPlanAction::Grant(Box::new(plan)))
             }
+            BuffCommand::GrantSharedAttribute(shared) => {
+                let grant = shared.grant;
+                let mut plan = self.plan_grant_with_source_attack(
+                    hp,
+                    GrantRequest::related(&grant, shared.relation),
+                    inputs,
+                )?;
+                plan.attr_snapshots = shared.attr_snapshots;
+                (grant.origin, BuffPlanAction::Grant(Box::new(plan)))
+            }
             BuffCommand::GrantUsingChildUid(grant) => (
                 grant.origin,
                 BuffPlanAction::Grant(Box::new(self.plan_grant_with_source_attack(

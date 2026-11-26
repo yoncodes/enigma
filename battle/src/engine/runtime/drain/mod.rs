@@ -805,6 +805,10 @@ fn attach_relation(
             stateful.relation = Some(relation);
             BuffCommand::GrantSourceRelative(stateful)
         }
+        BuffCommand::GrantSharedAttribute(mut shared) => {
+            shared.relation = Some(relation);
+            BuffCommand::GrantSharedAttribute(shared)
+        }
         other => other,
     }
 }

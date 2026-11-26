@@ -36,7 +36,7 @@ pub use command::{
     BuffPublishPart, BuffRefreshDuration, BuffRefreshDurationBySelector, BuffRefreshWire,
     BuffRemove, BuffRemoveSelector, BuffReplace, BuffReplacementParts, BuffRoundStartDurationSync,
     BuffSelector, BuffSetAmount, BuffSetState, BuffSpecialCount, BuffStateSnapshotWire,
-    DepletedBuff, RelatedBuffGrant, SourceRelativeBuffGrant,
+    DepletedBuff, RelatedBuffGrant, SharedAttributeGrant, SourceRelativeBuffGrant,
 };
 pub(crate) use command::{BuffPlan, BurnApplication};
 use definition::BuffDefinition;

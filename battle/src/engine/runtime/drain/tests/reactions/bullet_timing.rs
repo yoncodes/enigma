@@ -66,6 +66,6 @@ fn bullet_reactions_wait_for_the_attacking_skills_stat_grants() {
     );
     assert_eq!(
         managers.buff.fixed_attribute_delta(11, AttrId::CriticalDmg),
-        220
+        200
     );
 }

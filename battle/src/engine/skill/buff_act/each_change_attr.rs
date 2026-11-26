@@ -2,7 +2,7 @@ use crate::engine::{
     entity::attr::AttrId,
     manager::{
         BattleManagers,
-        buff::{ActiveBuffFeature, BuffManager},
+        buff::{ActiveBuffFeature, BuffGrant, BuffManager, SharedAttributeGrant},
         hp::{HpCommand, MaxHpAdjust},
     },
     skill::{
@@ -12,6 +12,48 @@ use crate::engine::{
 };
 
 const ACT_ID: i32 = 834;
+
+pub(crate) fn shared_critical_grant(
+    managers: &BattleManagers,
+    grant: BuffGrant,
+) -> Option<SharedAttributeGrant> {
+    let catalog = managers.catalog();
+    let row = catalog.game_data().skill_buff.get(grant.buff_id)?;
+    let (act, _) = row.features.split_once('#')?;
+    if catalog.buff_act_definition(act.trim().parse().ok()?)?.kind != BuffActKind::EachChangeAttr {
+        return None;
+    }
+    let features = managers.buff.definition_features(grant.buff_id);
+    let [feature] = features.as_slice() else {
+        return None;
+    };
+    let [_, source, 0, target, rate] = feature.values.as_slice() else {
+        return None;
+    };
+    if !buff_act::is_kind(feature, BuffActKind::EachChangeAttr)
+        || AttrId::from_raw(*source) != Some(AttrId::CriticalDmg)
+        || AttrId::from_raw(*target) != Some(AttrId::CriticalDmg)
+        || *rate <= 0
+    {
+        return None;
+    }
+    let source_uid = if grant.source_uid != 0 {
+        grant.source_uid
+    } else {
+        grant.target_uid
+    };
+    let value = scaled_attribute(managers, source_uid, AttrId::CriticalDmg, *rate);
+    Some(SharedAttributeGrant {
+        grant,
+        attr_snapshots: vec![(grant.target_uid, AttrId::CriticalDmg, value)],
+        relation: None,
+    })
+}
+
+fn scaled_attribute(managers: &BattleManagers, uid: i64, attr: AttrId, rate: i32) -> i32 {
+    (i64::from(managers.origin_attribute(uid, attr)) * i64::from(rate) / 1000)
+        .clamp(i64::from(i32::MIN), i64::from(i32::MAX)) as i32
+}
 
 pub(crate) fn definition_snapshot(
     managers: &BattleManagers,
@@ -40,9 +82,7 @@ pub(crate) fn definition_snapshot(
             if rate == 0 || attr == AttrId::Hp {
                 continue;
             }
-            let value = (i64::from(managers.origin_attribute(basis_uid, attr)) * i64::from(rate)
-                / 1000)
-                .clamp(i64::from(i32::MIN), i64::from(i32::MAX)) as i32;
+            let value = scaled_attribute(managers, basis_uid, attr, rate);
             match snapshots.iter_mut().find(|(known_owner, known_attr, _)| {
                 *known_owner == owner_uid && *known_attr == attr
             }) {

@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use sonettobuf::BuffActInfo;
 
 use crate::engine::{
+    entity::attr::AttrId,
     event::payload::BattleEvent,
     manager::hp::HpManager,
     skill::{
@@ -62,6 +63,13 @@ pub struct BuffGrantChild {
 pub struct SourceRelativeBuffGrant {
     pub grant: BuffGrant,
     pub act_info: Vec<BuffActInfo>,
+    pub relation: Option<BuffGrantRelation>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SharedAttributeGrant {
+    pub grant: BuffGrant,
+    pub attr_snapshots: Vec<(i64, AttrId, i32)>,
     pub relation: Option<BuffGrantRelation>,
 }
 
@@ -397,6 +405,7 @@ pub enum BuffCommand {
     Accumulate(BuffGrant),
     GrantStateful(BuffGrantChild),
     GrantSourceRelative(SourceRelativeBuffGrant),
+    GrantSharedAttribute(SharedAttributeGrant),
     GrantUsingChildUid(BuffGrant),
     GrantUsingNormalUid(BuffGrant),
     GrantChild(BuffGrantChild),

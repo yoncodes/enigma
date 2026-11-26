@@ -332,6 +332,7 @@ impl BattleManagers {
             BuffCommand::Grant(grant)
             | BuffCommand::GrantOnDeath(grant)
             | BuffCommand::GrantRelated(buff::RelatedBuffGrant { grant, .. })
+            | BuffCommand::GrantSharedAttribute(buff::SharedAttributeGrant { grant, .. })
             | BuffCommand::GrantIndependent(grant)
             | BuffCommand::Accumulate(grant)
             | BuffCommand::GrantUsingChildUid(grant)
@@ -377,10 +378,12 @@ impl BattleManagers {
         command: BuffCommand,
         resist_roll: Option<buff::ResistRoll>,
     ) -> Result<BuffPlan, BuffCommandError> {
+        let has_attribute_snapshot = matches!(&command, BuffCommand::GrantSharedAttribute(_));
         let source_uid = match &command {
             BuffCommand::Grant(grant)
             | BuffCommand::GrantOnDeath(grant)
             | BuffCommand::GrantRelated(buff::RelatedBuffGrant { grant, .. })
+            | BuffCommand::GrantSharedAttribute(buff::SharedAttributeGrant { grant, .. })
             | BuffCommand::GrantIndependent(grant)
             | BuffCommand::Accumulate(grant)
             | BuffCommand::GrantUsingChildUid(grant)
@@ -447,7 +450,9 @@ impl BattleManagers {
         {
             plan.initialize_added_and_fanout_snapshot_act_info(act_info);
         }
-        if let Some((source_uid, target_uid, buff_id)) = plan.each_change_attr_route() {
+        if !has_attribute_snapshot
+            && let Some((source_uid, target_uid, buff_id)) = plan.each_change_attr_route()
+        {
             let values = crate::engine::skill::buff_act::each_change_attr::definition_snapshot(
                 self, buff_id, source_uid, target_uid,
             );
