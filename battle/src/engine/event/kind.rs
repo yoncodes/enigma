@@ -12,6 +12,7 @@ pub enum EventKind {
     AfterRoundStart,
     BuffAdded,
     BuffChanged,
+    TeamBuffLayersSettled,
     BuffStateChanged,
     BuffRemoved,
     BuffRejected,

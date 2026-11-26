@@ -149,6 +149,10 @@ pub enum ParsedConditionKind {
         type_id: i32,
         threshold: i32,
     },
+    AccTeamEnemyBuffLayers {
+        type_id: i32,
+        threshold: i32,
+    },
     HpPermille {
         compare: ConditionCompare,
         threshold: i32,

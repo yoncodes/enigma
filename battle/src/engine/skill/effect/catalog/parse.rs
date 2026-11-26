@@ -222,6 +222,23 @@ pub(super) fn parse_slot(db: &GameDB, raw: RawSlot<'_>) -> Result<SkillEffectSlo
         return Err(target_error(condition_target));
     }
     let parsed_target = parse_target(target).ok_or_else(|| target_error(target))?;
+    if let [condition] = conditions.as_slice()
+        && let ParsedConditionKind::AccTeamEnemyBuffLayers { type_id, .. } = condition.kind
+    {
+        if parsed_condition_target.code != 206 || !parsed_condition_target.raw.is_empty() {
+            return Err(target_error(condition_target));
+        }
+        if db.skill_bufftype.get(type_id).is_none() {
+            return Err(SlotParseError::BehaviorConfig(
+                BehaviorConfigError::Unsupported,
+            ));
+        }
+        if parsed_target.code != crate::engine::skill::target::request::SOURCE_TARGET_CODE
+            || !parsed_target.raw.is_empty()
+        {
+            return Err(target_error(target));
+        }
+    }
     if parsed_target.code != 999
         && !crate::engine::skill::target::is_supported_target(&parsed_target)
     {

@@ -27,6 +27,7 @@ struct CatalogEffect {
 pub struct SkillEffectCatalog {
     effects: HashMap<i32, CatalogEffect>,
     preparation_observers: HashSet<i32>,
+    team_buff_layer_observers: HashMap<i32, Vec<i32>>,
     aliases: HashMap<i32, i32>,
     effect_tags: HashMap<i32, i32>,
     logic_targets: HashMap<i32, TargetRequest>,
@@ -109,6 +110,31 @@ impl SkillEffectCatalog {
         }
         let subscriptions =
             config::configs::try_get().map(|_| Self::compile_subscription_lanes(&effect));
+        let team_buff_layers = effect
+            .slots
+            .iter()
+            .filter_map(|slot| {
+                let [condition] = slot.conditions.as_slice() else {
+                    return None;
+                };
+                let ParsedConditionKind::AccTeamEnemyBuffLayers { type_id, .. } = condition.kind
+                else {
+                    return None;
+                };
+                slot.compiled_subscriptions()
+                    .is_ok_and(|keys| {
+                        keys.iter()
+                            .any(|key| key.event == EventKind::TeamBuffLayersSettled)
+                    })
+                    .then_some(type_id)
+            })
+            .collect::<Vec<_>>();
+        if team_buff_layers.is_empty() {
+            self.team_buff_layer_observers.remove(&effect.skill_id);
+        } else {
+            self.team_buff_layer_observers
+                .insert(effect.skill_id, team_buff_layers);
+        }
         self.effects.insert(
             effect.skill_id,
             CatalogEffect {
@@ -120,6 +146,16 @@ impl SkillEffectCatalog {
 
     pub(crate) fn has_preparation_observers(&self) -> bool {
         !self.preparation_observers.is_empty()
+    }
+
+    pub(crate) fn observes_team_buff_layers(&self) -> bool {
+        !self.team_buff_layer_observers.is_empty()
+    }
+
+    pub(crate) fn tracks_team_buff_layers(&self, type_id: i32) -> bool {
+        self.team_buff_layer_observers
+            .values()
+            .any(|types| types.contains(&type_id))
     }
 
     #[cfg(test)]

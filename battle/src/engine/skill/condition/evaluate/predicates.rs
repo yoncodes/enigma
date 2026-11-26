@@ -204,6 +204,14 @@ pub(super) fn condition_kind_matches(
         ParsedConditionKind::AccBuffAddedCount { .. } => managers.is_some_and(|managers| {
             super::super::buff::added_count_repeats(condition, source_uid, managers, context) > 0
         }),
+        ParsedConditionKind::AccTeamEnemyBuffLayers { type_id, threshold } => {
+            super::super::buff::team_enemy_layer_repeats(
+                *type_id,
+                *threshold,
+                pool.team_type(source_uid),
+                context,
+            ) > 0
+        }
         ParsedConditionKind::AccBuffTypeAddedCount { .. }
         | ParsedConditionKind::AccCommittedBuffTypeAddedCount { .. } => {
             managers.is_some_and(|managers| {

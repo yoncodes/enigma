@@ -12,6 +12,7 @@ use super::{command_prepare::prepare_command, *};
 mod commit;
 mod death;
 mod publication;
+mod team_buff_layers;
 
 struct DrainAccess<'a> {
     managers: &'a mut BattleManagers,
@@ -226,6 +227,7 @@ pub(super) fn drain_command(
     // Managers publish semantic events through the bus. Reactions are
     // derived from these committed events, never fired by packet code.
     let mut events = std::iter::from_fn(|| bus.pop()).collect::<Vec<_>>();
+    let team_layer_settlements = managers.buff.settle_team_buff_layers(&events, catalog);
     let mut event_groups = match &outcome {
         RuleOutcome::HpBatch(batch) => grouped_hp_events(
             &events,
@@ -428,6 +430,7 @@ pub(super) fn drain_command(
         publication::ReleasedEvents {
             started_after_reactions,
             event_groups: &event_groups,
+            team_layer_settlements,
             released_hit_events: released_hit_events.as_deref(),
             terminal_owner_uids: terminal_owner_uids.as_deref(),
             pending_deaths: active_action_scope

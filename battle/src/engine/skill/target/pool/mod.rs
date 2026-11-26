@@ -130,6 +130,7 @@ pub struct TargetContext {
     pub added_buff_type_id: i32,
     pub added_buff_amount: i32,
     pub added_buff_type_total: Option<i32>,
+    pub team_buff_layers: Option<crate::engine::event::payload::TeamBuffLayersSettled>,
     pub added_buff_target_uid: i64,
     pub added_buff_status_id: i32,
     pub removed_buff_id: i32,

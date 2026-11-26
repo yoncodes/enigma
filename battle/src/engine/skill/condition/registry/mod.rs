@@ -624,6 +624,11 @@ const fn bloodtithe_gain(mut metadata: ConditionMetadata) -> ConditionMetadata {
     metadata
 }
 
+const fn team_buff_layer_reward(mut metadata: ConditionMetadata) -> ConditionMetadata {
+    metadata.standalone_behavior = Some(DefinitionKey::new(1, "AddBuff"));
+    reaction_targets_owner(metadata)
+}
+
 pub const fn filters_behavior_targets(mut metadata: ConditionMetadata) -> ConditionMetadata {
     metadata.filters_behavior_targets = true;
     metadata.behavior_target_order = BehaviorTargetOrder::EntityIdentityMap;
@@ -984,6 +989,7 @@ condition_definitions! {
     [73208] "TeammateAliveNum" => entity_count::teammates_equal, event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterDamage));
     [73210] "TeammateAliveNum" => entity_count::teammates_up_to_three, event_trigger(EventKind::SkillAction, Some(SkillPhase::AfterHit));
     [583004] "AccTeamAddBuffCountByBuffId" => buff::team_added_count, reaction_targets_owner(predicate(&[EventKind::BuffAdded, EventKind::BuffChanged]));
+    [761004] "AccTeamAddBuffLayerByBuffTypeId" => buff::team_enemy_layers, team_buff_layer_reward(predicate(&[EventKind::TeamBuffLayersSettled]));
     [581] "AccAddBuffCountByBuffId" => buff::owner_added_count, reaction_targets_owner(predicate(&[EventKind::BuffAdded, EventKind::BuffChanged]));
     [730004] "AccAddBuffCountByBuffTypeIdAllEffect" => buff::owner_added_single_type, after_field_level_skill(event_target_observes(reaction_targets_owner(predicate(&[EventKind::BuffAdded, EventKind::BuffChanged]))));
     [730212] "AccAddBuffCountByBuffTypeIdAllEffect" => buff::owner_added_type_count, in_causing_frame(reaction_targets_owner(predicate(&[EventKind::BuffAdded, EventKind::BuffChanged])));

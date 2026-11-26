@@ -52,6 +52,14 @@ pub struct BuffChangeEvent {
     pub expiry: BuffExpiry,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TeamBuffLayersSettled {
+    pub team: i32,
+    pub type_id: i32,
+    pub before: i32,
+    pub after: i32,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum BuffExpiry {
     #[default]
@@ -275,6 +283,7 @@ pub enum BattleEvent {
     AllyAction(crate::engine::skill::action::ActionEvent),
     BuffAdded(BuffChangeEvent),
     BuffChanged(BuffChangeEvent),
+    TeamBuffLayersSettled(TeamBuffLayersSettled),
     BuffStateChanged(BuffStateChangeEvent),
     BuffRemoved(BuffChangeEvent),
     BuffRejected(BuffRejectedEvent),
@@ -389,6 +398,7 @@ impl BattleEvent {
             | Self::CardChanged(_)
             | Self::FieldChanged(_)
             | Self::FieldTransferred { .. }
+            | Self::TeamBuffLayersSettled(_)
             | Self::BuffsSettled(_)
             | Self::AfterSideFinalExpiry(_)
             | Self::BloodtitheChanged { .. }
@@ -433,6 +443,7 @@ impl BattleEvent {
             | Self::CardChanged(_)
             | Self::FieldChanged(_)
             | Self::FieldTransferred { .. }
+            | Self::TeamBuffLayersSettled(_)
             | Self::BuffsSettled(_)
             | Self::AfterSideFinalExpiry(_)
             | Self::BloodtitheChanged { .. }
@@ -456,6 +467,7 @@ impl BattleEvent {
             Self::AllyAction(_) => EventKind::AllyAction,
             Self::BuffAdded(_) => EventKind::BuffAdded,
             Self::BuffChanged(_) => EventKind::BuffChanged,
+            Self::TeamBuffLayersSettled(_) => EventKind::TeamBuffLayersSettled,
             Self::BuffStateChanged(_) => EventKind::BuffStateChanged,
             Self::BuffRemoved(_) => EventKind::BuffRemoved,
             Self::BuffRejected(_) => EventKind::BuffRejected,

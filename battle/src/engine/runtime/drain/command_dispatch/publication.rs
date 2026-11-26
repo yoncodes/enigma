@@ -219,6 +219,7 @@ fn push_fanout(
 pub(super) struct ReleasedEvents<'a> {
     pub(super) started_after_reactions: Option<ReactionBatch>,
     pub(super) event_groups: &'a [Vec<BattleEvent>],
+    pub(super) team_layer_settlements: Vec<BattleEvent>,
     pub(super) released_hit_events: Option<&'a [Vec<BattleEvent>]>,
     pub(super) terminal_owner_uids: Option<&'a [i64]>,
     pub(super) pending_deaths: Option<&'a [PendingDeath]>,
@@ -254,6 +255,7 @@ pub(super) fn dispatch_after(
     let ReleasedEvents {
         started_after_reactions,
         event_groups,
+        team_layer_settlements,
         released_hit_events,
         terminal_owner_uids,
         pending_deaths,
@@ -286,6 +288,21 @@ pub(super) fn dispatch_after(
             field_transfer_owner,
         )?
     };
+    if !team_layer_settlements.is_empty() {
+        reactions.append(super::team_buff_layers::reactions(
+            DrainAccess {
+                managers,
+                pool,
+                catalog,
+                determinism,
+                result,
+                state,
+            },
+            scope,
+            team_layer_settlements,
+            terminal_owner_uids,
+        )?);
+    }
     super::super::field_level::bind_reactions(
         field_level_grant,
         action_scope.map(Vec::as_slice),

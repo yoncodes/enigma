@@ -126,6 +126,9 @@ pub(super) fn apply_event_context(
         return;
     }
     match event {
+        BattleEvent::TeamBuffLayersSettled(settled) => {
+            context.team_buff_layers = Some(*settled);
+        }
         BattleEvent::BuffAdded(change) | BattleEvent::BuffChanged(change) => {
             context.runtime_target_uid = change.target_uid;
             context.added_buff_id = change.buff_id;

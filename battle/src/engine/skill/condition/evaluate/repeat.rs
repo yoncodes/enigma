@@ -237,6 +237,14 @@ pub(super) fn condition_repeat_count(
                 .unwrap_or_default(),
         ),
         ParsedConditionKind::BurnOverflow => Some(context.buff_overflow_amount),
+        ParsedConditionKind::AccTeamEnemyBuffLayers { type_id, threshold } => {
+            Some(super::super::buff::team_enemy_layer_repeats(
+                *type_id,
+                *threshold,
+                pool.team_type(source_uid),
+                context,
+            ))
+        }
         _ => None,
     }
 }

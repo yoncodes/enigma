@@ -1,4 +1,5 @@
 use super::*;
+use crate::engine::event::payload::BattleEvent;
 
 pub(super) fn emit(
     invocation: &SkillInvocation,
@@ -213,7 +214,9 @@ pub(super) fn emit(
             continue;
         }
         let conditions = satisfied_card_enchants(&conditions, &invocation.card_enchants);
-        let condition_targets = if slot.conditions.is_empty() {
+        let condition_targets = if slot.conditions.is_empty()
+            || matches!(selected_event, Some(BattleEvent::TeamBuffLayersSettled(_)))
+        {
             Vec::new()
         } else {
             TargetResolver::resolve_with_managers_and_context(

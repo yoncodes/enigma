@@ -8,6 +8,26 @@ use crate::engine::{
 
 use super::parse::parse_fixed;
 
+pub fn team_enemy_layers(_: i32, _: &str, args: &[String]) -> Option<ParsedConditionKind> {
+    let [type_id, threshold] = parse_fixed(args)?;
+    (type_id > 0 && threshold > 0)
+        .then_some(ParsedConditionKind::AccTeamEnemyBuffLayers { type_id, threshold })
+}
+
+pub fn team_enemy_layer_repeats(
+    type_id: i32,
+    threshold: i32,
+    source_team: Option<i32>,
+    context: crate::engine::skill::target::TargetContext,
+) -> i32 {
+    context
+        .team_buff_layers
+        .filter(|settled| Some(settled.team) == source_team && settled.type_id == type_id)
+        .map_or(0, |settled| {
+            settled.after / threshold - settled.before / threshold
+        })
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BuffConditionMode {
     Present,

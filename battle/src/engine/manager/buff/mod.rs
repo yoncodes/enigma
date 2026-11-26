@@ -14,6 +14,7 @@ mod family_priority;
 mod feature;
 mod grant_plan;
 mod layer_halo_allies;
+mod layer_settlement;
 mod lifecycle;
 mod query;
 mod result;
@@ -80,6 +81,7 @@ pub struct BuffManager {
     added_by_owner_type: HashMap<(i64, i32), i32>,
     added_by_team: HashMap<(i32, i32), i32>,
     added_history: HashMap<i64, Vec<i32>>,
+    layer_settlement: layer_settlement::Ledger,
     act_states: HashMap<(i64, i32), state::DotState>,
     act_values: HashMap<(i64, i32), i32>,
     grant_values: HashMap<(i64, i32), i32>,
@@ -105,6 +107,7 @@ impl Default for BuffManager {
             added_by_owner_type: HashMap::new(),
             added_by_team: HashMap::new(),
             added_history: HashMap::new(),
+            layer_settlement: layer_settlement::Ledger::default(),
             act_states: HashMap::new(),
             act_values: HashMap::new(),
             grant_values: HashMap::new(),

@@ -14,4 +14,5 @@ mod shared_damage_counts;
 mod shield_duration;
 mod stat_share;
 mod target_and_conduit;
+mod team_buff_layers;
 mod ultimate_attribute;
