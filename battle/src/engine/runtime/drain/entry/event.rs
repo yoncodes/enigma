@@ -149,6 +149,52 @@ pub fn run_group_event_lanes(
     lanes: &[ReactionLane],
     owner_uids: Option<&[i64]>,
 ) -> Result<DrainResult, DrainError> {
+    drain_group_event(
+        managers,
+        pool,
+        catalog,
+        determinism,
+        context,
+        event,
+        lanes,
+        owner_uids,
+        DefenderCardCleanupOwner::DeathAction,
+    )
+}
+
+pub(in crate::engine::runtime) fn run_attacker_round_end_skills(
+    managers: &mut BattleManagers,
+    pool: &TargetPool,
+    catalog: &SkillEffectCatalog,
+    determinism: &mut RoundDeterminism,
+    context: TargetContext,
+    owner_uids: &[i64],
+) -> Result<DrainResult, DrainError> {
+    drain_group_event(
+        managers,
+        pool,
+        catalog,
+        determinism,
+        context,
+        BattleEvent::Kind(EventKind::RoundEnd),
+        &[ReactionLane::Skills],
+        Some(owner_uids),
+        DefenderCardCleanupOwner::ScheduledRoundPhase,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn drain_group_event(
+    managers: &mut BattleManagers,
+    pool: &TargetPool,
+    catalog: &SkillEffectCatalog,
+    determinism: &mut RoundDeterminism,
+    context: TargetContext,
+    event: BattleEvent,
+    lanes: &[ReactionLane],
+    owner_uids: Option<&[i64]>,
+    cleanup_owner: DefenderCardCleanupOwner,
+) -> Result<DrainResult, DrainError> {
     let mut frames = Vec::new();
     let root = push_root(&mut frames, FrameOwner::Command, FrameTrigger::Active);
     let mut result = DrainResult {
@@ -177,6 +223,7 @@ pub fn run_group_event_lanes(
                     Some(std::slice::from_ref(owner_uid)),
                     &scope,
                     std::mem::take(&mut result.frames),
+                    cleanup_owner,
                 )?;
                 result.outcomes.extend(next.outcomes);
                 result.events.extend(next.events);
@@ -206,6 +253,7 @@ pub fn run_group_event_lanes(
             owner_uids,
             &scope,
             std::mem::take(&mut result.frames),
+            cleanup_owner,
         )?;
         result.outcomes.extend(next.outcomes);
         result.events.extend(next.events);
@@ -228,6 +276,7 @@ fn drain_group_event_lane(
     owner_uids: Option<&[i64]>,
     scope: &FramePath,
     frames: Vec<SemanticFrame>,
+    cleanup_owner: DefenderCardCleanupOwner,
 ) -> Result<DrainResult, DrainError> {
     let current_pool = subscriber_view(pool, managers, event);
     let mut reactions = dispatch_reactions(
@@ -257,7 +306,7 @@ fn drain_group_event_lane(
             frames,
         );
     }
-    drain_queue_with_frames(
+    drain_queue_with_frames_and_cleanup_owner(
         managers,
         pool,
         catalog,
@@ -265,6 +314,7 @@ fn drain_group_event_lane(
         context,
         &mut queue,
         frames,
+        cleanup_owner,
     )
 }
 

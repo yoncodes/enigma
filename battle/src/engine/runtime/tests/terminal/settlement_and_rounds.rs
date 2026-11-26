@@ -328,6 +328,15 @@ fn attacker_settlement_defeat_retires_the_last_conduit() {
 
 #[test]
 fn terminal_round_keeps_the_unplayed_enemy_ai_queue() {
+    check_terminal_enemy_ai_queue(false);
+}
+
+#[test]
+fn terminal_round_end_reaction_keeps_the_unplayed_enemy_ai_queue() {
+    check_terminal_enemy_ai_queue(true);
+}
+
+fn check_terminal_enemy_ai_queue(kill_at_round_end: bool) {
     crate::test_support::init_config();
     let entity = |uid, team_type| FightEntityInfo {
         uid: Some(uid),
@@ -354,16 +363,20 @@ fn terminal_round_keeps_the_unplayed_enemy_ai_queue() {
         ..Default::default()
     });
     let skill_id = 9_900_080;
-    runtime.catalog.insert(ParsedSkillEffect {
-        skill_id,
-        slots: vec![SkillEffectSlot::new(
-            ParsedBehavior::from_spec(BehaviorSpec::new(60015, "Kill"), Vec::new(), Vec::new()),
-            TargetRequest {
-                code: 202,
-                raw: Vec::new(),
-            },
-        )],
-    });
+    if kill_at_round_end {
+        install_setup_enemy_kill(&mut runtime, 10, skill_id, 302, NoneMode::RoundEnd);
+    } else {
+        runtime.catalog.insert(ParsedSkillEffect {
+            skill_id,
+            slots: vec![SkillEffectSlot::new(
+                ParsedBehavior::from_spec(BehaviorSpec::new(60015, "Kill"), Vec::new(), Vec::new()),
+                TargetRequest {
+                    code: 202,
+                    raw: Vec::new(),
+                },
+            )],
+        });
+    }
     runtime
         .managers
         .execute_card(crate::engine::manager::card::CardCommand::Setup(
@@ -398,17 +411,22 @@ fn terminal_round_keeps_the_unplayed_enemy_ai_queue() {
         .unwrap();
     let round = runtime
         .build_begin_round_from_schedule(&BeginRoundRequest {
-            opers: vec![BeginRoundOper {
-                oper_type: Some(crate::engine::manager::card::CardOpType::PlayCard.id()),
-                param1: Some(1),
-                to_id: Some(-1),
-                ..Default::default()
-            }],
+            opers: if kill_at_round_end {
+                Vec::new()
+            } else {
+                vec![BeginRoundOper {
+                    oper_type: Some(crate::engine::manager::card::CardOpType::PlayCard.id()),
+                    param1: Some(1),
+                    to_id: Some(-1),
+                    ..Default::default()
+                }]
+            },
             ..Default::default()
         })
         .unwrap();
 
     assert_eq!(round.is_finish, Some(true));
+    assert_eq!(runtime.managers.hp.current(-1), 0);
     assert_eq!(
         runtime.managers.card.ai_queue(),
         std::slice::from_ref(&ai_card)

@@ -96,15 +96,13 @@ pub fn run_attacker_round_end(
     );
     append(
         &mut result,
-        drain::run_group_event(
+        drain::run_attacker_round_end_skills(
             managers,
             pool,
             catalog,
             determinism,
             context,
-            BattleEvent::Kind(EventKind::RoundEnd),
-            drain::ReactionLane::Skills,
-            Some(&owners),
+            &owners,
         )?,
     );
     let mut settlement_owners = owners;
