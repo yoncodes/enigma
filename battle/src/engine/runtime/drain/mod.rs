@@ -32,6 +32,7 @@ use crate::engine::{
 
 mod command_dispatch;
 mod command_prepare;
+mod defeat;
 mod entry;
 mod field_level;
 mod fight_tasks;
@@ -45,6 +46,7 @@ mod skill_dispatch;
 mod state;
 
 use command_dispatch::drain_command;
+use defeat::settle_defeat;
 pub use entry::*;
 pub(super) use model::attack_has_no_target;
 use model::{
@@ -66,34 +68,13 @@ use reactions::{
 use skill_dispatch::drain_skill;
 use state::DrainState;
 
-fn push_death(
-    frames: &mut [SemanticFrame],
-    path: &[usize],
-    managers: &mut BattleManagers,
-    state: &DrainState,
-    death: crate::engine::manager::hp::PendingDeath,
-) {
-    if !managers.hp.is_current_death(death) {
-        return;
-    }
-    managers.conduit.record_death(death);
-    let check_health = state.is_primary_death(death);
-    let death = death.transition();
-    for change in fight_tasks::settle_death(managers, death.target_uid, check_health)
-        .into_iter()
-        .flatten()
-    {
-        push_change(
-            frames,
-            path,
-            crate::engine::runtime::change::BattleChange::FightTask(change),
-        );
-    }
-    push_change(
-        frames,
-        path,
-        crate::engine::runtime::change::BattleChange::Death(death),
-    );
+struct DrainAccess<'a> {
+    managers: &'a mut BattleManagers,
+    pool: &'a TargetPool,
+    catalog: &'a SkillEffectCatalog,
+    determinism: &'a mut RoundDeterminism,
+    result: &'a mut DrainResult,
+    state: &'a mut DrainState,
 }
 
 fn drain_queue(

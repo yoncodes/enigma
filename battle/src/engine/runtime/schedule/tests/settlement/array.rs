@@ -182,3 +182,74 @@ fn recasting_a_timed_array_replaces_the_active_copy() {
         [FieldChangeKind::Removed, FieldChangeKind::Deployed],
     );
 }
+
+#[test]
+fn defeating_the_array_caster_removes_the_field_and_its_grants() {
+    use crate::engine::runtime::executor::RuleOutcome;
+
+    init_config();
+    let fight = fight();
+    let pool = TargetPool::from_fight(&fight);
+    let catalog = SkillEffectCatalog::from_fight(config::configs::get(), &fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    cast(&mut managers, &pool, &catalog);
+    let caster_grant = managers.buff.buff_id_uid(10, 31020117).unwrap();
+    let ally_grant = managers.buff.buff_id_uid(11, 31020117).unwrap();
+
+    let result = drain::run(
+        &mut managers,
+        &pool,
+        &catalog,
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+        [RuleOp::Command(BattleCommand::Hp(HpCommand::Lose(
+            HpLoss {
+                origin: CommandOrigin {
+                    domain: RuleDomain::Behavior,
+                    key: DefinitionKey::new(0, "Test"),
+                },
+                source_uid: -1,
+                target_uid: 10,
+                amount: 1_000,
+                config_effect: 0,
+                hurt: None,
+            },
+        )))],
+    )
+    .unwrap();
+
+    assert!(result.events.iter().any(|event| {
+        matches!(event, BattleEvent::EntityDied(death) if death.target_uid == 10)
+    }));
+    assert!(result.events.iter().any(|event| {
+        matches!(event, BattleEvent::FieldChanged(change) if change.kind == FieldChangeKind::Removed)
+    }));
+    let outcomes = result
+        .outcomes
+        .iter()
+        .filter_map(|outcome| match outcome {
+            RuleOutcome::DeathSettlement(death) if death.transition().target_uid == 10 => {
+                Some("defeat")
+            }
+            RuleOutcome::Buff(changes)
+                if changes.change.removed.iter().any(|removed| {
+                    matches!(removed.buff.uid, Some(uid) if uid == caster_grant || uid == ally_grant)
+                }) =>
+            {
+                Some("grant removed")
+            }
+            RuleOutcome::Field(change) if change.kind == FieldChangeKind::Removed => {
+                Some("array removed")
+            }
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        outcomes,
+        ["defeat", "grant removed", "grant removed", "array removed"]
+    );
+    assert!(managers.field.get(1).is_none());
+    assert!(managers.buff.snapshot(10, caster_grant).is_none());
+    assert!(managers.buff.snapshot(11, ally_grant).is_none());
+    assert_eq!(managers.hp.current(11), 1_000);
+}

@@ -212,7 +212,18 @@ pub(super) fn drain_skill(
                 result,
                 state,
             )?;
-            push_death(&mut result.frames, &frame_path, managers, state, death);
+            settle_defeat(
+                DrainAccess {
+                    managers,
+                    pool,
+                    catalog,
+                    determinism,
+                    result,
+                    state,
+                },
+                &frame_path,
+                death,
+            )?;
             defeated_owner_card_cleanups.push(death.transition());
         }
     }

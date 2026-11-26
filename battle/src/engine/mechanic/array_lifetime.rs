@@ -19,6 +19,11 @@ const ORIGIN: CommandOrigin = CommandOrigin {
     key: DefinitionKey::new(0, "ArrayDuration"),
 };
 
+const CASTER_DEFEAT: CommandOrigin = CommandOrigin {
+    domain: RuleDomain::Lifecycle,
+    key: DefinitionKey::new(0, "ArrayCasterDefeat"),
+};
+
 pub(crate) fn is_timed(field: FieldState, catalog: BattleCatalog) -> bool {
     let key = field.origin.key;
     field.definition.duration > 0
@@ -79,6 +84,14 @@ pub(crate) fn withdraw(
         .collect::<Vec<_>>();
     ops.push(remove_field(field.team, origin));
     ops
+}
+
+pub(crate) fn caster_defeated(managers: &BattleManagers, caster_uid: i64) -> Vec<RuleOp> {
+    managers
+        .field
+        .states()
+        .find(|field| field.owner_uid == caster_uid && is_timed(*field, managers.catalog()))
+        .map_or_else(Vec::new, |field| withdraw(managers, field, CASTER_DEFEAT))
 }
 
 fn remove_field(team: i32, origin: CommandOrigin) -> RuleOp {

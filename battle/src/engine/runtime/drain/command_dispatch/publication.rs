@@ -130,20 +130,14 @@ pub(super) fn record(
             );
         }
     }
-    if let RuleOutcome::DeathSettlement(death) = outcome {
-        push_death(&mut result.frames, frame_path, managers, state, *death);
-    } else {
-        for change in outcome.changes() {
-            let change = match (replacement, change) {
-                (Some(parts), crate::engine::runtime::change::BattleChange::Buff(_)) => {
-                    crate::engine::runtime::change::BattleChange::Buff(Box::new(
-                        parts.addition.clone(),
-                    ))
-                }
-                (_, change) => change,
-            };
-            push_change(&mut result.frames, frame_path, change);
-        }
+    for change in outcome.changes() {
+        let change = match (replacement, change) {
+            (Some(parts), crate::engine::runtime::change::BattleChange::Buff(_)) => {
+                crate::engine::runtime::change::BattleChange::Buff(Box::new(parts.addition.clone()))
+            }
+            (_, change) => change,
+        };
+        push_change(&mut result.frames, frame_path, change);
     }
     for (owner, change) in outcome.owned_changes() {
         let nested_owner = match owner {

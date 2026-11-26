@@ -16,15 +16,6 @@ mod payment_critical;
 mod publication;
 mod team_buff_layers;
 
-struct DrainAccess<'a> {
-    managers: &'a mut BattleManagers,
-    pool: &'a TargetPool,
-    catalog: &'a SkillEffectCatalog,
-    determinism: &'a mut RoundDeterminism,
-    result: &'a mut DrainResult,
-    state: &'a mut DrainState,
-}
-
 #[allow(clippy::too_many_arguments)]
 pub(super) fn drain_command(
     managers: &mut BattleManagers,
@@ -429,6 +420,21 @@ pub(super) fn drain_command(
     );
     let was_hp_batch = matches!(&outcome, RuleOutcome::HpBatch(_));
     result.outcomes.push(outcome);
+    if let Some(RuleOutcome::DeathSettlement(death)) = result.outcomes.last() {
+        let death = *death;
+        settle_defeat(
+            DrainAccess {
+                managers,
+                pool,
+                catalog,
+                determinism,
+                result,
+                state,
+            },
+            &frame_path,
+            death,
+        )?;
+    }
 
     let terminal_owner_uids = managers
         .terminal_outcome()
