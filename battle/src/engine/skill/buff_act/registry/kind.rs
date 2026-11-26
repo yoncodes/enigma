@@ -101,6 +101,7 @@ pub enum BuffActKind {
     Cure,
     AdvancedCure,
     UltimateMoxieHeal,
+    TidalTempoSettlement,
     CureUpByLostHp,
     DamageNotMoreThan,
     DeviceCostReduce,

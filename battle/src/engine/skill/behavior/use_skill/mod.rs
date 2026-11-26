@@ -419,10 +419,12 @@ impl BehaviorHandler for Handler {
                     .into();
                 invocation.target =
                     crate::engine::skill::action::SkillTarget::Explicit(context.target_uid);
+                let action = invocation.plan;
                 Some(vec![
                     RuleOp::Skill(invocation),
-                    RuleOp::Command(BattleCommand::ExPoint(ExPointCommand::Spend(
-                        ExPointChange {
+                    RuleOp::DebitUltimate {
+                        action,
+                        cost: ExPointCommand::Spend(ExPointChange {
                             origin,
                             source_uid: context.source_uid,
                             target_uid: context.source_uid,
@@ -430,8 +432,8 @@ impl BehaviorHandler for Handler {
                             config_effect: 0,
                             effect_type: sonettobuf::effect_type_enum::EffectType::Expointchange
                                 as i32,
-                        },
-                    ))),
+                        }),
+                    },
                 ])
             }
             BehaviorKind::DirectUseSkill => {
@@ -698,27 +700,27 @@ fn direct_big_skill_rule_ops(
     );
     let origin = super::command_origin(behavior)?;
     let ex_point = |delta| {
-        RuleOp::Command(BattleCommand::ExPoint(ExPointCommand::Change(
-            ExPointChange {
-                origin,
-                source_uid: context.target_uid,
-                target_uid: context.target_uid,
-                delta,
-                config_effect: 0,
-                effect_type: sonettobuf::effect_type_enum::EffectType::Expointchange as i32,
-            },
-        )))
+        ExPointCommand::Change(ExPointChange {
+            origin,
+            source_uid: context.target_uid,
+            target_uid: context.target_uid,
+            delta,
+            config_effect: 0,
+            effect_type: sonettobuf::effect_type_enum::EffectType::Expointchange as i32,
+        })
+    };
+    let action = crate::engine::skill::action::SkillRequest {
+        source_uid: context.target_uid,
+        skill_id,
     };
     let mut ops = Vec::with_capacity(3);
     if consumed > 0 {
-        ops.push(ex_point(-consumed));
+        ops.push(RuleOp::DebitUltimate {
+            action,
+            cost: ex_point(-consumed),
+        });
     }
-    let mut invocation: crate::engine::skill::action::SkillInvocation =
-        crate::engine::skill::action::SkillRequest {
-            source_uid: context.target_uid,
-            skill_id,
-        }
-        .into();
+    let mut invocation: crate::engine::skill::action::SkillInvocation = action.into();
     invocation.mode = crate::engine::skill::action::SkillExecutionMode::DirectBig;
     invocation.additional_moxie = consumed.saturating_sub(refund);
     invocation.moxie_spent = consumed;
@@ -726,7 +728,7 @@ fn direct_big_skill_rule_ops(
         crate::engine::skill::action::SkillTrigger::Explicit(context.active_skill_id);
     ops.push(RuleOp::Skill(invocation));
     if refund > 0 {
-        ops.push(ex_point(refund));
+        ops.push(RuleOp::Command(BattleCommand::ExPoint(ex_point(refund))));
     }
     Some(ops)
 }

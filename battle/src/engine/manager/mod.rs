@@ -1560,6 +1560,7 @@ impl BattleManagers {
         self.round_rule_fires.clear();
         self.buff_act_fires.clear();
         self.configured_rule_progress.begin_round_start();
+        self.ex_point.clear_round_ultimate_spend();
         self.hp.begin_round();
     }
 

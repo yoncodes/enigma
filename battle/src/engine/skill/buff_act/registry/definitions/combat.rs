@@ -4,6 +4,13 @@ use super::super::*;
 use crate::engine::skill::buff_act;
 
 buff_act_definitions! {
+    (1156, "NarcissusPassionOriginHurt") => TidalTempoSettlement,
+        source: Applier, runtime_marker: BeforeChanges(Owner),
+        runtime: buff_act::tidal_tempo_settlement::rule_ops,
+        supports: buff_act::tidal_tempo_settlement::supports,
+        references: buff_act::tidal_tempo_settlement::references,
+        wire: (buff_act::wire::BuffActWireDefinition::add(
+            DefinitionKey::new(1156, "NarcissusPassionOriginHurt"), &[EffectType::None as i32]));
     (703, "ExPointMaxAdd") => ExPointMaxAdd,
         transactions: [EventKind::BuffAdded, EventKind::BuffChanged, EventKind::BuffRemoved],
         frame: CausingFrame,

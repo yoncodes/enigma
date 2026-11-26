@@ -10,6 +10,8 @@ use crate::engine::{
 
 use super::entities;
 
+mod ultimate_spend;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ExPointKind {
     Common,
@@ -448,6 +450,7 @@ pub struct ExPointManager {
     states: HashMap<i64, ExPointState>,
     synchronization: HashMap<i64, SynchronizationDefinition>,
     synchronization_progress: HashMap<i64, SynchronizationProgress>,
+    round_ultimate_spend: HashMap<i32, i32>,
 }
 
 impl ExPointManager {

@@ -145,6 +145,7 @@ pub mod special_count_continue_channel;
 pub mod team_immunity_times;
 pub mod team_per_power_add_buff;
 pub mod team_share_shield;
+pub mod tidal_tempo_settlement;
 pub mod toughness;
 mod toughness_recover;
 pub mod transfer_energy_buff;

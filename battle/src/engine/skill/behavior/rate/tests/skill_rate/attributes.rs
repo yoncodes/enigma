@@ -299,7 +299,7 @@ fn consume_ex_point_spends_the_excess_and_rewards_the_lowest_ally() {
         }),
         ..Default::default()
     };
-    let managers = BattleManagers::seeded(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
     let pool = TargetPool::from_fight(&fight);
     let behavior = ParsedBehavior::from_spec(
         crate::engine::skill::behavior::classify::BehaviorSpec::new(60174, "ConsumeExPointAddAttr"),
@@ -339,8 +339,9 @@ fn consume_ex_point_spends_the_excess_and_rewards_the_lowest_ally() {
     );
     assert!(matches!(
         &ops[0],
-        RuleOp::Command(BattleCommand::ExPoint(ExPointCommand::Spend(change)))
-            if change.target_uid == 10 && change.delta == -4
+        RuleOp::DebitUltimate { action, cost: ExPointCommand::Spend(change) }
+            if action.skill_id == 311401351 && action.source_uid == 10
+                && change.target_uid == 10 && change.delta == -4
     ));
     assert_eq!(ops.len(), 5);
     assert!(ops[1..].iter().all(|op| matches!(
@@ -401,6 +402,29 @@ fn consume_ex_point_spends_the_excess_and_rewards_the_lowest_ally() {
         )
         .is_none()
     );
+    let RuleOp::DebitUltimate {
+        action,
+        cost: ExPointCommand::Spend(extra),
+    } = ops[0]
+    else {
+        panic!("expected additional Ultimate Moxie debit");
+    };
+    managers
+        .pay_skill_moxie(
+            action.source_uid,
+            action.skill_id,
+            ExPointCommand::Spend(ExPointChange { delta: -5, ..extra }),
+        )
+        .unwrap();
+    managers
+        .pay_skill_moxie(
+            action.source_uid,
+            action.skill_id,
+            ExPointCommand::Spend(extra),
+        )
+        .unwrap();
+    assert_eq!(managers.ex_point.get(10), 0);
+    assert_eq!(managers.ex_point.round_ultimate_spend(1), 9);
 }
 
 #[test]

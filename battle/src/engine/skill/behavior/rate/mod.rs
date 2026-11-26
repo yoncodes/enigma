@@ -7,7 +7,9 @@ use crate::engine::{
     },
     runtime::determinism::RoundDeterminism,
     skill::{
-        action::{PostImmediateTargetBuffModifier, SkillModifiers, SkillRateModifier},
+        action::{
+            PostImmediateTargetBuffModifier, SkillModifiers, SkillRateModifier, SkillRequest,
+        },
         behavior::{
             AttackModifierContext, BehaviorOpContext, classify::BehaviorKind,
             registry::BehaviorHandler,
@@ -383,23 +385,21 @@ fn consume_ex_point_ops(
         return Some(Vec::new());
     }
     let origin = super::command_origin(behavior)?;
-    let change = |target_uid, delta, spend| {
-        let change = ExPointChange {
-            origin,
-            source_uid: action_source_uid,
-            target_uid,
-            delta,
-            config_effect: 0,
-            effect_type: sonettobuf::effect_type_enum::EffectType::Expointchange as i32,
-        };
-        RuleOp::Command(BattleCommand::ExPoint(if spend {
-            ExPointCommand::Spend(change)
-        } else {
-            ExPointCommand::Change(change)
-        }))
-    };
     let mut ops = first_consumption
-        .then(|| change(action_source_uid, -additional_moxie, true))
+        .then_some(RuleOp::DebitUltimate {
+            action: SkillRequest {
+                source_uid: action_source_uid,
+                skill_id: action_skill_id,
+            },
+            cost: ExPointCommand::Spend(ExPointChange {
+                origin,
+                source_uid: action_source_uid,
+                target_uid: action_source_uid,
+                delta: -additional_moxie,
+                config_effect: 0,
+                effect_type: sonettobuf::effect_type_enum::EffectType::Expointchange as i32,
+            }),
+        })
         .into_iter()
         .collect::<Vec<_>>();
     if *ally_gain <= 0 {

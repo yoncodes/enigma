@@ -143,6 +143,7 @@ fn run_owned_buff_act_groups(
                 | RuleOp::TerminalSettlement
                 | RuleOp::BeginSkillAction { .. }
                 | RuleOp::PaySkillAction { .. }
+                | RuleOp::DebitUltimate { .. }
                 | RuleOp::PaidSkillStarted(_)
                 | RuleOp::BuffFeatureMarker { .. }
                 | RuleOp::EffectMarker { .. }

@@ -48,6 +48,7 @@ pub fn run_command_group_as(
                 | RuleOp::TerminalSettlement
                 | RuleOp::BeginSkillAction { .. }
                 | RuleOp::PaySkillAction { .. }
+                | RuleOp::DebitUltimate { .. }
                 | RuleOp::PaidSkillStarted(_)
                 | RuleOp::BuffFeatureMarker { .. }
                 | RuleOp::EffectMarker { .. }

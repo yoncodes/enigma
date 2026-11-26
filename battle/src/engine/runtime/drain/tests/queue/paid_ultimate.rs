@@ -84,9 +84,11 @@ fn round_end_paid_ultimate_spends_before_hitting_the_marked_enemy() {
         });
         if points == 7 {
             assert_eq!((cost, hit, managers.ex_point.get(10)), (None, None, 7));
+            assert_eq!(managers.ex_point.round_ultimate_spend(1), 0);
         } else {
             assert!(matches!((cost, hit), (Some(cost), Some(hit)) if cost < hit));
             assert_eq!(managers.ex_point.get(10), 2);
+            assert_eq!(managers.ex_point.round_ultimate_spend(1), 8);
             let observer = result.events.iter().position(|event| matches!(event,
                 BattleEvent::BuffAdded(change) if change.buff_id == 434921 && change.target_uid == 10
             ));

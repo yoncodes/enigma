@@ -859,10 +859,10 @@ fn direct_big_skill_refunds_only_the_configured_ultimate_cost() {
     assert!(matches!(
         ops.as_slice(),
         [
-            RuleOp::Command(BattleCommand::ExPoint(ExPointCommand::Change(ExPointChange {
-                delta: -5,
+            RuleOp::DebitUltimate {
+                cost: ExPointCommand::Change(ExPointChange { delta: -5, .. }),
                 ..
-            }))),
+            },
             RuleOp::Skill(invocation),
             RuleOp::Command(BattleCommand::ExPoint(ExPointCommand::Change(ExPointChange {
                 delta: 5,

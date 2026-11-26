@@ -150,6 +150,10 @@ pub enum RuleOp {
         action: SkillRequest,
         cost: ExPointCommand,
     },
+    DebitUltimate {
+        action: SkillRequest,
+        cost: ExPointCommand,
+    },
     PaidSkillStarted(SkillLifecycle),
     BuffFeatureMarker {
         target_uid: i64,

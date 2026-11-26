@@ -1267,8 +1267,15 @@ pub(crate) fn execute_rule_op_with(
             Ok(RuleOutcome::StateChanged)
         }
         RuleOp::Skill(_) => Err(RuleExecutionError::UnexpectedSkill),
+        RuleOp::DebitUltimate { action, cost } => {
+            let changes = managers.pay_skill_moxie(action.source_uid, action.skill_id, cost)?;
+            for event in changes.events() {
+                events.push(event);
+            }
+            Ok(RuleOutcome::ExPoint(changes))
+        }
         RuleOp::PaySkillAction { action, cost } => {
-            let changes = managers.execute_ex_point(cost)?;
+            let changes = managers.pay_skill_moxie(action.source_uid, action.skill_id, cost)?;
             managers
                 .hp
                 .capture_action_start(action.source_uid, action.skill_id);
@@ -1288,21 +1295,20 @@ pub(crate) fn execute_rule_op_with(
             Ok(RuleOutcome::PaidSkillStarted(lifecycle))
         }
         RuleOp::BeginSkillAction { lifecycle, cost } => {
-            let changes = managers.execute_ex_point(cost)?;
+            let crate::engine::skill::action::SkillLifecycle::PhaseCompleted(action) = &lifecycle
+            else {
+                return Err(RuleExecutionError::UnexpectedSkill);
+            };
+            let changes = managers.pay_skill_moxie(action.source_uid, action.skill_id, cost)?;
             for event in changes.events() {
                 events.push(event);
             }
-            match &lifecycle {
-                crate::engine::skill::action::SkillLifecycle::PhaseCompleted(action) => {
-                    managers
-                        .hp
-                        .capture_action_start(action.source_uid, action.skill_id);
-                    events.push(crate::engine::event::payload::BattleEvent::SkillAction(
-                        action.clone(),
-                    ));
-                }
-                _ => return Err(RuleExecutionError::UnexpectedSkill),
-            }
+            managers
+                .hp
+                .capture_action_start(action.source_uid, action.skill_id);
+            events.push(crate::engine::event::payload::BattleEvent::SkillAction(
+                action.clone(),
+            ));
             Ok(RuleOutcome::SkillActionStarted {
                 lifecycle,
                 cost: changes,
@@ -1320,10 +1326,11 @@ pub(crate) fn execute_rule_op_with(
                         action.clone(),
                     ));
                 }
-                crate::engine::skill::action::SkillLifecycle::ActionCompleted(action) => events
-                    .push(crate::engine::event::payload::BattleEvent::AllyAction(
+                crate::engine::skill::action::SkillLifecycle::ActionCompleted(action) => {
+                    events.push(crate::engine::event::payload::BattleEvent::AllyAction(
                         action.clone(),
-                    )),
+                    ));
+                }
                 crate::engine::skill::action::SkillLifecycle::EmitterAttackStarted(_)
                 | crate::engine::skill::action::SkillLifecycle::EmitterSkillEnded { .. } => {}
             }

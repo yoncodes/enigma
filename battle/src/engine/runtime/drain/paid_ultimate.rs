@@ -17,8 +17,14 @@ pub(super) fn start(
     let round_end = BattleEvent::Kind(EventKind::RoundEnd);
     let scope =
         round_end_owner_scope(frames, path).ok_or(DrainError::MissingRoundEndPaymentFrame)?;
+    let RuleOp::Skill(invocation) = &cast.op else {
+        return Err(DrainError::Command(RuleExecutionError::UnexpectedSkill));
+    };
     let payment = QueuedOp {
-        op: RuleOp::Command(BattleCommand::ExPoint(ExPointCommand::Spend(paid.cost))),
+        op: RuleOp::DebitUltimate {
+            action: invocation.plan,
+            cost: ExPointCommand::Spend(paid.cost),
+        },
         trigger: SkillOpTrigger::Event(round_end),
         skill_execution: None,
         frame_path: Some(scope.to_vec()),

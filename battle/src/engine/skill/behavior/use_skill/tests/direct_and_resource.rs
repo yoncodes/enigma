@@ -476,6 +476,7 @@ fn per_consume_ex_point_direct_use_skill_casts_before_spending_common_moxie() {
         attacker: Some(FightTeam {
             entitys: vec![FightEntityInfo {
                 uid: Some(10),
+                team_type: Some(1),
                 current_hp: Some(1),
                 ex_point: Some(5),
                 ex_point_type: Some(
@@ -539,15 +540,18 @@ fn per_consume_ex_point_direct_use_skill_casts_before_spending_common_moxie() {
         ops.as_slice(),
         [
             RuleOp::Skill(invocation),
-            RuleOp::Command(BattleCommand::ExPoint(ExPointCommand::Spend(ExPointChange {
-                source_uid: 10,
-                target_uid: 10,
-                delta: -5,
-                config_effect,
-                effect_type,
-                ..
-            })))
-        ] if invocation.plan.source_uid == 10
+            RuleOp::DebitUltimate {
+                action,
+                cost: ExPointCommand::Spend(ExPointChange {
+                    source_uid: 10,
+                    target_uid: 10,
+                    delta: -5,
+                    config_effect,
+                    effect_type,
+                    ..
+                }),
+            }
+        ] if *action == invocation.plan && invocation.plan.source_uid == 10
             && invocation.plan.skill_id == 31100521
             && invocation.target
                 == crate::engine::skill::action::SkillTarget::Explicit(-1)
@@ -557,11 +561,14 @@ fn per_consume_ex_point_direct_use_skill_casts_before_spending_common_moxie() {
             && *effect_type == sonettobuf::effect_type_enum::EffectType::Expointchange as i32
     ));
 
-    let RuleOp::Command(BattleCommand::ExPoint(command)) = &ops[1] else {
+    let RuleOp::DebitUltimate { action, cost } = &ops[1] else {
         panic!("second operation must spend Moxie");
     };
-    managers.execute_ex_point(*command).unwrap();
+    managers
+        .pay_skill_moxie(action.source_uid, action.skill_id, *cost)
+        .unwrap();
     assert_eq!(managers.ex_point.get(10), 0);
+    assert_eq!(managers.ex_point.round_ultimate_spend(1), 5);
 }
 
 #[test]
