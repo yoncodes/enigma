@@ -736,15 +736,21 @@ fn compiled_route_label(route: &ConditionRoute) -> Option<String> {
     let branches = route
         .branches
         .iter()
-        .filter_map(|branch| branch.driver)
-        .map(|driver| match driver {
-            ConditionDriver::Trigger(trigger) => match trigger.phase {
-                Some(phase) => format!("event:{:?}/{phase:?}", trigger.event),
-                None => format!("event:{:?}", trigger.event),
-            },
-            ConditionDriver::Setup(setup) => {
-                format!("setup:{:?}/{}", setup.stage, setup.priority)
+        .filter_map(|branch| {
+            if let Some(ConditionDriver::Setup(setup)) = branch.driver {
+                return Some(format!("setup:{:?}/{}", setup.stage, setup.priority));
             }
+            let subscriptions = branch.subscriptions();
+            (!subscriptions.is_empty()).then(|| {
+                subscriptions
+                    .into_iter()
+                    .map(|trigger| match trigger.phase {
+                        Some(phase) => format!("event:{:?}/{phase:?}", trigger.event),
+                        None => format!("event:{:?}", trigger.event),
+                    })
+                    .collect::<Vec<_>>()
+                    .join("+")
+            })
         })
         .collect::<Vec<_>>();
 

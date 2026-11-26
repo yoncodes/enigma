@@ -153,6 +153,9 @@ pub enum ParsedConditionKind {
         compare: ConditionCompare,
         threshold: i32,
     },
+    HpRatioAbove {
+        threshold_permille: i32,
+    },
     PerHp {
         interval_permille: i32,
     },

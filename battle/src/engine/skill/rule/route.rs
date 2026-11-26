@@ -63,7 +63,7 @@ impl ConditionBranchRoute {
                             .map(|event| ConditionTrigger {
                                 key: definition.key,
                                 event,
-                                phase: None,
+                                phase: definition.dependency_phase,
                             })
                             .collect()
                     })

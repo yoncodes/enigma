@@ -6,6 +6,27 @@ use crate::engine::{
     },
 };
 
+pub(super) fn more_than_permille(_: i32, _: &str, args: &[String]) -> Option<ParsedConditionKind> {
+    let [threshold_permille] = parse_fixed(args)?;
+    (0..=1000)
+        .contains(&threshold_permille)
+        .then_some(ParsedConditionKind::HpRatioAbove { threshold_permille })
+}
+
+pub(super) fn above_ratio(
+    threshold_permille: i32,
+    condition_targets: &[i64],
+    managers: Option<&BattleManagers>,
+) -> bool {
+    managers.is_some_and(|managers| {
+        condition_targets.iter().any(|&uid| {
+            let max = i64::from(managers.hp.max(uid));
+            let current = i64::from(managers.hp.current(uid));
+            max > 0 && current * 1000 > max * i64::from(threshold_permille)
+        })
+    })
+}
+
 pub fn per_hp(_: i32, _: &str, args: &[String]) -> Option<ParsedConditionKind> {
     Some(ParsedConditionKind::PerHp {
         interval_permille: first_i32(args)?,

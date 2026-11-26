@@ -213,6 +213,13 @@ pub(super) fn condition_kind_matches(
         ParsedConditionKind::HpPermille { compare, threshold } => {
             resources::hp_permille(compare, threshold, condition_targets, managers)
         }
+        ParsedConditionKind::HpRatioAbove { threshold_permille } => {
+            crate::engine::skill::condition::hp::above_ratio(
+                *threshold_permille,
+                condition_targets,
+                managers,
+            )
+        }
         ParsedConditionKind::PerHp { interval_permille } => {
             resources::per_hp(interval_permille, condition_targets, managers)
         }

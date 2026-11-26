@@ -284,6 +284,7 @@ pub struct ConditionDefinition {
     pub role: ConditionRole,
     pub read_timing: ConditionReadTiming,
     pub dependencies: &'static [EventKind],
+    pub dependency_phase: Option<SkillPhase>,
     pub publication: PublicationPhase,
     pub reaction_timing: ReactionTimingPolicy,
     pub reaction_multiplicity: ReactionMultiplicity,
@@ -312,6 +313,7 @@ pub struct ConditionMetadata {
     pub role: ConditionRole,
     pub read_timing: ConditionReadTiming,
     pub dependencies: &'static [EventKind],
+    pub dependency_phase: Option<SkillPhase>,
     pub publication: PublicationPhase,
     pub reaction_timing: ReactionTimingPolicy,
     pub reaction_multiplicity: ReactionMultiplicity,
@@ -347,6 +349,7 @@ pub const fn definition(
         role: metadata.role,
         read_timing: metadata.read_timing,
         dependencies: metadata.dependencies,
+        dependency_phase: metadata.dependency_phase,
         publication: metadata.publication,
         reaction_timing: metadata.reaction_timing,
         reaction_multiplicity: metadata.reaction_multiplicity,
@@ -376,6 +379,7 @@ pub const fn predicate(dependencies: &'static [EventKind]) -> ConditionMetadata 
         role: ConditionRole::Predicate,
         read_timing: ConditionReadTiming::Current,
         dependencies,
+        dependency_phase: None,
         publication: PublicationPhase::AfterPublish,
         reaction_timing: ReactionTimingPolicy::Fixed(ReactionTiming::Immediate),
         reaction_multiplicity: ReactionMultiplicity::PerEvent,
@@ -400,11 +404,21 @@ pub const fn predicate(dependencies: &'static [EventKind]) -> ConditionMetadata 
     }
 }
 
+const fn phased_predicate(
+    dependencies: &'static [EventKind],
+    phase: SkillPhase,
+) -> ConditionMetadata {
+    let mut metadata = predicate(dependencies);
+    metadata.dependency_phase = Some(phase);
+    metadata
+}
+
 pub const fn event_trigger(event: EventKind, phase: Option<SkillPhase>) -> ConditionMetadata {
     ConditionMetadata {
         role: ConditionRole::Trigger { event, phase },
         read_timing: ConditionReadTiming::Current,
         dependencies: &[],
+        dependency_phase: None,
         publication: PublicationPhase::AfterPublish,
         reaction_timing: ReactionTimingPolicy::Fixed(ReactionTiming::Immediate),
         reaction_multiplicity: ReactionMultiplicity::PerEvent,
@@ -438,6 +452,7 @@ pub const fn setup_route(
         role: ConditionRole::Setup { stage, priority },
         read_timing: ConditionReadTiming::Current,
         dependencies,
+        dependency_phase: None,
         publication: PublicationPhase::AfterPublish,
         reaction_timing: ReactionTimingPolicy::Fixed(ReactionTiming::Immediate),
         reaction_multiplicity: ReactionMultiplicity::PerEvent,
@@ -1198,6 +1213,7 @@ condition_definitions! {
     [1209] "LifeLess" => parse::hp_less, event_target_observes(hp_thresholds(once_per_action(predicate(&[EventKind::HpLost]))));
     [2104] "LifeMore" => parse::hp_more, setup_route(SetupStage::RoundStartLate, 0, &[]);
     [2203] "LifeMore" => parse::hp_more, predicate(&[]);
+    [2210] "LifeMore" => hp::more_than_permille, attack_only(phased_predicate(&[EventKind::SkillAction], SkillPhase::AfterDamage));
     [2301] "LifeMore" => parse::hp_more, event_trigger(EventKind::SmallRoundEnd, None);
     [2304] "LifeMore" => parse::hp_more, predicate(&[EventKind::HpLost]);
     [744203] "PerHp" => hp::per_hp, predicate(&[EventKind::HpLost]);

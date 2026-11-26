@@ -64,6 +64,28 @@ fn predicate_order_does_not_change_the_after_hit_route() {
 }
 
 #[test]
+fn life_more_subscribes_after_damage_unless_an_explicit_trigger_owns_the_slot() {
+    init_config();
+    let db = config::configs::get();
+    for (skill, opcode, name, phase) in [
+        (3120004, 2210, "LifeMore", SkillPhase::AfterDamage),
+        (1221001, 25210, "UseExSkill", SkillPhase::AfterHit),
+        (9291013, 25210, "UseExSkill", SkillPhase::AfterHit),
+    ] {
+        let row = db.skill_effect.get(skill).unwrap();
+        let route = ConditionRoute::compile(&parse_conditions(db, &row.condition1)).unwrap();
+        assert_eq!(
+            route.branches[0].subscriptions(),
+            vec![ConditionTrigger {
+                key: DefinitionKey::new(opcode, name),
+                event: EventKind::SkillAction,
+                phase: Some(phase),
+            }]
+        );
+    }
+}
+
+#[test]
 fn team_roster_predicate_leaves_assassination_as_the_compound_driver() {
     init_config();
     let conditions = parse_conditions(config::configs::get(), "1000212#3122,3123&1001212");

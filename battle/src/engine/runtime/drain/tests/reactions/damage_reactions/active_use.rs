@@ -1,6 +1,73 @@
 use super::*;
 
 #[test]
+fn life_more_grants_pollution_after_the_owners_attack_above_the_threshold() {
+    crate::test_support::init_config();
+    let passive = 3120004;
+    let attack = 312000411;
+    let pollution = 3120001;
+    let non_attack = 9000;
+    let entity = |uid, team, hp| FightEntityInfo {
+        uid: Some(uid),
+        team_type: Some(team),
+        current_hp: Some(hp),
+        attr: Some(HeroAttribute {
+            hp: Some(10_000),
+            attack: Some(100),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let mut catalog = SkillEffectCatalog::from_roots(config::configs::get(), [passive, attack], []);
+    catalog.insert(ParsedSkillEffect {
+        skill_id: non_attack,
+        slots: Vec::new(),
+    });
+    for (skill_id, hp, expected) in [
+        (attack, 8_001, 2),
+        (attack, 8_000, 1),
+        (non_attack, 10_000, 0),
+    ] {
+        let fight = Fight {
+            version: Some(7),
+            attacker: Some(FightTeam {
+                entitys: vec![entity(10, 1, 10_000)],
+                ..Default::default()
+            }),
+            defender: Some(FightTeam {
+                entitys: vec![FightEntityInfo {
+                    passive_skill: vec![passive],
+                    ..entity(-1, 2, hp)
+                }],
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let pool = TargetPool::from_fight(&fight);
+        let mut managers = BattleManagers::seeded(&fight);
+        let mut invocation = SkillInvocation::from(SkillRequest {
+            source_uid: -1,
+            skill_id,
+        });
+        invocation.mode = SkillExecutionMode::Active;
+        invocation.target = SkillTarget::Explicit(10);
+
+        run(
+            &mut managers,
+            &pool,
+            &catalog,
+            &mut RoundDeterminism::default(),
+            TargetContext::default(),
+            [RuleOp::Skill(invocation)],
+        )
+        .unwrap();
+
+        assert_eq!(managers.buff.buff_id_amount(10, pollution), expected);
+        assert_eq!(managers.buff.buff_id_amount(-1, pollution), 0);
+    }
+}
+
+#[test]
 fn flinch_reaction_follows_cast_target_and_buffs_only_exposed_caster() {
     crate::test_support::init_config();
     let skill_id = 31460223;

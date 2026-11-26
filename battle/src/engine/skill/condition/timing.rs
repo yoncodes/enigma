@@ -46,11 +46,13 @@ impl ParsedCondition {
                     for event in definition.dependencies {
                         push_unique(
                             subscriptions,
-                            SubscriptionKey::new(*event, definition.key)
-                                .with_publication(definition.publication)
-                                .with_timing(
-                                    definition.reaction_timing.resolve(Default::default()),
-                                ),
+                            SubscriptionKey::at_phase(
+                                *event,
+                                definition.key,
+                                definition.dependency_phase,
+                            )
+                            .with_publication(definition.publication)
+                            .with_timing(definition.reaction_timing.resolve(Default::default())),
                         );
                     }
                 }
