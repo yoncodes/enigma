@@ -122,7 +122,7 @@
             </div>
             <div class="destiny wide">
               <label>Target Resonance<select id="heroEditResonance"></select></label>
-              <button id="applyHeroResonance" type="button" onclick="setHeroResonance()">Set Resonance</button>
+              <button id="applyHeroResonance" type="button" onclick="setHeroResonance()">Set Resonance &amp; Default Layout</button>
             </div>
             <div id="heroEditDestiny" class="destiny wide" hidden>
               <label>Equipped Destiny Stone<select id="heroEditDestinyStone"></select></label>
@@ -465,7 +465,7 @@
       const hero = selectedUpgradeHero();
       if (!hero) return;
       const resonance = Number(document.getElementById('heroEditResonance').value);
-      document.getElementById('applyHeroResonance').disabled = resonance <= hero.resonance;
+      document.getElementById('applyHeroResonance').disabled = !resonance || resonance < hero.resonance;
       const stone = Number(document.getElementById('heroEditDestinyStone').value);
       const selected = hero.destinyStoneOptions?.find(option => option.id === stone);
       const button = document.getElementById('applyHeroDestiny');

@@ -21,6 +21,24 @@ impl CharacterVoiceType {
     }
 }
 
+impl TalentScheme {
+    pub fn placements(&self) -> Option<Vec<(i32, i32, i32, i32)>> {
+        self.talen_scheme
+            .split('#')
+            .map(|cube| {
+                let mut parts = cube.split(',');
+                let placement = (
+                    parts.next()?.parse().ok()?,
+                    parts.next()?.parse().ok()?,
+                    parts.next()?.parse().ok()?,
+                    parts.next()?.parse().ok()?,
+                );
+                parts.next().is_none().then_some(placement)
+            })
+            .collect()
+    }
+}
+
 impl GameDB {
     pub fn max_faith(&self) -> i32 {
         self.friendless.iter().map(|row| row.friendliness).sum()
@@ -48,6 +66,15 @@ impl GameDB {
         self.talent_scheme
             .iter()
             .find(|row| row.talent_id == talent_id && row.talent_mould == talent_mould)
+    }
+
+    pub fn default_talent_scheme(&self, talent: &CharacterTalent) -> Option<&TalentScheme> {
+        let star_mould = talent.exclusive.split('#').next()?.parse::<i32>().ok()?;
+        self.talent_scheme.iter().find(|row| {
+            row.talent_id == talent.talent_id
+                && row.talent_mould == talent.talent_mould
+                && row.star_mould == star_mould
+        })
     }
 
     pub fn starting_character_level(&self, hero_id: i32) -> Option<&CharacterLevel> {

@@ -373,22 +373,28 @@ impl HeroManager {
         if target < current.record.talent {
             return Err(AppError::InvalidRequest);
         }
-        let talent = config::configs::get()
+        let tables = config::configs::get();
+        let talent = tables
             .character_talent(hero_id, target)
             .ok_or(AppError::InvalidRequest)?;
         if current.record.rank < talent.requirement {
             return Err(AppError::InvalidRequest);
         }
-        if target != current.record.talent {
-            let mut tx = db.begin().await?;
-            if !heroes
-                .update_talent(&mut tx, hero_id, current.record.talent, target)
-                .await?
-            {
-                return Err(AppError::InvalidRequest);
-            }
-            tx.commit().await?;
+        let cubes = tables
+            .default_talent_scheme(talent)
+            .and_then(|scheme| scheme.placements())
+            .ok_or(AppError::InvalidRequest)?;
+        let mut tx = db.begin().await?;
+        if !heroes
+            .update_talent(&mut tx, hero_id, current.record.talent, target)
+            .await?
+        {
+            return Err(AppError::InvalidRequest);
         }
+        heroes
+            .replace_talent_cubes_in_transaction(&mut tx, hero_id, None, &cubes)
+            .await?;
+        tx.commit().await?;
         snapshot(db, heroes.get_hero(hero_id).await?).await
     }
 

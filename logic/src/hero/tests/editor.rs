@@ -64,7 +64,7 @@ async fn hero_editor_sets_configured_rank_and_level() {
 }
 
 #[tokio::test]
-async fn hero_editor_sets_configured_resonance_without_materials() {
+async fn hero_editor_sets_configured_resonance_and_the_active_layout() {
     let data_dir = format!("{}/../data/excel2json", env!("CARGO_MANIFEST_DIR"));
     let _ = config::init(&data_dir);
     let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
@@ -82,21 +82,51 @@ async fn hero_editor_sets_configured_resonance_without_materials() {
         .set_level(&pool, 3003, 75)
         .await
         .unwrap();
-    let rank = heroes.get_hero(3003).await.unwrap().record.rank;
-    let target = config::configs::get()
+    let before = heroes.get_hero(3003).await.unwrap();
+    heroes.switch_talent_template(3003, 2).await.unwrap();
+    let tables = config::configs::get();
+    let talent = tables
         .character_talent
         .iter()
-        .filter(|talent| talent.hero_id == 3003 && talent.requirement <= rank)
-        .map(|talent| talent.talent_id)
-        .max()
+        .filter(|talent| talent.hero_id == 3003 && talent.requirement <= before.record.rank)
+        .max_by_key(|talent| talent.talent_id)
         .unwrap();
-
-    let update = HeroManager::new(45)
-        .set_resonance(&pool, 3003, target)
-        .await
+    let target = talent.talent_id;
+    let mut expected = tables
+        .default_talent_scheme(talent)
+        .unwrap()
+        .placements()
         .unwrap();
+    assert!(!expected.is_empty());
+    expected.sort_unstable();
 
-    assert_eq!(update.talent, Some(target));
+    for _ in 0..2 {
+        heroes.replace_talent_cubes(3003, 2, vec![]).await.unwrap();
+        let update = HeroManager::new(45)
+            .set_resonance(&pool, 3003, target)
+            .await
+            .unwrap();
+        assert_eq!(update.talent, Some(target));
+        assert_eq!(update.use_talent_template_id, Some(2));
+        let layout = |cubes: Vec<_>| {
+            let mut placed: Vec<_> = cubes
+                .into_iter()
+                .map(|cube: sonettobuf::TalentCubeInfo| {
+                    (
+                        cube.cube_id.unwrap(),
+                        cube.direction.unwrap(),
+                        cube.pos_x.unwrap(),
+                        cube.pos_y.unwrap(),
+                    )
+                })
+                .collect();
+            placed.sort_unstable();
+            placed
+        };
+        assert_eq!(layout(update.talent_cube_infos), expected);
+        let saved = heroes.get_template_info(3003, 2).await.unwrap();
+        assert_eq!(layout(saved.talent_cube_infos), expected);
+    }
 }
 
 #[tokio::test]

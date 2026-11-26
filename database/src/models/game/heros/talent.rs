@@ -168,22 +168,39 @@ impl UserHeroModel {
         template_id: i32,
         cubes: Vec<(i32, i32, i32, i32)>,
     ) -> Result<sonettobuf::TalentTemplateInfo> {
-        let hero_data = self.get(hero_id).await?;
+        let mut tx = self.pool.begin().await?;
+        self.replace_talent_cubes_in_transaction(&mut tx, hero_id, Some(template_id), &cubes)
+            .await?;
+        tx.commit().await?;
+        self.get_template_info_impl(hero_id, template_id).await
+    }
 
-        let template_row_id: i64 = sqlx::query_scalar(
-            "SELECT id FROM hero_talent_templates WHERE hero_uid = ? AND template_id = ?",
+    pub async fn replace_talent_cubes_in_transaction(
+        &self,
+        tx: &mut Transaction<'_, Sqlite>,
+        hero_id: i32,
+        template_id: Option<i32>,
+        cubes: &[(i32, i32, i32, i32)],
+    ) -> Result<()> {
+        let (hero_uid, template_row_id, active): (i64, i64, bool) = sqlx::query_as(
+            "SELECT heroes.uid, templates.id, templates.template_id = heroes.use_talent_template_id
+             FROM heroes
+             JOIN hero_talent_templates AS templates ON templates.hero_uid = heroes.uid
+             WHERE heroes.user_id = ? AND heroes.hero_id = ?
+               AND templates.template_id = COALESCE(?, heroes.use_talent_template_id)",
         )
-        .bind(hero_data.record.uid)
+        .bind(self.user_id)
+        .bind(hero_id)
         .bind(template_id)
-        .fetch_one(&self.pool)
+        .fetch_one(&mut **tx)
         .await?;
 
         sqlx::query("DELETE FROM hero_talent_template_cubes WHERE template_row_id = ?")
             .bind(template_row_id)
-            .execute(&self.pool)
+            .execute(&mut **tx)
             .await?;
 
-        for (cube_id, direction, pos_x, pos_y) in &cubes {
+        for (cube_id, direction, pos_x, pos_y) in cubes {
             sqlx::query(
                 "INSERT INTO hero_talent_template_cubes
                      (template_row_id, cube_id, direction, pos_x, pos_y)
@@ -194,33 +211,33 @@ impl UserHeroModel {
             .bind(direction)
             .bind(pos_x)
             .bind(pos_y)
-            .execute(&self.pool)
+            .execute(&mut **tx)
             .await?;
         }
 
-        if template_id == hero_data.record.use_talent_template_id {
+        if active {
             sqlx::query("DELETE FROM hero_talent_cubes WHERE hero_uid = ?")
-                .bind(hero_data.record.uid)
-                .execute(&self.pool)
+                .bind(hero_uid)
+                .execute(&mut **tx)
                 .await?;
 
-            for (cube_id, direction, pos_x, pos_y) in &cubes {
+            for (cube_id, direction, pos_x, pos_y) in cubes {
                 sqlx::query(
                     "INSERT INTO hero_talent_cubes
                          (hero_uid, cube_id, direction, pos_x, pos_y)
                          VALUES (?, ?, ?, ?, ?)",
                 )
-                .bind(hero_data.record.uid)
+                .bind(hero_uid)
                 .bind(cube_id)
                 .bind(direction)
                 .bind(pos_x)
                 .bind(pos_y)
-                .execute(&self.pool)
+                .execute(&mut **tx)
                 .await?;
             }
         }
 
-        self.get_template_info_impl(hero_id, template_id).await
+        Ok(())
     }
 
     pub(super) async fn get_template_info_impl(
