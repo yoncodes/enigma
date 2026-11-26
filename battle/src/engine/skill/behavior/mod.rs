@@ -15,6 +15,7 @@ pub mod crystal_card;
 pub mod damage_target;
 pub mod detonate;
 pub mod electric;
+pub mod enhance_skill;
 pub mod fake_hp;
 pub mod fight_progress;
 pub mod focus_all_entity_buff;

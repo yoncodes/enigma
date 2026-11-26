@@ -113,6 +113,7 @@ pub enum BehaviorKind {
     ConsumeBuffChangeTargets,
     ConsumeBuffUpSkillDamageRate,
     ConsumeBuffAttrFix,
+    EnhanceSkill,
     ConsumeBuffFixMixedRate,
     ConsumeCardAddBuff,
     AddBuffAndAddSpecialCount,

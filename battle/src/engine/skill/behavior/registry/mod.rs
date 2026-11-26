@@ -889,6 +889,7 @@ behavior_definitions! {
     [40001] "CritRateAlter" => super::rate::Handler, CritRateAlter, Immediate, modifier, super::rate::supports_crit_rate_alter;
     [100023] "CritRateAlter2" => super::rate::Handler, CritRateAlter2, Immediate, modifier, super::rate::supports_crit_rate_alter;
     [60228] "CritRateAlter2" => super::rate::Handler, CritRateAlter2, Immediate, modifier, super::rate::supports_crit_rate_alter;
+    [60229] "EnhanceSkill" => super::enhance_skill::Handler, EnhanceSkill, Immediate, destination, super::enhance_skill::supports;
     [60069] "MustCrit" => super::skill_modifier::Handler, MustCrit, Immediate, modifier, arguments::none;
     [60054] "IgnoreBeatBack" => super::skill_modifier::Handler, IgnoreBeatBack, Immediate, modifier, arguments::none;
     [60271] "SetExtraType" => super::general::SetExtraTypeHandler, SetExtraType, Immediate, destination, super::general::supports_extra_type;
