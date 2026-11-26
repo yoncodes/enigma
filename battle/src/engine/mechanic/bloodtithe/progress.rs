@@ -1,7 +1,7 @@
 use crate::engine::{
     manager::{
         BattleManagers,
-        fight_progress::{LegacyProgressAdd, LegacyProgressGain},
+        fight_progress::{LegacyProgressAdd, LegacyProgressDelta},
         gauge::GaugeKey,
     },
     runtime::executor::RuleExecutionError,
@@ -66,7 +66,7 @@ fn pending(managers: &BattleManagers, gain: Gain) -> i32 {
 pub(crate) fn settle(
     managers: &mut BattleManagers,
     gain: Gain,
-) -> Result<Option<LegacyProgressGain>, RuleExecutionError> {
+) -> Result<Option<LegacyProgressDelta>, RuleExecutionError> {
     let points = pending(managers, gain);
     if points == 0 {
         return Ok(None);

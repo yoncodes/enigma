@@ -12,7 +12,8 @@ use crate::engine::{
         ex_point::{ExPointCommand, LowestExPointChange},
         field::FieldCommand,
         fight_progress::{
-            FightProgressCommand, FightProgressValueCommand, LegacyProgressAdd, LegacyProgressInit,
+            FightProgressCommand, FightProgressValueCommand, LegacyProgressAdd,
+            LegacyProgressClear, LegacyProgressInit,
         },
         gauge::{GaugeBatchId, GaugeCommand},
         hedone_counter::{HedoneCounterClearCommand, HedoneCounterCommand, HedoneDamageCommand},
@@ -107,6 +108,7 @@ pub enum BattleCommand {
     FightProgress(FightProgressCommand),
     LegacyProgressInit(LegacyProgressInit),
     LegacyProgressAdd(LegacyProgressAdd),
+    LegacyProgressClear(LegacyProgressClear),
     LegacyProgressBloodtithe(crate::engine::mechanic::bloodtithe::progress::Gain),
     FightProgressValue(FightProgressValueCommand),
     FieldTransfer(FieldTransferCommand),

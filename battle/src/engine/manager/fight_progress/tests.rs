@@ -64,7 +64,7 @@ fn legacy_progress_gain_publishes_only_the_amount_that_fits() {
 
     assert_eq!(
         manager.add_legacy(command).unwrap(),
-        Some(LegacyProgressGain { max: 100, delta: 1 })
+        Some(LegacyProgressDelta { max: 100, delta: 1 })
     );
     assert!(manager.add_legacy(command).unwrap().is_none());
     manager.sync_fight(&mut fight);

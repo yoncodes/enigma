@@ -19,7 +19,12 @@ pub struct LegacyProgressAdd {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct LegacyProgressGain {
+pub struct LegacyProgressClear {
+    pub origin: CommandOrigin,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct LegacyProgressDelta {
     pub max: i32,
     pub delta: i32,
 }
@@ -76,21 +81,35 @@ impl LegacyProgress {
     pub(super) fn add(
         &mut self,
         command: LegacyProgressAdd,
-    ) -> Result<Option<LegacyProgressGain>, FightProgressError> {
+    ) -> Result<Option<LegacyProgressDelta>, FightProgressError> {
         if command.amount <= 0 {
             return Err(FightProgressError::InvalidDefinition);
         }
+        let (before, max) = self.checked_value()?;
+        let after = before.saturating_add(command.amount).min(max);
+        self.value = Some(after);
+        Ok((after != before).then_some(LegacyProgressDelta {
+            max,
+            delta: after - before,
+        }))
+    }
+
+    pub(super) fn clear(&mut self) -> Result<Option<LegacyProgressDelta>, FightProgressError> {
+        let (before, max) = self.checked_value()?;
+        self.value = Some(0);
+        Ok((before > 0).then_some(LegacyProgressDelta {
+            max,
+            delta: -before,
+        }))
+    }
+
+    fn checked_value(&self) -> Result<(i32, i32), FightProgressError> {
         let (Some(before), Some(max)) = (self.value, self.max) else {
             return Err(FightProgressError::MissingProgress(0));
         };
         if max <= 0 || !(0..=max).contains(&before) {
             return Err(FightProgressError::InvalidStoredProgress(0));
         }
-        let after = before.saturating_add(command.amount).min(max);
-        self.value = Some(after);
-        Ok((after != before).then_some(LegacyProgressGain {
-            max,
-            delta: after - before,
-        }))
+        Ok((before, max))
     }
 }

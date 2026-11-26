@@ -337,6 +337,12 @@ fn full_legacy_progress_activates_passion_at_round_start() {
                 assert!(!managers.buff.has_buff_id(target, 9260102));
                 assert!(!managers.buff.has_buff_id(target, 9260103));
             }
+            let mut settled = fight.clone();
+            managers.fight_progress.sync_fight(&mut settled);
+            assert_eq!(settled.progress, Some(0));
+            assert_eq!(settled.progress_max, Some(60));
+            setup_round(&mut managers, 6);
+            assert_eq!(carrier(&managers), None);
         }
     }
 }

@@ -93,7 +93,7 @@ pub(crate) enum RuleOutcome {
     Field(FieldChange),
     FightProgress(FightProgressChange),
     FightProgressValue(FightProgressValueChange),
-    LegacyProgressGain(crate::engine::manager::fight_progress::LegacyProgressGain),
+    LegacyProgressDelta(crate::engine::manager::fight_progress::LegacyProgressDelta),
     FieldTransfer(Box<FieldTransferChanges>),
     MagicCircleLevel(Box<MagicCircleLevelChanges>),
     FocusAllEntityBuff(Box<FocusAllEntityBuffChanges>),
@@ -393,7 +393,7 @@ impl RuleOutcome {
             Self::Field(change) => vec![BattleChange::Field(*change)],
             Self::FightProgress(change) => vec![BattleChange::FightProgress(*change)],
             Self::FightProgressValue(change) => vec![BattleChange::FightProgressValue(*change)],
-            Self::LegacyProgressGain(change) => vec![BattleChange::LegacyProgressGain(*change)],
+            Self::LegacyProgressDelta(change) => vec![BattleChange::LegacyProgressDelta(*change)],
             Self::FieldTransfer(changes) => changes
                 .buffs
                 .iter()
@@ -1135,12 +1135,16 @@ pub(crate) fn execute_rule_op_with(
             .unwrap_or(RuleOutcome::StateChanged)),
         RuleOp::Command(BattleCommand::LegacyProgressBloodtithe(command)) => Ok(
             crate::engine::mechanic::bloodtithe::progress::settle(managers, command)?
-                .map_or(RuleOutcome::StateChanged, RuleOutcome::LegacyProgressGain),
+                .map_or(RuleOutcome::StateChanged, RuleOutcome::LegacyProgressDelta),
         ),
         RuleOp::Command(BattleCommand::LegacyProgressAdd(command)) => Ok(managers
             .fight_progress
             .add_legacy(command)?
-            .map_or(RuleOutcome::StateChanged, RuleOutcome::LegacyProgressGain)),
+            .map_or(RuleOutcome::StateChanged, RuleOutcome::LegacyProgressDelta)),
+        RuleOp::Command(BattleCommand::LegacyProgressClear(_)) => Ok(managers
+            .fight_progress
+            .clear_legacy()?
+            .map_or(RuleOutcome::StateChanged, RuleOutcome::LegacyProgressDelta)),
         RuleOp::Command(BattleCommand::FieldTransfer(command)) => {
             let changes = crate::engine::mechanic::field_transfer::execute(managers, command)?;
             for buff in &changes.buffs {

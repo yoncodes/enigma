@@ -5,7 +5,7 @@ use crate::engine::skill::rule::CommandOrigin;
 mod legacy;
 
 use legacy::LegacyProgress;
-pub use legacy::{LegacyProgressAdd, LegacyProgressGain, LegacyProgressInit};
+pub use legacy::{LegacyProgressAdd, LegacyProgressClear, LegacyProgressDelta, LegacyProgressInit};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct FightProgressState {
@@ -94,8 +94,14 @@ impl FightProgressManager {
     pub(crate) fn add_legacy(
         &mut self,
         command: LegacyProgressAdd,
-    ) -> Result<Option<LegacyProgressGain>, FightProgressError> {
+    ) -> Result<Option<LegacyProgressDelta>, FightProgressError> {
         self.legacy.add(command)
+    }
+
+    pub(crate) fn clear_legacy(
+        &mut self,
+    ) -> Result<Option<LegacyProgressDelta>, FightProgressError> {
+        self.legacy.clear()
     }
 
     pub fn initialize(

@@ -145,7 +145,7 @@ fn incoming_bloodtithe_progress_settles_before_attacked_ally_reactions() {
     let progress_index = result
         .outcomes
         .iter()
-        .position(|outcome| matches!(outcome, RuleOutcome::LegacyProgressGain(change) if change.delta > 0))
+        .position(|outcome| matches!(outcome, RuleOutcome::LegacyProgressDelta(change) if change.delta > 0))
         .unwrap();
     let marker_index = result
         .outcomes

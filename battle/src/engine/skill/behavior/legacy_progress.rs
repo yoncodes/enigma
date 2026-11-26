@@ -1,5 +1,5 @@
 use crate::engine::{
-    manager::fight_progress::{LegacyProgressAdd, LegacyProgressInit},
+    manager::fight_progress::{LegacyProgressAdd, LegacyProgressClear, LegacyProgressInit},
     mechanic::bloodtithe::progress,
     skill::{
         behavior::{
@@ -13,18 +13,31 @@ use crate::engine::{
     },
 };
 
-pub(super) struct AddHandler;
+pub(super) struct ChangeHandler;
 
-impl BehaviorHandler for AddHandler {
+enum Change {
+    Add(i32),
+    Clear,
+}
+
+fn change(behavior: &ParsedBehavior) -> Option<Change> {
+    match (behavior.raw_arity, behavior.args.as_slice()) {
+        (2, [0, amount]) if *amount > 0 => Some(Change::Add(*amount)),
+        (2, [1, 0]) => Some(Change::Clear),
+        _ => None,
+    }
+}
+
+impl BehaviorHandler for ChangeHandler {
     const VALIDATES_ARGUMENTS: bool = true;
     const COMPLETED_ACTION_ACTOR_ONLY: bool = true;
 
     fn supports(behavior: &ParsedBehavior) -> bool {
-        behavior.raw_arity == 2 && matches!(behavior.args.as_slice(), [0, amount] if *amount > 0)
+        change(behavior).is_some()
     }
 
     fn unsupported_args(behavior: &ParsedBehavior) -> bool {
-        behavior.raw_arity == 2 && matches!(behavior.args.as_slice(), [1, 0] | [0, i32::MIN..=0])
+        behavior.raw_arity == 2 && matches!(behavior.args.as_slice(), [0, i32::MIN..=0])
     }
 
     fn validate_slot(slot: &SkillEffectSlot, condition: &str) -> Result<(), BehaviorConfigError> {
@@ -36,19 +49,26 @@ impl BehaviorHandler for AddHandler {
         {
             return Err(BehaviorConfigError::MalformedCondition);
         }
-        let applies_on_death = matches!(
-            slot.conditions.as_slice(),
-            [condition] if condition.opcode == 8 && condition.kind == ParsedConditionKind::EntityDead
-        );
         let source_only = !slot.target_from_condition
             && [&slot.condition_target, &slot.target]
                 .into_iter()
                 .all(|target| target.code == SOURCE_TARGET_CODE && target.raw.is_empty());
-        if source_only
-            && (applies_on_death
-                || on_completed_action(&slot.conditions)
-                || progress::matches(slot))
-        {
+        let supported = match change(&slot.behavior) {
+            Some(Change::Add(_)) => {
+                matches!(
+                    slot.conditions.as_slice(),
+                    [condition] if condition.opcode == 8 && condition.kind == ParsedConditionKind::EntityDead
+                ) || on_completed_action(&slot.conditions)
+                    || progress::matches(slot)
+            }
+            Some(Change::Clear) => matches!(
+                slot.conditions.as_slice(),
+                [condition] if condition.raw_args.len() == 1
+                    && matches!(&condition.kind, ParsedConditionKind::BuffExpired(ids) if ids.len() == 1)
+            ),
+            None => false,
+        };
+        if source_only && supported {
             Ok(())
         } else {
             Err(BehaviorConfigError::Unsupported)
@@ -67,18 +87,14 @@ impl BehaviorHandler for AddHandler {
     }
 
     fn emit_ops(_: BehaviorOpContext<'_>, behavior: &ParsedBehavior) -> Option<Vec<RuleOp>> {
-        let [0, amount] = *behavior.args.as_slice() else {
-            return None;
+        let origin = super::command_origin(behavior)?;
+        let command = match change(behavior)? {
+            Change::Add(amount) => {
+                BattleCommand::LegacyProgressAdd(LegacyProgressAdd { origin, amount })
+            }
+            Change::Clear => BattleCommand::LegacyProgressClear(LegacyProgressClear { origin }),
         };
-        if amount <= 0 {
-            return None;
-        }
-        Some(vec![RuleOp::Command(BattleCommand::LegacyProgressAdd(
-            LegacyProgressAdd {
-                origin: super::command_origin(behavior)?,
-                amount,
-            },
-        ))])
+        Some(vec![RuleOp::Command(command)])
     }
 }
 

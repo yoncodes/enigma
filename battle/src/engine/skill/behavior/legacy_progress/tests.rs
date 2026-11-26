@@ -70,7 +70,7 @@ fn completed_actions_settle_progress_once_per_acting_holder() {
             .outcomes
             .iter()
             .filter_map(|outcome| match outcome {
-                RuleOutcome::LegacyProgressGain(change) => Some(change.delta),
+                RuleOutcome::LegacyProgressDelta(change) => Some(change.delta),
                 _ => None,
             })
             .collect::<Vec<_>>();
@@ -108,7 +108,7 @@ fn collect_progress_owners(frame: &SemanticFrame, progress_skill: i32, owners: &
 
 #[test]
 fn legacy_progress_rejects_surplus_action_trigger_arguments() {
-    use super::{AddHandler, BehaviorConfigError, BehaviorHandler};
+    use super::{BehaviorConfigError, BehaviorHandler, ChangeHandler};
 
     let skill_id = 117333503;
     let db = crate::test_support::game_data();
@@ -116,7 +116,7 @@ fn legacy_progress_rejects_surplus_action_trigger_arguments() {
     let mut slot = catalog.get(skill_id).unwrap().slots[0].clone();
     slot.conditions[0].raw_args.push("7".to_owned());
     assert!(matches!(
-        AddHandler::validate_slot(&slot, "502212#0#7"),
+        ChangeHandler::validate_slot(&slot, "502212#0#7"),
         Err(BehaviorConfigError::Unsupported)
     ));
 }

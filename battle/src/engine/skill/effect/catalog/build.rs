@@ -709,7 +709,7 @@ mod tests {
     }
 
     #[test]
-    fn legacy_progress_admits_own_death_gain_and_keeps_other_routes_unsupported() {
+    fn legacy_progress_admits_own_death_gain_and_expiry_clear() {
         crate::test_support::init_config();
         let db = crate::test_support::game_data();
         let mut catalog = SkillEffectCatalog::default();
@@ -729,7 +729,20 @@ mod tests {
         assert_eq!(issue.reason, RuleIssueReason::UnsupportedBehavior);
         assert!(!issue.reason.is_blocking());
 
-        for (effect_id, slot) in [(823500202, 1), (9260005, 3), (104331023, 1)] {
+        for (effect_id, slot) in [(9260005, 3), (9260006, 1)] {
+            let row = db.skill_effect.get(effect_id).unwrap();
+            catalog.insert_configured_effect(db, row);
+            let effect = catalog.get(effect_id).unwrap();
+            assert!(effect.slots.iter().any(|rule| rule.behavior.slot == slot));
+            assert!(
+                !catalog
+                    .issues(effect_id)
+                    .iter()
+                    .any(|issue| issue.slot == slot)
+            );
+        }
+
+        for (effect_id, slot) in [(823500202, 1), (104331023, 1)] {
             let row = db.skill_effect.get(effect_id).unwrap();
             catalog.insert_configured_effect(db, row);
             let issue = catalog
