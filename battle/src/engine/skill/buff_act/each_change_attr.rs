@@ -42,7 +42,14 @@ pub(crate) fn shared_critical_grant(
     } else {
         grant.target_uid
     };
-    let value = scaled_attribute(managers, source_uid, AttrId::CriticalDmg, *rate);
+    let attr = AttrId::CriticalDmg;
+    let previous = managers
+        .buff
+        .prior_self_share(source_uid, grant.buff_id, attr);
+    let basis = managers
+        .origin_attribute(source_uid, attr)
+        .saturating_sub(previous);
+    let value = scale_attribute(basis, *rate);
     Some(SharedAttributeGrant {
         grant,
         attr_snapshots: vec![(grant.target_uid, AttrId::CriticalDmg, value)],
@@ -50,9 +57,9 @@ pub(crate) fn shared_critical_grant(
     })
 }
 
-fn scaled_attribute(managers: &BattleManagers, uid: i64, attr: AttrId, rate: i32) -> i32 {
-    (i64::from(managers.origin_attribute(uid, attr)) * i64::from(rate) / 1000)
-        .clamp(i64::from(i32::MIN), i64::from(i32::MAX)) as i32
+fn scale_attribute(value: i32, rate: i32) -> i32 {
+    (i64::from(value) * i64::from(rate) / 1000).clamp(i64::from(i32::MIN), i64::from(i32::MAX))
+        as i32
 }
 
 pub(crate) fn definition_snapshot(
@@ -82,7 +89,7 @@ pub(crate) fn definition_snapshot(
             if rate == 0 || attr == AttrId::Hp {
                 continue;
             }
-            let value = scaled_attribute(managers, basis_uid, attr, rate);
+            let value = scale_attribute(managers.origin_attribute(basis_uid, attr), rate);
             match snapshots.iter_mut().find(|(known_owner, known_attr, _)| {
                 *known_owner == owner_uid && *known_attr == attr
             }) {

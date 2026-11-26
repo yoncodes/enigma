@@ -55,7 +55,7 @@ fn bullet_reactions_wait_for_the_attacking_skills_stat_grants() {
         crate::engine::skill::effect::catalog::global(),
         &mut RoundDeterminism::default(),
         TargetContext::default(),
-        [RuleOp::Skill(invocation)],
+        [RuleOp::Skill(invocation.clone())],
     )
     .unwrap();
     assert!(managers.buff.has_buff_id(10, 433711));
@@ -68,4 +68,22 @@ fn bullet_reactions_wait_for_the_attacking_skills_stat_grants() {
         managers.buff.fixed_attribute_delta(11, AttrId::CriticalDmg),
         200
     );
+
+    run(
+        &mut managers,
+        &pool,
+        crate::engine::skill::effect::catalog::global(),
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+        [RuleOp::Skill(invocation)],
+    )
+    .unwrap();
+    for uid in [10, 11] {
+        assert_eq!(
+            managers
+                .buff
+                .fixed_attribute_delta(uid, AttrId::CriticalDmg),
+            216
+        );
+    }
 }

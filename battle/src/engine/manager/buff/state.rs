@@ -43,6 +43,28 @@ impl BuffManager {
             .copied()
     }
 
+    pub(crate) fn prior_self_share(
+        &self,
+        owner_uid: i64,
+        buff_id: i32,
+        attr: crate::engine::entity::attr::AttrId,
+    ) -> i32 {
+        self.buffs
+            .iter()
+            .filter(|active| {
+                active.effective
+                    && active.owner_uid == owner_uid
+                    && active.buff.from_uid.unwrap_or(owner_uid) == owner_uid
+                    && active.buff.buff_id == Some(buff_id)
+            })
+            .filter_map(|active| {
+                let amount = super::attribute_amount(&active.buff, active.definition.as_ref());
+                self.attr_snapshot(active.buff.uid?, owner_uid, attr)
+                    .map(|value| value.saturating_mul(amount))
+            })
+            .fold(0, i32::saturating_add)
+    }
+
     pub(super) fn accumulate_act_value(&mut self, buff_uid: i64, act_id: i32, delta: i32) {
         *self.act_values.entry((buff_uid, act_id)).or_default() += delta;
     }
