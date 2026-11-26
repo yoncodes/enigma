@@ -849,7 +849,7 @@ pub(super) fn damage_ops(
         execution.team_injury_count_consumed = execution
             .team_injury_count_consumed
             .or(target_modifiers.consume_team_injury_count_round);
-        let crit_conversion_rate = target_modifiers.excess_crit_conversion_rate
+        let crit_conversion_rate = target_modifiers.critical_conversion_rate()
             + crate::engine::skill::buff_act::crit_rate_alter2::owner_conversion_rate(
                 source_uid,
                 &managers.buff,
@@ -1211,7 +1211,7 @@ pub(super) fn damage_ops(
                         ));
                     }
                 }
-                let linked_crit_conversion_rate = linked_modifiers.excess_crit_conversion_rate
+                let linked_crit_conversion_rate = linked_modifiers.critical_conversion_rate()
                     + crate::engine::skill::buff_act::crit_rate_alter2::owner_conversion_rate(
                         additional.credited_source_uid,
                         &managers.buff,

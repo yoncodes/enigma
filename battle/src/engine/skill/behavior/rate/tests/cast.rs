@@ -295,7 +295,7 @@ fn excess_crit_conversion_is_a_supported_static_destination() {
             ),
             Some(ops) if ops.is_empty()
         ));
-        assert_eq!(modifiers.excess_crit_conversion_rate, rate);
+        assert_eq!(modifiers.critical_conversion_rate(), rate);
     }
 }
 
@@ -391,5 +391,12 @@ fn bullet_crit_conversion_counts_configured_buff_group_types() {
         &mut RoundDeterminism::default(),
     );
 
-    assert_eq!(modifiers.excess_crit_conversion_rate, 850);
+    assert_eq!(modifiers.critical_conversion_rate(), 850);
+    for (ultimate_rate, expected) in [(800, 850), (1000, 1000)] {
+        let behavior = ParsedBehavior::new(40001, "CritRateAlter", vec![ultimate_rate]);
+        let mut ultimate = crate::engine::skill::action::SkillModifiers::default();
+        assert!(emit(&mut ultimate, 10, 10, None, 100, 0, &behavior));
+        ultimate.merge(modifiers.clone());
+        assert_eq!(ultimate.critical_conversion_rate(), expected);
+    }
 }

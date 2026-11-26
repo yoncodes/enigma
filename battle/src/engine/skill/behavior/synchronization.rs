@@ -265,7 +265,7 @@ fn damage_rule_ops(
         context.managers,
         &attack_attributes,
     );
-    let conversion_rate = modifiers.excess_crit_conversion_rate
+    let conversion_rate = modifiers.critical_conversion_rate()
         + crate::engine::skill::buff_act::crit_rate_alter2::owner_conversion_rate(
             context.source_uid,
             &context.managers.buff,

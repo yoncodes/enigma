@@ -416,6 +416,8 @@ pub struct SkillModifiers {
     pub force_critical: bool,
     pub ignore_riposte: bool,
     pub excess_crit_conversion_rate: i32,
+    pub standard_crit_conversion_rate: i32,
+    pub bullet_crit_conversion_rate: i32,
     pub career_ratio_bonus: i32,
     pub attack_career: Option<i32>,
     pub additional_attack_career: Option<i32>,
@@ -432,6 +434,17 @@ impl SkillModifiers {
             attributes.push((AttrId::Penetration, self.caster_penetration));
         }
         attributes
+    }
+
+    pub(crate) fn critical_conversion_rate(&self) -> i32 {
+        let selected = match (
+            self.standard_crit_conversion_rate,
+            self.bullet_crit_conversion_rate,
+        ) {
+            (0, rate) | (rate, 0) => rate,
+            (standard, bullet) => standard.max(bullet),
+        };
+        self.excess_crit_conversion_rate.saturating_add(selected)
     }
 
     pub(crate) fn merge(&mut self, mut other: Self) {
@@ -451,6 +464,8 @@ impl SkillModifiers {
         self.force_critical |= other.force_critical;
         self.ignore_riposte |= other.ignore_riposte;
         self.excess_crit_conversion_rate += other.excess_crit_conversion_rate;
+        self.standard_crit_conversion_rate += other.standard_crit_conversion_rate;
+        self.bullet_crit_conversion_rate += other.bullet_crit_conversion_rate;
         self.career_ratio_bonus += other.career_ratio_bonus;
         self.attack_career = self.attack_career.or(other.attack_career);
         self.additional_attack_career = self

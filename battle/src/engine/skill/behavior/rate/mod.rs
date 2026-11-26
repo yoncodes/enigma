@@ -268,7 +268,7 @@ impl BehaviorHandler for Handler {
             .buff
             .buff_group_type_count(context.operation.source_uid, group_ids)
             .min(*max_count);
-        context.operation.modifiers.excess_crit_conversion_rate += base_rate + bonus_rate * count;
+        context.operation.modifiers.bullet_crit_conversion_rate += base_rate + bonus_rate * count;
         true
     }
 
@@ -1116,7 +1116,13 @@ pub fn emit(
 ) -> bool {
     let opcode = behavior.spec.key.opcode;
     let amount = match (opcode, behavior.spec.kind) {
-        (40001, BehaviorKind::CritRateAlter) | (100023 | 60228, BehaviorKind::CritRateAlter2) => {
+        (40001, BehaviorKind::CritRateAlter) => {
+            modifiers.standard_crit_conversion_rate = modifiers
+                .standard_crit_conversion_rate
+                .saturating_add(behavior.arg(0).unwrap_or_default());
+            return true;
+        }
+        (100023 | 60228, BehaviorKind::CritRateAlter2) => {
             modifiers.excess_crit_conversion_rate = modifiers
                 .excess_crit_conversion_rate
                 .saturating_add(behavior.arg(0).unwrap_or_default());
