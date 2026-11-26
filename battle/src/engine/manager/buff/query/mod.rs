@@ -1218,7 +1218,6 @@ impl BuffManager {
     }
 
     fn passive_skill_links_for_buff(&self, active: &ActiveBuff) -> Vec<BuffPassiveSkillLink> {
-        let owner_uid = passive_skill_owner(active);
         let amount = count_or_layer_from(&active.buff, active.definition.as_ref());
         active
             .definition
@@ -1226,7 +1225,7 @@ impl BuffManager {
             .map(|definition| {
                 passive_skill_links(
                     Some(self.catalog().game_data()),
-                    owner_uid,
+                    active.owner_uid,
                     definition.features(),
                     amount,
                 )
@@ -1295,24 +1294,6 @@ fn configured_features(
         },
         definition,
     )
-}
-
-fn passive_skill_owner(active: &ActiveBuff) -> i64 {
-    let source_owned = active.definition.as_ref().is_some_and(|definition| {
-        definition
-            .features()
-            .iter()
-            .any(|feature| feature.kind == Some(BuffActKind::SlaveHalo))
-    });
-    if source_owned {
-        active
-            .buff
-            .from_uid
-            .filter(|source_uid| *source_uid != 0)
-            .unwrap_or(active.owner_uid)
-    } else {
-        active.owner_uid
-    }
 }
 
 #[cfg(test)]

@@ -239,6 +239,54 @@ fn active_buff_features_can_link_passive_skill_effects() {
 }
 
 #[test]
+fn halo_passive_links_belong_to_the_buff_holder() {
+    init_config();
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                current_hp: Some(100),
+                buffs: vec![
+                    BuffInfo {
+                        buff_id: Some(30920211),
+                        uid: Some(2),
+                        from_uid: Some(20),
+                        ..Default::default()
+                    },
+                    BuffInfo {
+                        buff_id: Some(31260201),
+                        uid: Some(3),
+                        from_uid: Some(30),
+                        ..Default::default()
+                    },
+                ],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let mut manager = BuffManager::default();
+    manager.seed(&fight);
+
+    assert_eq!(
+        manager.passive_skill_links_for(10),
+        vec![
+            BuffPassiveSkillLink {
+                owner_uid: 10,
+                runtime_target_uid: 10,
+                skill_id: 30920211,
+            },
+            BuffPassiveSkillLink {
+                owner_uid: 10,
+                runtime_target_uid: 10,
+                skill_id: 31260181,
+            },
+        ]
+    );
+}
+
+#[test]
 fn passive_skill_link_activates_at_the_configured_buff_layer() {
     init_config();
     let manager = |layer| {
