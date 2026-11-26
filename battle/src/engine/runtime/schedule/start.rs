@@ -1393,7 +1393,7 @@ fn run_round_start_before_duration(
     defer_round_start_duration: bool,
     opposing_round_start_owner_uids: &[i64],
 ) -> Result<(DrainResult, RoundStartSettlementPlan, DrainResult), DrainError> {
-    let duration_snapshot = duration_snapshot(managers, owner_uids);
+    let actor_timers = duration_snapshot(managers, owner_uids);
     let setup_owner_uids = round_start_setup_owner_uids(owner_uids, team);
     let field_ops = managers
         .field
@@ -1417,10 +1417,10 @@ fn run_round_start_before_duration(
         })
         .collect::<Vec<_>>();
     let mut result = drain::run(managers, pool, catalog, determinism, context, field_ops)?;
-    let setup = if team == 2
-        && crate::engine::fight::versions::round_start_setup_layout(managers.fight_version())
-            == Some(crate::engine::fight::versions::RoundStartSetupLayout::Version7)
-    {
+    let version_seven =
+        crate::engine::fight::versions::round_start_setup_layout(managers.fight_version())
+            == Some(crate::engine::fight::versions::RoundStartSetupLayout::Version7);
+    let setup = if team == 2 && version_seven {
         ROUND_START_DEFENDER_BEFORE_DURATION_SETUP_V7
     } else {
         ROUND_START_BEFORE_DURATION_SETUP
@@ -1437,7 +1437,7 @@ fn run_round_start_before_duration(
                     catalog,
                     determinism,
                     context,
-                    duration_advance_rule(priority, &duration_snapshot),
+                    duration_advance_rule(priority, &actor_timers),
                 )?,
             );
         }
@@ -1456,6 +1456,20 @@ fn run_round_start_before_duration(
         } else {
             setup_owner_uids.clone()
         };
+        if version_seven && team == 1 && (stage, priority) == (SetupStage::RoundStart, -1) {
+            append(
+                &mut result,
+                run_round_start_side_clock(
+                    managers,
+                    pool,
+                    catalog,
+                    determinism,
+                    context,
+                    &pending_owner_uids,
+                )?,
+            );
+            continue;
+        }
         append(
             &mut result,
             drain::run_setup_stage_for_owners(
@@ -1517,7 +1531,7 @@ fn run_round_start_before_duration(
                 catalog,
                 determinism,
                 context,
-                &duration_snapshot,
+                &actor_timers,
             )?,
         );
     }

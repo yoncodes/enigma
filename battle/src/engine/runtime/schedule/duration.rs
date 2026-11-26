@@ -1,5 +1,50 @@
 use super::*;
 
+pub(super) fn run_round_start_side_clock(
+    managers: &mut BattleManagers,
+    pool: &TargetPool,
+    catalog: &SkillEffectCatalog,
+    determinism: &mut RoundDeterminism,
+    context: TargetContext,
+    owner_uids: &[i64],
+) -> Result<DrainResult, DrainError> {
+    const SETUP: &[(SetupStage, i32)] = &[(SetupStage::RoundStart, -1)];
+    let mut result = drain::run_skill_setup_schedule_for_owners(
+        managers,
+        pool,
+        catalog,
+        determinism,
+        context,
+        SETUP,
+        owner_uids,
+    )?;
+    let timers = duration_snapshot(managers, &[crate::engine::fight::rules::ATTACKER_SIDE_UID]);
+    append(
+        &mut result,
+        drain::run(
+            managers,
+            pool,
+            catalog,
+            determinism,
+            context,
+            duration_advance_rule(effect_time::ROUND_START_INITIAL_DURATION, &timers),
+        )?,
+    );
+    append(
+        &mut result,
+        drain::run_buff_act_setup_schedule_for_owners_in_round_phase(
+            managers,
+            pool,
+            catalog,
+            determinism,
+            context,
+            SETUP,
+            owner_uids,
+        )?,
+    );
+    Ok(result)
+}
+
 pub(super) fn duration_advance_rule(take_stage: i32, snapshot: &[(i64, i64)]) -> Option<RuleOp> {
     (!snapshot.is_empty()).then(|| {
         RuleOp::Command(BattleCommand::BuffBatch(

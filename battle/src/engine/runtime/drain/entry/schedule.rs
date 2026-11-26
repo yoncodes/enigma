@@ -540,6 +540,27 @@ pub fn run_skill_setup_schedule(
     )
 }
 
+pub(crate) fn run_skill_setup_schedule_for_owners(
+    managers: &mut BattleManagers,
+    pool: &TargetPool,
+    catalog: &SkillEffectCatalog,
+    determinism: &mut RoundDeterminism,
+    context: TargetContext,
+    schedule: &[(SetupStage, i32)],
+    owner_uids: &[i64],
+) -> Result<DrainResult, DrainError> {
+    run_skill_setup_schedule_with_container(
+        managers,
+        pool,
+        catalog,
+        determinism,
+        context,
+        schedule,
+        Some(owner_uids),
+        SetupFrameContainer::Standalone,
+    )
+}
+
 #[allow(clippy::too_many_arguments)]
 pub fn run_version_seven_round_start_event_setup(
     managers: &mut BattleManagers,

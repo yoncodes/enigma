@@ -291,7 +291,7 @@ fn full_legacy_progress_activates_passion_at_round_start() {
         }]);
 
         let setup_round = |managers: &mut BattleManagers, current_round| {
-            drain::run_setup_stage_for_owners(
+            settle_round_start(
                 managers,
                 &pool,
                 &catalog,
@@ -300,9 +300,7 @@ fn full_legacy_progress_activates_passion_at_round_start() {
                     current_round,
                     ..Default::default()
                 },
-                SetupStage::RoundStart,
-                -1,
-                &[ATTACKER_SIDE_UID],
+                &[],
             )
             .unwrap()
         };
@@ -318,11 +316,27 @@ fn full_legacy_progress_activates_passion_at_round_start() {
         assert!(!managers.buff.has_buff_id(10, 9260104));
 
         if expected {
-            let repeated = setup_round(&mut managers, 4);
-            assert!(
-                repeated.outcomes.is_empty(),
-                "active Passion Mode must not reapply"
-            );
+            let carrier = |managers: &BattleManagers| {
+                managers
+                    .buff
+                    .active_for(ATTACKER_SIDE_UID)
+                    .find(|buff| buff.buff_id == Some(9260101))
+                    .map(|buff| (buff.uid, buff.duration))
+            };
+            let (uid, duration) = carrier(&managers).unwrap();
+            assert_eq!(duration, Some(2));
+            setup_round(&mut managers, 4);
+            assert_eq!(carrier(&managers), Some((uid, Some(1))));
+            assert!(managers.buff.has_buff_id(10, 9260102));
+            for target in [-1, -2] {
+                assert!(managers.buff.has_buff_id(target, 9260103));
+            }
+            setup_round(&mut managers, 5);
+            assert_eq!(carrier(&managers), None);
+            for target in [-1, -2, 10] {
+                assert!(!managers.buff.has_buff_id(target, 9260102));
+                assert!(!managers.buff.has_buff_id(target, 9260103));
+            }
         }
     }
 }
