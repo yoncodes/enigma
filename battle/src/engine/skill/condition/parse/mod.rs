@@ -225,6 +225,7 @@ pub enum ParsedConditionKind {
         compare_code: i32,
         threshold_permille: i32,
     },
+    LegacyProgressFull,
     FightProgressValue {
         progress_id: i32,
         compare_code: i32,

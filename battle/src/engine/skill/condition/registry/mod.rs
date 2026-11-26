@@ -997,6 +997,7 @@ condition_definitions! {
     [589] "PowerIncrChange" => resource::power_increase, reaction_targets_owner(event_trigger(EventKind::EurekaChanged, None));
     [749301] "PowerRatio" => resource::power_ratio, event_trigger(EventKind::SmallRoundEnd, None);
     [749209] "PowerRatio" => resource::power_ratio, attacked_skills(predicate(&[EventKind::TargetAttacked]));
+    [678100] "ProgressFull" => resource::legacy_progress_full, predicate(&[]);
     [1010301] "ProgressValue" => resource::fight_progress_value, reaction_targets_owner(event_trigger(EventKind::DefenderActionPhaseStart, None));
     [1010012] "ProgressValue" => resource::fight_progress_value, event_target_observes(reaction_targets_owner(event_trigger(EventKind::EntityDied, None)));
     [793002] "Level" => player::level, setup_route(SetupStage::EnterFight, 0, &[]);

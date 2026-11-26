@@ -249,6 +249,85 @@ fn version_seven_defers_defender_round_start_until_after_ai() {
 }
 
 #[test]
+fn full_legacy_progress_activates_passion_at_round_start() {
+    use crate::engine::fight::rules::{ATTACKER_SIDE_UID, OwnedBattleSkill};
+
+    init_config();
+    let entity = |uid, team_type, position| FightEntityInfo {
+        uid: Some(uid),
+        team_type: Some(team_type),
+        position: Some(position),
+        current_hp: Some(100),
+        ..Default::default()
+    };
+    let mut fight = Fight {
+        version: Some(7),
+        attacker: Some(FightTeam {
+            entitys: vec![entity(10, 1, 1)],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![entity(-1, 2, 1), entity(-2, 2, 2)],
+            ..Default::default()
+        }),
+        progress_max: Some(60),
+        progress_list: vec![sonettobuf::FightProgressInfo {
+            id: Some(8),
+            max: Some(100),
+            value: Some(100),
+            show_id: Some(1),
+            skill_id: Some(1),
+        }],
+        ..Default::default()
+    };
+    let catalog = SkillEffectCatalog::from_roots(config::configs::get(), [9260005], []);
+    for (progress, expected) in [(59, false), (60, true)] {
+        fight.progress = Some(progress);
+        let pool = TargetPool::from_fight(&fight);
+        let mut managers = BattleManagers::seeded(&fight);
+        managers.battle_rule.extend_owned_skills([OwnedBattleSkill {
+            owner_uid: ATTACKER_SIDE_UID,
+            skill_id: 9260005,
+        }]);
+
+        let setup_round = |managers: &mut BattleManagers, current_round| {
+            drain::run_setup_stage_for_owners(
+                managers,
+                &pool,
+                &catalog,
+                &mut RoundDeterminism::default(),
+                TargetContext {
+                    current_round,
+                    ..Default::default()
+                },
+                SetupStage::RoundStart,
+                -1,
+                &[ATTACKER_SIDE_UID],
+            )
+            .unwrap()
+        };
+        setup_round(&mut managers, 3);
+
+        assert_eq!(
+            managers.buff.has_buff_id(ATTACKER_SIDE_UID, 9260101),
+            expected
+        );
+        for uid in [-1, -2] {
+            assert_eq!(managers.buff.has_buff_id(uid, 9260104), expected);
+        }
+        assert!(!managers.buff.has_buff_id(10, 9260104));
+
+        if expected {
+            let repeated = setup_round(&mut managers, 4);
+            assert!(
+                repeated.outcomes.is_empty(),
+                "active Passion Mode must not reapply"
+            );
+        }
+    }
+}
+
+#[test]
 fn defender_action_phase_runs_progress_reactions_before_ai() {
     let entity = |uid, team_type, skill_id| FightEntityInfo {
         uid: Some(uid),

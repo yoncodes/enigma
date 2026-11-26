@@ -132,6 +132,11 @@ pub fn power_ratio(_: i32, _: &str, args: &[String]) -> Option<ParsedConditionKi
     })
 }
 
+pub fn legacy_progress_full(_: i32, _: &str, args: &[String]) -> Option<ParsedConditionKind> {
+    args.is_empty()
+        .then_some(ParsedConditionKind::LegacyProgressFull)
+}
+
 pub fn fight_progress_value(_: i32, _: &str, args: &[String]) -> Option<ParsedConditionKind> {
     let [progress_id, compare_code, threshold] = parse_fixed(args)?;
     if !matches!(compare_code, 1..=3) {

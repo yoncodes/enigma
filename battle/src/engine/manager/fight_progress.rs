@@ -87,6 +87,10 @@ impl FightProgressManager {
         self.legacy.initialize(command)
     }
 
+    pub(crate) fn legacy_is_full(&self) -> bool {
+        self.legacy.is_full()
+    }
+
     pub(crate) fn add_legacy(
         &mut self,
         command: LegacyProgressAdd,

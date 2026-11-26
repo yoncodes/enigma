@@ -322,6 +322,9 @@ pub(super) fn condition_kind_matches(
             source_uid,
             managers,
         ),
+        ParsedConditionKind::LegacyProgressFull => {
+            managers.is_some_and(|managers| managers.fight_progress.legacy_is_full())
+        }
         ParsedConditionKind::FightProgressValue {
             progress_id,
             compare_code,

@@ -63,6 +63,11 @@ impl LegacyProgress {
         })
     }
 
+    pub(super) fn is_full(&self) -> bool {
+        self.max
+            .is_some_and(|max| max > 0 && self.value == Some(max))
+    }
+
     pub(super) fn sync(&self, fight: &mut Fight) {
         fight.progress = self.value;
         fight.progress_max = self.max;
