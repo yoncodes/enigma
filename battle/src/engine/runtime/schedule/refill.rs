@@ -211,21 +211,8 @@ fn run_card_refill(
             == Some(crate::engine::fight::versions::RoundStartSetupLayout::Version7);
     loop {
         let needs_normal_card = match stage {
-            CardRefillStage::Opening if version7 => {
-                managers
-                    .card
-                    .hand()
-                    .iter()
-                    .filter(|card| {
-                        !card_mechanic.entity_ultimate_ignores_limit(managers, pool, card)
-                    })
-                    .count()
-                    < hand_size
-            }
-            CardRefillStage::Opening => managers.card.hand().len() < hand_size,
-            CardRefillStage::AfterActions | CardRefillStage::RoundStart => {
-                card_mechanic.refill_hand_len(managers, pool) < hand_size
-            }
+            CardRefillStage::Opening if !version7 => managers.card.hand().len() < hand_size,
+            _ => card_mechanic.refill_hand_len(managers, pool) < hand_size,
         };
         let ready_normal = if stage == CardRefillStage::Opening {
             Vec::new()

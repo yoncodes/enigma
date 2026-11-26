@@ -490,6 +490,48 @@ fn opening_deal_keeps_entity_exempt_ultimate_ahead_of_ordinary_cards() {
 }
 
 #[test]
+fn opening_refill_leaves_temporary_cards_out_of_the_normal_capacity() {
+    use super::super::super::refill::{OpeningRefillSeed, run_opening_hand_refill};
+
+    init_config();
+    let fight = Fight {
+        version: Some(7),
+        ..Default::default()
+    };
+    let pool = TargetPool::from_fight(&fight);
+    let mut managers = BattleManagers::seeded(&fight);
+    let card = |skill_id, temp_card| CardInfo {
+        uid: Some(10),
+        skill_id: Some(skill_id),
+        temp_card,
+        ..Default::default()
+    };
+    let normal = card(100, None);
+    let temporary = card(200, Some(true));
+    let draw = card(300, None);
+    managers
+        .execute_card(CardCommand::Setup(CardSetup {
+            hand: vec![normal.clone(), temporary.clone()],
+            draw_pile: vec![draw.clone()],
+            deck_num: 1,
+        }))
+        .unwrap();
+
+    run_opening_hand_refill(
+        &mut managers,
+        &pool,
+        &SkillEffectCatalog::default(),
+        &mut RoundDeterminism::default(),
+        TargetContext::default(),
+        2,
+        OpeningRefillSeed { draws: Vec::new() },
+    )
+    .unwrap();
+
+    assert_eq!(managers.card.hand(), [normal, temporary, draw]);
+}
+
+#[test]
 fn opening_setup_rejects_an_ineligible_seeded_ultimate() {
     init_config();
     let fight = Fight {
