@@ -275,7 +275,7 @@ pub(crate) fn settle_round_start(
     } else {
         Vec::new()
     };
-    let (before_duration, settlement_plan, split_losses) = run_round_start_before_duration(
+    let (before_duration, settlement_plan, mut split_losses) = run_round_start_before_duration(
         managers,
         pool,
         catalog,
@@ -288,6 +288,16 @@ pub(crate) fn settle_round_start(
         false,
         &defender_round_start_owner_uids,
     )?;
+    if version_seven && !entering_uids.is_empty() {
+        promotion::settle_reaction_cycles(
+            managers,
+            pool,
+            catalog,
+            determinism,
+            context,
+            &mut split_losses,
+        )?;
+    }
     append(&mut fight_steps, before_duration);
     append(&mut fight_steps, split_losses);
     let damage_heal_settlement =

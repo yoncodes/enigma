@@ -625,6 +625,12 @@ impl BattleRuntime {
                     &wave_entering_uids,
                 )
                 .map_err(|error| format!("{error:?}"))?;
+                schedule::sync_cycle_roster(
+                    &mut self.fight,
+                    &mut self.managers,
+                    &mut pool,
+                    &started.steps,
+                );
                 if !wave_entering_uids.is_empty() {
                     self.wave_entry_condition_uids = wave_entering_uids;
                 }

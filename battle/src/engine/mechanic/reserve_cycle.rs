@@ -3,13 +3,14 @@ use crate::engine::{
 };
 
 #[derive(Clone, Copy)]
-pub(crate) enum Window {
+pub(crate) enum Window<'a> {
     ActionDrain,
     AfterAction,
+    AfterReaction(&'a [i64]),
     EndOfPhase,
 }
 
-pub(crate) fn promote(managers: &mut BattleManagers, window: Window) -> PromotionBatch {
+pub(crate) fn promote(managers: &mut BattleManagers, window: Window<'_>) -> PromotionBatch {
     let mut promotions = Vec::new();
     loop {
         let battle_rule = &managers.battle_rule;
@@ -19,9 +20,13 @@ pub(crate) fn promote(managers: &mut BattleManagers, window: Window) -> Promotio
                 .entity
                 .promote_reserves_matching(&managers.hp, |uid, team| match window {
                     Window::ActionDrain => battle_rule.promotes_reserves_immediately(team),
-                    Window::AfterAction => {
+                    Window::AfterAction | Window::AfterReaction(_) => {
                         !battle_rule.promotes_reserves_immediately(team)
                             && buffs.has_buff_act_kind(uid, BuffActKind::CycleToSub)
+                            && match window {
+                                Window::AfterReaction(defeated) => defeated.contains(&uid),
+                                _ => true,
+                            }
                     }
                     Window::EndOfPhase => true,
                 });

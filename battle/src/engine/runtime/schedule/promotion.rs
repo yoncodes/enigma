@@ -29,6 +29,55 @@ pub(super) fn run_cycles(
     determinism: &mut RoundDeterminism,
     context: TargetContext,
 ) -> Result<DrainResult, DrainError> {
+    settle_cycles(
+        managers,
+        pool,
+        catalog,
+        determinism,
+        context,
+        Window::AfterAction,
+    )
+}
+
+pub(super) fn settle_reaction_cycles(
+    managers: &mut BattleManagers,
+    pool: &TargetPool,
+    catalog: &SkillEffectCatalog,
+    determinism: &mut RoundDeterminism,
+    context: TargetContext,
+    result: &mut DrainResult,
+) -> Result<(), DrainError> {
+    let defeated = result
+        .events
+        .iter()
+        .filter_map(|event| match event {
+            BattleEvent::EntityDied(death) => Some(death.target_uid),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    if defeated.is_empty() {
+        return Ok(());
+    }
+    let next = settle_cycles(
+        managers,
+        pool,
+        catalog,
+        determinism,
+        context,
+        Window::AfterReaction(&defeated),
+    )?;
+    append(result, next);
+    Ok(())
+}
+
+fn settle_cycles(
+    managers: &mut BattleManagers,
+    pool: &TargetPool,
+    catalog: &SkillEffectCatalog,
+    determinism: &mut RoundDeterminism,
+    context: TargetContext,
+    window: Window<'_>,
+) -> Result<DrainResult, DrainError> {
     use crate::engine::fight::versions::{RoundStartSetupLayout, round_start_setup_layout};
 
     if round_start_setup_layout(managers.fight_version()) != Some(RoundStartSetupLayout::Version7)
@@ -40,7 +89,7 @@ pub(super) fn run_cycles(
     {
         return Ok(DrainResult::default());
     }
-    let promotions = reserve_cycle::promote(managers, Window::AfterAction);
+    let promotions = reserve_cycle::promote(managers, window);
     let Some(team_type) = promotions
         .promotions()
         .first()

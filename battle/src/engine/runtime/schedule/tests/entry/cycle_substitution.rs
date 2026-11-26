@@ -270,6 +270,81 @@ fn a_cycle_reserve_enters_after_the_action_without_promoting_ordinary_deaths() {
 }
 
 #[test]
+fn reaction_cycle_only_promotes_defeats_from_its_group() {
+    use crate::engine::manager::hp::{HpCommand, HpKill};
+
+    init_config();
+    let fight = Fight {
+        attacker: Some(FightTeam {
+            entitys: vec![FightEntityInfo {
+                uid: Some(10),
+                team_type: Some(1),
+                current_hp: Some(100),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        defender: Some(FightTeam {
+            entitys: vec![
+                entity(-2, 1, true),
+                entity(-3, 2, true),
+                entity(-4, 3, true),
+                entity(-7, 4, false),
+            ],
+            sub_entitys: vec![entity(-5, -1, false), entity(-6, -2, false)],
+            ..Default::default()
+        }),
+        version: Some(7),
+        ..Default::default()
+    };
+    let mut managers = BattleManagers::seeded(&fight);
+    managers.hp.lose(-2, 100, 10);
+    let pool = TargetPool::from_fight(&fight);
+    let catalog = SkillEffectCatalog::from_fight(crate::test_support::game_data(), &fight);
+    let mut determinism = RoundDeterminism::default();
+    let context = TargetContext::default();
+    let mut group = drain::run_command_group(
+        &mut managers,
+        &pool,
+        &catalog,
+        &mut determinism,
+        context,
+        [-3, -4].map(|target_uid| {
+            RuleOp::Command(BattleCommand::Hp(HpCommand::Kill(HpKill {
+                origin: CommandOrigin {
+                    domain: RuleDomain::Behavior,
+                    key: DefinitionKey::new(60015, "Kill"),
+                },
+                source_uid: 10,
+                target_uid,
+                config_effect: 60015,
+            })))
+        }),
+    )
+    .unwrap();
+
+    promotion::settle_reaction_cycles(
+        &mut managers,
+        &pool,
+        &catalog,
+        &mut determinism,
+        context,
+        &mut group,
+    )
+    .unwrap();
+
+    assert_eq!(managers.entity.roster_lane(-2), Some(RosterLane::Main));
+    assert_eq!(managers.entity.roster_lane(-3), Some(RosterLane::Replaced));
+    assert_eq!(managers.entity.roster_lane(-4), Some(RosterLane::Replaced));
+    assert_eq!(managers.entity_snapshot(-5).unwrap().position, Some(2));
+    assert_eq!(managers.entity_snapshot(-6).unwrap().position, Some(3));
+    assert!(matches!(
+        group.frames.last(),
+        Some(frame) if frame.owner == FrameOwner::RoundPhase(RoundPhase::ReserveCycle)
+    ));
+}
+
+#[test]
 fn cycle_to_sub_repeats_through_entering_reserves_in_capture_order() {
     init_config();
     let mut fight = Fight {
